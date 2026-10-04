@@ -82,3 +82,71 @@ fn ui_lint_measures_with_the_sessions_face() {
     assert!(dec10.size.w > 0.0, "setup: nothing was laid out");
     assert!(w1005.is_empty(), "the audit measured the buttons with another face than the host laid them out with");
 }
+
+/// **Under `Complex`, the audit shapes too** — M81/T81.4 (review C26, T8;
+/// `docs/plan-shaped-paint.md`). An Arabic label is laid out at its
+/// *joined* width by a `Complex` program's host; an audit measuring with
+/// a `Basic` stack would see the wider isolated letters, find the box
+/// too small, and report W1005 on a label nothing is wrong with. `Local`
+/// builds the audit's measurer from a clone of the stack the host
+/// measures with, so the two cannot disagree.
+#[cfg(feature = "shaping")]
+#[test]
+fn ui_lint_shapes_with_the_sessions_stack() {
+    use lumen_static::TextMeasure;
+    use lumen_static_shell::text::{FontMetrics, Shaping};
+
+    #[derive(StaticTree, Default)]
+    #[widget(row, spacing = 0.0)]
+    struct ArUi {
+        #[widget_id("ar")]
+        ar: Label<String>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct Ar {
+        #[tree]
+        ui: ArUi,
+    }
+
+    const ARABIC: &str = "مرحبا بالعالم";
+    const SIZE: f32 = 24.0;
+    let Some(stack) = FontStack::system() else {
+        assert!(std::env::var("LUMEN_REQUIRE_FONTS").as_deref() != Ok("1"), "LUMEN_REQUIRE_FONTS=1 but no system face");
+        println!("no system face -- skipped");
+        return;
+    };
+    let joined = FontMetrics::new(stack.clone().with_shaping(Shaping::Complex)).measure(ARABIC, SIZE, f32::INFINITY);
+    let isolated = FontMetrics::new(stack.clone()).measure(ARABIC, SIZE, f32::INFINITY);
+    println!("setup: {ARABIC:?} at {SIZE} px: joined (Complex) {}x{}, isolated (Basic) {}x{}", joined.w, joined.h, isolated.w, isolated.h);
+    assert!(isolated.w > joined.w + 1.0, "setup: the isolated letters must be wider than the joined run, or no W1005 can fire");
+
+    let program = application(|| {
+        let mut a = Ar::default();
+        a.ui.ar.set(ARABIC.to_owned());
+        a
+    })
+    .size(440, 120)
+    .style(|_: &Ar| vec![Rule::new(Selector::Id("ar"), Patch::new().font_size(SIZE))])
+    .shaping(Shaping::Complex);
+    let mut s = Local::from_program(program, Crashing);
+    let mut screen = Offscreen::with_shaping(440, 120, s.shaping());
+    s.frame(0.0, 440, 120);
+    s.agent_frame_done(Default::default());
+    let r: Value = serde_json::from_str(&s.agent(r#"{"jsonrpc":"2.0","id":1,"method":"ui.lint","params":{}}"#, &mut screen))
+        .expect("JSON");
+    let findings = r["result"]["findings"].as_array().cloned().unwrap_or_default();
+    let w1005: Vec<&Value> = findings.iter().filter(|f| f["code"] == "W1005").collect();
+    let ar = &s.host.states[lumen_static::style::index_of_wid(<ArUi as Widget>::SUB_TABLE, "ar").unwrap()];
+    println!(
+        "#ar laid out {}x{} (Session::shaping {:?}); ui.lint: {} finding(s), {} W1005 (bound 0): {w1005:?}",
+        ar.size.w,
+        ar.size.h,
+        s.shaping(),
+        findings.len(),
+        w1005.len()
+    );
+    assert!(r["result"]["findings"].is_array(), "setup: ui.lint answered no findings list: {r}");
+    assert!((ar.size.w - joined.w).abs() <= 0.5, "setup: the host did not lay the label out at its joined width");
+    assert!(w1005.is_empty(), "the audit measured the Arabic label with another stack than the host laid it out with");
+}

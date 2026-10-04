@@ -645,19 +645,32 @@ fn build(entry: usize, open: bool) -> Show {
     app
 }
 
+/// **The stack a headless frame of `p` measures and draws with**: the
+/// system face, laid out by the program's `Program::shaping` — M81/T81.4
+/// (`docs/plan-shaped-paint.md`, second review C1). The window builds its
+/// stack the same way (from `Session::shaping`), so `--shot` and `--demo`
+/// stay the window's frame, which M57's D5 parity compares them against.
+/// Built `FontStack::system()` directly, a `Complex` window's `--demo`
+/// would differ from it by construction.
+fn stack_of(p: &Program<Show>) -> Option<lumen_static_shell::text::FontStack> {
+    lumen_static_shell::text::FontStack::system().map(|f| f.with_shaping(p.shaping))
+}
+
 /// One frame, headless — what the tests and the screenshots use.
 fn shot(path: &str, entry: usize, open: bool) {
     use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host: lumen_static_shell::Host<Show> = program(entry, open).host();
-    let mut metrics = FontStack::system().map(FontMetrics::new);
+    use lumen_static_shell::text::FontMetrics;
+    let p = program(entry, open);
+    let stack = stack_of(&p);
+    let mut host: lumen_static_shell::Host<Show> = p.host();
+    let mut metrics = stack.clone().map(FontMetrics::new);
     for _ in 0..2 {
         match metrics.as_mut() {
             Some(m) => host.pump_with(m),
             None => host.pump(),
         };
     }
-    let mut c = match FontStack::system() {
+    let mut c = match stack {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
@@ -777,18 +790,41 @@ fn profile_popup() {
 /// ends up looking at the wrong 240 px and concluding a widget is
 /// broken — or worse, that it is fine.
 fn demo_shot(path: &str, entry: usize) {
+    let (pixels, [x0, y0, x1, y1]) = demo_frame(&program(entry, false), |_| {});
+    let (cw, chh) = (x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1));
+    let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let i = (y * W as usize + x) * 4;
+            out.extend_from_slice(&pixels[i..i + 3]);
+        }
+    }
+    std::fs::write(path, out).expect("write");
+    println!("{path}: {} — {cw}x{chh} at ({x0},{y0})", CATALOG[entry].name);
+}
+
+/// [`demo_shot`]'s frame: the whole canvas, and the crop `[x0, y0, x1,
+/// y1]` around the `#demo` subtree. `prep` runs on the host between the
+/// two pumps, once the first has seeded the stage — a test's hook;
+/// `demo_shot` passes nothing. Measured and drawn with [`stack_of`]`(p)`,
+/// the program's own `Shaping`.
+fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host<Show>)) -> (Vec<u8>, [usize; 4]) {
     use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host: lumen_static_shell::Host<Show> =
-        program(entry, false).host();
-    let mut metrics = FontStack::system().map(FontMetrics::new);
+    use lumen_static_shell::text::FontMetrics;
+    let stack = stack_of(p);
+    let mut host: lumen_static_shell::Host<Show> = p.host();
+    let mut metrics = stack.clone().map(FontMetrics::new);
+    let mut prep = Some(prep);
     for _ in 0..2 {
         match metrics.as_mut() {
             Some(m) => host.pump_with(m),
             None => host.pump(),
         };
+        if let Some(f) = prep.take() {
+            f(&mut host);
+        }
     }
-    let mut c = match FontStack::system() {
+    let mut c = match stack {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
@@ -826,16 +862,7 @@ fn demo_shot(path: &str, entry: usize) {
     let pad = 16.0;
     let (x0, y0) = ((x0 - pad).max(0.0) as usize, (y0 - pad).max(0.0) as usize);
     let (x1, y1) = ((x1 + pad).min(W as f32) as usize, (y1 + pad).min(H as f32) as usize);
-    let (cw, chh) = (x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1));
-    let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
-    for y in y0..y1 {
-        for x in x0..x1 {
-            let i = (y * W as usize + x) * 4;
-            out.extend_from_slice(&c.pixels[i..i + 3]);
-        }
-    }
-    std::fs::write(path, out).expect("write");
-    println!("{path}: {} — {cw}x{chh} at ({x0},{y0})", CATALOG[entry].name);
+    (c.pixels, [x0, y0, x1, y1])
 }
 
 /// An entry with its `which`-th control **held down**, rendered while
@@ -1046,7 +1073,16 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         // height or a one-line ellipsis on the demo's label — style fields
         // restyled at run time, which is what `Program::style_by` is for.
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
+        .shaping(SHAPING)
 }
+
+/// How the showcase lays text out: `Complex` when built with its
+/// `shaping` feature, `Basic` otherwise (M81/T81.4). The window, `--shot`
+/// and `--demo` all follow it through [`program`].
+#[cfg(feature = "shaping")]
+const SHAPING: lumen_static_shell::text::Shaping = lumen_static_shell::text::Shaping::Complex;
+#[cfg(not(feature = "shaping"))]
+const SHAPING: lumen_static_shell::text::Shaping = lumen_static_shell::text::Shaping::Basic;
 
 /// The program's sheet for the `Label` demo's switches (M80/T80.2, T80.3).
 // ANCHOR: line_height
@@ -3393,3 +3429,66 @@ mod snap_cost {
     }
 }
 
+
+/// **`--demo` renders with the program's `Shaping`** — M81/T81.4
+/// (`docs/plan-shaped-paint.md`, second review C1). The showcase has no
+/// right-to-left entry until T81.6, so the `TextInput` demo is given a
+/// Hebrew value through [`demo_frame`]'s hook — the same function
+/// `demo_shot` draws with — and the `Complex` program's frame must differ
+/// from the `Basic` one's. The accept direction: the entry as shipped is
+/// Latin, which needs no shaping, and the two modes draw it byte for byte.
+#[cfg(all(test, feature = "shaping"))]
+mod shaping_shot {
+    use super::*;
+    use lumen_static_shell::text::{FontStack, Shaping};
+
+    const HEBREW: &str = "שלום עולם";
+
+    fn differing(a: &(Vec<u8>, [usize; 4]), b: &(Vec<u8>, [usize; 4])) -> usize {
+        assert_eq!(a.1, b.1, "the two crops differ, so the frames were not of one layout");
+        let [x0, y0, x1, y1] = a.1;
+        let mut n = 0;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = (y * W as usize + x) * 4;
+                n += usize::from(a.0[i..i + 4] != b.0[i..i + 4]);
+            }
+        }
+        n
+    }
+
+    #[test]
+    fn demo_frames_follow_the_programs_shaping() {
+        if FontStack::system().is_none() {
+            assert!(std::env::var("LUMEN_REQUIRE_FONTS").as_deref() != Ok("1"), "LUMEN_REQUIRE_FONTS=1 but no system face");
+            println!("no system face -- skipped");
+            return;
+        }
+        let entry = CATALOG.iter().position(|e| e.name == "TextInput").expect("a TextInput entry");
+        let hebrew = |h: &mut lumen_static_shell::Host<Show>| {
+            if let Demo::TextInput(d) = &mut h.app.ui.main.stage.row.demo {
+                d.a.set_str(HEBREW);
+            }
+            h.invalidate_all();
+        };
+        // As `demo_frame` does it: seeded by the first pump, then the hook,
+        // then the frame's pump.
+        let seeded = {
+            let mut h: lumen_static_shell::Host<Show> = program(entry, false).host();
+            h.pump();
+            hebrew(&mut h);
+            h.pump();
+            matches!(&h.app.ui.main.stage.row.demo, Demo::TextInput(d) if d.a.as_str() == HEBREW)
+        };
+        assert!(seeded, "setup: the TextInput demo does not hold {HEBREW:?}");
+        let complex = program(entry, false).shaping(Shaping::Complex);
+        let basic = program(entry, false).shaping(Shaping::Basic);
+        println!("program shaping: {:?} and {:?}; built-in default {SHAPING:?}", complex.shaping, basic.shaping);
+        let he = differing(&demo_frame(&complex, hebrew), &demo_frame(&basic, hebrew));
+        let latin = differing(&demo_frame(&complex, |_| {}), &demo_frame(&basic, |_| {}));
+        println!("--demo {entry} (TextInput): Hebrew value, Complex vs Basic {he} px differ (bound > 0); \
+                  shipped Latin value {latin} px differ (bound 0)");
+        assert!(he > 0, "the Complex program's --demo frame equals the Basic one: demo_frame ignores the program's Shaping");
+        assert_eq!(latin, 0, "a Latin frame moved under Complex, which must lay out plain Latin as Basic does");
+    }
+}

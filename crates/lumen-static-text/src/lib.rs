@@ -45,11 +45,12 @@
 //! there: shaping Latin through rustybuzz cost 2.2–3.6× `Basic` (K81a,
 //! `docs/results-text.md` M81/T81.3).
 //!
-//! **A window cannot select it yet.** The window builds its stack as
-//! `Basic`; `Program::shaping` and `Session::shaping`, which carry the
-//! mode to the window, the agent's measurer and the headless shots, are
-//! M81/T81.4's (`docs/plan-shaped-paint.md`). A `Host` caller builds a
-//! `Complex` stack and hands clones to its measurer and canvas by hand.
+//! **A program selects it** (M81/T81.4): `Program::shaping(Shaping::Complex)`
+//! carries the mode to the session's measurer, the agent's audit, the
+//! window (through `Session::shaping`, before its first backend and after
+//! every swap) and the headless shots (`docs/plan-shaped-paint.md`). A
+//! bare `Host` caller builds a `Complex` stack and hands clones to its
+//! measurer and canvas by hand.
 #![forbid(unsafe_code)]
 
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
@@ -619,7 +620,8 @@ impl FaceSource for OneFace {
 /// the shaper's box and drawn with fontdue's own advances and order —
 /// Arabic unjoined, left to right (`docs/plan-text-correctness.md` §2.1
 /// B). A `FontStack` in `Shaping::Complex` measures and paints with the
-/// same [`Shaper`] instead, which is what a window will use (T81.4).
+/// same [`Shaper`] instead, which is what a window uses when its program
+/// says `Program::shaping(Shaping::Complex)` (M81/T81.4).
 pub struct ComplexText {
     source: OneFace,
     /// For the face's vertical metrics.

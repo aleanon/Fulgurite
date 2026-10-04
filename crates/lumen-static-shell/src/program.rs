@@ -316,6 +316,14 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// is on by default for desktop; `false` turns the adapter off at run
     /// time without a rebuild. Inert in a build without the feature.
     pub accessible: bool,
+    /// How the window, its session's measurer, the agent's audit and every
+    /// headless frame of this program lay text out — M81/T81.4
+    /// (`docs/plan-shaped-paint.md`, "Choosing is a `Program` setting").
+    /// `Basic` unless [`Program::shaping`] chose `Complex`. Behind
+    /// `truetype`, as [`Shaping`](crate::text::Shaping) is: a build with
+    /// no face has no stack to choose for.
+    #[cfg(feature = "truetype")]
+    pub shaping: crate::text::Shaping,
     /// The application's source directory, from `application`'s caller —
     /// M36: a panic report's application frame is found under it.
     source_root: Option<&'static str>,
@@ -357,6 +365,8 @@ where
         agent: None,
         strategy: core::marker::PhantomData,
         accessible: cfg!(feature = "a11y"),
+        #[cfg(feature = "truetype")]
+        shaping: crate::text::Shaping::Basic,
     }
 }
 
@@ -386,6 +396,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
             accessible: self.accessible,
+            #[cfg(feature = "truetype")]
+            shaping: self.shaping,
         }
     }
 
@@ -562,6 +574,26 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// window crate has `a11y`; `false` builds no adapter.
     pub fn accessible(mut self, on: bool) -> Self {
         self.accessible = on;
+        self
+    }
+
+    /// **How this program's text is laid out and painted** — M81/T81.4
+    /// (`docs/plan-shaped-paint.md`). `Shaping::Complex` (the shell's
+    /// `shaping` feature) shapes every run that needs it — right-to-left
+    /// order, joining, marks — in the measure, the agent's audit **and the
+    /// paint**; `Basic`, the default, is fontdue's left-to-right layout.
+    ///
+    /// A window setting, so it lives here (M32's rule): `Local::from_program`
+    /// builds its stack with it, the window reads it back through
+    /// `Session::shaping` **before its first backend is built** and again
+    /// after every swap, and `LUMEN_SHOT` and a session's
+    /// `Offscreen::with_shaping` render with it — so the frame a window
+    /// draws, the box its host measured and every headless render agree.
+    /// Chosen per program, not per widget: per-widget shaping is reopened
+    /// by K81a, not built (`docs/plan-shaped-paint.md`, "Not in M81").
+    #[cfg(feature = "truetype")]
+    pub fn shaping(mut self, shaping: crate::text::Shaping) -> Self {
+        self.shaping = shaping;
         self
     }
 

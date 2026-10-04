@@ -21,7 +21,8 @@ const H: u32 = 520;
 
 fn session() -> (Local<Tally, Crashing>, Offscreen) {
     let mut s = Local::from_program(program(0, W, H), Crashing);
-    let mut screen = Offscreen::new(W, H);
+    // The session's own mode (M81/T81.4), as the window's backend takes it.
+    let mut screen = Offscreen::with_shaping(W, H, lumen_static_shell::session::Session::shaping(&s));
     // The window's first redraw, which a drive starts from.
     s.frame(0.0, W, H);
     lumen_static_shell::session::Screen::present(&mut screen, &mut s, crate::app::PAGE);

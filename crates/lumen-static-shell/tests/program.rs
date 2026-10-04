@@ -139,3 +139,137 @@ fn a_title_may_be_a_function_of_the_state() {
     let q = program(10.0).title("fixed");
     assert_eq!(q.title_of(&host.app), "fixed");
 }
+
+/// **`Program::shaping` reaches the session and its canvas** — M81/T81.4
+/// (`docs/plan-shaped-paint.md`). A program with `.shaping(Complex)` and a
+/// Hebrew label, through `Local` and an `Offscreen` built from the
+/// session's own `Session::shaping`: the label's band must equal a direct
+/// `Canvas` render on a `Complex` stack and differ from a `Basic` one.
+/// Needs a system face with Hebrew; skips without one unless
+/// `LUMEN_REQUIRE_FONTS=1`.
+#[cfg(all(feature = "truetype", feature = "shaping"))]
+mod complex {
+    use super::*;
+    use lumen_static::display::Cmd;
+    use lumen_static::{App as DeriveApp, StaticTree};
+    use lumen_static_shell::session::{Crashing, Local, Offscreen, Screen, Session};
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{FontMetrics, FontStack, Shaping};
+
+    const W: u32 = 360;
+    const H: u32 = 80;
+    const HEBREW: &str = "שלום עולם";
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct HeUi {
+        #[widget_id("he")]
+        he: Label<String>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct He {
+        #[tree]
+        ui: HeUi,
+    }
+
+    fn boot() -> He {
+        let mut a = He::default();
+        a.ui.he.set(HEBREW.to_owned());
+        a
+    }
+
+    fn described(shaping: Shaping) -> Program<He> {
+        application(boot)
+            .size(W, H)
+            .style(|_: &He| vec![Rule::new(Selector::Id("he"), Patch::new().font_size(32.0))])
+            .shaping(shaping)
+    }
+
+    fn label(states: &[lumen_static::NodeState]) -> [f32; 4] {
+        let i = lumen_static::style::index_of_wid(<HeUi as Widget>::SUB_TABLE, "he").expect("#he");
+        let s = &states[i];
+        [s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h]
+    }
+
+    /// The label's band: every row its box covers, across the canvas.
+    fn band(pixels: &[u8], r: [f32; 4]) -> Vec<u8> {
+        let (y0, y1) = (r[1].floor().max(0.0) as usize, (r[3].ceil() as usize).min(H as usize));
+        pixels[y0 * W as usize * 4..y1 * W as usize * 4].to_vec()
+    }
+
+    fn differing(a: &[u8], b: &[u8]) -> usize {
+        assert_eq!(a.len(), b.len(), "bands of different heights");
+        a.chunks_exact(4).zip(b.chunks_exact(4)).filter(|(p, q)| p != q).count()
+    }
+
+    /// Through the session, as a window or a headless drive renders.
+    fn through_session(shaping: Shaping) -> (Shaping, [f32; 4], Vec<u8>, bool) {
+        let mut s = Local::from_program(described(shaping), Crashing);
+        let mut screen = Offscreen::with_shaping(W, H, s.shaping());
+        s.frame(0.0, W, H);
+        s.frame(0.0, W, H);
+        let page = s.page();
+        screen.present(&mut s, page);
+        let list = &s.host.list;
+        let has_text = list.cmds.iter().any(|c| matches!(c, Cmd::Text { text, .. } if list.str_of(*text) == HEBREW));
+        let r = label(&s.host.states);
+        (s.shaping(), r, screen.canvas.pixels.clone(), has_text)
+    }
+
+    /// By hand: one stack in `shaping`, a measurer and a canvas from it.
+    fn direct(stack: &FontStack, shaping: Shaping) -> ([f32; 4], Vec<u8>) {
+        let stack = stack.clone().with_shaping(shaping);
+        let p = described(Shaping::Basic);
+        let page = p.page;
+        let mut host: Host<He> = p.host();
+        let mut m = FontMetrics::new(stack.clone());
+        host.pump_with(&mut m);
+        host.pump_with(&mut m);
+        let mut c = Canvas::with_font(W, H, stack);
+        c.clear(page);
+        host.render(&mut c);
+        (label(&host.states), c.pixels)
+    }
+
+    #[test]
+    fn a_complex_program_is_measured_and_drawn_shaped() {
+        let Some(stack) = FontStack::system() else {
+            assert!(std::env::var("LUMEN_REQUIRE_FONTS").as_deref() != Ok("1"), "LUMEN_REQUIRE_FONTS=1 but no system face");
+            println!("no system face -- skipped");
+            return;
+        };
+        let (mode, r, session_px, has_text) = through_session(Shaping::Complex);
+        let (rc, complex_px) = direct(&stack, Shaping::Complex);
+        let (rb, basic_px) = direct(&stack, Shaping::Basic);
+        println!("session: Session::shaping {mode:?}, label {r:?}; direct Complex label {rc:?}, Basic label {rb:?}");
+        assert!(has_text, "setup: the session's list holds no Cmd::Text with {HEBREW:?}");
+        let band_s = band(&session_px, r);
+        let to_complex = differing(&band_s, &band(&complex_px, r));
+        let to_basic = differing(&band_s, &band(&basic_px, r));
+        let ink = band_s.chunks_exact(4).filter(|p| p[0] < 128).count();
+        println!(
+            "label band {} px, {ink} inked: session vs direct Complex {to_complex} differing (bound 0), \
+             vs direct Basic {to_basic} differing (bound > 0)",
+            band_s.len() / 4
+        );
+        assert!(ink > 0, "setup: the label inked nothing");
+        assert!(to_basic > 0, "the session's frame equals a Basic render: the program's mode never reached it");
+        assert_eq!(to_complex, 0, "the session's frame is not a Complex stack's render of the label");
+        assert_eq!(r, rc, "the session laid the label out in another box than a Complex stack measures");
+        assert_eq!(mode, Shaping::Complex, "the session does not report its program's `Shaping::Complex`");
+    }
+
+    /// The accept direction: a program that does not ask for `Complex`
+    /// renders exactly as a `Basic` stack does.
+    #[test]
+    fn a_basic_program_is_drawn_as_before() {
+        let Some(stack) = FontStack::system() else { return };
+        let (mode, r, session_px, _) = through_session(Shaping::Basic);
+        let (_, basic_px) = direct(&stack, Shaping::Basic);
+        let d = differing(&band(&session_px, r), &band(&basic_px, r));
+        println!("Basic program: Session::shaping {mode:?}; session vs direct Basic {d} differing (bound 0)");
+        assert_eq!(mode, Shaping::Basic);
+        assert_eq!(d, 0);
+    }
+}

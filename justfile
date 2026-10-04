@@ -157,6 +157,11 @@ fonts:
     # compiled in -- the pins, centring, containment, line height and the
     # ellipsis, K81c's heap, and `mod complex`'s allocations.
     cargo test -q -p lumen-static-shell --features truetype,shaping --test paint_shaped --test basic_placements --test glyph_placement --test text_containment --test line_height --test font_heap --test alloc_gate --test shaping
+    # M81/T81.4: `Program::shaping` through `Local` and an `Offscreen`, the
+    # audit and the scale drag under `Complex`, and the showcase's `--demo`
+    # following its program's mode.
+    cargo test -q -p lumen-static-shell --features truetype,shaping,live-agent --test program --test agent_audit_face --test scale_memo
+    cargo test -q -p showcase --features shaping shaping_shot
 
 # Security advisories, offline, against deny.toml's accepted list: a NEW
 # advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.
@@ -730,7 +735,9 @@ window-reload-demo:
 # M37/T37.4: a live window that reloads itself -- edits a COPY of
 # fixtures/hot-window with sed and drives it over the agent: new text with
 # the old count, a failed build kept out, a panic shown and cleared by the
-# next swap. Needs a display.
+# next swap. Since M81/T81.4 also a swap to `Shaping::Complex` under both
+# strategies, and the edited source launched as a static window. Needs a
+# display.
 hot-window-drive:
     ./scripts/hot_window_drive.sh
 

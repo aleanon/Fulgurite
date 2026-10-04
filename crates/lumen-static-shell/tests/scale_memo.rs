@@ -98,3 +98,74 @@ fn a_host_that_stays_at_1x_keeps_its_box() {
     println!("no drag: width {got}; fresh 1x: {want} (bound: equal)");
     assert_eq!(got, want);
 }
+
+/// **The drag through a `Complex` session** — M81/T81.4 (review T8,
+/// `docs/plan-shaped-paint.md`). `FontMetrics` stays concrete under
+/// `Complex`, so `Local`'s `Session::set_scale` still reaches
+/// `FontMetrics::set_scale`: after the drag, a Hebrew label's box must be
+/// the shaped run's physical measure over 2, not its 1× box. 14 px is
+/// where the two differ by more than the bound on the system face (the
+/// shaped widths are whole physical pixels, so 1× and 2×/2 part by up to
+/// a pixel); the setup asserts it. Skips without a system face unless
+/// `LUMEN_REQUIRE_FONTS=1`.
+#[cfg(all(feature = "truetype", feature = "shaping"))]
+#[test]
+fn a_complex_session_dragged_to_2x_re_measures_its_shaped_labels() {
+    use lumen_static::style::{Patch, Rule, Selector};
+    use lumen_static::TextMeasure;
+    use lumen_static_shell::program::application;
+    use lumen_static_shell::session::{Crashing, Local, Session};
+    use lumen_static_shell::text::{FontMetrics, FontStack, Shaping};
+
+    const HEBREW: &str = "שלום עולם";
+    const SIZE: f32 = 14.0;
+    let Some(stack) = FontStack::system().map(|f| f.with_shaping(Shaping::Complex)) else {
+        assert!(std::env::var("LUMEN_REQUIRE_FONTS").as_deref() != Ok("1"), "LUMEN_REQUIRE_FONTS=1 but no system face");
+        println!("no system face -- skipped");
+        return;
+    };
+    let at_1x = FontMetrics::with_scale(stack.clone(), 1.0).measure(HEBREW, SIZE, f32::INFINITY);
+    let physical_over_2 = FontMetrics::with_scale(stack, 2.0).measure(HEBREW, SIZE, f32::INFINITY);
+    println!(
+        "setup: {HEBREW:?} at {SIZE} px, Complex: 1x box {}x{}, physical measure / 2 {}x{} (must part by > 0.5)",
+        at_1x.w, at_1x.h, physical_over_2.w, physical_over_2.h
+    );
+    assert!((at_1x.w - physical_over_2.w).abs() > 0.5, "setup: 1x and 2x agree, so a stale box could not be seen");
+
+    let program = application(|| {
+        let mut p = Page::default();
+        p.ui.label.set(HEBREW.to_owned());
+        p
+    })
+    .size(LW, LH)
+    .style(|_: &Page| vec![Rule::new(Selector::Id("label"), Patch::new().font_size(SIZE))])
+    .shaping(Shaping::Complex);
+    let mut s = Local::from_program(program, Crashing);
+    s.frame(0.0, LW, LH);
+    let before = s.host.states[index()].size;
+    // The drag: scale doubles, physical size doubles, logical size holds.
+    s.set_scale(2.0);
+    s.resize(LW * 2, LH * 2);
+    s.frame(0.0, LW * 2, LH * 2);
+    let after = s.host.states[index()].size;
+    println!(
+        "Session::shaping {:?}; label box at 1x {}x{}; after set_scale(2.0) {}x{}, physical / 2 {}x{} (bound 0.5 px)",
+        s.shaping(),
+        before.w,
+        before.h,
+        after.w,
+        after.h,
+        physical_over_2.w,
+        physical_over_2.h
+    );
+    assert_eq!(s.shaping(), Shaping::Complex, "setup: the session is not Complex");
+    assert!((before.w - at_1x.w).abs() <= 0.5, "setup: the 1x box is not the shaped run's 1x measure");
+    assert!(
+        (after.w - physical_over_2.w).abs() <= 0.5 && (after.h - physical_over_2.h).abs() <= 0.5,
+        "the label kept a stale box after the drag: {}x{} where the 2x measure is {}x{}",
+        after.w,
+        after.h,
+        physical_over_2.w,
+        physical_over_2.h
+    );
+}

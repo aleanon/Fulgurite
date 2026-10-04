@@ -511,7 +511,7 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
 ### 2.3 `Session` and the ABI stamp
 
 - **Every `Session` method is required.** All 29 (30 since M80/T80.5's
-  `caret_rect`) at
+  `caret_rect`, 31 since M81/T81.4's `shaping`) at
   `crates/lumen-static-shell/src/session.rs:148` end in `;`, and
   `impl Session for Hot` (`crates/lumen-static-reload/src/lib.rs:833`)
   writes each one out. **A missing forward is a compile error (E0046),

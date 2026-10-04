@@ -28,7 +28,7 @@ three implementations exist at different points on the cost curve:
 |---|---|---|
 | `BakedFace` | nothing — a `&'static` table in flash | measures and draws without an allocator |
 | `FontMetrics` (`fontdue`) | `alloc`, `std` | real outlines, real metrics |
-| `lumen-static-text` | its own crate | **measurement only**: cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs — for the box and the caret; the painter still draws the string unshaped |
+| `lumen-static-text` | its own crate, reached by the shell's `shaping` feature | cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs — **measured and painted** by a `FontStack` in `Shaping::Complex`, which a program chooses with `Program::shaping` |
 
 `BakedFace` exists because of a gap worth remembering: `FontMetrics` is a
 `std` crate living in the shell, so until the baked face was written the
@@ -115,13 +115,17 @@ Since M81 the shell, which paints, reaches the shaper through its own
 no shaper, and a window turns it on by forwarding
 `lumen-static-winit/shaping` (`docs/plan-shaped-paint.md`).
 
-**It measures; it does not paint.** The shaper decides the box a run is
-laid out in and where its carets are, and the canvas then draws the
-original string with its own glyph lookup — so Arabic is measured joined
-and right to left and painted unjoined and left to right. No window can
-install it yet either. `docs/plan-capabilities.md` T15.8 records the
-correction, and `docs/plan-text-correctness.md` §2.1 proposes shaped
-paint as its own milestone.
+**It measures and paints, when a program asks.** Until M81 the shaper
+decided only the box and the carets, and the canvas drew the original
+string with its own glyph lookup — Arabic measured joined and painted
+unjoined. Since M81 a `FontStack` in `Shaping::Complex` shapes in the
+one function both renderers place glyphs through, and
+`Program::shaping(Shaping::Complex)` chooses it for the whole program:
+its window, its measurer, the agent's audit and every headless shot take
+the one mode, so a box and its glyphs cannot disagree
+(`docs/plan-shaped-paint.md`; `docs/text-render-adoption-decision.md`
+says why it is not a glyph command). `Basic`, the default, is what every
+program had before.
 
 ## Localisation
 

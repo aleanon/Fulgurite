@@ -27,6 +27,9 @@ hot = [
 ]
 agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # ANCHOR_END: features
+# M81/T81.4: `Shaping::Complex` for the drive's shaping step -- the loader
+# and the library both build with it, and `--expect-features` names it.
+shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static" }

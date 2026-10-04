@@ -582,7 +582,17 @@ Two behaviours that make the difference between a drag and a click:
 It builds on pointer capture (T11.2), the fourth thing to do so, which
 is what routes `PointerMove` to the node that started the gesture.
 
-### T15.8 — complex-script text — **DONE 2026-09-07; painted under `Complex` since M81/T81.3, not yet selectable in a window**
+### T15.8 — complex-script text — **DONE 2026-09-07; painted under `Complex` since M81/T81.3, selectable per program since M81/T81.4**
+
+> **Selectable since M81/T81.4 (2026-10-04).** `Program::shaping
+> (Shaping::Complex)` chooses it for a whole program: `Local` builds its
+> measurer and the agent's audit from one stack in that mode, the window
+> reads `Session::shaping` before its first backend is built and again
+> after every swap (`Backend::set_font`), and `LUMEN_SHOT`,
+> `Offscreen::with_shaping` and the showcase's `--shot`/`--demo` render
+> with it (`crates/lumen-static-shell/tests/program.rs`, `just
+> hot-window-drive`). Per-widget shaping is not built
+> (`docs/plan-shaped-paint.md`, "Not in M81").
 
 > **Painted since M81/T81.3 (2026-10-04).** A `FontStack` in
 > `Shaping::Complex` (the shell's `shaping` feature) lays runs out with
@@ -592,8 +602,7 @@ is what routes `PointerMove` to the node that started the gesture.
 > (`docs/plan-shaped-paint.md`, first decision). Arabic is painted joined
 > and right to left, inside its box; the pins moved to
 > `crates/lumen-static-shell/tests/paint_shaped.rs` without their
-> `should_panic`. **Not yet selectable in a window**: `Program::shaping`
-> and `Session::shaping` are M81/T81.4's. A run with nothing to shape
+> `should_panic`. Selectable in a window since M81/T81.4 (above). A run with nothing to shape
 > keeps fontdue's layout even under `Complex` (K81a,
 > `docs/results-text.md` M81/T81.3).
 

@@ -1048,8 +1048,16 @@ The years go to:
   selection across all of it. *Status (M45):* font fallback **DECIDED** —
   a list of fallback faces, loaded the first time a run needs one
   (`docs/plan-text-correctness.md` §2.4, `docs/results-text.md` T45.3).
-  Shaped paint **OPEN**: `lumen-static-text` shapes for measurement only,
-  and the painter draws the unshaped string (§2.1 there; T45.4).
+  Shaped paint **DECIDED** (M81/T81.4, `docs/plan-shaped-paint.md`,
+  `docs/text-render-adoption-decision.md` "Shaped paint"): renderer-side
+  shaping, no glyph command. A `FontStack` in `Shaping::Complex` measures,
+  reports clusters and paints through `lumen-static-text`'s shaper
+  (T81.3), and `Program::shaping` chooses it for a whole program — the
+  window (`Session::shaping`, applied before the first backend and after
+  every swap through `Backend::set_font`), its measurer, the agent's audit,
+  `LUMEN_SHOT` and every headless shot. Until M81 it was **OPEN**:
+  `lumen-static-text` shaped for measurement only, and the painter drew
+  the unshaped string (§2.1 there; T45.4).
   *M81/T81.1:* the crate edge is **DECIDED** and turned round
   (`docs/plan-shaped-paint.md`, D1 a and c): the text crate depends on
   the core alone, the shell reaches it behind its default-off `shaping`

@@ -29,7 +29,7 @@ use lumen_static::style::Cursor;
 use lumen_static::Event;
 
 use crate::program::Program;
-use crate::text::{FontMetrics, FontStack};
+use crate::text::{FontMetrics, FontStack, Shaping};
 use crate::Host;
 use lumen_static::invalidate::Invalidation;
 
@@ -96,10 +96,20 @@ pub struct Offscreen {
 impl Offscreen {
     /// A `width × height` canvas, drawing text with the system face
     /// when there is one (the block stand-in otherwise, as `LUMEN_SHOT`
-    /// does).
+    /// does), laid out `Shaping::Basic`. For a session's frames use
+    /// [`Offscreen::with_shaping`] with its [`Session::shaping`], or a
+    /// `Complex` session is measured shaped and drawn unshaped.
     pub fn new(width: u32, height: u32) -> Self {
+        Self::with_shaping(width, height, Shaping::Basic)
+    }
+
+    /// [`Offscreen::new`], with the system face laid out by `shaping` —
+    /// M81/T81.4: pass the session's [`Session::shaping`], which is its
+    /// program's (`Program::shaping`), so the canvas paints with the mode
+    /// the host measured with, as the window's backend does.
+    pub fn with_shaping(width: u32, height: u32, shaping: Shaping) -> Self {
         let canvas = match FontStack::system() {
-            Some(f) => crate::software::Canvas::with_font(width, height, f),
+            Some(f) => crate::software::Canvas::with_font(width, height, f.with_shaping(shaping)),
             None => crate::software::Canvas::new(width, height),
         };
         Offscreen { canvas, age: 0 }
@@ -255,6 +265,20 @@ pub trait Session: FrameSource {
     /// answered `KeyOutcome::Quit` (`Host::quit_requested`). The window
     /// exits at its next `about_to_wait`, as it does for `app.quit`.
     fn wants_quit(&self) -> bool;
+    /// **How this session lays text out** — M81/T81.4
+    /// (`docs/plan-shaped-paint.md`, "Choosing is a `Program` setting"):
+    /// the mode of the stack its measurer and the agent's audit were built
+    /// with, which is its program's `Program::shaping`. The window builds
+    /// its renderer's stack with it **before the first backend exists**,
+    /// and compares it again after every swap, calling
+    /// `Backend::set_font` when it changed — otherwise a `Complex` program
+    /// is measured shaped and drawn unshaped.
+    ///
+    /// **Required**, like every method here: `impl Session for Hot` must
+    /// forward it or not compile, which is the whole forwarding gate
+    /// (`docs/plan-iced-roadmap.md` §2.3). Not guarded: it reads a field
+    /// and runs no application code.
+    fn shaping(&self) -> Shaping;
 }
 
 /// An accessibility tree crossing the session seam — M54/T54.2. Holds
@@ -362,6 +386,11 @@ pub struct Local<A: App, P: RecoverPolicy, I: Invalidation = DefaultInval> {
     title: &'static str,
     page: Color,
     metrics: Option<FontMetrics>,
+    /// The mode of the stack `metrics` and the agent's audit measure with
+    /// — [`Session::shaping`]'s answer (M81/T81.4). `Basic` for a session
+    /// built around a host ([`Local::from_host`]); its program's for
+    /// [`Local::from_program`].
+    shaping: Shaping,
     /// The policy, as a type only: every guarded arm reads `P::ON`.
     recover: core::marker::PhantomData<P>,
     saver: Option<Saver<A, I>>,
@@ -383,21 +412,30 @@ pub struct Local<A: App, P: RecoverPolicy, I: Invalidation = DefaultInval> {
 impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
     /// A session over a described program: boots it through
     /// [`Program::host`], installs the thread spawner, and measures text
-    /// with the system face.
+    /// with the system face, laid out by the program's `Program::shaping`
+    /// (M81/T81.4) — the frame's measurer and the agent's audit both, from
+    /// one stack, so they cannot shape differently.
     pub fn from_program(program: Program<A, I>, recover: P) -> Self {
         let host = program.host();
         let page = program.page;
-        let mut s = Local::from_host(host, "", page, recover);
+        let mut s = Local::with_stack(host, "", page, program.shaping, recover);
         s.program = Some(program);
         s
     }
 
-    /// A session over an already-built host.
-    pub fn from_host(mut host: Host<A, Ret, I>, title: &'static str, page: Color, _policy: P) -> Self {
+    /// A session over an already-built host, measuring `Shaping::Basic`.
+    pub fn from_host(host: Host<A, Ret, I>, title: &'static str, page: Color, policy: P) -> Self {
+        Local::with_stack(host, title, page, Shaping::Basic, policy)
+    }
+
+    fn with_stack(mut host: Host<A, Ret, I>, title: &'static str, page: Color, shaping: Shaping, _policy: P) -> Self {
         // **Deferred work, wired up** — M28/T28.12. The waker comes from
         // the window, which owns the loop ([`Session::set_waker`]).
         host.set_spawner(Box::new(lumen_static::spawn::Threads::new()));
-        let font = FontStack::system();
+        let font = FontStack::system().map(|f| f.with_shaping(shaping));
+        // What the stack lays out by, which is what the window must render
+        // by: the answer `Session::shaping` gives.
+        let shaping = font.as_ref().map_or(Shaping::Basic, FontStack::shaping);
         // **The audit measures with the face the host lays out with** —
         // M60/T60.3. Left at the block stand-in, `ui.lint` reported the
         // block's opinion of every text box (`tests/agent_audit_face.rs`);
@@ -418,6 +456,7 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
             title,
             page,
             metrics,
+            shaping,
             recover: core::marker::PhantomData,
             saver: None,
             restore_log: String::new(),
@@ -833,6 +872,10 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
 
     fn wants_quit(&self) -> bool {
         self.host.quit_requested()
+    }
+
+    fn shaping(&self) -> Shaping {
+        self.shaping
     }
 }
 

@@ -783,6 +783,51 @@ rather than as a display-list command: see the first decision.*
   bound (a file-built stack within 64 KiB of a bytes-built one); the
   older peak bound did not fire under it (22,045,185 under 23,966,104).
 
+- T81.4: **the audit's W1005 has not read `set_text_measure`'s measurer
+  since M57/A3.** `Local::agent_frame_done` hands the agent the session's
+  own `FontMetrics` (`Agent::frame_done_measured`), so the planned
+  injection — the audit built from a fresh `Basic` stack where `Local`
+  installs it — left `tests/agent_audit_face.rs`' `Complex` arm green.
+  The injection that breaks the mechanism builds that per-frame measurer
+  from a fresh `Basic` stack instead; W1005 then fires (natural 183 px in
+  a 126 px box).
+- T81.4: **the showcase has no text that needs shaping.** No catalogue
+  string holds a character `text::needs_shaping` sends to the shaper, so
+  every entry's `--demo` is byte-identical under `Complex` and the planned
+  "Hebrew entry" is T81.6's `#d_textinput_rtl`. The gate gives the
+  `TextInput` demo a Hebrew value through `demo_frame`'s hook — the
+  function `demo_shot` draws with — and the shipped Latin entry is its
+  accept direction. The showcase's `shaping` feature, which T81.6 names,
+  lands here (it forwards the shell's and sets `Complex` in `program()`),
+  since the gate's `Complex` program needs the variant compiled in.
+- T81.4: **`lumen_static_reload::hot::boot` took only `Program<A>`**, the
+  default strategy, so a library whose program said
+  `.invalidation::<Everything>()` could not be exported and the drive's
+  `Everything` leg could not build. `boot` is generic over the strategy
+  now (the `Session` hides it). The fixture names its strategy as `pub
+  type Strategy` (`// EDIT strategy`), which the leg edits before it
+  builds: an inline `.invalidation::<Everything>()` would change
+  `program()`'s return type too.
+- T81.4: **`Offscreen::new` keeps `Basic`; `Offscreen::with_shaping`
+  takes the session's mode.** A signature change would have touched every
+  headless drive for no gain; a session passes `Session::shaping`, which
+  is what makes `Local` ignoring its program's mode (the `tests/program.rs`
+  injection) land in the canvas too, so the region equals the `Basic`
+  render as the plan says. `Canvas::set_font` drops the text scratch and
+  the glyph cache with the old stack.
+- T81.4: **the static-window gate and the hot step share one fixture.**
+  `fixtures/hot-window` gains `#hebrew`, a `shaping` feature and `hot-window
+  --hash basic|complex`, the headless `Local`-and-`Offscreen` render the
+  live hashes are compared with; the static leg is "a fresh launch of the
+  edited source", the copy as the hot leg left it, built without `hot`.
+  The live hashes are taken at scale 1 (`WINIT_X11_SCALE_FACTOR=1`, and a
+  setup check). **Under the `Win::new` injection the hash is not the
+  `Basic` render's**, which the gate's text predicted: `Local` still measures
+  `Complex`, so the window draws `Complex` boxes with `Basic` glyphs, which
+  matches neither render — the same frame the two swap injections produce.
+  The gate asserts equality with the `Complex` render, which all three
+  break.
+
 **What the review found (M81).**
 
 - C4 → adopted: `Session::shaping` is required, the compiler is the

@@ -84,6 +84,19 @@ pub trait Backend {
     /// cannot know what the implementor holds is the defect.
     fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>>;
 
+    /// **Rasterise text with `font` from the next frame on** — M81/T81.4
+    /// (`docs/plan-shaped-paint.md`, "Choosing is a `Program` setting").
+    /// The window calls it after a swap whose session answers a different
+    /// `Session::shaping` than the stack it rendered with, then repaints
+    /// all: the new build measures with its program's mode, and a
+    /// backend left on the old stack would draw `Complex` boxes with
+    /// `Basic` glyphs.
+    ///
+    /// **Required, not provided**: a default that ignored the stack is
+    /// exactly that defect, and it would compile (`AGENT.md`, a provided
+    /// method is wrong for anything that holds what it would act on).
+    fn set_font(&mut self, font: FontStack);
+
     /// The last frame this backend rendered, as RGBA8.
     ///
     /// **Not the same as `fetch_rgba`**, and the difference is the whole
@@ -140,6 +153,11 @@ impl Backend for Software {
 
     fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
         self.canvas.images.take()
+    }
+
+    fn set_font(&mut self, font: FontStack) {
+        self.canvas.set_font(font.clone());
+        self.font = Some(font);
     }
 
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {

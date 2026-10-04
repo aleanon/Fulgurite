@@ -28,6 +28,10 @@ agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # (`Program::invalidation`), which changes only this application.
 everything = []
 shadow-oracle = ["lumen-static-winit/shadow-oracle"]
+# M81/T81.4: the showcase laid out `Shaping::Complex` -- the window, `--shot`
+# and `--demo` alike (`program()` sets it, `stack_of` follows it). Forwards
+# the shell's default-off `shaping` (docs/plan-shaped-paint.md).
+shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

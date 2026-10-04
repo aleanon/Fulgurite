@@ -131,6 +131,7 @@ carries across. The application needs three things.
 # use lumen_static::style::{Length, Patch, Rule, Selector};
 # use lumen_static_widgets::prelude::*;
 # use lumen_static_shell::program::{application, Program};
+# use lumen_static_shell::text::Shaping;
 # #[derive(StaticTree, Default, DeriveReloadable)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
 # #[derive(Default)] pub struct Tally { count: i64 }
 # #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }

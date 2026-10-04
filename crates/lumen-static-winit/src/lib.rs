@@ -589,7 +589,9 @@ struct Win {
     /// The face the renderer rasterises with. The session measures with
     /// the same system face; the first window measured with the block
     /// stand-in and painted with fontdue, so every box was too narrow and
-    /// "TALLY" wrapped to "TAL / LY".
+    /// "TALLY" wrapped to "TAL / LY". **In the session's mode**
+    /// (`Session::shaping`, M81/T81.4): set in `Win::new` before the first
+    /// backend, and again after a swap that changed it.
     font: Option<FontStack>,
     /// `None` until `resumed`; winit owns window creation.
     window: Option<Arc<Window>>,
@@ -679,7 +681,12 @@ struct Win {
 
 impl Win {
     fn new(session: Box<dyn Session>, config: Config) -> Self {
-        let font = FontStack::system();
+        // **The session's mode, before any backend exists** — M81/T81.4
+        // (`docs/plan-shaped-paint.md`, second review T24). The first
+        // backend is built from this stack in `resumed`; built `Basic`
+        // here, a program with `.shaping(Complex)` would be measured
+        // shaped by its `Local` and drawn unshaped by the window.
+        let font = FontStack::system().map(|f| f.with_shaping(session.shaping()));
         if font.is_none() {
             // A machine with no font we recognise still gets a window;
             // it just gets the block stand-in in it, which is honest
@@ -857,6 +864,19 @@ impl Win {
                     );
                 }
                 self.last_frame = None;
+                // **A build may change the program's shaping** — M81/T81.4.
+                // The new session measures with its own program's mode; the
+                // backend follows it, and everything is repainted, because
+                // every run on the surface was drawn with the old stack.
+                let wanted = self.session.shaping();
+                if let Some(font) = self.font.as_ref().filter(|f| f.shaping() != wanted) {
+                    let font = font.clone().with_shaping(wanted);
+                    backend.set_font(font.clone());
+                    hot.metrics = Some(FontMetrics::new(font.clone()));
+                    self.font = Some(font);
+                    self.session.repaint_all();
+                    eprintln!("lumen-static: the new build lays text out {wanted:?}");
+                }
             }
         }
 
@@ -1600,7 +1620,7 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
     // an example's frame before and after its migration.
     if let Ok(path) = std::env::var("LUMEN_SHOT") {
         let (w, h, page) = (program.width, program.height, program.page);
-        return shot(program.host::<Ret, I>(), w, h, page, &path);
+        return shot(program.host::<Ret, I>(), w, h, page, program.shaping, &path);
     }
     // **The same `host()` a `--shot` calls** — `Local::from_program` boots
     // through it — so the window and every headless frame are built by
@@ -1624,9 +1644,20 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
 ///
 /// Two pumps, as every example's own `--shot` does: the first teaches a
 /// scroller how far its content goes, the second is the frame.
-fn shot<A: App, I: Invalidation>(mut host: Host<A, Ret, I>, w: u32, h: u32, page: Color, path: &str) {
+///
+/// **With the program's `Program::shaping`** (M81/T81.4), as the window's
+/// own stack is, so a shot of a `Complex` program is the frame its window
+/// draws.
+fn shot<A: App, I: Invalidation>(
+    mut host: Host<A, Ret, I>,
+    w: u32,
+    h: u32,
+    page: Color,
+    shaping: lumen_static_shell::text::Shaping,
+    path: &str,
+) {
     use lumen_static_shell::software::Canvas;
-    let font = FontStack::system();
+    let font = FontStack::system().map(|f| f.with_shaping(shaping));
     let mut canvas = match font.clone() {
         Some(f) => Canvas::with_font(w, h, f),
         None => Canvas::new(w, h),
@@ -1978,6 +2009,7 @@ mod tests {
         fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
             self.images.take()
         }
+        fn set_font(&mut self, _font: FontStack) {}
         fn name(&self) -> &str {
             "fake"
         }

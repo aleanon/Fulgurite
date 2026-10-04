@@ -60,6 +60,11 @@ impl Backend for GpuBackend {
         self.gpu.take_images()
     }
 
+    fn set_font(&mut self, font: FontStack) {
+        // `Gpu::set_font` resets the glyph atlas: ids are per stack.
+        self.gpu.set_font(font);
+    }
+
     fn resize(&mut self, width: u32, height: u32) -> bool {
         if self.gpu.size() == (width, height) {
             return false;

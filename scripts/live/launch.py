@@ -79,8 +79,12 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 #: anything, `reload` whether `app.failure` can. **Not the strategy**
 #: since M55/T55.4: it was the `everything` feature, and is now the
 #: session's type parameter, checked by `--expect-strategy` alone.
-TRACKED = ("shadow-oracle", "reload")
-NAMES = {"shadow-oracle": "the shadow oracle", "reload": "panic recovery (reload)"}
+#: `shaping` since M81/T81.4: whether the build can lay text out
+#: `Shaping::Complex` at all, which decides what a right-to-left label's
+#: `ui.regionHash` can be (`docs/plan-shaped-paint.md`).
+TRACKED = ("shadow-oracle", "reload", "shaping")
+NAMES = {"shadow-oracle": "the shadow oracle", "reload": "panic recovery (reload)",
+         "shaping": "shaped text (shaping)"}
 
 
 def say(tag: str, msg: str) -> None:

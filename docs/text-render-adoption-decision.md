@@ -58,10 +58,37 @@ by what `lumen-static-shell` already ships and by extending it:
 What this defers, honestly: no complex-script shaping (parley does
 bidi, Indic reordering, cluster-correct segmentation; fontdue's layout
 does not — `lumen-static-text` later added it **for measurement only**,
-M15/T15.8 as corrected by M45/T45.4: nothing paints the shaper's glyphs), no GPU backend, no SVG/gradient/image commands. None of them
+M15/T15.8 as corrected by M45/T45.4: nothing paints the shaper's glyphs
+— until M81, "Shaped paint" below), no GPU backend, no SVG/gradient/image commands. None of them
 is on the path to M8b/M8c/M8/M9, and each can arrive behind the same
 seam. The `no_std` and zero-allocation profiles stay reachable, which
 adoption would have ended.
+
+## Shaped paint: renderer-side, no glyph command — DECIDED (M81, 2026-10-04)
+
+"Nothing paints the shaper's glyphs" (above) is closed by M81
+(`docs/plan-shaped-paint.md`). **Decided: the renderer shapes, at paint,
+in `FontStack::place_run_into`** — the one function both backends already
+place every run through, every frame — and `Cmd::Text` stays the command.
+A `FontStack` in `Shaping::Complex` (the shell's default-off `shaping`
+feature) lays a run that needs shaping out with `lumen-static-text`'s
+`Shaper` for the measure, the clusters and the paint (T81.3); a run with
+nothing to shape keeps fontdue's layout even there, because shaping Latin
+cost 2.2–3.6× (K81a, `docs/results-text.md` M81/T81.3). Since T81.4 a
+program chooses it with `Program::shaping`, and the window, the session's
+measurer, the agent's audit and every headless render take it from there
+(`Session::shaping`, `Backend::set_font`), so they cannot disagree.
+
+**Why not a glyph command** (`Cmd::Glyphs` over a per-frame store of
+shaped runs, which `docs/plan-text-correctness.md` §2.1 A proposed): a
+shaped run would have to travel from layout, the only place a measurer
+is, to paint, which has only the node states and a `Painter`; and a
+store index folded into `Cmd::hash_into` is the M27/T27.3 phantom-damage
+defect (`docs/plan-iced-roadmap.md` S2). Keeping the string costs nothing
+the command already had — `Cmd` stays 60 B, and damage hashing,
+retention, `svg.rs` (whose `<text>` a viewer shapes itself) and the
+contrast walk are unchanged — at the price of shaping per paint, which
+the canvas's per-frame run shaping (M50/T50.3) already paid.
 
 ## The embedded face (M13/T13.7, 2026-09-05)
 

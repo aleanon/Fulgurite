@@ -455,8 +455,18 @@ pub mod hot {
     /// inbox is dropped with its session; what was sitting in it runs
     /// again here. Delivery across a swap is therefore **at least once**
     /// ([`Host::reissuable`](lumen_static_shell::Host::reissuable)).
-    pub fn boot<A: App + Reloadable + 'static>(program: Program<A>, saved: Option<&[u8]>) -> Box<dyn Session> {
-        let mut s = Local::from_program(program, Recovering).with_saver(save::<A, _>);
+    ///
+    /// **Generic over the program's strategy** (M81/T81.4): a library
+    /// whose `program()` says `.invalidation::<Everything>()` boots under
+    /// it, as the static window does — the `Session` hides `I`, so the
+    /// loader never sees it. Until then only `Boundaries<256>` could be
+    /// exported, and `just hot-window-drive` could not run its `Everything`
+    /// leg.
+    pub fn boot<A: App + Reloadable + 'static, I: Invalidation + 'static>(
+        program: Program<A, I>,
+        saved: Option<&[u8]>,
+    ) -> Box<dyn Session> {
+        let mut s = Local::from_program(program, Recovering).with_saver(save::<A, I>);
         let Some(bytes) = saved else { return Box::new(s) };
         // **Per field** (§2.4): the derive restores each kept field on its
         // own, and one whose type changed keeps its boot value and is
@@ -920,6 +930,9 @@ pub mod hot {
         }
         fn wants_quit(&self) -> bool {
             self.s().wants_quit()
+        }
+        fn shaping(&self) -> lumen_static_shell::text::Shaping {
+            self.s().shaping()
         }
     }
 }

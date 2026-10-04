@@ -919,7 +919,11 @@ T45.12 carries its own gate, T45.0 item 15, committed red first.
   built here.** It needs a glyph command in the display list, glyph-id
   rasterisation in both renderers, a caret mapping by cluster, and a
   measurer seam in `Program` and the winit `Session`. T45.0 item 2 is
-  its first gate, already written.
+  its first gate, already written. *Built by M81*
+  (`docs/plan-shaped-paint.md`) **without** the glyph command: the
+  renderer shapes in `FontStack::place_run_into` (T81.3), and the seam
+  is `Program::shaping` and `Session::shaping` (T81.4);
+  `docs/text-render-adoption-decision.md` "Shaped paint" says why.
 - **R8-F3's second half needs no task of its own.** Rasterising only
   the glyphs that meet the clip comes with M50's raster work: after
   M50/T50.2's cache a glyph is rasterised once, not per frame, and

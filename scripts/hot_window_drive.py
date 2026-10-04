@@ -13,12 +13,34 @@ Over the agent, against fixtures/hot-window's copy:
   7. fix it: the next swap clears the screen, and the count survived.
   8. focus the field: app.imeArea is non-null and inside its physical box,
      answered by the swapped-in build through `Hot`'s forward (M80/T80.5).
+  9. M81/T81.4: edit the program to `.shaping(Shaping::Complex)`; after the
+     swap `#hebrew`'s ui.regionHash equals the headless `Complex` render's
+     (`hot-window --hash`) and differs from the pre-swap hash, which is the
+     `Basic` render's. The new session answers `Session::shaping` Complex
+     through `Hot`'s forward and the window calls `Backend::set_font`.
 Prints reload latency (edit -> swapped) and resident memory per reload.
-Usage: hot_window_drive.py PORT SRC PID
-"""
-import base64, json, re, socket, struct, sys, time, zlib
 
-port, src, pid = int(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+Usage: hot_window_drive.py PORT SRC PID HASH_EXE [--only-shaping] [--save F]
+       hot_window_drive.py PORT --static HASH_EXE SAVED
+`--only-shaping` waits for the first hot build and runs step 9 alone (the
+`Everything` leg); `--save F` writes step 9's post-swap hash to F.
+`--static` is the fresh launch of the edited source, a window with no hot
+reload: its `#hebrew` hash must equal the `Complex` headless render's and
+the post-swap hash SAVED, and differ from the `Basic` render's -- what
+`Win::new` applying `Session::shaping` before its first backend buys.
+"""
+import base64, json, os, re, socket, struct, subprocess, sys, time, zlib
+
+port = int(sys.argv[1])
+static = sys.argv[2] == "--static"
+if static:
+    src, pid, hash_exe, saved = None, None, sys.argv[3], sys.argv[4]
+    only_shaping, save = False, None
+else:
+    src, pid, hash_exe = sys.argv[2], int(sys.argv[3]), sys.argv[4]
+    rest = sys.argv[5:]
+    only_shaping = "--only-shaping" in rest
+    save = rest[rest.index("--save") + 1] if "--save" in rest else None
 
 
 def connect():
@@ -127,10 +149,91 @@ def is_bar(px):
     return px[0] > px[1] + 40 and px[0] > px[2] + 40
 
 
+# ---- 9 (M81/T81.4): the shaping a swap brings, and the window following it
+W = 320  # fixtures/hot-window's `program().size(320, 160)`
+
+
+def band():
+    """`#hebrew`'s rows across the window: one rect for both modes, whose
+    label boxes differ in width."""
+    b = call("ui.resolve", {"selector": "#hebrew"})["bounds"]
+    return [0, b[1], W, b[3]]
+
+
+def live_hash(rect):
+    return call("ui.regionHash", {"rect": rect})
+
+
+def headless(mode, rect):
+    out = subprocess.run([hash_exe, "--hash", mode, *map(str, rect)], check=True, capture_output=True, text=True).stdout
+    resolve, region, info = (json.loads(l) for l in out.strip().split("\n")[-3:])
+    return region["result"], resolve["result"]["bounds"], info["shaping"]
+
+
+def scale_one():
+    k = call("ui.screenshot").get("scale", 1.0)
+    assert k == 1.0, (f"setup: the window's scale is {k}; the headless renders this compares with are at 1 "
+                      f"(WINIT_X11_SCALE_FACTOR=1 is set by the script; a Wayland session ignores it)")
+
+
+def shaping_step(leg):
+    scale_one()
+    rect = band()
+    pre = live_hash(rect)
+    hb, bb, mb = headless("basic", rect)
+    hc, bc, mc = headless("complex", rect)
+    print(f"hot-window-drive [{leg}]: #hebrew band {rect}: pre-swap {pre['hash']} ({pre['pixels']} px); "
+          f"headless {mb} {hb['hash']}, {mc} {hc['hash']}")
+    assert pre["pixels"] > 0, "setup: the band hashed no pixels"
+    assert (mb, mc) == ("Basic", "Complex"), f"setup: the headless renders' modes are {mb}, {mc}"
+    assert hb["hash"] != hc["hash"], "setup: Basic and Complex draw #hebrew alike, so nothing here could fail"
+    assert pre["hash"] == hb["hash"], "setup: before the edit the window does not draw the Basic program's frame"
+    n = reloads()["reloads"]
+    edit("shaping", ".shaping(Shaping::Complex)")
+    r, lat = wait(lambda r: r["reloads"] >= n + 1 and not r["building"], "the shaping edit's reload")
+    assert r["error"] is None, f"step 9: the shaping edit did not build: {r['error']}"
+    for _ in range(20):
+        post = live_hash(rect)
+        if post["hash"] == hc["hash"]:
+            break
+        time.sleep(0.1)
+    after = band()
+    print(f"hot-window-drive [{leg}]: shaping edit -> swapped in {lat:.2f}s; post-swap {post['hash']} "
+          f"(bound: = Complex {hc['hash']}, != pre-swap {pre['hash']}); band after {after}")
+    assert after[1] == rect[1] and after[3] == rect[3], f"step 9: #hebrew moved rows: {rect} -> {after}"
+    assert post["hash"] != pre["hash"], "step 9: the swap left #hebrew's pixels as they were"
+    assert post["hash"] == hc["hash"], ("step 9: after the swap the window does not draw the Complex frame "
+                                        "(a mix of a Complex measure and a Basic paint matches neither render)")
+    if save:
+        open(save, "w").write(post["hash"])
+    return post
+
+
+if static:
+    # ---- the fresh launch of the edited source: a window with no reload --
+    scale_one()
+    rect = band()
+    live = live_hash(rect)
+    hb, _, mb = headless("basic", rect)
+    hc, _, mc = headless("complex", rect)
+    want = open(saved).read().strip()
+    print(f"hot-window-drive [static]: #hebrew band {rect}: live {live['hash']} ({live['pixels']} px); "
+          f"headless {mb} {hb['hash']}, {mc} {hc['hash']}; hot leg's post-swap {want}")
+    assert live["pixels"] > 0 and hb["hash"] != hc["hash"], "setup: nothing here could fail"
+    assert live["hash"] != hb["hash"], "a static Complex window draws the Basic frame: Win::new ignored Session::shaping"
+    assert live["hash"] == hc["hash"], "a static Complex window does not draw the Complex headless frame"
+    assert live["hash"] == want, "the fresh launch of the edited source differs from the swapped-in frame"
+    print("hot-window-drive [static]: PASS")
+    sys.exit(0)
+
 # ---- 1. the first hot build replaces the static application ----------
 r, took = wait(lambda r: r["supported"] and r["reloads"] >= 1 and not r["building"], "the first hot build")
 assert r["error"] is None, f"the first hot build did not take: {r['error']}"
 print(f"hot-window-drive: first hot build swapped in after {took:.1f}s")
+if only_shaping:
+    shaping_step(os.environ.get("LUMEN_LIVE_STRATEGY", "?"))
+    print("hot-window-drive: PASS")
+    sys.exit(0)
 rss0 = rss_kb()
 v = value()
 assert v == "count 0", f"step 1: `{v}`"
@@ -217,4 +320,7 @@ assert inside, f"step 8: the IME area {area} is outside the field's physical box
 rss1 = rss_kb()
 print(f"hot-window-drive: latency edit->swap {lat1:.2f}s, {lat2:.2f}s, {lat3:.2f}s; "
       f"RSS {rss0} -> {rss1} kB over 3 reloads ({(rss1 - rss0) / 3:.0f} kB/reload)")
+
+# ---- 9. the shaping a swap brings (M81/T81.4) --------------------------
+shaping_step(os.environ.get("LUMEN_LIVE_STRATEGY", "?"))
 print("hot-window-drive: PASS")

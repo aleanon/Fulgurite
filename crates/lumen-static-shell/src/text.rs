@@ -90,7 +90,8 @@ pub struct FontStack {
 ///
 /// Chosen per stack, not per run or per widget: the frame's measurer, the
 /// agent's audit measurer and both renderers hold clones of one stack.
-/// Not yet selectable in a window: `Program::shaping` is T81.4's.
+/// A program chooses it with `Program::shaping` (M81/T81.4), and the
+/// window takes it from `Session::shaping`.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Shaping {

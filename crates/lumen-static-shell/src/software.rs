@@ -1401,6 +1401,20 @@ impl Canvas {
         c
     }
 
+    /// **Draw text with `font` from the next frame on** — M81/T81.4: how a
+    /// window's software backend follows a swap that changed the
+    /// program's `Program::shaping` (`Backend::set_font` in
+    /// `lumen-static-winit`). The text scratch and the glyph cache go with
+    /// the old stack: an id is only promised identical bitmaps from the
+    /// stack that made it (`text::GlyphId`), so nothing cached is kept
+    /// across a change of stack. What is already on the canvas is not
+    /// redrawn here; the caller repaints all.
+    #[cfg(feature = "truetype")]
+    pub fn set_font(&mut self, font: crate::text::FontStack) {
+        self.font = Some(font);
+        self.text = TextState::default();
+    }
+
     /// What this canvas's glyph cache has done — M50/T50.2. `uncached`
     /// is the count to watch: it must read 0 once a screen is warm
     /// ([`crate::text::CacheStats`]).
