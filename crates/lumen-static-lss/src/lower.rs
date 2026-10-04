@@ -235,6 +235,9 @@ pub const PROPERTIES: &[Property] = &[
     Property { name: "pressed-dim", setter: "pressed_dim", role_setter: None, takes: Takes::Number },
     Property { name: "hover-dim", setter: "hover_dim", role_setter: None, takes: Takes::Number },
     Property { name: "disabled", setter: "disabled", role_setter: None, takes: Takes::Bool },
+    // M80/T80.2: a ratio of the font size, as CSS's unitless
+    // `line-height` is; the cascade rounds it to sixteenths.
+    Property { name: "line-height", setter: "line_height", role_setter: None, takes: Takes::Number },
 ];
 
 /// Names a CSS writer reaches for that v1 spells differently, or does

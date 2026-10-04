@@ -1547,6 +1547,10 @@ impl Agent {
             // cannot see is a field no lint and no drive can check.
             "border_width": s.border_width,
             "border_color": color(s.border_color),
+            // M80/T80.2: sixteenths of the font size, 0 for the face's
+            // spacing -- so a drive can ask whether a line-height rule
+            // reached the node, for the reason the border is here.
+            "line_height": s.line_height,
             "align": format!("{:?}", s.align),
             "visible": s.visible,
             "disabled": s.disabled,

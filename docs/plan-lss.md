@@ -102,7 +102,8 @@ Accepted in v1:
   `border-color`, `font-size`, `font-weight`, `width`, `height`,
   `spacing`, `align`, `visible`, `disabled` (M57/A16, added at the M56
   merge), `cursor`, `focus-ring`,
-  `box-shadow`, `hover-dim`, `pressed-dim`), values as the setter takes
+  `box-shadow`, `hover-dim`, `pressed-dim`, `line-height` (M80/T80.2)),
+  values as the setter takes
   them (`px`, `#rrggbb[aa]`, keywords for `align`/`cursor`, `fixed(n)` /
   `fill` / `shrink` for lengths).
 - `@tokens { name: value; }` — compile-time constants, `$name` to use.

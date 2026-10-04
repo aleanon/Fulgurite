@@ -29,6 +29,14 @@ use lumen_static::{pass, Style};
 /// `docs/plan-widget-parity.md` T27.1 has the argument.
 #[test]
 fn the_cursor_costs_nothing() {
+    // M80/T80.2 took one spare byte of each (`line_height`), and neither
+    // struct grew: printed so a later field that does shows its cost.
+    let (style, state) = (core::mem::size_of::<Style>(), core::mem::size_of::<lumen_static::NodeState>());
+    println!(
+        "Style {style} B (bound 80), NodeState {state} B (bound 84): {} B/node, {:.1} KB per 100 nodes",
+        style + state,
+        (style + state) as f32 * 100.0 / 1024.0
+    );
     assert_eq!(core::mem::size_of::<Style>(), 80, "Style grew; every node grew with it");
     assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 84);
     assert_eq!(core::mem::size_of::<Cursor>(), 1);

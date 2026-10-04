@@ -377,6 +377,7 @@ pub fn record_painted(
         st[i].border_width = style.border_width;
         st[i].font_size = style.font_size;
         st[i].font_weight = style.font_weight;
+        st[i].line_height = style.line_height;
         st[i].shadow = style.shadow;
         st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
         return record(st, i, limits, size);
@@ -393,6 +394,8 @@ pub fn record_painted(
     st[i].border_width = style.border_width;
     st[i].font_size = style.font_size;
     st[i].font_weight = style.font_weight;
+    // M80/T80.2: the line pitch, for a `Label`'s `text_spaced`.
+    st[i].line_height = style.line_height;
     st[i].shadow = style.shadow;
     st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
     record(st, i, limits, size)

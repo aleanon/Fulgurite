@@ -185,8 +185,21 @@ impl RichText {
     }
 }
 
-/// Extra leading between wrapped lines, as a multiple of the font size.
+/// Extra leading between wrapped lines, as a multiple of the font size —
+/// the default when `Style::line_height` is 0 ([`line_ratio`]).
 const LINE: f32 = 1.45;
+
+/// The line spacing as a multiple of the font size: `Style::line_height`'s
+/// sixteenths when a rule sets one, [`LINE`] when it is 0 — M80/T80.2.
+/// One function for `layout` (from the style) and `paint` (from the
+/// `NodeState` copy), so the two cannot space the lines differently.
+fn line_ratio(line_height: u8) -> f32 {
+    if line_height == 0 {
+        LINE
+    } else {
+        line_height as f32 / 16.0
+    }
+}
 /// A bullet's indent and its dot's radius.
 const BULLET_X: f32 = 14.0;
 /// How far below the line box's middle a bullet's centre sits, in ems —
@@ -210,16 +223,23 @@ impl Widget for RichText {
     const SEEDS: &'static [Seed] = &[Seed::new(
         <RichText as Widget>::KIND,
         <RichText as Widget>::type_defaults, Fields::of(&[
+        // Measured since M80/T80.2, when `style_reads.rs` first probed this
+        // kind: a span carries its own weight, so `font_weight` was never
+        // read, and the hit and `record_painted`'s shade make `cursor` and
+        // both dims take effect.
         Fields::WIDTH,
         Fields::HEIGHT,
         Fields::PADDING,
+        Fields::CURSOR,
         Fields::BACKGROUND,
         Fields::BORDER,
         Fields::COLOR,
         Fields::FONT_SIZE,
-        Fields::FONT_WEIGHT,
         Fields::RADIUS,
         Fields::VISIBLE,
+        Fields::PRESSED_DIM,
+        Fields::HOVER_DIM,
+        Fields::LINE_HEIGHT,
     ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 
     fn type_defaults() -> Style {
@@ -270,7 +290,8 @@ impl Node for RichText {
         // start under its text, not under the dot. Set by a bullet span,
         // cleared by the next line break.
         let mut hang = 0.0f32;
-        let mut line_h = me.font_size * LINE;
+        let ratio = line_ratio(me.line_height);
+        let mut line_h = me.font_size * ratio;
         self.lines = if self.count == 0 { 0 } else { 1 };
         for k in 0..self.count {
             let s = self.spans[k];
@@ -282,17 +303,17 @@ impl Node for RichText {
                 x = 0.0;
                 hang = 0.0;
                 y += line_h;
-                line_h = size * LINE;
+                line_h = size * ratio;
                 self.lines += 1;
             } else if x > hang && x + w > inner {
                 // Wraps *between* spans: a span is a word and never
                 // breaks inside itself.
                 x = hang;
                 y += line_h;
-                line_h = size * LINE;
+                line_h = size * ratio;
                 self.lines += 1;
             }
-            line_h = line_h.max(size * LINE);
+            line_h = line_h.max(size * ratio);
             self.placed[k] = (x + lead, y, w);
             if s.bullet {
                 hang = x + lead;
@@ -346,7 +367,7 @@ impl Node for RichText {
             let sp = self.spans[k];
             let (x, y, w) = self.placed[k];
             let size = s.font_size * sp.scale;
-            let h = size * LINE;
+            let h = size * line_ratio(s.line_height);
             if sp.bullet {
                 let mid = y0 + y + h / 2.0 + size * BULLET_DROP;
                 out.rounded_rect(

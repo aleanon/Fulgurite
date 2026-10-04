@@ -171,7 +171,7 @@ fn every_property_lowers_to_its_setter() {
             align: center; visible: false; cursor: not-allowed; focus-ring: 2px;
             color: $ink; background: $surface; border-width: 1px; border-color: $focus;
             border-radius: 8px; font-size: 15px; font-weight: 600; box-shadow: 12px;
-            pressed-dim: 0.15; hover-dim: 0.07; disabled: true;
+            pressed-dim: 0.15; hover-dim: 0.07; disabled: true; line-height: 1.5;
          }
          #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
          #c { width: fill(3); padding: 1px 2px 3px 4px; }",
@@ -196,6 +196,7 @@ fn every_property_lowers_to_its_setter() {
         set("pressed_dim", Val::F32(0.15)),
         set("hover_dim", Val::F32(0.07)),
         set("disabled", Val::Bool(true)),
+        set("line_height", Val::F32(1.5)),
     ];
     assert_eq!(s.base[0].setters, want_a);
     assert_eq!(

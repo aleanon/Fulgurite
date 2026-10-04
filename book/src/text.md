@@ -35,6 +35,26 @@ three implementations exist at different points on the cost curve:
 embedded device had **no measurer at all** — and a fixture was laying out
 a `Label` whose glyphs nothing could draw.
 
+## Line height: a style field, CSS's rule
+
+`line_height` is a `Style` field, so a stylesheet sets it — `.line_height(1.5)`
+on a `Patch`, `line-height: 1.5` in a `.lss`. It is a **ratio** of the font
+size, kept as sixteenths in one byte, and `0` (the default) is the face's own
+spacing, which is what every tree had before the field existed. The rule is
+CSS's and iced's: *n* lines are `n × pitch` tall, a single line included, and
+each line's glyphs sit at half-leading inside its pitch. Below the face's own
+spacing the box grows by the difference rather than let ascenders leave it,
+because nothing clips a run. `Label`, `TextArea` and `RichText` read it; the
+sheet lint reports a rule that sets it on anything else. The showcase's
+`Label` demo restyles its paragraph from a switch, by making the program's
+sheet a function of the switch:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:line_height}}
+```
+
+What it measures and costs is in `docs/results-text.md` (M80/T80.2).
+
 ## Complex scripts are a crate, not a feature
 
 `lumen-static-text` is separate on purpose. That is the M15 gating

@@ -143,3 +143,68 @@ fn five_layouts_under_a_nan_limit_measure_once() {
     println!("five layouts at NaN max_w: {} measurer calls (bound 1)", m.calls.get());
     assert_eq!(m.calls.get(), 1, "the memo missed on every NaN layout");
 }
+
+/// Lines at each `\n`, `size` px apart; reports every character as a
+/// cluster on its line, so a line counter can see the breaks
+/// (`BlockMetrics` and `Weighted` report none, and a label at a line
+/// height keeps a non-shaping measurer's own height — M80/T80.2).
+#[derive(Default)]
+struct Lined {
+    calls: Cell<usize>,
+}
+
+impl TextMeasure for Lined {
+    fn measure(&mut self, text: &str, size: f32, _max_w: f32) -> Size {
+        self.calls.set(self.calls.get() + 1);
+        let lines = text.split('\n').count() as f32;
+        Size { w: text.len() as f32 * size / 2.0, h: lines * size }
+    }
+    fn shape(
+        &mut self,
+        text: &str,
+        size: f32,
+        weight: f32,
+        max_w: f32,
+        sink: &mut dyn lumen_static::GlyphSink,
+    ) -> Size {
+        let mut line = 0u16;
+        for (b, ch) in text.char_indices() {
+            sink.cluster(lumen_static::Cluster { byte: b as u32, x: 0.0, line });
+            if ch == '\n' {
+                line += 1;
+            }
+        }
+        self.measure_weighted(text, size, weight, max_w)
+    }
+}
+
+/// **A line-height change under the same limits re-measures** —
+/// M80/T80.2. `MeasureKey`'s `flow` word holds the byte; without it a
+/// restyle that changed only the line height was served the box measured
+/// at the old pitch, the M26/T26.3 shape for a new field.
+#[test]
+fn a_line_height_change_under_the_same_limits_re_measures() {
+    let mut m = Lined::default();
+    let mut l: Label<String> = Label::new("one\ntwo".into());
+    let face = Style::default();
+    let spaced = Style { line_height: 24, ..face };
+    let lay = |l: &mut Label<String>, m: &mut Lined, s: Style| {
+        let mut cx = LayoutCx::new(m);
+        let (sty, mut st) = ([s], [NodeState::default()]);
+        l.layout(&mut cx, LIMITS, &sty, &mut st, 0).h
+    };
+    let h_face = lay(&mut l, &mut m, face);
+    let warm_before = l.measure_is_warm(LIMITS, &face, 1.0, 0);
+    let cold_after = !l.measure_is_warm(LIMITS, &spaced, 1.0, 0);
+    let calls = m.calls.get();
+    let h_spaced = lay(&mut l, &mut m, spaced);
+    println!(
+        "line_height 0: h {h_face} (warm after: {warm_before}); line_height 24, same text and limits: \
+         h {h_spaced} (cold before: {cold_after}); measurer calls {calls} -> {}",
+        m.calls.get()
+    );
+    assert!(warm_before, "setup: the first layout left the memo cold");
+    assert!(cold_after, "the key does not hold the line height: a spaced layout would be served the old box");
+    assert_ne!(h_spaced, h_face, "the memo served the face spacing's box after a line-height change");
+    assert_eq!(h_spaced, 48.0, "two lines at 24/16 of 16 px are 48 px");
+}

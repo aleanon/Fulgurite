@@ -451,8 +451,17 @@ pub mod sizes {
     // -- `read_only`, `submitted`, `presses`, `placeholder_w`. The branch
     // asserted 1,168 and never checked it here: its thumb build did not
     // compile. `docs/results-embedded.md` has the measurement.
+    //
+    // **Re-budgeted 1,192 -> 1,216 on 2026-10-04** (M80/T80.2): the key
+    // gained `flow`, the line height, so a restyle that changes only the
+    // pitch is not served the old box. Four bytes of key on each of the
+    // four memo-holding widgets, which alignment makes 24: the title
+    // `Label`'s `Measured` +4, the field `TextInput`'s shaped key +4, and
+    // each `Button`'s `FoldedText` +8 (its `u64` fold rounds the tuple up
+    // to eight). Attributed by removing the field: 1,192 again.
+    // `docs/results-embedded.md` M80/T80.2.
     #[cfg(target_pointer_width = "32")]
-    const _: () = assert!(UI == 1192, "Ui is no longer 1192 B on the target; re-budget docs/results-frame-and-types.md");
+    const _: () = assert!(UI == 1216, "Ui is no longer 1216 B on the target; re-budget docs/results-frame-and-types.md");
 
     // **A depth backstop, not the stack budget's measurement** — M52/T52.6.
     //

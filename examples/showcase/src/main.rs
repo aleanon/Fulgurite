@@ -306,6 +306,10 @@ pub struct Store {
     /// The second box's and switch's own flag (M57/C2): two controls
     /// bound to one flag could only ever disagree.
     flag_b: bool,
+    /// The `Label` demo's 1.5× line height (M80/T80.2). The program's
+    /// sheet is a function of it (`style_by`), so the switch restyles the
+    /// label without a widget field.
+    pub(crate) spaced: bool,
     /// Which radio option is chosen, 0..=2 (M57/C2). It was a `bool`
     /// shared by three radios, so "Blue" could never be selected.
     choice: usize,
@@ -410,6 +414,7 @@ fn refresh(s: &mut Show) -> bool {
                 put(&mut d.a.control.on, a);
                 put(&mut d.b.control.on, b);
             }
+            Demo::Label(d) => put(&mut d.spacing.control.on, s.store.spaced),
             Demo::Radio(d) => {
                 put(&mut d.a.control.on, c == 0);
                 put(&mut d.b.control.on, c == 1);
@@ -1030,8 +1035,25 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         .size(W, H)
         .page(palette().page)
         .palette(palette())
-        .style(|_: &Show| stylesheet())
+        // **Keyed on the `Label` demo's switch** (M80/T80.2): the sheet is
+        // `stylesheet()` plus, while the switch is on, a 1.5× line height
+        // on the demo's label — a style field restyled at run time, which
+        // is what `Program::style_by` is for.
+        .style_by(|s: &Show| s.store.spaced, sheet_for)
 }
+
+/// The program's sheet for the `Label` demo's switch (M80/T80.2).
+// ANCHOR: line_height
+fn sheet_for(spaced: bool) -> Vec<StyleRule> {
+    use lumen_static::style::{Patch, Selector};
+    let mut rules = stylesheet();
+    if spaced {
+        // A ratio of the font size; the cascade keeps it in sixteenths.
+        rules.push(StyleRule::new(Selector::Id("d_label_a"), Patch::new().line_height(1.5)));
+    }
+    rules
+}
+// ANCHOR_END: line_height
 
 /// Where to serve the agent endpoint, or `None` without the feature.
 #[cfg(feature = "agent")]
@@ -1495,6 +1517,8 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
     // to paper over. The veils cover the window whatever their node's
     // box, so theirs simply fills.
     for (kind, w) in [
+        // A paragraph that wraps, so a line height shows (M80/T80.2).
+        ("DLabel", Length::Fixed(320.0)),
         ("DRichText", Length::Fixed(420.0)),
         ("DMarkdown", Length::Fixed(420.0)),
         ("DRichTextEditor", Length::Fixed(420.0)),
@@ -1596,6 +1620,50 @@ mod tests {
         let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
         let i = lumen_static::style::index_of_wid(table, "stage").expect("no `#stage` node");
         (h.states[i].pos.x, h.states[i].pos.y)
+    }
+
+    /// **The `Label` demo's switch restyles its paragraph** — M80/T80.2,
+    /// headless: the press lands on the switch, the program's `style_by`
+    /// re-asks the sheet, and the label is re-measured at `lines × pitch`.
+    /// The live half is `just widget-drive Label`.
+    #[test]
+    fn the_label_demos_switch_sets_a_line_height() {
+        use lumen_static_shell::text::{FontMetrics, FontStack};
+        let Some(font) = FontStack::system() else {
+            eprintln!("no system font; skipping");
+            return;
+        };
+        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let label = lumen_static::style::index_of_wid(table, "d_label_a").expect("#d_label_a");
+        let entry = CATALOG.iter().position(|e| e.name == "Label").unwrap();
+        let mut h = host(entry, false);
+        let mut m = FontMetrics::new(font);
+        let before = h.states[label].size.h;
+        // The switch is the first control in `#d_label_spacing`.
+        let sw = (0..table.len())
+            .find(|&i| h.states[i].size.w > 0.0 && table[i].is_focusable()
+                && h.states[i].pos.y < h.states[label].pos.y)
+            .expect("a focusable switch above the label");
+        let st = h.states[sw];
+        let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
+        h.post(lumen_static::Event::down(x, y));
+        h.post(lumen_static::Event::up(x, y));
+        h.pump_with(&mut m);
+        h.pump_with(&mut m);
+        let after = h.states[label].size.h;
+        let px = h.styles[label].font_size;
+        let pitch = 1.5 * px;
+        let lines = (after / pitch).round();
+        println!(
+            "label: {before} -> {after} px (line_height byte {}; {lines} lines x pitch {pitch} = {})",
+            h.styles[label].line_height,
+            lines * pitch
+        );
+        assert!(h.app.store.spaced, "setup: the press did not reach the switch");
+        assert_eq!(h.styles[label].line_height, 24, "the sheet did not set 1.5x on the label");
+        assert!(lines >= 2.0, "setup: the paragraph did not wrap");
+        assert_eq!(after, lines * pitch, "the label is not lines x pitch tall");
+        assert!(after > before, "the label did not grow");
     }
 
     pub(super) fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {

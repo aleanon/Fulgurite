@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **28,672 B** (28.0 KB) | **pass**, at 35.0% of budget; re-measured at M80/T80.1 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **29,302 B** (28.6 KB) | **pass**, at 35.8% of budget; re-measured at M80/T80.2 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,240 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.1 |
-| Total (`size -A`) | ≤ 512 KB flash | **42,129 B** (41.1 KB) | 8.0% of the part; re-measured at M80/T80.1 |
+| `.rodata` | — | 13,260 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.2 |
+| Total (`size -A`) | ≤ 512 KB flash | **42,779 B** (41.8 KB) | 8.2% of the part; re-measured at M80/T80.2 |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -740,6 +740,21 @@ not build for the target on the branch (`alloc` and `f32::ceil` in
 `no_std` code), which the merge fixed. So the cost was paid in M57 and
 first measured here.
 
+### `Ui` re-budgeted 1,192 → 1,216 B on the target — M80/T80.2
+
+`MeasureKey` gained `flow`, the node's `Style::line_height`, so a restyle
+that changes only the pitch is not served the box measured at the old one
+(`crates/lumen-static/tests/measure_key.rs`). Four bytes of key, 32 → 36,
+on each of the four memo-holding widgets in the eleven-node fixture,
+which alignment makes **24**: the title `Label`'s `Measured` +4, the field
+`TextInput`'s shaped key +4, and each of the two `Button`s' `FoldedText`
++8, because its `u64` fold rounds the tuple up to a multiple of eight.
+**Attributed** by removing the field and everything else in T80.2 kept:
+1,192 exactly. `Style` stays **80 B** and `NodeState` **84 B** (T80.2 took
+one spare tail byte of each, `line_height`), so `PER_NODE_RAM` is still
+164 B, **16.0 KB per 100 nodes** (`tests/cursor.rs` prints it). T80.3's
+`Label.fit` is the next `Ui` move.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the
@@ -763,7 +778,7 @@ Every binary is gated on the ceiling, and the interactive one had
 (D5): **19,998 B** left at the merge. The table below is the current four-binary
 record.
 
-### All four, against 80 KB — M80/T80.1 (2026-10-04)
+### All four, against 80 KB — M80/T80.2 (2026-10-04)
 
 `scripts/check_text.sh` and `scripts/firmware_delta.sh`, release,
 `thumbv7em-none-eabihf`. **This table is the one K4
@@ -772,14 +787,30 @@ dated tables above and below were measured against the 64 KB ceiling
 that held then, and stay as measured. First written by M80/T80.0 at
 `553fa5e` (the M56/M61 merge; the "at `553fa5e`" column), rewritten by
 T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
-`Cmd::Text.line_height` byte folded by `Checksum`).
+`Cmd::Text.line_height` byte folded by `Checksum`) and T80.2
+(`Style.line_height` measured by `Label` and painted through
+`text_spaced`).
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ |
-|---|---:|---:|---:|---:|---:|---:|
-| `firmware` | 28,672 | 35.0% | 53,248 | 13,240 | 28,616 | +56 |
-| `firmware_interactive` | **61,974** | **75.7%** | **19,946** | 21,718 | 61,922 | **+52** |
-| `firmware_bind` | 32,064 | 39.1% | 49,856 | 13,844 | 32,008 | +56 |
-| `firmware_cascade` | 30,700 | 37.5% | 51,220 | 13,992 | 30,644 | +56 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | M80a so far (K80b) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 29,302 | 35.8% | 52,618 | 13,260 | 28,616 | +56 | +630 | 686 of 1,024 |
+| `firmware_interactive` | **62,776** | **76.6%** | **19,144** | 21,762 | 61,922 | **+52** | **+802** | 854 of 1,536 |
+| `firmware_bind` | 32,742 | 40.0% | 49,178 | 13,864 | 32,008 | +56 | +678 | — |
+| `firmware_cascade` | 31,430 | 38.4% | 50,490 | 14,036 | 30,644 | +56 | +730 | — |
+
+**T80.2's cost, from a symbol diff of the two builds** (inlining moves
+code between symbols, so these are attributions, not a partition):
+`cx::measure_spaced` **+332** (the line count, the pitch and the ceiled
+new-line size, linked by `Label::layout`), `__aeabi_memclr8` **+174**
+(newly linked, with one caller: `Panel::new`, zeroing the default tree,
+whose layout the wider memo structs changed),
+`LineCount`'s `cluster` +18 and `GlyphSink::is_full` +8 (its vtable), and
+on the two binaries that cascade a sheet `cascade_range` **+102**
+(`Patch::apply_to`'s new branch and the ratio's round to sixteenths); the
+rest is a few bytes across `Label::layout`/`paint`, `Button::layout` and
+`record_painted`. `.rodata` +20–44 B is the wider `Patch` in the
+embedded sheet and the vtable. Printed by `just firmware-delta 076ae16`
+(K4's default, `firmware_interactive=1000`): under the per-task cap.
 
 **T80.1's +52–56 B is a twelfth of what the plan expected.** The plan
 cited T27.1's +676 B paint-only cost for a required method plus a field

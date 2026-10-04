@@ -201,6 +201,28 @@ pub struct Style {
     pub border_width: u8,
     /// The border's colour. `TRANSPARENT` draws none whatever the width.
     pub border_color: crate::display::Color,
+    /// Line height in **sixteenths of the font size** — M80/T80.2
+    /// (`docs/plan-text-fit.md`). `0` is the measurer's own spacing,
+    /// which is what every node had before the field existed, so a tree
+    /// that sets nothing paints the same pixels; 16 is 1.0×, 24 is 1.5×,
+    /// 255 is 15.9×.
+    ///
+    /// **CSS's and iced's semantics, not fontdue's**: a run of *n* lines
+    /// is `n × pitch` tall, a single line included, with
+    /// `pitch = line_height / 16 × font_size`, and each line's glyphs sit
+    /// at half-leading inside its pitch. Below the face's own spacing the
+    /// box grows by the deficit so ink never leaves it
+    /// ([`crate::cx::pitched_height`]).
+    ///
+    /// **A ratio, not a length**, because it is scale-invariant: `Scaled`
+    /// forwards the byte untouched and the renderer multiplies by the
+    /// physical size. Set through [`Patch::line_height`], which takes the
+    /// ratio as an `f32` and is rounded to sixteenths by the cascade.
+    /// Read by `Label`, `TextArea` and `RichText` (their seeds declare
+    /// [`Fields::LINE_HEIGHT`]); a rule setting it on anything else is a
+    /// `W1010` finding. Free: one of the two spare bytes in `Style`'s
+    /// tail, so `Style` stays 80 B (`tests/cursor.rs`).
+    pub line_height: u8,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -253,6 +275,7 @@ impl Default for Style {
             focus_ring: 2,
             border_width: 0,
             border_color: crate::display::Color::TRANSPARENT,
+            line_height: 0,
             cursor: Cursor::Default,
             visible: true,
             disabled: false,
@@ -488,11 +511,16 @@ impl Fields {
     /// The seventeenth bit is why `Fields` is a `u32`: the first sixteen
     /// were all taken.
     pub const BORDER: Fields = Fields(1 << 16);
+    /// [`Style::line_height`] — M80/T80.2. The next free bit when it
+    /// landed: `Label`, `TextArea` and `RichText` declare it, so the
+    /// lint reports a rule that sets it on anything else rather than let
+    /// it be a silent no-op.
+    pub const LINE_HEIGHT: Fields = Fields(1 << 17);
     pub const ALL: Fields = Fields(u32::MAX);
 
     /// Every field with its name, for reports and for the tests that
     /// measure a mask field by field.
-    pub const EACH: [(Fields, &'static str); 17] = [
+    pub const EACH: [(Fields, &'static str); 18] = [
         (Fields::WIDTH, "width"),
         (Fields::HEIGHT, "height"),
         (Fields::PADDING, "padding"),
@@ -510,6 +538,7 @@ impl Fields {
         (Fields::PRESSED_DIM, "pressed_dim"),
         (Fields::HOVER_DIM, "hover_dim"),
         (Fields::BORDER, "border"),
+        (Fields::LINE_HEIGHT, "line_height"),
     ];
 
     /// The union of a list — how a widget spells its mask at the
@@ -797,6 +826,9 @@ pub struct Patch {
     pub border_color_role: Option<Role>,
     /// [`Style::disabled`] — M57/A16.
     pub disabled: Option<bool>,
+    /// [`Style::line_height`] as the **ratio** a rule wrote (`1.5`), not
+    /// the byte: the cascade rounds it to sixteenths ([`Patch::line_height`]).
+    pub line_height: Option<f32>,
 }
 
 impl Patch {
@@ -824,6 +856,7 @@ impl Patch {
             border_color: None,
             border_color_role: None,
             disabled: None,
+            line_height: None,
         }
     }
 
@@ -936,6 +969,19 @@ impl Patch {
         self
     }
 
+    /// Line height as a multiple of the font size — M80/T80.2. `1.5` is
+    /// 1.5×; `0.0` (or anything that rounds to it, a NaN included) is the
+    /// measurer's own spacing.
+    ///
+    /// **Stored as written and rounded by the cascade** to the nearest
+    /// sixteenth ([`Style::line_height`]), saturating at 255/16: iced's
+    /// default 1.3 becomes 21/16 = 1.3125. A ratio rather than a length,
+    /// so it means the same at every display scale.
+    pub const fn line_height(mut self, ratio: f32) -> Self {
+        self.line_height = Some(ratio);
+        self
+    }
+
     /// How much darker the background goes while pressed (0.0–1.0).
     pub const fn pressed_dim(mut self, v: f32) -> Self {
         self.pressed_dim = Some(v);
@@ -1016,7 +1062,19 @@ impl Patch {
         if let Some(v) = self.shadow {
             s.shadow = v;
         }
+        if let Some(v) = self.line_height {
+            s.line_height = sixteenths(v);
+        }
     }
+}
+
+/// A line-height ratio as [`Style::line_height`]'s byte: the nearest
+/// sixteenth, saturating at 255, with a negative ratio or a NaN as 0
+/// (the measurer's own spacing) — M80/T80.2. `as u8` saturates and maps
+/// NaN to 0, which is exactly the rule, so this needs no branch.
+#[inline]
+pub fn sixteenths(ratio: f32) -> u8 {
+    (ratio * 16.0 + 0.5) as u8
 }
 
 /// A length that can be laid out (M55/T55.5).
@@ -1189,6 +1247,9 @@ impl Patch {
             || self.border_color_role.is_some()
         {
             f |= Fields::BORDER.0;
+        }
+        if self.line_height.is_some() {
+            f |= Fields::LINE_HEIGHT.0;
         }
         Fields(f)
     }

@@ -50,6 +50,8 @@ ROLES = {
     "Tooltip": "Group",
     "TextInput": "TextInput",
     "TextArea": "MultilineTextInput",
+    # A label takes no input; its demo's switch restyles it (M80/T80.2).
+    "Label": "Label",
     "Slider": "Slider",
     "Button": "Button",
     "CheckBox": "CheckBox",

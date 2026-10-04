@@ -91,6 +91,9 @@ fn patch_for(name: &str) -> Patch {
         // nothing and a colour with no width is invisible, which is
         // why `Fields::BORDER` is one bit (M27/T27.11).
         "border" => p.border_width(3).border_color(Color(250, 10, 10, 255)),
+        // M80/T80.2: 1.5x changes even a single line's height (CSS's
+        // rule, "a single line included"), and the paint byte either way.
+        "line_height" => p.line_height(1.5),
         other => panic!("no probe value for field {other}"),
     }
 }
@@ -305,6 +308,9 @@ kinds! {
     PBar: BarChart = [|r| { r.w = BarChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
     PLine: LineChart = [|r| { r.w = LineChart::new(&[1.0, 3.0, 2.0]); r.w.axes = true; r.w.labels = &["a", "b", "c"]; }];
     PPie: PieChart = [|r| r.w = PieChart::new(&[1.0, 3.0, 2.0])];
+    // M80/T80.2: one of the three kinds that read `line_height`, and not
+    // measured before it.
+    PRich: RichText = [|r| r.w = RichText::new("probe words wrap")];
 }
 
 fn names(f: Fields) -> String {

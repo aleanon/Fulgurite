@@ -380,3 +380,52 @@ rustdoc. **The face's spacing is 19/16 here, not the ≈22/16 the plan
 assumed**, so iced's 1.3 (21/16) is *above* it on this face and only 1.0×
 to 1.1875× exercise the deficit (`docs/plan-text-fit.md`, "What building
 found").
+
+## M80/T80.2 — `Style.line_height`, measured and painted (2026-10-04)
+
+`Style.line_height` (sixteenths of the font size, `0` = the face's
+spacing), `Patch::line_height(ratio)` rounded to sixteenths by the
+cascade, `.lss` `line-height`, `Fields::LINE_HEIGHT` (bit 17; `EACH` 17 →
+18), `NodeState.line_height` stamped by `record_painted`, `MeasureKey`'s
+`flow` word, and `LineCount`. `Label` measures `lines × pitch`
+(`cx::measure_spaced`) and paints through `text_spaced`; `TextArea`'s row
+is the pitch; `RichText` uses the field in place of its 1.45. Measured on
+the pinned face at 16 px unless a row says otherwise (`nls` 19 px):
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| `Label`, `shell/tests/line_height.rs`, 3 lines at 24 | content height, scale 1 / 2 | 72 / 72 | exactly `3 × 24/16 × 16` = 72 | `Label` measures with `measure_weighted`: **57** |
+| | line 3 − line 1 first ink row, scale 1 / 2 | 48 / 96 px | `2 × pitch × scale` ± 1 | `record_painted` does not stamp the byte: **38** (2 × 19) |
+| | at 0, content height | 57 | `measure_weighted`'s 57 | — (accept) |
+| `TextArea` at 32, caret on line 3 | caret top − content top | 64 px | `2 × pitch` = 64 ± 1 | `line_h` stays the face's: **37** |
+| | line 3's ink rows / the caret's rows | 80..92 / 70..102 | inside ± 1 | (same) caret 43..62 against ink 53..65 |
+| memo, `lumen-static/tests/measure_key.rs` | warm at 0, cold at 24; height | warm / cold; 32 → 48 | cold, heights differ | `flow` dropped: still warm, **32** served |
+| lint, `lumen-static/tests/sheet_lint.rs` | findings: `line_height` on `#go` (Button), on `#title` (Label) | 1 (`Unread(LINE_HEIGHT)` on the button) | the button only | `Label`'s seed omits the bit: **2** |
+| masks, `widgets/tests/style_reads.rs` | kinds measured reading `line_height` | `label`, `textarea`, `richtext` (33 kinds) | exactly those | `TextArea`'s seed omits the bit: "textarea: omits read [line_height]" |
+| runtime applier, `shell/tests/lss_parity.rs` | `pass_accept.lss` rules, both lowerings | 6 / 6 (loud 7 / 7), equal | equal | `set` arm deleted: panics "no setter `line_height` taking F32(1.5)"; `check_lss_setters.sh` stays green (23 setters, 23 declared) |
+| sizes, `lumen-static/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a, unmoved) |
+| live, `just widget-drive Label`, four legs | label height after the switch, scale 1 / 2 | 88 → **96** (4 × 24) / 66 → **72** (3 × 24), Noto Sans `nls` 22 | `lines × pitch` ± 0.5, grown by `lines × (pitch − before)` | `measure_weighted`: **88 → 88** on every leg |
+
+The live drive's other checks on the same action: the label's pixels
+change (`ui.regionHash`, 27,544 px at scale 1), the damage region over it
+is **1.00×** its own box (30,048 px² at scale 1, 22,932 at scale 2; the
+switch is the action's `subject`, since the stage re-centres the demo),
+the press outside the switch changes nothing (96 → 96), the keyboard pass
+reaches the switch in one Tab, and the shadow oracle compared 310 frames
+with none diverging. The headless showcase test
+`the_label_demos_switch_sets_a_line_height` is the same press without a
+window.
+
+Embedded `Ui` 1,192 → **1,216 B**, all of it the `flow` word through
+alignment (`docs/results-embedded.md` M80/T80.2). Firmware, `just
+firmware-delta 076ae16`: **+630 B** `.text` on `firmware`, **+802 B** on
+`firmware_interactive` (bound 1,000), +678 / +730 on `firmware_bind` /
+`firmware_cascade`; M80a's K80b total so far is 686 of 1,024 B and 854 of
+1,536 B (the four-binary table there).
+
+K80c, read here because `flow` is what the memo-warm compare pays (eight
+invocations a side under `just bench-lock`, base `076ae16`): `grid`'s
+`mark_all` frame 97.94 µs (89.16–98.66) → **95.17**; `retain --text`'s
+build + `Incremental` 19,250.6 ns (18,759.9–19,746.8) → **18,867.5**;
+`bindings`' "layout, memo warm" 7.54 ns (6.79–13.02) → **7.71**. All
+three inside the parent's spread; the rule did not fire.

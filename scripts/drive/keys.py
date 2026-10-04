@@ -44,6 +44,8 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "Radio": ("#d_radio_a > #labelled-control", [KeyAction("Down moves the choice", ["Down"])]),
     "Slider": ("#d_slider_a", [KeyAction("Right steps the value", ["Right"])]),
     "TextInput": ("#d_textinput_a", [KeyAction("typing edits it", ["text:x"])]),
+    # M80/T80.2: the Label demo's switch, which sets the paragraph's line height.
+    "Label": ("#d_label_spacing > #labelled-control", [KeyAction("Space sets the line height", ["Space"])]),
     "ColorPicker": ("#d_colorpicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),
     "DatePicker": ("#d_datepicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),
     "TimePicker": ("#d_timepicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),

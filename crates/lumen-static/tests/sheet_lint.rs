@@ -29,6 +29,10 @@ struct Ui {
     /// A kind that exists only in an arena's template: a rule for it
     /// matches, even though the main table has no `fixed`.
     rows: Repeat<Fixed>,
+    /// A control that paints text and does not read `line_height`
+    /// (M80/T80.2): its label is one centred line.
+    #[widget_id("go")]
+    go: lumen_static_widgets::ops::Button<(), alloc::string::String>,
 }
 
 fn bind(_: &mut Fixed, _: usize) {}
@@ -157,5 +161,22 @@ fn a_border_rule_on_a_node_that_draws_one_is_quiet() {
         )])
         .is_empty(),
         "a border on a control that paints one"
+    );
+}
+
+/// **A line height on a node that does not read it is reported** —
+/// M80/T80.2. `Label`, `TextArea` and `RichText` declare
+/// `Fields::LINE_HEIGHT`; a `Button` paints one centred line and does
+/// not, so the same rule on it is a no-op the lint names.
+#[test]
+fn a_line_height_on_a_button_is_reported_and_on_a_label_is_not() {
+    let found = lint(&[
+        Rule::new(Selector::Id("go"), Patch::new().line_height(1.5)),
+        Rule::new(Selector::Id("title"), Patch::new().line_height(1.5)),
+    ]);
+    assert_eq!(
+        found,
+        vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::LINE_HEIGHT) }],
+        "a line height on a `Button` is a no-op; on a `Label` it is not"
     );
 }

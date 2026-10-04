@@ -6,13 +6,14 @@
   "`static` lists every action that is not checked for landing; `counts` pins actions, landed-checked (non-static) and isolated (T42.6).",
   "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid.",
   "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea.",
-  "The M56 merge made NumberInput's letter refusal static: its landing had been read off the click inside `do`, never off the letters."
+  "The M56 merge made NumberInput's letter refusal static: its landing had been read off the click inside `do`, never off the letters.",
+  "M80/T80.2 added Label: its demo's switch sets a 1.5x line height through the program's style_by, and a second press restores it."
  ],
  "counts": {
-  "entries": 43,
-  "actions": 139,
-  "landed_checked": 112,
-  "isolated": 57
+  "entries": 44,
+  "actions": 141,
+  "landed_checked": 114,
+  "isolated": 58
  },
  "entries": {
   "PickList": [
@@ -199,6 +200,10 @@
    "End takes it to the maximum",
    "Home takes it to the minimum",
    "an arrow moves it by one step, not to an end"
+  ],
+  "Label": [
+   "the switch sets a 1.5x line height and the paragraph is lines x pitch",
+   "a second press restores the face's spacing"
   ],
   "Button": [
    "a click reaches the application",

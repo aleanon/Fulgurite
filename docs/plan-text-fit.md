@@ -852,6 +852,29 @@ in the accept direction in the same session.*
   folds. The re-placement lives in `lumen-static-shell`, which the
   firmware does not link (`docs/results-embedded.md`).
 
+- T80.2: **`RichText`'s mask had never been measured.** `style_reads.rs`
+  listed 32 kinds and not `RichText`, so the gate that names it beside
+  `Label` and `TextArea` could not run until it was added. Its first
+  measurement disagreed with its seed on three fields besides
+  `line_height`: it declared `font_weight`, which nothing reads (a span
+  carries its own weight), and omitted `cursor`, `pressed_dim` and
+  `hover_dim`, which the hit and `record_painted`'s shade make take
+  effect. The seed now says what the output does (33 kinds, all equal).
+- T80.2: **a fixed-width `Label` measures at its offer, not its width.**
+  `Label::layout` hands the measurer `limits.max_w` (and ignores its own
+  padding), so `width: Fixed(90)` inside a 200 px parent measured two
+  lines and painted three. Not this task's mechanism and not fixed here:
+  the line-height gate sizes the window to the label's width instead,
+  and the showcase constrains the demo struct (`DLabel` 320 px), which a
+  derived container offers to its children since M56. Owed to whichever
+  task next touches `Label`'s layout (T80.3 measures the cut there).
+- T80.2: **the live gate reads the height from `ui.resolve`'s bounds**,
+  the same `NodeState` box `ui.getLayout` reports, and the agent's
+  `ui.getAppliedStyles` now reports `line_height`, so the drive asserts
+  the byte reached the node (24) beside the box it produced.
+- T80.2: `MeasureKey`'s `flow` holds the line height only; the overflow
+  byte is T80.3's, as the gate list says.
+
 **What the review found (M80).**
 
 - C2 → adopted: the inventory is in Decisions; M80 takes both of

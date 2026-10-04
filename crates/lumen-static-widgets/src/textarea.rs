@@ -101,6 +101,10 @@ pub struct TextArea<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// produced it (M26/T26.7). `TextInput` keeps the width; a text
     /// area wraps, so what it needs back is the height.
     shaped_h: f32,
+    /// One line's height: the measurer's spacing, or the pitch when
+    /// `Style::line_height` is set (M80/T80.2). Every row this widget
+    /// places — a painted line, the caret, the selection, a click — is
+    /// at its index times this.
     line_h: f32,
     pad: (f32, f32),
     /// The caret's colour; the text colour when `None` — M25/T25.10.
@@ -478,7 +482,8 @@ impl<S: TextBuffer> TextArea<S> {
     /// to find and only they are emitted.
     ///
     /// Each line is placed at its index times `line_h` — the spacing the
-    /// caret, the selection and a click already use — and laid out in the
+    /// caret, the selection and a click already use, and the pitch when
+    /// `Style::line_height` is set (M80/T80.2) — and laid out in the
     /// inner width, where it fits by construction: the shaper broke the
     /// paragraph there. A line's trailing newline is left out.
     ///
@@ -490,11 +495,12 @@ impl<S: TextBuffer> TextArea<S> {
         let lh = self.line_h;
         if cl.is_empty() || lh <= 0.0 {
             let y = inner[1] - self.scroll;
-            out.text_weighted(
+            out.text_spaced(
                 [inner[0], y, inner[2], y + (inner[3] - inner[1]) + self.scroll],
                 text,
                 s.font_size,
                 s.font_weight,
+                s.line_height,
                 s.fg,
             );
             return;
@@ -512,7 +518,17 @@ impl<S: TextBuffer> TextArea<S> {
             let run = text.get(start..end.max(start)).unwrap_or("").trim_end_matches(['\n', '\r']);
             if !run.is_empty() {
                 let top = inner[1] + line as f32 * lh - self.scroll;
-                out.text_weighted([inner[0], top, inner[2], top + lh], run, s.font_size, s.font_weight, s.fg);
+                // The byte goes with each line (M80/T80.2): a one-line run
+                // at a pitch sits at half-leading inside its `lh`-tall
+                // rect, which is where the caret and the selection are.
+                out.text_spaced(
+                    [inner[0], top, inner[2], top + lh],
+                    run,
+                    s.font_size,
+                    s.font_weight,
+                    s.line_height,
+                    s.fg,
+                );
             }
             k = next;
         }
@@ -621,6 +637,7 @@ impl<S: TextBuffer> Widget for TextArea<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::LINE_HEIGHT,
         ])).with_roles(
             lumen_static::style::SeedRoles::NONE
                 .color(lumen_static::style::Role::Text)
@@ -671,6 +688,21 @@ impl<S: TextBuffer> Node for TextArea<S> {
                 cx.text.shape(self.text.as_ref(), px, me.font_weight, inner_w, &mut self.clusters);
             self.line_h = cx.text.line_height(px);
             self.shaped_h = run.h;
+            // **At a line height, the pitch is the row** — M80/T80.2. The
+            // caret, the selection, a click and `paint_lines` all place a
+            // line at its index times `line_h`, so making `line_h` the
+            // pitch moves all four together, and the shaped height becomes
+            // `lines × pitch` (plus the deficit below the face's spacing,
+            // as `Label` measures it).
+            if me.line_height != 0 {
+                let lines = self.clusters.as_slice().iter().map(|c| c.line as u32 + 1).max().unwrap_or(0);
+                if lines > 0 {
+                    let k = cx.scale();
+                    let nls = lumen_static::num::ceil(self.line_h * k) / k;
+                    self.shaped_h = lumen_static::cx::pitched_height(lines, me.line_height, px, nls);
+                }
+                self.line_h = lumen_static::cx::pitch(me.line_height, px);
+            }
             self.shaped_key = Some(key);
         }
 
@@ -727,8 +759,22 @@ impl<S: TextBuffer> Node for TextArea<S> {
         let h = if self.shaped_key == Some(key) {
             self.shaped_h.max(self.line_h)
         } else {
-            let run = cx.text.measure_weighted(self.text.as_ref(), px, me.font_weight, inner_w);
-            run.h.max(cx.text.line_height(px))
+            let scale = cx.scale();
+            let run = lumen_static::cx::measure_spaced(
+                cx.text,
+                scale,
+                self.text.as_ref(),
+                px,
+                me.font_weight,
+                me.line_height,
+                inner_w,
+            );
+            let row = if me.line_height != 0 {
+                lumen_static::cx::pitch(me.line_height, px)
+            } else {
+                cx.text.line_height(px)
+            };
+            run.h.max(row)
         };
         let content = Size { w: inner_w, h };
         let padded =

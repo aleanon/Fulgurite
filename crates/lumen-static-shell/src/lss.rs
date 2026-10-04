@@ -111,6 +111,7 @@ fn set(p: Patch, method: &str, v: Val) -> Patch {
         ("shadow", Val::F32(x)) => p.shadow(x),
         ("pressed_dim", Val::F32(x)) => p.pressed_dim(x),
         ("hover_dim", Val::F32(x)) => p.hover_dim(x),
+        ("line_height", Val::F32(x)) => p.line_height(x),
         (m, v) => panic!("lumen_static_shell::lss: no setter `{m}` taking {v:?}"),
     }
 }

@@ -41,7 +41,7 @@ fn by_hand(loud: bool) -> Vec<Rule> {
         Rule::new(Selector::Any, Patch::new().spacing(6.0)),
         Rule::new(
             Selector::Kind("label"),
-            Patch::new().color(Color(0xf1, 0xf5, 0xfb, 0xff)).font_size(15.0).font_weight(600.0),
+            Patch::new().color(Color(0xf1, 0xf5, 0xfb, 0xff)).font_size(15.0).font_weight(600.0).line_height(1.5),
         ),
         Rule::new(
             Selector::Class("note"),

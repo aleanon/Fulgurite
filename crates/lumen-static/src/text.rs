@@ -126,6 +126,16 @@ impl<T> core::ops::Deref for Dirty<T> {
 /// once handed the real frame its box (R2-F1, fixed at the call site by
 /// M41/T41.5; this is the key's half), and a font stack that loads a
 /// fallback face changes what it measures without being replaced.
+///
+/// # How the text flows — M80/T80.2
+///
+/// `flow` holds [`Style::line_height`] (the low byte; M80/T80.3 puts the
+/// overflow mode in the next), filled from the `Style` this constructor
+/// already takes, so every text memo keys on it without a call-site
+/// change. Without it a restyle that changed only the line height served
+/// the box measured at the old pitch (`crates/lumen-static/tests/measure_key.rs`).
+/// Four bytes on every memo-holding widget, 32 → 36; the embedded `Ui`
+/// re-budget attributes them (`docs/results-embedded.md` M80/T80.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MeasureKey {
     limits: [u32; 4],
@@ -133,6 +143,7 @@ pub struct MeasureKey {
     weight: u32,
     scale: u32,
     generation: u32,
+    flow: u32,
 }
 
 impl MeasureKey {
@@ -165,6 +176,7 @@ impl MeasureKey {
             weight: style.font_weight.to_bits(),
             scale: scale.to_bits(),
             generation,
+            flow: style.line_height as u32,
         }
     }
 }

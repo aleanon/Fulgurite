@@ -37,6 +37,12 @@ use lumen_static::widget::{Node, Widget};
 /// changes it on its own. `TextInput` is the opposite case, for the same
 /// rule: there the text originates at the widget, because the user typed
 /// it.
+///
+/// **It reads `Style::line_height`** (M80/T80.2): at 0 it measures and
+/// paints at the face's own spacing, as it always did; set, it measures
+/// `lines × pitch` (`lumen_static::cx::measure_spaced`) and hands the byte
+/// to `Painter::text_spaced`, so the renderer places the lines on the same
+/// pitch the box was measured at.
 #[derive(Default)]
 pub struct Label<S: TextStorage = &'static str> {
     pub text: Dirty<S>,
@@ -133,6 +139,7 @@ impl<S: TextStorage> Widget for Label<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::LINE_HEIGHT,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 
@@ -154,12 +161,27 @@ impl<S: TextStorage> Node for Label<S> {
         // (M26/T26.3). Until then only the limits were in it, and the size
         // and weight were read in the closure below — so a restyle that
         // changed either, under the same limits, was served the old box.
+        //
+        // **At a line height, `lines × pitch`** — M80/T80.2. The key holds
+        // the byte (`MeasureKey`'s `flow`), and the measurement shapes into
+        // a line counter rather than taking the face's own spacing; 0 is
+        // `measure_weighted` exactly, so a label that sets nothing measures
+        // as it always did.
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
         let px = style[i].font_size;
         let key = MeasureKey::new(cx, limits, &style[i]);
+        let scale = cx.scale();
         let content = self.measure.get_or(key, dirty, || {
-            cx.text.measure_weighted(text, px, style[i].font_weight, limits.max_w)
+            lumen_static::cx::measure_spaced(
+                cx.text,
+                scale,
+                text,
+                px,
+                style[i].font_weight,
+                style[i].line_height,
+                limits.max_w,
+            )
         });
         self.text.clear_dirty();
         let pad = style[i].padding;
@@ -184,8 +206,16 @@ impl<S: TextStorage> Node for Label<S> {
         // padding, so a probe of the tally's 76 px value asked for a
         // box a fifth its size.
         let text = self.text.get().as_ref();
-        let content =
-            cx.text.measure_weighted(text, style[i].font_size, style[i].font_weight, limits.max_w);
+        let scale = cx.scale();
+        let content = lumen_static::cx::measure_spaced(
+            cx.text,
+            scale,
+            text,
+            style[i].font_size,
+            style[i].font_weight,
+            style[i].line_height,
+            limits.max_w,
+        );
         let pad = style[i].padding;
         let boxed = Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
@@ -195,13 +225,16 @@ impl<S: TextStorage> Node for Label<S> {
         out.rounded_rect(r, st[i].bg, st[i].radius);
         border(st, i, out);
         // Text sits inside the padding box; `layout` sized the node to
-        // include it.
+        // include it. At the pitch `record_painted` stamped (M80/T80.2):
+        // the renderer places the lines, so the box `layout` measured and
+        // the lines painted come from one rule.
         let p = st[i].pad;
-        out.text_weighted(
+        out.text_spaced(
             [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
             self.text.get().as_ref(),
             st[i].font_size,
             st[i].font_weight,
+            st[i].line_height,
             st[i].fg,
         );
     }

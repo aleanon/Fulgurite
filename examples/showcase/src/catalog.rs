@@ -295,6 +295,17 @@ fn toggle<const K: u8>(on_: bool, on_toggle: fn(&mut Store, &EventCtx)) -> Toggl
     Toggle::<Store, K> { on: on_, on_toggle, ..Default::default() }
 }
 
+/// The `Label` demo's paragraph: long enough to wrap to several lines in
+/// its 320 px demo, so a line height shows as a taller box (M80/T80.2).
+pub const LABEL_PROSE: &str = "The quick brown fox jumps over the lazy dog, \
+    and every line of this paragraph moves when the line height changes.";
+
+/// The `Label` demo's switch: 1.5× line height, applied by the program's
+/// `style_by` (M80/T80.2).
+fn flip_spacing(s: &mut Store, _: &EventCtx) {
+    s.spaced = !s.spaced;
+}
+
 fn flip_a(s: &mut Store, _: &EventCtx) {
     s.flag = !s.flag;
 }
@@ -320,10 +331,12 @@ pub const COLOURS: [&str; 3] = ["Red", "Green", "Blue"];
 /// named once** — `tests::each_group_appears_once` holds that, because the
 /// sidebar prints a heading where the group changes (M56).
 pub static CATALOG: &[Entry] = &[
-    entry!("Text", "Label", "A line of text — the core's simplest widget.",
+    entry!("Text", "Label", "Text that wraps, at the face's spacing or a line height.",
         false,
-        |s| on(s, Demo::Label(DLabel { a: { let mut l = Label::<String>::default(); l.set("The quick brown fox".into()); l } })),
-        none),
+        |s| on(s, Demo::Label(DLabel {
+            spacing: Labelled::new(toggle(s.store.spaced, flip_spacing), "1.5× line height"),
+            a: { let mut l = Label::<String>::default(); l.set(LABEL_PROSE.into()); l } })),
+        |s| format!("line height: {}", if s.store.spaced { "1.5×" } else { "the face's" })),
     entry!("Text", "Badge", "A count, a status and a tag.",
         false,
         |s| on(s, Demo::Badge(DBadge {

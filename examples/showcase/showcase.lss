@@ -76,6 +76,7 @@ DSplitPane { width: shrink; background: $raised; border-radius: 8px; }
 #d_divider_a { width: 280px; }
 #d_skeleton_a { width: 180px; height: 18px; }
 #d_skeleton_b { width: 120px; height: 18px; }
+DLabel { width: 320px; }
 DRichText { width: 420px; }
 DMarkdown { width: 420px; }
 DRichTextEditor { width: 420px; }
@@ -86,7 +87,6 @@ DModal { width: fill; }
 DSheet { width: fill; }
 DDrawer { width: fill; }
 ToastSlot { width: shrink; }
-DLabel { width: shrink; }
 DBadge { width: shrink; }
 DChip { width: shrink; }
 DAvatar { width: shrink; }

@@ -359,4 +359,90 @@ SLIDER = ("Slider", "#d_slider_a", [
     ),
 ])
 
-ALL = [TEXTINPUT, TEXTAREA, SLIDER]
+# --- Label (M80/T80.2) ------------------------------------------------
+# A label takes no input; its demo's switch restyles it. The program's
+# `style_by` turns the store's flag into `line_height(1.5)` on
+# `#d_label_a`, so the press is a style change reaching a measured box --
+# the label must come out exactly `lines x pitch` tall, `pitch` = 1.5 x its
+# font size, from a height that was `lines x` the face's own spacing.
+LABEL_SWITCH = "#d_label_spacing > #labelled-control"
+
+
+def _label_h(c):
+    b = c.box()
+    return b[3] - b[1]
+
+
+def _press_spacing(c):
+    c.__dict__["_h0"] = _label_h(c)
+    c.click(LABEL_SWITCH)
+
+
+def _press_outside(c):
+    c.__dict__["_h0"] = _label_h(c)
+    c.click_outside()
+
+
+def _spaced(c):
+    """`lines x pitch` exactly, and grown by `lines x (pitch - before)`."""
+    st = c.styles()
+    byte, px = st.get("line_height"), st["font_size"]
+    pitch = byte / 16.0 * px if byte else 0.0
+    h, h0 = _label_h(c), c._h0
+    lines = round(h / pitch) if pitch else 0
+    before = h0 / lines if lines else 0.0
+    want = lines * (pitch - before)
+    ok = (byte == 24 and lines >= 2 and abs(h - lines * pitch) <= 0.5
+          and h - h0 > 0.5 and abs((h - h0) - want) <= 0.5)
+    return ok, (f"line_height byte {byte} (want 24); height {h0:.1f} -> {h:.1f}, "
+                f"{lines} lines x pitch {pitch:.1f} = {lines * pitch:.1f} (+- 0.5); "
+                f"grew {h - h0:+.1f} against lines x (pitch - before {before:.2f}) = {want:+.1f}")
+
+
+def _unspaced(c):
+    """Back at the face's spacing: the byte 0 and the height it had."""
+    byte = c.styles().get("line_height")
+    h, h0 = _label_h(c), c._h0
+    ok = byte == 0 and h0 - h > 0.5 and abs(h - c._h_face) <= 0.5
+    return ok, (f"line_height byte {byte} (want 0); height {h0:.1f} -> {h:.1f} "
+                f"(want the face's {c._h_face:.1f} +- 0.5)")
+
+
+def _press_back(c):
+    c.__dict__["_h0"] = _label_h(c)
+    c.click(LABEL_SWITCH)
+
+
+def _remember_face(c):
+    c.__dict__["_h_face"] = _label_h(c)
+
+
+LABEL = ("Label", "#d_label_a", [
+    Action(
+        visible=True,
+        name="the switch sets a 1.5x line height and the paragraph is lines x pitch",
+        needs="a label that wraps to several lines, at the face's spacing",
+        setup=_remember_face,
+        do=_press_spacing,
+        expect=_spaced,
+        isolate=_press_outside,
+        # The label grows and the stage re-centres the demo, so the switch
+        # moves too: the switch is the action's `subject`, and each damage
+        # region is bounded by the box it covers -- the label's or the
+        # switch's, old or new -- not by the stage.
+        subject="#d_label_spacing",
+        injection="Label measures with measure_weighted (the height stays lines x the "
+                  "face's spacing); or record_painted does not stamp the byte",
+    ),
+    Action(
+        visible=True,
+        name="a second press restores the face's spacing",
+        needs="the label at 1.5x",
+        do=_press_back,
+        expect=_unspaced,
+        subject="#d_label_spacing",
+        injection="drop `flow` from MeasureKey::of (the memo serves the spaced box)",
+    ),
+])
+
+ALL = [TEXTINPUT, TEXTAREA, SLIDER, LABEL]

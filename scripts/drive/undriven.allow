@@ -14,7 +14,6 @@
 Glass | M27 | a wrapper; takes its child's input, which the child's inventory drives
 
 # --- take no input: nothing to drive, a static claim at most -------------
-Label | M27 | takes no input
 Image | M27 | takes no input
 Fixed | M27 | a layout box; takes no input
 Spacer | M27 | a layout box; takes no input

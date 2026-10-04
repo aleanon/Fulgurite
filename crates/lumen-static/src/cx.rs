@@ -71,6 +71,96 @@ impl GlyphSink for NoSink {
     fn cluster(&mut self, _: Cluster) {}
 }
 
+/// Counts the lines a shaped run landed on — M80/T80.2
+/// (`docs/plan-text-fit.md`, "Measurement needs no `TextMeasure` change").
+///
+/// A widget with a line height set shapes into this and takes
+/// `lines × pitch` ([`pitched_height`]), because every measurer that
+/// shapes already reports each cluster's [`Cluster::line`]. A measurer
+/// that reports no clusters (`BlockMetrics`, the test stand-ins) leaves
+/// it at 0, and the caller keeps that measurer's own height — the
+/// existing contract of [`TextMeasure::shape`]. Allocates nothing: one
+/// running maximum.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LineCount {
+    lines: u32,
+}
+
+impl LineCount {
+    pub const fn new() -> Self {
+        LineCount { lines: 0 }
+    }
+
+    /// The highest line any cluster landed on, plus one; 0 when no
+    /// cluster was reported.
+    pub const fn lines(&self) -> u32 {
+        self.lines
+    }
+}
+
+impl GlyphSink for LineCount {
+    fn cluster(&mut self, c: Cluster) {
+        let n = c.line as u32 + 1;
+        if n > self.lines {
+            self.lines = n;
+        }
+    }
+}
+
+/// The distance between lines at `line_height` sixteenths of `px` —
+/// [`crate::Style::line_height`]'s pitch. 0 for `line_height` 0, which
+/// means "the measurer's own spacing", not a pitch.
+#[inline]
+pub fn pitch(line_height: u8, px: f32) -> f32 {
+    line_height as f32 / 16.0 * px
+}
+
+/// The height of `lines` lines at a pitch — M80/T80.2: `lines × pitch +
+/// max(0, nls − pitch)`, where `nls` is the face's own new-line size.
+///
+/// At or above the face's spacing that is exactly `lines × pitch`, CSS's
+/// and iced's figure. Below it the box grows by the deficit, because the
+/// renderer shifts every line down by half of it so line 0's ascenders
+/// and the last line's descenders stay inside the run's rect
+/// (`FontStack::place_run_into` in `lumen-static-shell`, which this must
+/// agree with: nothing clips a run, and `Recording` damages its rect).
+#[inline]
+pub fn pitched_height(lines: u32, line_height: u8, px: f32, nls: f32) -> f32 {
+    let p = pitch(line_height, px);
+    lines as f32 * p + (nls - p).max(0.0)
+}
+
+/// `text` measured as a node with [`crate::Style::line_height`] set lays
+/// it out — M80/T80.2: shaped into a [`LineCount`], and `lines × pitch`
+/// tall ([`pitched_height`]) where the measurer reported clusters.
+///
+/// `nls` is the measurer's [`TextMeasure::line_height`] at the display
+/// scale, rounded up in physical pixels as fontdue rounds its new-line
+/// size, so this box and the renderer's agree at every scale. A measurer
+/// that reports no clusters keeps its own height. `line_height` 0 is the
+/// plain [`TextMeasure::measure_weighted`], byte for byte.
+pub fn measure_spaced(
+    text: &mut dyn TextMeasure,
+    scale: f32,
+    s: &str,
+    px: f32,
+    weight: f32,
+    line_height: u8,
+    max_w: f32,
+) -> Size {
+    if line_height == 0 {
+        return text.measure_weighted(s, px, weight, max_w);
+    }
+    let mut count = LineCount::new();
+    let run = text.shape(s, px, weight, max_w, &mut count);
+    if count.lines() == 0 {
+        return run;
+    }
+    let k = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    let nls = crate::num::ceil(text.line_height(px) * k) / k;
+    Size { w: run.w, h: pitched_height(count.lines(), line_height, px, nls) }
+}
+
 /// Measures a run of text. Implemented by whatever shaping stack the
 /// host composes in — `lumen-static-shell`'s `FontMetrics` (fontdue)
 /// is the one that ships; the default below keeps the framework

@@ -129,12 +129,10 @@ MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 map
 # task builds it; a built name left here is reported as stale by this script.
 DEFAULT                        # proposed by ?
 GstFeed                        # proposed by ?
-LINE_HEIGHT                    # proposed by ?
 LineHeight                     # proposed by ?
 LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?
 TRANSITION                     # proposed by ?
-LineCount                      # proposed by M80
 PhysicalSize                   # proposed by M80
 TextOverflow                   # proposed by M80
 TextSource                     # proposed by M80

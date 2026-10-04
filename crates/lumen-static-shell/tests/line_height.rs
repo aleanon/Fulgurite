@@ -259,3 +259,233 @@ fn the_canvas_paints_the_second_line_at_the_pitch() {
         assert!((d - pitch).abs() <= 1.0, "the canvas painted line 2 {d} px below line 1, pitch {pitch}");
     }
 }
+
+// ---- M80/T80.2: `Style.line_height`, measured and painted -----------------
+
+use lumen_static::display::Cmd;
+use lumen_static::style::{Length, Patch, Rule, Selector};
+use lumen_static::{App as DeriveApp, Event, Key, StaticTree};
+use lumen_static_shell::Host;
+use lumen_static_widgets::ops::Label;
+use lumen_static_widgets::TextArea;
+
+/// Three lines at 16 px in `LABEL_W`, every line with a capital, so each
+/// line's first inked row is its cap height and line tops compare.
+const PROSE: &str = "Hold Lid Bold Kid Held Did";
+const LABEL_W: f32 = 90.0;
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct LabelUi {
+    #[widget_id("prose")]
+    prose: Label<String>,
+}
+
+#[derive(DeriveApp, Default)]
+struct LabelApp {
+    #[tree]
+    ui: LabelUi,
+}
+
+fn prose_index() -> usize {
+    lumen_static::style::index_of_wid(<LabelUi as lumen_static::Widget>::SUB_TABLE, "prose").expect("#prose")
+}
+
+/// A host laying `PROSE` out at `lh` sixteenths and `scale`, with the
+/// pinned face; the label's logical box and the canvas it painted.
+///
+/// **The window is the label's width**, not a `Fixed` width on the label:
+/// `Label::layout` measures its text against the limits it is offered,
+/// not against its own resolved width, so a fixed-width label in a wider
+/// parent measures fewer lines than it paints (recorded in
+/// `docs/plan-text-fit.md`, "What building found"). That is not the
+/// mechanism under test here, so the setup avoids it.
+fn label_frame(font: &FontStack, lh: u8, scale: f32) -> (lumen_static::NodeState, Canvas) {
+    let (lw, lhgt) = (LABEL_W, 160.0f32);
+    let (w, h) = ((lw * scale).round() as u32, (lhgt * scale).round() as u32);
+    let mut a = LabelApp::default();
+    a.ui.prose.set(PROSE.to_owned());
+    let mut host: Host<LabelApp> = Host::new(a, w, h);
+    host.set_scale(scale);
+    let mut patch = Patch::new().color(Color(0, 0, 0, 255));
+    if lh != 0 {
+        patch = patch.line_height(lh as f32 / 16.0);
+    }
+    host.set_stylesheet(&[Rule::new(Selector::Id("prose"), patch)]);
+    let mut m = FontMetrics::with_scale(font.clone(), scale);
+    host.pump_with(&mut m);
+    let mut canvas = Canvas::with_font(w, h, font.clone());
+    canvas.clear(Color(255, 255, 255, 255));
+    host.render(&mut canvas);
+    (host.states[prose_index()], canvas)
+}
+
+/// The first row of each run of inked rows inside `x0..x1`, in physical px.
+fn ink_line_tops(canvas: &Canvas, x0: u32, x1: u32) -> Vec<u32> {
+    let w = canvas.width;
+    let inked = |x: u32, y: u32| {
+        let i = ((y * w + x) * 4) as usize;
+        canvas.pixels[i..i + 3].iter().any(|&c| c != 255)
+    };
+    let mut tops = Vec::new();
+    let mut prev = false;
+    for y in 0..canvas.height {
+        let r = (x0..x1.min(w)).any(|x| inked(x, y));
+        if r && !prev {
+            tops.push(y);
+        }
+        prev = r;
+    }
+    tops
+}
+
+/// **Measured and painted agree** — M80/T80.2's first gate. A `Label`
+/// that wraps to three lines at `line_height` 24 measures exactly `3 ×
+/// pitch` and paints its third line two pitches below its first, at
+/// scale 1.0 and 2.0; at 0 it measures what `measure_weighted` says.
+#[test]
+fn a_label_at_a_line_height_measures_and_paints_three_pitches() {
+    let font = stack();
+    let lines = {
+        struct Lines(u16);
+        impl GlyphSink for Lines {
+            fn cluster(&mut self, c: Cluster) {
+                self.0 = self.0.max(c.line + 1);
+            }
+        }
+        let mut sink = Lines(0);
+        FontMetrics::new(font.clone()).shape(PROSE, PX, 400.0, LABEL_W, &mut sink);
+        sink.0
+    };
+    println!("setup: {PROSE:?} in {LABEL_W} px breaks into {lines} lines (must be 3)");
+    assert_eq!(lines, 3, "setup: the prose did not wrap to three lines");
+
+    let lh = 24u8;
+    let pitch = lh as f32 / 16.0 * PX;
+    for scale in [1.0f32, 2.0] {
+        let (st, canvas) = label_frame(&font, lh, scale);
+        let content = st.size.h - st.pad.1 - st.pad.3;
+        let want = 3.0 * pitch;
+        let (x0, x1) = ((st.pos.x * scale) as u32, ((st.pos.x + st.size.w) * scale).ceil() as u32);
+        let tops = ink_line_tops(&canvas, x0, x1);
+        println!(
+            "scale {scale}: content height {content} (want exactly 3 x 24/16 x 16 = {want}); \
+             ink line tops {tops:?} (physical)"
+        );
+        assert!(tops.len() >= 3, "setup @ {scale}: {} line(s) of ink painted", tops.len());
+        let d = tops[2] as f32 - tops[0] as f32;
+        let want_d = 2.0 * pitch * scale;
+        println!("scale {scale}: line 3's first ink row - line 1's = {d} px (want 2 x pitch x scale = {want_d} +- 1)");
+        assert_eq!(content, want, "@ {scale}: the label measured {content}, not 3 pitches");
+        assert!((d - want_d).abs() <= 1.0, "@ {scale}: line 3 painted {d} px below line 1, want {want_d}");
+    }
+
+    // Accept: at 0 the box is the measurer's own, as it was before T80.2.
+    let (st, _) = label_frame(&font, 0, 1.0);
+    let today = FontMetrics::new(font.clone()).measure_weighted(PROSE, PX, 400.0, LABEL_W);
+    let content = st.size.h - st.pad.1 - st.pad.3;
+    println!("line_height 0: content height {content} against measure_weighted's {}", today.h);
+    assert_eq!(content, today.h, "line_height 0 changed the label's box");
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct AreaUi {
+    #[widget_id("area")]
+    area: TextArea,
+}
+
+#[derive(DeriveApp, Default)]
+struct AreaApp {
+    #[tree]
+    ui: AreaUi,
+}
+
+/// **`TextArea`'s rows are the pitch** — the caret on line 3 sits two
+/// pitches below the content top, over line 3's ink.
+#[test]
+fn a_text_area_puts_its_caret_on_the_pitch() {
+    let font = stack();
+    let lh = 32u8;
+    let pitch = lh as f32 / 16.0 * PX;
+    let (w, h) = (300u32, 240u32);
+    let mut host: Host<AreaApp> = Host::new(AreaApp::default(), w, h);
+    host.set_stylesheet(&[Rule::new(
+        Selector::Id("area"),
+        Patch::new()
+            .width(Length::Fixed(240.0))
+            .height(Length::Fixed(200.0))
+            .color(Color(0, 0, 0, 255))
+            .background(Color(255, 255, 255, 255))
+            .line_height(lh as f32 / 16.0),
+    )]);
+    let mut m = FontMetrics::new(font.clone());
+    host.pump_with(&mut m);
+    host.post(Event::Key { key: Key::Tab, down: true });
+    host.pump_with(&mut m);
+    let i = lumen_static::style::index_of_wid(<AreaUi as lumen_static::Widget>::SUB_TABLE, "area").expect("#area");
+    assert_eq!(host.input.focus, Some(i as u32), "setup: Tab did not focus the area");
+    for (k, line) in ["Hd", "Hd", "Hd"].iter().enumerate() {
+        if k > 0 {
+            host.post(Event::Key { key: Key::Enter, down: true });
+        }
+        for ch in line.chars() {
+            host.post(Event::Text { ch });
+        }
+    }
+    host.pump_with(&mut m);
+    assert_eq!(host.app.ui.area.as_str(), "Hd\nHd\nHd", "setup: the typing did not land");
+
+    let st = host.states[i];
+    let content_top = st.pos.y + st.pad.1;
+    let (x0, x1) = (st.pos.x + st.pad.0, st.pos.x + st.size.w - st.pad.2);
+    // The caret: the one 1 px wide rect inside the text box.
+    let caret = host
+        .list
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::Rect { rect, .. } if (rect[2] - rect[0] - 1.0).abs() < 0.01 && rect[0] >= x0 && rect[0] <= x1 => {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("setup: no caret was painted");
+    let mut canvas = Canvas::with_font(w, h, font.clone());
+    canvas.clear(Color(255, 255, 255, 255));
+    host.render(&mut canvas);
+    // The text's ink: dark pixels inside the text box, left of the caret
+    // (which is dark too), so neither the border nor the caret counts.
+    let (y0, y1) = (content_top as u32, (st.pos.y + st.size.h - st.pad.3) as u32);
+    let ink = |y: u32| {
+        (x0 as u32..caret[0] as u32 - 1).any(|x| {
+            let p = ((y * w + x) * 4) as usize;
+            canvas.pixels[p..p + 3].iter().any(|&c| c < 128)
+        })
+    };
+    let inked_rows: Vec<u32> = (y0..y1).filter(|&y| ink(y)).collect();
+    let mut tops = Vec::new();
+    for (k, &y) in inked_rows.iter().enumerate() {
+        if k == 0 || inked_rows[k - 1] + 1 != y {
+            tops.push(y);
+        }
+    }
+    let d = caret[1] - content_top;
+    println!(
+        "caret top - content top = {d} px (want 2 x pitch = {} +- 1); caret rows {}..{}; ink line tops {tops:?}",
+        2.0 * pitch,
+        caret[1],
+        caret[3]
+    );
+    assert!(tops.len() >= 3, "setup: {} line(s) of ink", tops.len());
+    let line3: Vec<u32> = inked_rows.iter().copied().filter(|&y| y >= tops[2]).collect();
+    let (lo, hi) = (*line3.first().unwrap() as f32, *line3.last().unwrap() as f32 + 1.0);
+    println!("line 3's ink rows {lo}..{hi} against the caret's {}..{} (+- 1)", caret[1], caret[3]);
+    assert!((d - 2.0 * pitch).abs() <= 1.0, "the caret sits {d} px below the content top, want {}", 2.0 * pitch);
+    assert!(
+        lo >= caret[1] - 1.0 && hi <= caret[3] + 1.0,
+        "line 3's ink {lo}..{hi} is not under the caret {}..{}",
+        caret[1],
+        caret[3]
+    );
+}

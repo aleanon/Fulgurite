@@ -316,6 +316,12 @@ pub struct NodeState {
     /// every ancestor's) to refuse hits, focus and activation. In the
     /// struct's tail padding, so `NodeState` stays 84 bytes.
     pub disabled: bool,
+    /// `Style::line_height`, resolved — M80/T80.2: sixteenths of
+    /// `font_size`, 0 for the measurer's own spacing. Here for the reason
+    /// `font_size` is: `paint` has no `&[Style]`, and a `Label` hands this
+    /// byte to `Painter::text_spaced`. One of the two spare tail bytes, so
+    /// `NodeState` stays 84 (`tests/cursor.rs`); one is left.
+    pub line_height: u8,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —
