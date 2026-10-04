@@ -617,8 +617,10 @@ rather than as a display-list command: see the first decision.*
   stops; the alternative (bytes in an `Arc`, a `rustybuzz::Face` parsed
   per run) is measured under K81a, and the cheaper of the two ships.
 - **K81d — no honest phase.** T81.7's probe. **Bound:** absolute ≤ 1/6
-  + 0.05 px, relative k/3 ± 0.05 px, and 1% coverage for every probed
-  glyph. **When it fires:** the `Complex`
+  + 0.05 px, relative k/3 ± 0.05 px (measured against the same outline at
+  k/3 drawn by fontdue at `3·px`, since T81.7: "What building found"), and
+  1% coverage for every probed glyph. **Held at T81.7** (0.156 px, 0.018
+  px, 0.09%). **When it fires:** the `Complex`
   raster moves to `ab_glyph`, which takes a fractional position, behind
   the shell's `shaping` feature. The rasteriser is
   `FontStack::rasterize` in `lumen-static-shell`, whose graph has no
@@ -922,6 +924,65 @@ rather than as a display-list command: see the first decision.*
 - T81.6: T81.4's `--demo` gate (`shaping_shot`) takes the shipped
   `TextInput RTL` entry instead of a Hebrew value pushed through
   `demo_frame`'s hook.
+
+- T81.7: **K81d holds; M81b builds as decided, on fontdue's public API.**
+  Over `l`, `o`, `W`, `ע` at 12, 16 and 32 px the derivation's phase 1
+  sits **0.156 px** at worst from the 1× bitmap's centroid (bound 0.217),
+  coverage within **0.09%** (bound 1%), and the setup's largest
+  `offset_x` is 0.883 (`o`, 16 px). No `ab_glyph`, no deferral
+  (`docs/results-text.md` M81/T81.7).
+- T81.7: **"shift = k/3 ± 0.05 px" fails correct code, so the relative
+  check is against a reference.** An ink centroid of area coverage is not
+  linear in a sub-pixel shift: the partial columns at a thin stem's edges
+  weigh at pixel centres. `l` at 16 px moves **0.422** and **0.768** px
+  for ⅓ and ⅔, and fontdue's own 1× rasteriser, drawing the same outline
+  at exactly ⅓ and ⅔ (the glyph at `3·px` binned 3:1 — fontdue does not
+  hint, so that outline is the 1× one scaled, and a whole-column shift
+  there is exact), moves it **0.426** and **0.768**. Any area-coverage
+  rasteriser, `ab_glyph` included, would do the same, so K81d's literal
+  bound would have moved M81b to a rasteriser with the same property. The
+  bound is now |derived shift − the reference's| ≤ 0.05 (worst **0.018**),
+  with the reference itself checked against the 1× bitmap (0.0013) and
+  the raw |shift − k/3| printed unbounded (0.101). T81.8's "centroid
+  shifts of ⅓ ± 0.05 px" for `l` takes the same reference, or it fails at
+  16 px for the same reason.
+- T81.7: **today's shaped paint counts a glyph's bearing fraction twice,
+  and the T81.8 pen rule must not.** `shaped_ink` places a bitmap at
+  `pen + bounds.xmin` and the canvas rounds that, but fontdue's bitmap
+  already holds `fract(bounds.xmin)` inside its column 0 (fontdue's own
+  layout floors `pen + xmin` for that reason). So a shaped glyph whose
+  `offset_x` is 0.5 or more draws **one pixel right**: 7 of the probe's
+  12 single-glyph cases, Complex against Basic ink centroid exactly
+  `round(offset_x)` (`a_shaped_glyph_draws_its_bearing_fraction_twice`,
+  pinned green for T81.8 to flip). T81.3's gates compared ink rows with
+  `Basic`'s, never columns. Deciding the phase from `pen_of(rect_x +
+  p.x)` with `p.x` still `pen + xmin` would count it a third time, since
+  the derivation puts the outline `offset_x + k/3` into a column 0 at
+  `floor(xmin)`. **T81.8's placement is `pen + floor(bounds.xmin)`** for a
+  shaped glyph (what fontdue's layout gives on a whole pen, so `Basic` is
+  unchanged), and the phase is `pen_of(rect_x + p.x)` on that. Under
+  that one change the pin's |Δ| prints **0.000** in all twelve cases.
+- T81.7: **where phases occur, and how K81b is measured.** Phase stays
+  `Complex`-only and, since K81a's response, shaper-only: a run with
+  nothing to shape takes fontdue's path under `Complex`, byte-identical
+  to `Basic` (`BASIC_CHECKSUM`'s `Complex` arm), so it gets no pen and
+  Basic Latin never does. Measured on a `Complex` stack: grid-like Latin
+  (labels, numbers, a formula, `llll`) at 12, 13, 16 px, **0 of 99**
+  glyphs on a fractional pen and 0 runs through the shaper; Hebrew, mixed
+  and joiner-forced runs, **72 of 84**, on all three thirds (34/28/22).
+  Two consequences for T81.8: its second case (`llll` at 13 px, "the
+  production way") must be forced through the shaper (a zero-width joiner,
+  as T81.3's gates do), or it counts one phase; and **K81b cannot run on
+  the grid's Latin cells**, which have no phased glyph, so the bound
+  "misses ≤ 3× new (glyph, phase) keys" would hold over zero keys.
+  K81b's arm is `just grid --shaping complex` with a content switch T81.8
+  adds to `--bin grid` that writes text the shaper lays out into the
+  sheet and into the bound value each edit changes (a Hebrew word before
+  the number), so every edited run is shaped and its digits land on
+  fractional pens. Its setup prints and asserts runs through the shaper
+  > 0 and distinct (glyph, phase) keys > distinct glyphs (phases really
+  multiply the keys); the Latin grid stays as the accept direction,
+  printing 0 phased keys. The injection stays as written.
 
 **What the review found (M81).**
 

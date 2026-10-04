@@ -860,4 +860,47 @@ under one `just bench-lock` (quiet: load1 1.46 before, 1.20 after, bound
 | `--bin textarea -- 100`, `keystroke + layout, 100 KB` | 5.135–5.388 ms (5.21) | **5.33** (5.269–5.594) | inside |
 | `--bin cascade`, `cascade_deep (whole table)` | 15,311–16,277 ns (15,950) | **15,678** (14,868–15,713) | inside |
 
-K81b and K81d are M81b's (T81.7–T81.8).
+K81b and K81d are M81b's: K81d is measured in T81.7 below (holds), K81b
+in T81.8.
+
+## M81/T81.7 — the phase probe: thirds from fontdue's public API (2026-10-04)
+
+`crates/lumen-static-shell/tests/subpixel_phase.rs` (`just fonts`), on the
+pinned face. The derivation (test-local until T81.8 moves it into
+`FontStack::rasterize`) shifts `rasterize_indexed_subpixel`'s 3× raster by
+`round(2·offset_x) + k` sub-columns and sums each pixel's three. The
+relative check's reference is the same outline at exactly k/3, drawn by
+fontdue's 1× rasteriser at `3·px` and binned 3:1: the plan's literal
+"k/3 ± 0.05" fails correct code, because an area-coverage centroid is not
+linear in a sub-pixel shift (`docs/plan-shaped-paint.md`, "What building
+found", T81.7).
+
+| glyph | px | `offset_x` | 1× cx | phase 1 cx | \|abs\| | shifts ⅓, ⅔: derived / reference | coverage / 1× |
+|---|---|---|---|---|---|---|---|
+| `l` | 12 | 0.131 | 1.693 | 1.613 | 0.080 | +0.309/+0.309, +0.618/+0.618 | 0.9997 |
+| `l` | 16 | 0.508 | 2.158 | 2.154 | 0.004 | +0.422/+0.426, +0.768/+0.768 | 1.0009 |
+| `l` | 32 | 0.016 | 4.467 | 4.460 | 0.007 | +0.306/+0.310, +0.654/+0.658 | 1.0000 |
+| `o` | 12 | 0.662 | 3.673 | 3.568 | 0.106 | +0.333/+0.336, +0.672/+0.673 | 1.0003 |
+| `o` | 16 | 0.883 | 4.910 | 4.982 | 0.072 | +0.321/+0.316, +0.673/+0.665 | 0.9998 |
+| `o` | 32 | 0.766 | 9.803 | 9.959 | 0.156 | +0.334/+0.334, +0.667/+0.667 | 1.0000 |
+| `W` | 12 | 0.398 | 5.934 | 6.001 | 0.067 | +0.336/+0.335, +0.664/+0.664 | 1.0001 |
+| `W` | 16 | 0.531 | 7.913 | 7.891 | 0.022 | +0.333/+0.333, +0.667/+0.667 | 1.0001 |
+| `W` | 32 | 0.062 | 15.824 | 15.782 | 0.042 | +0.334/+0.334, +0.667/+0.667 | 1.0000 |
+| `ע` | 12 | 0.516 | 3.461 | 3.451 | 0.010 | +0.332/+0.332, +0.663/+0.665 | 1.0003 |
+| `ע` | 16 | 0.688 | 4.627 | 4.496 | 0.132 | +0.334/+0.315, +0.645/+0.642 | 0.9997 |
+| `ע` | 32 | 0.375 | 9.225 | 9.309 | 0.085 | +0.334/+0.334, +0.666/+0.667 | 1.0001 |
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| K81d absolute | \|phase 1 − 1×\| centroid, worst | **0.156 px** | 1/6 + 0.05 = 0.217 | the 2/3·`offset_x` correction dropped (shift = k): **0.606**, nine glyph/size cases named (every one with `offset_x` ≥ 0.375) |
+| K81d relative | \|derived shift − reference shift\|, worst | **0.018 px** (raw \|shift − k/3\| 0.101, printed, unbounded) | 0.05 | the phase ignored (shift = round(2·`offset_x`)): **0.768**, 24 checks |
+| K81d coverage | \|total / 1× − 1\|, worst | **0.0009** | 0.01 | two sub-columns summed of three: **0.42** |
+| setup | largest `offset_x`; the reference against the 1× bitmap | **0.883** (`o`, 16 px); **0.0013** | ≥ 0.4; ≤ 0.05 | — |
+| where phases occur, `Complex` stack, 12/13/16 px | grid-like Latin: runs through the shaper, glyphs on a fractional pen; shaped runs: through, distinct thirds | **0**, **0 of 99**; **12 of 12**, **3** (34/28/22 glyphs, 72 of 84 fractional) | 0, 0; all, ≥ 2 | `needs_shaping` always true: Latin **12** through (and 87 of 99 fractional); shaped pens rounded in `shaped_ink`: **1** third |
+| pin: a shaped glyph's bearing fraction counted twice | Complex − Basic ink centroid, single glyph, against `round(offset_x)` | **+1.000** in the 7 cases with `offset_x` ≥ 0.5, **0.000** in the 5 others | = `round(offset_x)` ± 0.05 (T81.8 flips to ≤ 0.217) | `shaped_ink` places at `pen + floor(xmin)`: **0.000** everywhere, 7 cases named |
+| firmware | `.text` Δ against `123e138`, four binaries | **+0 / +0 / +0 / +0 B**, `.rodata` +0 | 0 each | — (a test file) |
+
+**K81d holds**, so M81b builds as decided: thirds from fontdue's public API,
+no `ab_glyph`. K81b cannot be measured on the grid's Latin cells, which
+have no fractional pen; T81.8 measures it on a grid whose edited runs need
+the shaper (`docs/plan-shaped-paint.md`, "What building found", T81.7).

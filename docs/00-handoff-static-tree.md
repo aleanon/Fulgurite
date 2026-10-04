@@ -1080,6 +1080,11 @@ The years go to:
   feature (in the ABI stamp's feature list; a default window links no
   shaper symbol), and the glyph identity the two share is the core's
   `GlyphKey`, which the shell's `GlyphId` wraps.
+  *M81/T81.7:* subpixel pens' raster source **DECIDED**: thirds derived
+  from fontdue's public `rasterize_indexed_subpixel` (K81d holds, worst
+  0.156 px against a 0.217 bound, `docs/results-text.md` M81/T81.7), so
+  no `ab_glyph`. Found there and owed to T81.8: a shaped glyph's bearing
+  fraction is drawn twice, one pixel right when it is 0.5 or more.
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
   drag and drop. *Status (M54/T54.7):* multi-window, platform drag and
   drop and platform dialogs are **types shipped, never assembled** — no

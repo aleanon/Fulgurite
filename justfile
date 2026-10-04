@@ -157,6 +157,9 @@ fonts:
     # compiled in -- the pins, centring, containment, line height and the
     # ellipsis, K81c's heap, and `mod complex`'s allocations.
     cargo test -q -p lumen-static-shell --features truetype,shaping --test paint_shaped --test basic_placements --test glyph_placement --test text_containment --test line_height --test font_heap --test alloc_gate --test shaping
+    # M81/T81.7: the phase probe (K81d), where phases occur, and the pinned
+    # bearing-fraction offset T81.8 flips.
+    cargo test -q -p lumen-static-shell --features truetype,shaping --test subpixel_phase
     # M81/T81.5: caret, selection and hit test over bidi runs.
     cargo test -q -p lumen-static-shell --features truetype,shaping --test bidi_caret
     # M81/T81.4: `Program::shaping` through `Local` and an `Offscreen`, the
