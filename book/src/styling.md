@@ -73,6 +73,52 @@ profile is in `docs/results-embedded.md`, measured rather than estimated.
 `border_color_role` follows the palette, so `Host::set_palette` re-resolves
 it like any other role.
 
+## A gradient behind a node: the fill table
+
+A gradient is fifty-odd bytes and a `Style` is paid per node, so a rule
+does not carry one: it names one, by index. The program hands the host a
+table of `style::Fill`s, and `Patch::background_fill(n)` paints entry
+`n - 1` under the node's background (`0`, the default, is none). An
+entry's stops may name palette roles, so a fill themes the way a
+`background_role` does — `Host::set_palette` re-resolves the table:
+
+```rust
+# extern crate lumen_static;
+use lumen_static::display::{Color, GradShape, Stops};
+use lumen_static::style::{Fields, Fill, Palette, Patch, Role};
+
+const FILLS: [Fill; 1] = [Fill::new(
+    Stops::two(Color(255, 255, 255, 255), Color(0, 0, 0, 255)),
+    GradShape::Radial { center: [0.5, 0.5], radius: 1.0 },
+)
+.role(0, Role::Raised)];
+
+# fn main() {
+let rule = Patch::new().background(Color(0, 0, 0, 0)).background_fill(1);
+assert!(rule.fields().contains(Fields::BACKGROUND_FILL));
+// The role-named stop is whatever the palette calls `raised`.
+assert_eq!(FILLS[0].resolve(&Palette::DARK).stops.color[0], Palette::DARK.raised);
+assert_eq!(FILLS[0].resolve(&Palette::DARK).stops.color[1], Color(0, 0, 0, 255));
+# }
+```
+
+The table goes on the program — `application(boot).fills(&FILLS)` — and
+the showcase's Card demo is drawn this way:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:card_fill}}
+```
+
+**It paints under the background**, so a node with an opaque background
+hides its fill; the card above sets its background transparent. Hover
+and press shading act on the background, so a fill alone shows neither.
+Every kind that draws a border paints a fill (its seed declares
+`Fields::BACKGROUND_FILL`); a `background_fill` rule on any other kind is
+a `W1010` finding, and `scripts/check_fill_paint.sh` keeps the two calls
+paired. In `.lss` it is `background-fill: 1` — a bare number, not a
+length. What it cost per node is in `docs/results-embedded.md`
+(M82/T82.3).
+
 ## The one thing that will trip you: kind names are not spelled alike
 
 `Selector::Kind` matches `Node::kind_name`, and it has **two
@@ -245,7 +291,8 @@ What v1 accepts:
   `focus-ring`, `color`, `background`, `border-width`, `border-color`,
   `border-radius`, `font-size`, `font-weight`, `box-shadow`, `hover-dim`,
   `pressed-dim`, `line-height` (a bare ratio, `1.5`), `text-overflow`
-  (`wrap`, `clip` or `ellipsis`). A setter added to `Patch` without a declaration here
+  (`wrap`, `clip` or `ellipsis`), `background-fill` (a fill table index,
+  a bare number, `1`). A setter added to `Patch` without a declaration here
   fails `just static`.
 * **`@tokens { name: value; }`**, used as `$name`.
 * **Palette roles as tokens**: `$page`, `$surface`, `$control`, `$text`,

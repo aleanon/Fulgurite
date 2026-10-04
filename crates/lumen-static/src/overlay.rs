@@ -278,6 +278,11 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn clip_bounds(&self) -> Option<crate::display::Rect> {
         self.inner.clip_bounds()
     }
+    /// Forwarded, so a deferred node's fill paints in phase 2 as it
+    /// would have inline — M82/T82.3 (`tests/overlay.rs`).
+    fn fills(&self) -> &[crate::style::Fill] {
+        self.inner.fills()
+    }
     fn glass(
         &mut self,
         rect: crate::display::Rect,

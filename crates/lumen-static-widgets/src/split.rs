@@ -444,6 +444,7 @@ impl<W: Widget> CollapsibleTable<W> {
             Fields::PADDING,
             Fields::BACKGROUND,
             Fields::BORDER,
+            Fields::BACKGROUND_FILL,
             Fields::COLOR,
             Fields::FONT_SIZE,
             Fields::FONT_WEIGHT,
@@ -554,6 +555,7 @@ impl<W: Widget, S: TextStorage> Node for Collapsible<W, S> {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let p = s.pad;

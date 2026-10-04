@@ -285,6 +285,7 @@ impl Widget for OptionList {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
@@ -342,6 +343,7 @@ impl Node for OptionList {
         if s.shadow > 0.0 {
             out.shadow(r, s.radius, s.shadow);
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let p = s.pad;

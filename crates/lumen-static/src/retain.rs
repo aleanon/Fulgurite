@@ -1101,4 +1101,10 @@ impl<R: Retention> Painter for Recording<'_, R> {
     fn clip_bounds(&self) -> Option<Rect> {
         self.inner.clip_bounds()
     }
+    /// Forwarded: the table is read, never painted, so there is nothing
+    /// to hash here — the gradient `ops::fill` draws from it is hashed by
+    /// [`Recording`]'s `gradient` like any other (M82/T82.3).
+    fn fills(&self) -> &[crate::style::Fill] {
+        self.inner.fills()
+    }
 }

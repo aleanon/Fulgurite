@@ -259,6 +259,30 @@ pub struct Style {
     /// `Style`'s two spare tail bytes: `Style` stays 80 B
     /// (`tests/cursor.rs`), and the next field grows it (M82).
     pub overflow: TextOverflow,
+    /// A gradient behind this node, **by index** — M82/T82.3
+    /// (`docs/plan-paint-vocabulary.md`). `0` is none, the default, so a
+    /// tree that sets nothing paints what it painted before; `n` is entry
+    /// `n - 1` of the program's fill table ([`Fill`], handed to the host
+    /// by `Program::fills` and to paint through
+    /// [`Painter::fills`](crate::Painter::fills)).
+    ///
+    /// **An index and not the gradient**, because a `Style` is per node and
+    /// a gradient is 50-odd bytes; and because a table entry names its
+    /// stops by [`Role`], so a palette swap re-resolves one table rather
+    /// than every node. The index never reaches retention or the journal:
+    /// [`crate::ops::fill`] paints the entry's resolved stops inline.
+    ///
+    /// Painted **under** the flat `background`, by every kind that draws a
+    /// border (their seeds declare [`Fields::BACKGROUND_FILL`]), so a fill
+    /// shows where the background is transparent. Hover and press shading
+    /// act on `background` only, so a fill under a transparent background
+    /// shows no hover; a disabled node's stops fade to 40% alpha as
+    /// `background` does. Not mirrored under RTL.
+    ///
+    /// **This byte grew `Style` 80 → 84** (`tests/cursor.rs`): M80 had
+    /// taken both spare tail bytes, and `docs/plan-iced-roadmap.md` §2.1
+    /// budgets the re-budget. 81 of the 84 bytes are used.
+    pub background_fill: u8,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -313,6 +337,7 @@ impl Default for Style {
             border_color: crate::display::Color::TRANSPARENT,
             line_height: 0,
             overflow: TextOverflow::Wrap,
+            background_fill: 0,
             cursor: Cursor::Default,
             visible: true,
             disabled: false,
@@ -556,11 +581,17 @@ impl Fields {
     /// [`Style::overflow`] — M80/T80.3, the next free bit when it landed.
     /// `Label` and `AppBar` declare it.
     pub const OVERFLOW: Fields = Fields(1 << 18);
+    /// [`Style::background_fill`] — M82/T82.3, the next free bit when it
+    /// landed. Declared by every kind whose `paint` calls
+    /// [`crate::ops::fill`] (the derive's containers, `Repeat`, and the
+    /// widgets that draw a border); a rule setting it on any other kind is
+    /// a `W1010` finding.
+    pub const BACKGROUND_FILL: Fields = Fields(1 << 19);
     pub const ALL: Fields = Fields(u32::MAX);
 
     /// Every field with its name, for reports and for the tests that
     /// measure a mask field by field.
-    pub const EACH: [(Fields, &'static str); 19] = [
+    pub const EACH: [(Fields, &'static str); 20] = [
         (Fields::WIDTH, "width"),
         (Fields::HEIGHT, "height"),
         (Fields::PADDING, "padding"),
@@ -580,6 +611,7 @@ impl Fields {
         (Fields::BORDER, "border"),
         (Fields::LINE_HEIGHT, "line_height"),
         (Fields::OVERFLOW, "overflow"),
+        (Fields::BACKGROUND_FILL, "background_fill"),
     ];
 
     /// The union of a list — how a widget spells its mask at the
@@ -783,6 +815,49 @@ pub enum Role {
     OnDanger,
 }
 
+/// One entry of a program's fill table — M82/T82.3
+/// (`docs/plan-paint-vocabulary.md`, "A gradient in `Style` is an index").
+///
+/// A node selects it with [`Style::background_fill`]: `n` is entry
+/// `n - 1`. `stops` holds the colours as written; a stop whose `roles`
+/// slot is `Some` takes that [`Role`]'s colour from the host's palette
+/// instead, by [`Fill::resolve`], which `Host::set_fills` and
+/// `Host::set_palette` run — so a fill themes the way a role-named
+/// `background` does (M25/T25.11). `shape` is resolution-free
+/// ([`GradShape`](crate::display::GradShape)), so a `const` entry needs
+/// no node size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fill {
+    pub stops: crate::display::Stops,
+    pub roles: [Option<Role>; crate::display::MAX_STOPS],
+    pub shape: crate::display::GradShape,
+}
+
+impl Fill {
+    /// A fill of literal stops, no role.
+    pub const fn new(stops: crate::display::Stops, shape: crate::display::GradShape) -> Fill {
+        Fill { stops, roles: [None; crate::display::MAX_STOPS], shape }
+    }
+
+    /// The same fill with stop `k`'s colour taken from `role`.
+    pub const fn role(mut self, k: usize, role: Role) -> Fill {
+        self.roles[k] = Some(role);
+        self
+    }
+
+    /// The fill as painted under `palette`: every role-named stop's colour
+    /// replaced by the palette's, the rest untouched.
+    pub fn resolve(&self, palette: &Palette) -> Fill {
+        let mut out = *self;
+        for (k, r) in self.roles.iter().enumerate() {
+            if let Some(role) = r {
+                out.stops.color[k] = palette.get(*role);
+            }
+        }
+        out
+    }
+}
+
 impl Default for Palette {
     fn default() -> Self {
         Palette::LIGHT
@@ -872,6 +947,9 @@ pub struct Patch {
     pub line_height: Option<f32>,
     /// [`Style::overflow`] — M80/T80.3.
     pub overflow: Option<TextOverflow>,
+    /// [`Style::background_fill`] — M82/T82.3: the fill table index, `0`
+    /// for none.
+    pub background_fill: Option<u8>,
 }
 
 impl Patch {
@@ -901,6 +979,7 @@ impl Patch {
             disabled: None,
             line_height: None,
             overflow: None,
+            background_fill: None,
         }
     }
 
@@ -1034,6 +1113,15 @@ impl Patch {
         self
     }
 
+    /// A gradient behind the node: entry `index - 1` of the program's
+    /// fill table, `0` for none — M82/T82.3 ([`Style::background_fill`]).
+    /// Records [`Fields::BACKGROUND_FILL`]. `.lss` spells it
+    /// `background-fill: 1`.
+    pub const fn background_fill(mut self, index: u8) -> Self {
+        self.background_fill = Some(index);
+        self
+    }
+
     /// How much darker the background goes while pressed (0.0–1.0).
     pub const fn pressed_dim(mut self, v: f32) -> Self {
         self.pressed_dim = Some(v);
@@ -1119,6 +1207,9 @@ impl Patch {
         }
         if let Some(v) = self.overflow {
             s.overflow = v;
+        }
+        if let Some(v) = self.background_fill {
+            s.background_fill = v;
         }
     }
 }
@@ -1308,6 +1399,9 @@ impl Patch {
         }
         if self.overflow.is_some() {
             f |= Fields::OVERFLOW.0;
+        }
+        if self.background_fill.is_some() {
+            f |= Fields::BACKGROUND_FILL.0;
         }
         Fields(f)
     }

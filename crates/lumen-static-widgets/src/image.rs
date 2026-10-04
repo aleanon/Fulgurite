@@ -139,6 +139,7 @@ impl Node for Image {
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
+        lumen_static::ops::fill(st, i, out);
         if st[i].bg.3 > 0 {
             out.rounded_rect(r, st[i].bg, st[i].radius);
             lumen_static::ops::border(st, i, out);

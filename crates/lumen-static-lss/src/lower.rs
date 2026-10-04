@@ -180,6 +180,10 @@ pub enum Takes {
     Number,
     /// A `u8` in px: `2px`.
     Byte,
+    /// A bare `u8`, no unit: `1` — M82/T82.3, for a table index
+    /// (`background-fill`). Not [`Takes::Byte`], which is a length in px:
+    /// `background-fill: 1px` would mean nothing.
+    Index,
     /// A `Color`, or a palette role (the property's `role` setter).
     Colour,
     Align,
@@ -197,6 +201,7 @@ impl Takes {
             Takes::Px => "a length in px, like `12px`",
             Takes::Number => "a bare number, like `600` or `0.5`",
             Takes::Byte => "a whole number of px from 0 to 255, like `2px`",
+            Takes::Index => "a whole number from 0 to 255, no unit, like `1`",
             Takes::Colour => "a colour: `#rrggbb`, `#rrggbbaa`, or a palette role like `$accent`",
             Takes::Align => "`start`, `center`, `end` or `fill`",
             Takes::Cursor => {
@@ -249,6 +254,9 @@ pub const PROPERTIES: &[Property] = &[
     // M80/T80.2: a ratio of the font size, as CSS's unitless
     // `line-height` is; the cascade rounds it to sixteenths.
     Property { name: "line-height", setter: "line_height", role_setter: None, takes: Takes::Number },
+    // M82/T82.3: an index into the program's fill table, its own
+    // declaration and not an overload of `background` (M24).
+    Property { name: "background-fill", setter: "background_fill", role_setter: None, takes: Takes::Index },
     // M80/T80.3: CSS's name. `wrap` has no CSS spelling under this
     // property (CSS wraps by `white-space`), and is the default.
     Property { name: "text-overflow", setter: "overflow", role_setter: None, takes: Takes::Overflow },
@@ -529,6 +537,13 @@ fn typed(takes: Takes, v: &Value) -> Option<Val> {
             let p = px(v)?;
             (p.fract() == 0.0 && (0.0..=255.0).contains(&p)).then_some(Val::U8(p as u8))
         }
+        Takes::Index => match v {
+            Value::Number(n, Unit::None) => {
+                let p = f32_of(n)?;
+                (p.fract() == 0.0 && (0.0..=255.0).contains(&p)).then_some(Val::U8(p as u8))
+            }
+            _ => None,
+        },
         Takes::Colour => match v {
             Value::Color(c) => Some(Val::Color(*c)),
             _ => None,

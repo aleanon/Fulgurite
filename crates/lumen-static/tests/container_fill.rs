@@ -37,6 +37,10 @@ struct Counting {
 }
 
 impl Painter for Counting {
+    // M82/T82.3: a leaf with no fill table.
+    fn fills(&self) -> &[lumen_static::style::Fill] {
+        &[]
+    }
     fn rect(&mut self, rect: Rect, color: Color) {
         self.list.rect(rect, color);
     }

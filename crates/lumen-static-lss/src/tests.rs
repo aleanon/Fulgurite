@@ -172,7 +172,7 @@ fn every_property_lowers_to_its_setter() {
             color: $ink; background: $surface; border-width: 1px; border-color: $focus;
             border-radius: 8px; font-size: 15px; font-weight: 600; box-shadow: 12px;
             pressed-dim: 0.15; hover-dim: 0.07; disabled: true; line-height: 1.5;
-            text-overflow: ellipsis;
+            text-overflow: ellipsis; background-fill: 1;
          }
          #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
          #c { width: fill(3); padding: 1px 2px 3px 4px; }",
@@ -199,6 +199,7 @@ fn every_property_lowers_to_its_setter() {
         set("disabled", Val::Bool(true)),
         set("line_height", Val::F32(1.5)),
         set("overflow", Val::TextOverflow(TextOverflow::Ellipsis)),
+        set("background_fill", Val::U8(1)),
     ];
     assert_eq!(s.base[0].setters, want_a);
     assert_eq!(
@@ -269,6 +270,11 @@ const REFUSED_LOWERING: &[(&str, &str, &str, u32, u32)] = &[
     ("number with unit", "#t { font-weight: 600px; }", "`font-weight` takes a bare number", 1, 19),
     ("byte too big", "#t { border-width: 300px; }", "`border-width` takes a whole number of px", 1, 20),
     ("byte fraction", "#t { focus-ring: 1.5px; }", "`focus-ring` takes a whole number of px", 1, 18),
+    // M82/T82.3: a table index has no unit, so a length is refused with
+    // `Takes::Index`'s own description, as are a fraction and 256.
+    ("index in px", "#t { background-fill: 1px; }", "`background-fill` takes a whole number from 0 to 255, no unit, like `1`", 1, 23),
+    ("index fraction", "#t { background-fill: 1.5; }", "`background-fill` takes a whole number from 0 to 255", 1, 23),
+    ("index too big", "#t { background-fill: 256; }", "`background-fill` takes a whole number from 0 to 255", 1, 23),
     ("five edges", "#t { padding: 1px 2px 3px 4px 5px; }", "`padding` takes one to four lengths", 1, 15),
     ("align", "#t { align: middle; }", "`align` takes `start`, `center`, `end` or `fill`", 1, 13),
     ("cursor", "#t { cursor: hand; }", "`cursor` takes `default`", 1, 14),

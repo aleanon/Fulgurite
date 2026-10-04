@@ -60,6 +60,7 @@ impl Widget for Divider {
             lumen_static::style::Fields::VISIBLE,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Track))];
 }
@@ -82,6 +83,7 @@ impl Node for Divider {
         let s = &st[i];
         let r = rect_of(s);
         if r[2] > r[0] && r[3] > r[1] {
+            lumen_static::ops::fill(st, i, out);
             out.rounded_rect(r, s.bg, s.radius);
             lumen_static::ops::border(st, i, out);
         }
@@ -189,6 +191,7 @@ impl<S: TextStorage> Widget for Badge<S> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -228,6 +231,7 @@ impl<S: TextStorage> Node for Badge<S> {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius.min((r[3] - r[1]) / 2.0));
         lumen_static::ops::border(st, i, out);
         // Centred on the measured text, not drawn from the inner left —
@@ -378,6 +382,7 @@ impl<T: TextStorage, S: 'static> Widget for Chip<T, S> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -432,6 +437,7 @@ impl<T: TextStorage, S: 'static> Node for Chip<T, S> {
             return;
         }
         let radius = s.radius.min((r[3] - r[1]) / 2.0);
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, radius);
         lumen_static::ops::border(st, i, out);
         // Selected: a tint and an outline in the text colour, so the
@@ -550,6 +556,7 @@ impl<S: TextStorage> Widget for Avatar<S> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Page).background(lumen_static::style::Role::Muted))];
@@ -586,6 +593,7 @@ impl<S: TextStorage> Node for Avatar<S> {
         if w <= 0.0 || h <= 0.0 {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, w.min(h) / 2.0);
         lumen_static::ops::border(st, i, out);
         // **Centred on the measured initials** — M57/B3. This passed the

@@ -100,11 +100,27 @@ fn patch_for(name: &str) -> Patch {
         // `AppBar`'s (`Ellipsis`), so it moves both: a label that wrapped
         // becomes one line, and a bar's cut title loses its mark.
         "overflow" => p.overflow(TextOverflow::Clip),
+        // M82/T82.3: entry 0 of `PROBE_FILLS`, which every render's list
+        // carries, so a kind that calls `ops::fill` paints one more
+        // command whatever its background.
+        "background_fill" => p.background_fill(1),
         other => panic!("no probe value for field {other}"),
     }
 }
 
 type Frame = (u64, usize, Vec<(Size, Point)>, bool);
+
+/// The fill table every render's list carries — M82/T82.3. Without one,
+/// `ops::fill` finds no entry and a `background_fill` probe could move
+/// nothing, so every kind would measure as not reading the bit.
+const PROBE_FILLS: [lumen_static::style::Fill; 1] = [lumen_static::style::Fill::new(
+    lumen_static::display::Stops {
+        at: [0, 255, 0, 0],
+        color: [Color(250, 0, 0, 255), Color(0, 0, 250, 255), Color(0, 0, 0, 0), Color(0, 0, 0, 0)],
+        len: 2,
+    },
+    lumen_static::display::GradShape::Linear { angle: 0.0 },
+)];
 
 fn probe_index<R: Widget>() -> usize {
     lumen_static::style::index_of_wid(R::SUB_TABLE, "probe").expect("the probe root carries #probe")
@@ -128,6 +144,7 @@ fn render<R: Widget + Node + Default>(setup: fn(&mut R), sheet: &[Rule], sc: Sce
     }
     pass::layout(&mut root, &styles, &mut st, LIMITS);
     let mut list = DisplayList::new();
+    list.set_fills(&PROBE_FILLS);
     pass::paint(&root, &st, &mut list);
     // **The host's ring, as the host draws it** — M57/A6. No widget draws
     // its own ring any more; the host does, once, around the keyboard-

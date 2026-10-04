@@ -90,6 +90,7 @@ impl<W: Widget> CardTable<W> {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::RADIUS,
                 Fields::SHADOW,
                 Fields::CURSOR,
@@ -203,6 +204,7 @@ impl<W: Widget> Node for Card<W> {
         if shadow > 0.0 {
             out.shadow(r, st[i].radius, shadow);
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
         // Level 0: flat, so an outline says where it is (unless the style
@@ -366,6 +368,7 @@ impl<S: TextStorage> Widget for Toast<S> {
         Fields::PADDING,
         Fields::BACKGROUND,
         Fields::BORDER,
+        Fields::BACKGROUND_FILL,
         Fields::COLOR,
         Fields::RADIUS,
         Fields::SHADOW,
@@ -428,6 +431,7 @@ impl<S: TextStorage> Node for Toast<S> {
         if st[i].shadow > 0.0 {
             out.shadow(r, st[i].radius, st[i].shadow);
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
         let p = st[i].pad;

@@ -25,6 +25,10 @@ const VIEW: Rect = [0.0, 0.0, 400.0, 300.0];
 struct Null;
 
 impl Painter for Null {
+    // M82/T82.3: a leaf with no fill table.
+    fn fills(&self) -> &[lumen_static::style::Fill] {
+        &[]
+    }
     fn rect(&mut self, _: Rect, _: Color) {}
     fn text_spaced(&mut self, _: Rect, _: &str, _: f32, _: f32, _: u8, _: Color) {}
     fn rounded_rect(&mut self, _: Rect, _: Color, _: f32) {}

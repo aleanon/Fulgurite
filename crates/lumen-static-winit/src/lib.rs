@@ -1823,7 +1823,7 @@ pub mod hot {
             metrics: &mut Option<FontMetrics>,
         ) -> Barred {
             let src = session.list();
-            let mut list = DisplayList { cmds: src.cmds.clone(), text: src.text.clone(), bounds: src.bounds };
+            let mut list = DisplayList { cmds: src.cmds.clone(), text: src.text.clone(), bounds: src.bounds, fills: src.fills.clone() };
             // The bar's own damage is the whole surface: the session's
             // damage was computed without it.
             let _ = session.take_damage_for_age(1);

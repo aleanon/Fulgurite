@@ -1246,6 +1246,23 @@ remains** — which is why §10 Step 1 is the kill criterion.
    pay for it), on the software canvas, the GPU and SVG. Conic gradients
    and ellipses are not built. Numbers in
    `docs/results-paint-vocabulary.md` T82.2.
+
+   **A gradient in `Style` is a table index resolved before paint —
+   DECIDED 2026-10-04 (M82/T82.3).** `Style.background_fill: u8` names
+   entry `n - 1` of the program's fill table (`Program::fills`, a
+   `&'static [Fill]` whose stops may name palette roles); the host
+   resolves the table against its palette (`Host::set_fills`,
+   `Host::set_palette`, each marking the tree when the resolved table
+   moves) into the display list it paints, and `ops::fill` — called at
+   every `ops::border` site, before the flat background — paints the
+   entry as an ordinary `Painter::gradient`. So retention, the journal and
+   the window see content, never the index; `Painter::fills` is a
+   required getter (owner decision D6). The index costs one byte in each
+   of `Style` and `NodeState`: `Style` 80 → 84 B, `NodeState` 84/84, 168
+   B a node (`docs/results-embedded.md`, `docs/plan-paint-vocabulary.md`).
+   A fill paints under the background, so hover and press shading (which
+   act on the background) do not show on a fill alone; that is recorded,
+   not fixed.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

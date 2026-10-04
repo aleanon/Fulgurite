@@ -6,7 +6,7 @@
 
 * { spacing: $gap; }
 label { color: $ink; font-size: 15px; font-weight: 600; line-height: 1.5; text-overflow: ellipsis; }
-.note { color: $muted; background: $surface; border-color: $focus; }
+.note { color: $muted; background: $surface; border-color: $focus; background-fill: 1; }
 #title, #badge {
     width: fixed(120px);
     height: 40px;

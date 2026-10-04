@@ -187,6 +187,9 @@ fn measure_into(
     sums.clear();
     paints.clear();
     list.clear();
+    // M82/T82.3: the frame's fill table, so a leaf's `ops::fill` paints
+    // here what it paints on screen. `set_fills` reuses the buffer.
+    list.set_fills(tree.fills);
     sums.resize(n, 0);
     paints.resize(n, false);
 
@@ -245,11 +248,39 @@ fn measure_into(
             h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(bits);
         }
         h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(st.border_width as u64);
+        // M82/T82.3: the fill, as its index *and* the resolved entry, so
+        // a palette swap that recolours a role-named stop changes the
+        // signature though the index did not move.
+        let entry = (st.fill as usize).checked_sub(1).and_then(|k| tree.fills.get(k));
+        h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(st.fill as u64);
+        if let Some(f) = entry {
+            h = h.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(fill_hash(f));
+        }
         sums[i] = h;
         // What the derive's `paint` draws before recursing, and whether
         // any of it is visible: a transparent container draws nothing.
-        paints[i] = st.bg.3 > 0 || st.shadow > 0.0 || (st.border_width > 0 && st.border_color.3 > 0);
+        paints[i] = st.bg.3 > 0
+            || st.shadow > 0.0
+            || (st.border_width > 0 && st.border_color.3 > 0)
+            || entry.is_some();
     }
+}
+
+/// A resolved fill entry's content, for a container's signature —
+/// M82/T82.3: every stop's offset and colour and the shape's geometry.
+fn fill_hash(f: &lumen_static::style::Fill) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    let mut mix = |v: u64| h = (h ^ v).wrapping_mul(0x0100_0000_01B3);
+    mix(f.stops.len as u64);
+    for k in 0..lumen_static::display::MAX_STOPS {
+        let c = f.stops.color[k];
+        mix(u64::from(f.stops.at[k]) << 32 | u32::from_be_bytes([c.0, c.1, c.2, c.3]) as u64);
+    }
+    mix(f.shape.kind() as u64);
+    for g in f.shape.geom() {
+        mix(g.to_bits() as u64);
+    }
+    h
 }
 
 /// Whether container `i` has a direct child it paints itself: a node

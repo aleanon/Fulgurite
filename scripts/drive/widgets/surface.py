@@ -55,7 +55,45 @@ CARD = ("Card", "#d_card_a", [
         static=True,
         injection="drop the padding from Card::type_defaults",
     ),
+    Action(
+        # M82/T82.3: the demo's ground is the program's fill 1, a radial
+        # from `raised` to `track` (by role) under a transparent
+        # background, rounded by the card's radius. Read off the window's
+        # own pixels, at whatever scale the leg runs.
+        name="the card's fill is a rounded radial",
+        needs="a card whose background_fill names the program's radial",
+        do=lambda c: c.hover(),
+        expect=lambda c: _fill_check(c),
+        static=True,
+        injection="remove ops::fill from Card::paint",
+    ),
 ])
+
+
+def _fill_check(c):
+    """The card's centre against its two side edges (a radial differs by
+    at least 16 levels there), and its corner against the stage just
+    outside it (a rounded fill leaves the corner unpainted)."""
+    import base64, io
+    from PIL import Image
+    shot = c.c.rpc("ui.screenshot")
+    k = shot.get("scale", 1.0)
+    img = Image.open(io.BytesIO(base64.b64decode(shot["image_base64"]))).convert("RGB")
+    px = img.load()
+    b = c.box()
+    at = lambda x, y: px[int(x * k), int(y * k)]
+    cy = (b[1] + b[3]) / 2
+    centre = at((b[0] + b[2]) / 2, cy)
+    sides = [at(b[0] + 2, cy), at(b[2] - 3, cy)]
+    corner, ground = at(b[0] + 1, b[1] + 1), at(b[0] - 4, b[1] + 1)
+    diff = lambda p, q: max(abs(x - y) for x, y in zip(p, q))
+    edge = min(diff(centre, s) for s in sides)
+    off = diff(corner, ground)
+    return (
+        edge >= 16 and off <= 2,
+        f"centre {centre} vs sides {sides}: {edge} levels (bound >= 16); "
+        f"corner {corner} vs the stage {ground}: {off} levels (bound <= 2), scale {k}",
+    )
 
 
 # --- Toast ----------------------------------------------------------

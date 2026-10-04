@@ -232,6 +232,7 @@ impl Widget for Pagination {
                 Fields::HEIGHT,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
@@ -325,6 +326,7 @@ impl Node for Pagination {
         if w <= 0.0 || h <= 0.0 {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let each = w / self.slots() as f32;
@@ -730,6 +732,7 @@ impl Widget for Tree {
                 Fields::HEIGHT,
                 Fields::PADDING,
                 Fields::BACKGROUND,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
@@ -782,6 +785,7 @@ impl Node for Tree {
         }
         // No ring here: a focusable tree (M44/T44.10) gets the host's,
         // drawn once per frame over the tree (M57/A6).
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         // **Clipped to its own box** — a tree in a pane is the normal
@@ -1175,6 +1179,7 @@ impl<R: Widget + Default + 'static> GridTable<R> {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
@@ -1299,6 +1304,7 @@ impl<R: Widget + Default + Node + 'static> Node for DataGrid<R> {
         let active = self.rows.current.filter(|&row| row < self.rows.count);
         let row_y = |row: usize| b[1] + row as f32 * ext - self.rows.scroll;
 
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         out.push_clip(r);
         // The header band and the gutter, one tint, meeting in the corner.

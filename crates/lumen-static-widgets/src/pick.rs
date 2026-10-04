@@ -445,6 +445,7 @@ impl<const KIND: u8> Widget for Pad<KIND> {
             Fields::HEIGHT,
             Fields::PADDING,
             Fields::BACKGROUND,
+            Fields::BACKGROUND_FILL,
             Fields::COLOR,
             Fields::FONT_SIZE,
             Fields::RADIUS,
@@ -516,6 +517,7 @@ impl<const KIND: u8> Node for Pad<KIND> {
         if s.shadow > 0.0 {
             out.shadow(r, s.radius, s.shadow);
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
@@ -811,6 +813,7 @@ impl<const KIND: u8> PickerTable<KIND> {
                 Fields::FONT_SIZE,
                 Fields::RADIUS,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::VISIBLE,
                 Fields::CURSOR,
                 Fields::HOVER_DIM,
@@ -943,6 +946,7 @@ impl<const KIND: u8> Node for Picker<KIND> {
         let s = &st[i + Self::TRIGGER];
         let r = lumen_static::ops::rect_of(s);
         if r[2] > r[0] && r[3] > r[1] {
+            lumen_static::ops::fill(st, i + Self::TRIGGER, out);
             out.rounded_rect(r, s.bg, s.radius);
             lumen_static::ops::border(st, i + Self::TRIGGER, out);
             let mut x = r[0] + s.pad.0;

@@ -233,6 +233,7 @@ impl Widget for RichText {
         Fields::CURSOR,
         Fields::BACKGROUND,
         Fields::BORDER,
+        Fields::BACKGROUND_FILL,
         Fields::COLOR,
         Fields::FONT_SIZE,
         Fields::RADIUS,
@@ -357,6 +358,7 @@ impl Node for RichText {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         if s.bg.3 > 0 {
             out.rounded_rect(r, s.bg, s.radius);
         }
@@ -997,6 +999,7 @@ impl Widget for PaintBox {
         Fields::HEIGHT,
         Fields::BACKGROUND,
         Fields::BORDER,
+        Fields::BACKGROUND_FILL,
         Fields::RADIUS,
         Fields::VISIBLE,
     ])).with_roles(lumen_static::style::SeedRoles::NONE.background(lumen_static::style::Role::Raised))];
@@ -1039,6 +1042,7 @@ impl Node for PaintBox {
         if r[2] <= r[0] || r[3] <= r[1] {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         if s.bg.3 > 0 {
             out.rounded_rect(r, s.bg, s.radius);
         }

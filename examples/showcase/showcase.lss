@@ -40,7 +40,7 @@ navrow { width: fill; height: 32px; color: $text; background: $surface; border-c
 #d_button_a { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
 #d_button_b { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $text; background: $surface; border-width: 1px; border-color: #cfd6e2ff; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
 #d_button_c { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: #1f4fd1ff; background: #eaeffbff; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
-#d_card_a { width: 280px; }
+#d_card_a { width: 280px; background: #00000000; box-shadow: 0px; background-fill: 1; }
 #d_card_title { font-weight: 600; }
 #d_card_go { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
 #tooltip-content { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }

@@ -73,6 +73,7 @@ impl Widget for ProgressBar {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Accent).background(lumen_static::style::Role::Track))];
 }
@@ -122,6 +123,7 @@ impl Node for ProgressBar {
             return;
         }
         let radius = s.radius.min(h / 2.0);
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, radius);
         lumen_static::ops::border(st, i, out);
         let filled = w * self.fraction();
@@ -308,6 +310,7 @@ impl Widget for Skeleton {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Raised).background(lumen_static::style::Role::Placeholder))];
 }
@@ -353,6 +356,7 @@ impl Node for Skeleton {
         if w <= 0.0 || h <= 0.0 {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius.min(h / 2.0));
         lumen_static::ops::border(st, i, out);
         // The highlight, clipped to the block so a band near either end

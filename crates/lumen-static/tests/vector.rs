@@ -72,6 +72,10 @@ fn a_painter_without_gradients_falls_back_to_a_flat_fill() {
     // rounded card's fallback keeps its shape.
     struct Flat(Vec<(Color, f32)>);
     impl Painter for Flat {
+        // M82/T82.3: a leaf with no fill table.
+        fn fills(&self) -> &[lumen_static::style::Fill] {
+            &[]
+        }
         fn rect(&mut self, _: [f32; 4], c: Color) {
             self.0.push((c, -1.0));
         }

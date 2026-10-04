@@ -199,8 +199,10 @@ fn the_ring_costs_no_bytes_per_node() {
     // nothing spare — and was re-budgeted with a measurement
     // (`docs/results-embedded.md`). The claim this test makes is about
     // the *ring*, so it is kept and its number moved rather than deleted:
-    // if `focus_ring` ever became an `f32` this would read 84.
-    assert_eq!(core::mem::size_of::<lumen_static::Style>(), 80);
+    // if `focus_ring` ever became an `f32` it would cost bytes again.
+    // **84 since M82/T82.3**, for `background_fill` (`tests/cursor.rs`
+    // prints the used bytes, 81 of 84).
+    assert_eq!(core::mem::size_of::<lumen_static::Style>(), 84);
     assert_eq!(core::mem::size_of::<NodeState>(), 84);
 }
 

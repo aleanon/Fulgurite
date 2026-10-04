@@ -593,8 +593,9 @@ pub struct Stops {
 }
 
 impl Stops {
-    /// The common case: one colour to another.
-    pub fn two(from: Color, to: Color) -> Stops {
+    /// The common case: one colour to another. `const` since M82/T82.3,
+    /// so a fill table entry can be written with it.
+    pub const fn two(from: Color, to: Color) -> Stops {
         Stops {
             at: [0, 255, 0, 0],
             color: [from, to, from, from],
@@ -1071,6 +1072,21 @@ pub trait Painter {
     fn push_clip(&mut self, rect: Rect);
     fn pop_clip(&mut self);
 
+    /// The fill table, resolved against the palette — M82/T82.3
+    /// (`docs/plan-paint-vocabulary.md`). [`crate::ops::fill`] reads entry
+    /// `NodeState::fill - 1` from it and paints it as an ordinary
+    /// [`Painter::gradient`], so no command ever carries the index.
+    ///
+    /// **Required**, for [`Painter::stroked_rect`]'s reason: a wrapper
+    /// that inherited an empty default would silently drop every fill
+    /// painted through it — `Deferring`'s phase 2 included. A wrapper
+    /// forwards its inner painter's answer; a leaf with no table (the
+    /// firmware's `Checksum`, a test sink) answers `&[]` and paints the
+    /// flat background alone. `DisplayList` answers what the host gave
+    /// [`DisplayList::set_fills`]. Accepted firmware growth by owner
+    /// decision D6 (`docs/plan-iced-roadmap.md`).
+    fn fills(&self) -> &[crate::style::Fill];
+
     /// A run at the default weight. Provided, so an implementation only
     /// has to write the weighted form.
     fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
@@ -1134,6 +1150,13 @@ pub struct DisplayList {
     /// culled paint number must not be compared with an arm that does
     /// not cull, and this is what makes opting in explicit.
     pub bounds: Option<Rect>,
+    /// The fill table this frame resolves `NodeState::fill` against —
+    /// M82/T82.3, answered by [`Painter::fills`]. Set by the host
+    /// ([`DisplayList::set_fills`]) and, like `bounds`, kept across
+    /// [`DisplayList::clear`]: it is a property of the program and its
+    /// palette, not of one frame. Empty by default, so a bare list paints
+    /// no fill and every existing test's command stream is unchanged.
+    pub fills: Vec<crate::style::Fill>,
 }
 
 #[cfg(feature = "alloc")]
@@ -1266,6 +1289,15 @@ impl DisplayList {
     /// frame is going, not of the frame.
     pub fn set_bounds(&mut self, bounds: Option<Rect>) {
         self.bounds = bounds;
+    }
+
+    /// Install the resolved fill table — M82/T82.3. Copied, and kept
+    /// across [`DisplayList::clear`] as `bounds` is; the host calls it on
+    /// `set_fills` and `set_palette`, for its frame list and for the
+    /// shadow oracle's scratch list.
+    pub fn set_fills(&mut self, fills: &[crate::style::Fill]) {
+        self.fills.clear();
+        self.fills.extend_from_slice(fills);
     }
 
     // NOTE: the bodies stay here, on the inherent methods, and
@@ -1561,6 +1593,11 @@ impl Painter for Scaled<'_> {
         let k = self.scale;
         self.inner.clip_bounds().map(|r| [r[0] / k, r[1] / k, r[2] / k, r[3] / k])
     }
+    /// Forwarded: a table entry is resolution-free, and the gradient it
+    /// becomes is scaled by [`Scaled::gradient`] like any other.
+    fn fills(&self) -> &[crate::style::Fill] {
+        self.inner.fills()
+    }
 }
 
 /// Collecting into a list is *one* implementation of [`Painter`], not
@@ -1602,5 +1639,8 @@ impl Painter for DisplayList {
     }
     fn clip_bounds(&self) -> Option<Rect> {
         self.bounds
+    }
+    fn fills(&self) -> &[crate::style::Fill] {
+        &self.fills
     }
 }

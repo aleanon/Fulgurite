@@ -9,6 +9,10 @@ use lumen_static::{pass, Style};
 /// one, and why this assertion exists rather than a comment saying it
 /// was free once.
 ///
+/// **84 since M82/T82.3**: `background_fill`, the fill table index, found
+/// no spare byte (M80 took the last two) and grew the tail slot by four;
+/// 81 of 84 bytes are used, and the mirror below prints both.
+///
 /// **80 since M27/T27.1, and re-budgeted rather than edited.** The
 /// cursor really was free: at 72 B it fit the tail padding beside
 /// `align`, `focus_ring` and `visible`. That slot is now *exactly* full
@@ -29,17 +33,123 @@ use lumen_static::{pass, Style};
 /// `docs/plan-widget-parity.md` T27.1 has the argument.
 #[test]
 fn the_cursor_costs_nothing() {
-    // M80/T80.2 took one spare byte of each (`line_height`), and neither
-    // struct grew: printed so a later field that does shows its cost.
+    // M80/T80.2-T80.3 took both spare tail bytes of `Style` and one of
+    // `NodeState`; **M82/T82.3's `background_fill` grew `Style` 80 -> 84**
+    // and took `NodeState`'s last spare byte (84/84) —
+    // `docs/plan-iced-roadmap.md` §2.1, `docs/results-embedded.md`.
     let (style, state) = (core::mem::size_of::<Style>(), core::mem::size_of::<lumen_static::NodeState>());
+    let (style_used, state_used) = (style_used_bytes(), state_used_bytes());
     println!(
-        "Style {style} B (bound 80), NodeState {state} B (bound 84): {} B/node, {:.1} KB per 100 nodes",
+        "Style {style} B (bound 84; {style_used} B used, bound 81), NodeState {state} B (bound 84; {state_used} B used, bound 84): {} B/node, {:.1} KB per 100 nodes (bound 24 KB)",
         style + state,
         (style + state) as f32 * 100.0 / 1024.0
     );
-    assert_eq!(core::mem::size_of::<Style>(), 80, "Style grew; every node grew with it");
+    assert_eq!(core::mem::size_of::<Style>(), 84, "Style grew; every node grew with it");
     assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 84);
+    // **The used-bytes mirrors** (the `glass_cmd.rs` payload pattern):
+    // `size_of` alone cannot see a byte that lands in padding — a second
+    // `u8` beside `background_fill` still pads to 84 — so the fields are
+    // summed too. The destructuring names every field, so a new one is a
+    // compile error here before it is a number.
+    assert_eq!(style_used, 81, "Style's fields grew into its padding; that is a byte every node pays for");
+    assert_eq!(state_used, 84, "NodeState's fields changed");
     assert_eq!(core::mem::size_of::<Cursor>(), 1);
+}
+
+/// The sum of `Style`'s field sizes, without padding — M82/T82.3.
+fn style_used_bytes() -> usize {
+    use core::mem::size_of_val as z;
+    let Style {
+        width,
+        height,
+        padding,
+        spacing,
+        color,
+        background,
+        radius,
+        font_size,
+        font_weight,
+        shadow,
+        pressed_dim,
+        hover_dim,
+        align,
+        focus_ring,
+        cursor,
+        border_width,
+        border_color,
+        line_height,
+        overflow,
+        background_fill,
+        visible,
+        disabled,
+    } = Style::default();
+    z(&width)
+        + z(&height)
+        + z(&padding)
+        + z(&spacing)
+        + z(&color)
+        + z(&background)
+        + z(&radius)
+        + z(&font_size)
+        + z(&font_weight)
+        + z(&shadow)
+        + z(&pressed_dim)
+        + z(&hover_dim)
+        + z(&align)
+        + z(&focus_ring)
+        + z(&cursor)
+        + z(&border_width)
+        + z(&border_color)
+        + z(&line_height)
+        + z(&overflow)
+        + z(&background_fill)
+        + z(&visible)
+        + z(&disabled)
+}
+
+/// The same for `NodeState`.
+fn state_used_bytes() -> usize {
+    use core::mem::size_of_val as z;
+    let lumen_static::NodeState {
+        constraints,
+        size,
+        pos,
+        fg,
+        bg,
+        radius,
+        font_size,
+        font_weight,
+        shadow,
+        pad,
+        pressed,
+        hovered,
+        focused,
+        focus_ring,
+        border_color,
+        border_width,
+        disabled,
+        line_height,
+        fill,
+    } = lumen_static::NodeState::default();
+    z(&constraints)
+        + z(&size)
+        + z(&pos)
+        + z(&fg)
+        + z(&bg)
+        + z(&radius)
+        + z(&font_size)
+        + z(&font_weight)
+        + z(&shadow)
+        + z(&pad)
+        + z(&pressed)
+        + z(&hovered)
+        + z(&focused)
+        + z(&focus_ring)
+        + z(&border_color)
+        + z(&border_width)
+        + z(&disabled)
+        + z(&line_height)
+        + z(&fill)
 }
 
 #[test]

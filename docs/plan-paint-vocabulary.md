@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Building: T82.0, T82.1 and T82.2 landed 2026-10-04
+> its own file. Building: T82.0, T82.1, T82.2 and T82.3 landed 2026-10-04
 > (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
@@ -1017,6 +1017,54 @@ crosses.*
   coverage, not only the corner squares', which is the +8–13% the
   `rounded-radial` arm prints; at `corner == 0` there is no coverage term,
   and `gradient3.ppm` stays byte-identical.
+
+- T82.3: **the journal records from `TreeMut`, not from the dispatch
+  view the plan named.** `session.rs`'s `with_sheet` call builds the
+  `TreeRef` that answers RPCs; `Agent::frame_done` records the journal from
+  `TreeMut::as_ref()`, which carried no fills, so `TreeRef::with_fills`
+  alone would have left a leaf's fill out of every signature. `TreeMut`
+  gained `fills` and `with_fills` too, `as_ref` forwards it, and the
+  session's `agent_frame_done` sets it from the frame list
+  (`h.list.fills`, since `h.app` is borrowed mutably there); the dispatch
+  view gets `with_fills` as planned. The journal gate's second injection
+  is therefore `TreeMut::as_ref` handing `&[]` (both nodes 0.00×).
+- T82.3: **`Host::show` replaced the frame list wholesale.** The panic
+  screen (M36) assigns a new `DisplayList`, which would have dropped the
+  fill table, so every frame after a retry painted no fill. It keeps the
+  table now. `hot::Barred::new` (winit, `reload`) builds a list by literal
+  and copies `fills` too, so it compiles; it never paints a fill.
+- T82.3: **`check_fill_paint.sh`'s second direction is per file, and the
+  per-kind direction is measured.** A seed is spelled half a dozen ways
+  (`Self::KIND` in `SEEDS`, a `*Table` const, `"appbar"`, a part's
+  `"picker-trigger"`), so the script asks only that a file whose paint
+  calls `fill(` names `BACKGROUND_FILL`. The per-kind claim is
+  `lumen-static-widgets/tests/style_reads.rs`, which renders every kind
+  with and without `background_fill(1)` over a one-entry table: it found
+  **16** kinds reading the bit before their masks named it. `Image` is
+  listed in the script: its layout never calls `record_painted`, so its
+  `bg` (and now its fill) branch is dead — pre-existing, not fixed here,
+  and its mask matches the measurement (it reads neither).
+- T82.3: **where the call goes.** "Before the flat `bg`" at each site,
+  which is the line before the node's `rounded_rect`; where that is
+  guarded by `bg.3 > 0` (`Image`, the charts, `RichText`, `PaintBox`) the
+  fill goes above the guard, so a fill under a transparent background
+  still paints; `DataGrid`'s border is a hundred lines below its ground,
+  and the fill is before the ground. The `Picker` paints its trigger
+  part's fill at `i + TRIGGER`, as it does its border.
+- T82.3: **the D4 contrast test judged text on the stage behind a fill.**
+  `every_demo_text_reads_in_both_palettes` composited flat fills only, so
+  the Card's title on its gradient was measured against the stage card,
+  and a fill whose edge stop failed AA (1.63:1) passed at 15.93:1. It now
+  samples a gradient ground at a run's centre and both ends (T82.2's rule)
+  and asserts it met the Card's runs.
+- T82.3: the showcase's Card has no drop shadow, so its rounded corner
+  shows the stage the live check compares it with; `Stops::two` became a
+  `const fn` so a table entry can use it. The palette gate replaces the
+  `Button`'s palette-role colours with literals: they follow the palette
+  too, and the swap damaged the button (952 px² over the bound) until
+  only the fill could move.
+- T82.3: the plan's figures held exactly: bit **19**, 29 sites in 18
+  files, `Style` 84 (81 used), `NodeState` 84/84.
 
 **What the review found (M82).**
 

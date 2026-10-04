@@ -829,6 +829,7 @@ impl SearchFieldTable {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::RADIUS,
                 Fields::CURSOR,
                 Fields::VISIBLE,
@@ -959,6 +960,7 @@ impl Node for SearchField {
             return;
         }
         let r = lumen_static::ops::rect_of(&st[i]);
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
         self.icon.paint(st, i + SF_ICON, out);

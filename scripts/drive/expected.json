@@ -10,11 +10,12 @@
   "M80/T80.2 added Label: its demo's switch sets a 1.5x line height through the program's style_by, and a second press restores it.",
   "M80/T80.3 added Label's ellipsis switch: one press cuts the paragraph to one line (the whole text still published), a second wraps it again.",
   "M80/T80.4 added Selectable: a drag across the first line, then app.copy (copied and clipboard equal); a double click copies one word. A press outside clears it (both isolates).",
-  "M81/T81.6 added TextInput RTL (`שלום world 123`, driven by the +shaping legs): a click at the visual left end, then a character, appends at the logical end; a press above it types nowhere (the isolate)."
+  "M81/T81.6 added TextInput RTL (`שלום world 123`, driven by the +shaping legs): a click at the visual left end, then a character, appends at the logical end; a press above it types nowhere (the isolate).",
+  "M82/T82.3 added Card's static fill check: its centre and side pixels differ by at least 16 levels (a radial, by role) and its corner pixel is the stage behind it (rounded)."
  ],
  "counts": {
   "entries": 46,
-  "actions": 146,
+  "actions": 147,
   "landed_checked": 119,
   "isolated": 62
  },
@@ -170,7 +171,8 @@
   ],
   "Card": [
    "a button on the card reaches the application",
-   "the content is inset by the card's padding"
+   "the content is inset by the card's padding",
+   "the card's fill is a rounded radial"
   ],
   "Toast": [
    "Save shows a toast below the stage, centred on the window",
@@ -284,6 +286,7 @@
   "Markdown/the markers are markup, not text",
   "PaintBox/the application's drawing is on screen and inside the box",
   "Card/the content is inset by the card's padding",
+  "Card/the card's fill is a rounded radial",
   "Toast/it shrinks to its text rather than filling the window",
   "Toast/it paints a ground, so its light text is readable"
  ]

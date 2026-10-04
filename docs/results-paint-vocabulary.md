@@ -109,3 +109,59 @@ The radial costs what the linear does: the per-pixel cost is
 (every pixel pays `sd_round_box`, not only the corners'). Setup asserted
 per arm (exactly one `Gradient` of its kind); with `DisplayList::gradient`
 storing every kind as `Linear`, the `radial` arm refuses to time.
+
+## T82.3 — `Style.background_fill` and the fill table (2026-10-04)
+
+`Style.background_fill: u8` (`0` none, `n` entry `n - 1`) is stamped into
+`NodeState::fill` by `record_painted`; `ops::fill`, at every one of
+`ops::border`'s call sites and before the flat background, resolves it
+against `Painter::fills` (required) and paints an ordinary
+`Painter::gradient`. The table comes from `Program::fills`, resolved
+against the palette by `Host::set_fills` / `Host::set_palette` into the
+frame list (`DisplayList::set_fills`) and handed to the agent's journal
+through `TreeMut::with_fills`. `.lss`: `background-fill: <index>`
+(`Takes::Index`, lowering to `Val::U8`). `Fields::BACKGROUND_FILL` is bit
+**19** (`Fields::EACH` 19 → 20). Gates: `lumen-static-shell/tests/fill.rs`
+unless named.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| sizes, `lumen-static/tests/cursor.rs` (and `focus.rs`, the embedded `const` asserts) | `Style` **84 B**, 81 used; `NodeState` **84 B**, 84 used; **168 B**/node, **16.4 KB** per 100 nodes | = 84 / 84; used 81 / 84; 24 KB | a second `u8` beside the field: E0027 at the used-bytes destructuring, then used **82** against 81 (size still 84); a `u32`: size **88** against 84 |
+| reaches paint: a derive container, a `Repeat`, a `Button` | **1** gradient each, rect = the node's, stops = the table's; setup `st.fill` 1 and the rule's bit set | 1 | `record_painted` does not copy the byte: **0** gradients at all three, each named with `st.fill = 0`; `Scaled::fills` or `Recording::fills` answering `&[]`: 0 at all three with `st.fill = 1` |
+| palette (a role-named stop) | `LIGHT.accent` then `DARK.accent` after `set_palette`; damage **3,600** px² | = the node's 3,600 px² | `set_palette` does not re-resolve: stop unchanged, damage **0** |
+| `set_fills` marks, `Boundaries<256>` | a changed table: 1 gradient with the new stops; the same table again: damage **0**, can skip | new stops; 0 | `set_fills` without `mark_all`: the frame keeps the old stops |
+| index 0 is today | table 2 entries, 5 nodes, 0 asking: **0** gradients | 0 | `ops::fill` paints entry 0 for `fill == 0`: **4** |
+| disabled | stops' alpha **102**, 102 (40%) | 102 | `ops::fill` ignores `disabled`: 255, 255 |
+| journal, `lumen-static-agent/tests/fill_journal.rs` (transparent `bg`, role-named fill, palette swap) | container **1.00×** its box (6,400 px²), `Button` **1.00×**; total 12,800 = the two boxes | 1.00× | the container signature omits the fill: container **0.00×**, `Button` 1.00×; `TreeMut::as_ref` hands the journal `&[]`: both **0.00×** |
+| W1010, `lumen-static/tests/sheet_lint.rs` | on a `Card`: **0** findings; on a `CheckBox`: `Unread(BACKGROUND_FILL)` | 0; 1 | `Patch::background_fill` records no bit: no finding |
+| `Deferring`, `lumen-static/tests/overlay.rs` (a popup's content with a fill) | **1** gradient, after the scroller's last pop (index 4 against 3) | 1, in phase 2 | `Deferring::fills` answers `&[]`: **0** |
+| shadow oracle, `tests/shadow.rs` (`shadow-oracle`), a filled `Button`, hover and click | 6 frames compared, no divergence | none | the scratch list is not given fills: diverges at frame 2, node 0, `"paint"` |
+| masks, `lumen-static-widgets/tests/style_reads.rs` (probe `background_fill(1)` over a one-entry table) | every kind's mask equals its measured reads, 34 kinds | equal | before the masks were edited: **16** kinds read `background_fill` and did not declare it (`label: … omits read [background_fill]`) |
+| `scripts/check_fill_paint.sh` (`just static`) | `sites 29 in 18 files, filled 29, allowed 0` | all filled | `fill(` removed from `Button::paint`: `ops.rs:736: Button draws a border with no fill( before it`, `Label` still filled; `BACKGROUND_FILL` removed from `input.rs`'s seed: names `TextInput` |
+| `.lss`, `lumen-static-lss` tests and `scripts/check_lss_setters.sh` | 25 setters, 25 declared; `background-fill: 1` lowers to `Val::U8(1)`; `1px`, `1.5` and `256` refused with "a whole number from 0 to 255, no unit, like `1`" | — | the `PROPERTIES` line deleted: the script names `background_fill`; declared `Takes::Byte`: `background-fill: 1` refused ("a whole number of px … like `2px`, not `1`") |
+| `.lss` both ways, `lumen-static-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `background-fill: 1`) | equal both ways | equal | the shell's `set` arm deleted: `check_lss_setters.sh` stays green and `lss::load` panics "no setter `background_fill` taking U8(1)" |
+| D4, showcase `every_demo_text_reads_in_both_palettes` (now samples a gradient ground at a run's centre and ends) | the Card's two runs judged on the fill in both palettes, worst **12.02**:1 / **8.89**:1 (title), 590 runs, 0 under | ≥ 4.5; ≥ 4 runs on a gradient | the fill's edge stop as `Text`: title **1.63**:1 / **1.34**:1, red; the same with the gradient arm removed: green at 15.93:1 — the walk had judged text on the stage behind a fill |
+| live, `scripts/widget_drive.sh Card` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | "the card's fill is a rounded radial": centre (254, 254, 254) against sides (216, 221, 230), **38** levels; corner against the stage **0** levels, at scale 1 and 2; D5 parity 1 of 1 byte-identical; oracle 544 frames, none diverged | ≥ 16; ≤ 2 | `ops::fill` removed from `Card::paint` (Boundaries leg): centre and sides all (255, 255, 255), **0** levels, FAIL by name |
+| firmware, `just firmware-delta 22ce8f8` | `firmware` **+156**, `firmware_interactive` **+288**, `firmware_bind` / `firmware_cascade` **+220**; `.rodata` +20–32; headroom **18,516 B** | ≤ 1,000 on `firmware_interactive`; K82b floor 1,024 | — |
+
+**K82c** — the K3 arms with no fill and no path, `22ce8f8` against this
+tree, eight interleaved invocations a side under one `just bench-lock`
+(quiet; load1 0.87 before, 1.12 after, bound 8):
+
+| row | base median (spread) | T82.3 median | verdict |
+|---|---:|---:|---|
+| frame `idle (floor)` | 60.70 µs (54.60–61.60) | 60.45 | inside |
+| frame `ALL rows: +paint` | 1,287.25 µs (1,229.10–1,295.10) | 1,290.40 | inside |
+| frame `layout` | 20.10 µs (19.00–20.80) | 20.20 | inside |
+| frame `+paint` | 38.75 µs (36.70–42.00) | 40.60 | inside |
+| frame `+render (damage)` | 74.20 µs (70.40–80.50) | 76.30 | inside |
+| `textarea` `keystroke + layout, 100 KB` | 5.34 ms (5.07–5.47) | 5.38 | inside |
+| `cascade` `cascade_deep (whole table)` | 15,761.53 ns (15,663.74–15,841.23) | 15,724.37 | inside |
+
+K82c holds, so neither of its steps (`#[cold]`, then the fill honoured by
+derive containers and `Card` only) is taken. K82b holds (288 of 1,000 B;
+18,516 B of headroom against its 1,024 B floor). K1 holds at the plan's
+assignment (84 / 84; `Cmd` 60 and `Event` 16 untouched); the embedded `Ui`
+is unchanged at 1,216 B. The firmware attribution is in
+`docs/results-embedded.md` M82/T82.3: `ops::fill`'s body and its call
+sites, which neither D3 nor D6 accepted, are reported to the owner there.

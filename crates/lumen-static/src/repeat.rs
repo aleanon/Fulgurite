@@ -467,6 +467,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
             crate::style::Fields::VISIBLE,
             crate::style::Fields::BACKGROUND,
             crate::style::Fields::BORDER,
+            crate::style::Fields::BACKGROUND_FILL,
             crate::style::Fields::RADIUS,
             crate::style::Fields::SHADOW,
             crate::style::Fields::PRESSED_DIM,
@@ -750,6 +751,7 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         if st[i].shadow > 0.0 {
             out.shadow(r, st[i].radius, st[i].shadow);
         }
+        crate::ops::fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         crate::ops::border(st, i, out);
         out.push_clip(r);

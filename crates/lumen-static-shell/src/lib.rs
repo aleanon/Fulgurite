@@ -334,6 +334,11 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// `layout` through [`LayoutCx::with_palette`]. `Palette::LIGHT` until
     /// set.
     palette: lumen_static::style::Palette,
+    /// The fill table as the program wrote it — M82/T82.3, kept so
+    /// [`Host::set_palette`] can re-resolve its role-named stops. What
+    /// paint reads is the resolved copy in the frame list
+    /// (`DisplayList::fills`), which [`Host::fills`] answers.
+    fill_table: Vec<lumen_static::style::Fill>,
     /// Where the sheet comes from — M32 (`docs/plan-program.md`).
     ///
     /// Set by [`program::Program::host`], and re-asked by
@@ -511,6 +516,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         let mut sc = core::mem::take(&mut self.shadow_scratch);
         // 1. The bounded widgets' own paint, before anything repairs it.
         shadow_live(self.app.tree(), table, &mut sc.live);
+        // M82/T82.3: the scratch list resolves `fill` against the frame's
+        // table (it survives `clear`, so this covers both signings and the
+        // whole-tree frame), or every filled node would differ by its
+        // gradient.
+        sc.list.set_fills(&self.list.fills);
         sign_leaves(self.app.tree(), table, &sc.live, &self.states, &mut sc.list, &mut sc.before);
 
         // 2. The whole-tree frame, into scratch.
@@ -643,7 +653,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// too, because the retained journal no longer describes the surface.
     #[cfg(panic = "unwind")]
     pub fn show(&mut self, list: DisplayList) {
+        // The fill table is the program's, not the frame's (M82/T82.3):
+        // kept across the swap, or the frames after a retry would paint
+        // every fill as nothing.
+        let fills = core::mem::take(&mut self.list.fills);
         self.list = list;
+        self.list.fills = fills;
         self.repaint_all();
     }
 
@@ -842,6 +857,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             #[cfg(feature = "agent")]
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
+            fill_table: Vec::new(),
             sheet_source: None,
             boot: None,
             sheet_key: None,
@@ -894,7 +910,52 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             &self.palette,
             &mut self.styles,
         );
+        // M82/T82.3: a fill's role-named stops resolve against the palette
+        // too. Marked by the line below whether or not they moved.
+        self.resolve_fills();
         self.invalidation.mark_all();
+    }
+
+    /// Install the program's fill table — M82/T82.3
+    /// (`docs/plan-paint-vocabulary.md`): entry `n - 1` is what a node
+    /// with `Style::background_fill == n` paints, through `ops::fill`.
+    ///
+    /// The table is kept as written and **resolved** against the palette
+    /// into the frame list ([`DisplayList::set_fills`]), so a role-named
+    /// stop follows [`Host::set_palette`]. A resolved table that differs
+    /// from the one in force marks the whole tree, as `set_palette` does:
+    /// under `Boundaries<256>` a clean subtree is skipped before paint, so
+    /// without the mark a changed entry would never reach the screen. The
+    /// same table again marks nothing. [`program::Program::fills`] calls
+    /// this from [`program::Program::host`], so a hot swap re-asks the new
+    /// build's table.
+    pub fn set_fills(&mut self, table: &[lumen_static::style::Fill]) {
+        self.fill_table.clear();
+        self.fill_table.extend_from_slice(table);
+        if self.resolve_fills() {
+            self.invalidation.mark_all();
+        }
+    }
+
+    /// The fill table as paint reads it: resolved against the current
+    /// palette — M82/T82.3. What the agent's journal is handed
+    /// (`TreeMut::with_fills`, and the dispatch view's `TreeRef::with_fills`),
+    /// so it signs what the frame paints.
+    pub fn fills(&self) -> &[lumen_static::style::Fill] {
+        &self.list.fills
+    }
+
+    /// Resolve the kept table into the frame list; whether it changed.
+    fn resolve_fills(&mut self) -> bool {
+        let palette = self.palette;
+        let same = self.list.fills.len() == self.fill_table.len()
+            && self.fill_table.iter().zip(&self.list.fills).all(|(f, r)| f.resolve(&palette) == *r);
+        if same {
+            return false;
+        }
+        self.list.fills.clear();
+        self.list.fills.extend(self.fill_table.iter().map(|f| f.resolve(&palette)));
+        true
     }
 
     /// The last stylesheet applied (M25/T25.2).

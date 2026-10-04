@@ -1072,6 +1072,9 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         .size(W, H)
         .page(palette().page)
         .palette(palette())
+        // M82/T82.3: the Card demo's ground, by index (`#d_card_a`'s
+        // `background_fill(1)`).
+        .fills(&FILLS)
         // **Keyed on the `Label` demo's switches** (M80/T80.2, T80.3): the
         // sheet is `stylesheet()` plus, while a switch is on, a 1.5× line
         // height or a one-line ellipsis on the demo's label — style fields
@@ -1079,6 +1082,22 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
         .shaping(SHAPING)
 }
+
+/// **The fill table** — M82/T82.3 (`docs/plan-paint-vocabulary.md`).
+/// Entry 0 is the Card demo's ground: a radial from the stage's own
+/// `raised` at the centre out to `track` at the farthest corner, both
+/// named by role, so it follows the palette as the rest of the chrome
+/// does (`Host::set_palette` re-resolves it). The card's background is
+/// transparent, because a fill paints *under* the flat background, and
+/// its corners round the fill by the card's radius.
+// ANCHOR: card_fill
+const FILLS: [lumen_static::style::Fill; 1] = [lumen_static::style::Fill::new(
+    lumen_static::display::Stops::two(Color(255, 255, 255, 255), Color(0xd5, 0xdb, 0xe4, 255)),
+    lumen_static::display::GradShape::Radial { center: [0.5, 0.5], radius: 1.0 },
+)
+.role(0, lumen_static::style::Role::Raised)
+.role(1, lumen_static::style::Role::Track)];
+// ANCHOR_END: card_fill
 
 /// How the showcase lays text out: `Complex` when built with its
 /// `shaping` feature, `Basic` otherwise (M81/T81.4). The window, `--shot`
@@ -1358,9 +1377,16 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // The card is sized so the stage can show it whole; its default
         // width is FILL, which is right for a card in a column and wrong
         // for one on a centring stage.
+        // M82/T82.3: and its ground is the program's fill 1 -- a rounded
+        // radial (`FILLS`), under a transparent background, with no drop
+        // shadow so its rounded corners show the stage behind them.
         StyleRule::new(
             Selector::Id("d_card_a"),
-            Patch::new().width(Length::Fixed(280.0)),
+            Patch::new()
+                .width(Length::Fixed(280.0))
+                .background(Color(0, 0, 0, 0))
+                .shadow(0.0)
+                .background_fill(1),
         ),
         StyleRule::new(Selector::Id("d_card_title"), Patch::new().font_weight(600.0)),
         // **Buttons need a ground.** `pressed_dim` and `hover_dim` scale
@@ -2361,6 +2387,7 @@ mod tests {
         use lumen_static_shell::text::{FontMetrics, FontStack};
         let mut failed = Vec::new();
         let mut checked = 0usize;
+        let mut on_gradient = 0usize;
         for (name, p, c) in [("light", SHOW_LIGHT, CHROME_LIGHT), ("dark", SHOW_DARK, CHROME_DARK)] {
             let mut h = host(0, false);
             h.set_palette(p);
@@ -2382,21 +2409,45 @@ mod tests {
                         continue;
                     }
                     let (cx, cy) = ((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0);
-                    let mut ground = p.surface;
-                    for prev in &h.list.cmds[..k] {
-                        match prev {
-                            Cmd::Rect { rect: r, color: f } | Cmd::RoundedRect { rect: r, color: f, .. }
-                                if f.3 > 0 && inside(r, cx, cy) =>
-                            {
-                                ground = over(*f, f.3, ground);
+                    // The ground at one point, composited in paint order.
+                    // **A gradient is a ground too** (M82/T82.3): the Card
+                    // demo's text sits on its fill, which is sampled where
+                    // the point falls, clamped into the gradient's rect.
+                    let ground_at = |x: f32| {
+                        let mut ground = p.surface;
+                        for prev in &h.list.cmds[..k] {
+                            match prev {
+                                Cmd::Rect { rect: r, color: f } | Cmd::RoundedRect { rect: r, color: f, .. }
+                                    if f.3 > 0 && inside(r, cx, cy) =>
+                                {
+                                    ground = over(*f, f.3, ground);
+                                }
+                                Cmd::Gradient { rect: r, stops, kind, geom, .. } if inside(r, cx, cy) => {
+                                    let axis = lumen_static::display::GradAxis::new(*r, *kind, *geom);
+                                    let f = stops.sample(axis.t(x.clamp(r[0], r[2]), cy));
+                                    ground = over(f, f.3, ground);
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
-                    let fg = over(*color, color.3, ground);
+                        ground
+                    };
                     let large = *size >= 24.0 || (*size >= 18.66 && *weight >= 700.0);
                     let bound = if large { 3.0 } else { 4.5 };
-                    let r = contrast(fg, ground);
+                    // The worst of the run's centre and its two ends: on a
+                    // flat ground all three agree, on a gradient they do not.
+                    let (r, fg, ground) = [cx, rect[0], rect[2]]
+                        .into_iter()
+                        .map(|x| {
+                            let ground = ground_at(x);
+                            let fg = over(*color, color.3, ground);
+                            (contrast(fg, ground), fg, ground)
+                        })
+                        .fold((f64::INFINITY, *color, p.surface), |a, b| if b.0 < a.0 { b } else { a });
+                    if h.list.cmds[..k].iter().any(|c| matches!(c, Cmd::Gradient { rect: g, .. } if inside(g, cx, cy))) {
+                        on_gradient += 1;
+                        println!("  {name} {}: {:?} on a gradient, worst {r:.2}:1 ({fg:?} on {ground:?})", entry.name, h.list.str_of(*text));
+                    }
                     checked += 1;
                     if r < bound {
                         failed.push(format!(
@@ -2413,6 +2464,11 @@ mod tests {
             println!("  {f}");
         }
         assert!(checked > 200, "setup: only {checked} text runs on the stage — the walk found no demos");
+        // M82/T82.3: the Card demo's title and button label, in both
+        // palettes, are judged on its fill — a walk that never met a
+        // gradient would judge them on the stage instead.
+        println!("  {on_gradient} text runs judged on a gradient (want >= 4: the Card's two, both palettes)");
+        assert!(on_gradient >= 4, "setup: the Card's text was not judged on its fill");
         assert!(failed.is_empty(), "{} demo text runs under their bound", failed.len());
     }
 

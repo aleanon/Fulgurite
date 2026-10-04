@@ -96,6 +96,14 @@ pub struct TreeRef<'a> {
     /// Same length as `table`, by construction: both come from `W` in
     /// [`TreeRef::of_root`].
     pub seeds: &'a [lumen_static::style::Seed],
+    /// The fill table the frame paints with, resolved — M82/T82.3.
+    /// Empty unless a host supplies it with [`TreeRef::with_fills`]
+    /// (`Host::fills`). The journal paints leaves into its own list, not
+    /// the host's, so without the table a node's `ops::fill` finds no
+    /// entry there and a fill change is a change the journal cannot see.
+    /// It records from [`TreeMut::as_ref`], which carries
+    /// [`TreeMut::fills`]; this view's copy is the dispatch side's.
+    pub fills: &'a [lumen_static::style::Fill],
 }
 
 /// Which indices `Node::node` actually answers *for*, into `out`.
@@ -205,6 +213,7 @@ impl<'a> TreeRef<'a> {
             sheet: &[],
             sheet_findings: &[],
             seeds: W::SEEDS,
+            fills: &[],
         }
     }
 
@@ -220,6 +229,15 @@ impl<'a> TreeRef<'a> {
         self.sheet_findings = findings;
         self
     }
+
+    /// The same view, carrying the frame's resolved fill table —
+    /// M82/T82.3, what `lumen_static_shell::Host::fills` returns. The
+    /// journal paints with it, so a leaf's fill is in its signature and a
+    /// container's resolved entry is folded into its own.
+    pub fn with_fills(mut self, fills: &'a [lumen_static::style::Fill]) -> Self {
+        self.fills = fills;
+        self
+    }
 }
 
 /// The same view at a frame boundary, where the host owns the tree
@@ -232,6 +250,10 @@ pub struct TreeMut<'a> {
     pub styles: &'a [lumen_static::Style],
     /// As [`TreeRef::seeds`] — M26/T26.2.
     pub seeds: &'a [lumen_static::style::Seed],
+    /// As [`TreeRef::fills`] — M82/T82.3. The journal records from
+    /// [`TreeMut::as_ref`], so this, not the dispatch view's, is the table
+    /// a frame's signatures are painted with.
+    pub fills: &'a [lumen_static::style::Fill],
 }
 
 impl<'a> TreeMut<'a> {
@@ -240,7 +262,14 @@ impl<'a> TreeMut<'a> {
         styles: &'a [lumen_static::Style],
         states: &'a [NodeState],
     ) -> Self {
-        TreeMut { root, table: W::SUB_TABLE, states, styles, seeds: W::SEEDS }
+        TreeMut { root, table: W::SUB_TABLE, states, styles, seeds: W::SEEDS, fills: &[] }
+    }
+
+    /// The same view, carrying the frame's resolved fill table —
+    /// M82/T82.3 ([`TreeRef::with_fills`]).
+    pub fn with_fills(mut self, fills: &'a [lumen_static::style::Fill]) -> Self {
+        self.fills = fills;
+        self
     }
 
     pub fn as_ref(&self) -> TreeRef<'_> {
@@ -252,6 +281,7 @@ impl<'a> TreeMut<'a> {
             sheet: &[],
             sheet_findings: &[],
             seeds: self.seeds,
+            fills: self.fills,
         }
     }
 }

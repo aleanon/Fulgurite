@@ -296,6 +296,11 @@ impl Painter for Checksum {
     fn push_clip(&mut self, rect: Rect) {
         self.r(5, rect, &[]);
     }
+    /// No fill table — M82/T82.3: a firmware has no `Program::fills`, so
+    /// `ops::fill` finds nothing and every node paints its flat `bg`.
+    fn fills(&self) -> &[lumen_static::style::Fill] {
+        &[]
+    }
     fn pop_clip(&mut self) {
         self.f32s(6, &[]);
     }
@@ -418,8 +423,16 @@ pub mod sizes {
     // `focus_ring`, `cursor` and `visible` fill one 4-byte slot exactly,
     // so even the lone `u8` cost four. Re-budgeted with a measurement
     // rather than by editing the number: `docs/results-embedded.md`.
-    const _: () = assert!(STYLE == 80, "Style grew; re-budget docs/results-embedded.md");
-    const _: () = assert!(PER_NODE_RAM == 164, "per-node RAM changed");
+    //
+    // **84 since M82/T82.3** — `Style` gained `background_fill: u8`, the
+    // fill table index. M80 had taken both spare tail bytes
+    // (`line_height`, `overflow`), so the lone byte cost a 4-byte slot:
+    // 81 of 84 bytes used (`tests/cursor.rs` prints the used-bytes
+    // mirror). `docs/plan-iced-roadmap.md` §2.1 budgeted it;
+    // `docs/results-embedded.md` M82/T82.3 records it. `NodeState`'s copy
+    // took its last spare byte and did not grow (84/84).
+    const _: () = assert!(STYLE == 84, "Style grew; re-budget docs/results-embedded.md");
+    const _: () = assert!(PER_NODE_RAM == 168, "per-node RAM changed");
     // 32 on a 32-bit target, 48 on a 64-bit host: this one is
     // deliberately checked only where the budget applies.
     #[cfg(target_pointer_width = "32")]

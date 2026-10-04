@@ -202,6 +202,7 @@ impl<const KIND: u8> Widget for Strip<KIND> {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::FONT_WEIGHT,
@@ -313,6 +314,7 @@ impl<const KIND: u8> Node for Strip<KIND> {
         if w <= 0.0 || h <= 0.0 || self.count == 0 {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         let each = self.each();
@@ -560,6 +562,7 @@ impl<L: Widget, A: Widget> AppBarTable<L, A> {
                 Fields::PADDING,
                 Fields::BACKGROUND,
                 Fields::BORDER,
+                Fields::BACKGROUND_FILL,
                 Fields::COLOR,
                 Fields::FONT_SIZE,
                 Fields::FONT_WEIGHT,
@@ -669,6 +672,7 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> Node for AppBar<S
         if s.shadow > 0.0 {
             out.shadow(r, s.radius, s.shadow);
         }
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
         // Vertically centred on the bar, not on the padding box: an app

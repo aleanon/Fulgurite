@@ -103,7 +103,8 @@ Accepted in v1:
   `spacing`, `align`, `visible`, `disabled` (M57/A16, added at the M56
   merge), `cursor`, `focus-ring`,
   `box-shadow`, `hover-dim`, `pressed-dim`, `line-height` (M80/T80.2),
-  `text-overflow` (M80/T80.3)),
+  `text-overflow` (M80/T80.3), `background-fill` (M82/T82.3, a fill
+  table index, a bare number)),
   values as the setter takes
   them (`px`, `#rrggbb[aa]`, keywords for `align`/`cursor`/`text-overflow`, `fixed(n)` /
   `fill` / `shrink` for lengths).

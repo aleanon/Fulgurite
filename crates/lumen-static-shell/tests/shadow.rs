@@ -101,6 +101,41 @@ fn a_correct_session_is_compared_and_quiet() {
     assert!(r.first.is_none(), "a correct session diverged: {:?}", r.first);
 }
 
+/// **A filled tree is compared and quiet** — M82/T82.3. The oracle paints
+/// its whole-tree frame into a scratch list of its own, which must
+/// resolve `NodeState::fill` against the frame's table: without it every
+/// filled node would differ from the frame by its gradient, and the
+/// oracle would fire on a correct session.
+#[test]
+fn a_filled_tree_is_compared_and_quiet() {
+    use lumen_static::display::{Color, GradShape, Stops};
+    use lumen_static::style::Fill;
+    const FILLS: [Fill; 1] = [Fill::new(
+        Stops { at: [0, 255, 0, 0], color: [Color(200, 0, 0, 255), Color(0, 0, 200, 255), Color(0, 0, 0, 0), Color(0, 0, 0, 0)], len: 2 },
+        GradShape::Radial { center: [0.5, 0.5], radius: 1.0 },
+    )];
+    let mut h = host();
+    h.set_fills(&FILLS);
+    h.set_stylesheet(&[Rule::new(Selector::Kind("button"), Patch::new().hover_dim(0.3).background_fill(1))]);
+    h.pump();
+    let i = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "go").unwrap();
+    let grads = h.list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Gradient { .. })).count();
+    println!("button fill byte {}, {grads} gradient(s) in the frame", h.states[i].fill);
+    assert_eq!((h.states[i].fill, grads), (1, 1), "setup: the button paints its fill");
+    let s = h.states[i];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+    h.post(Event::PointerMove { x, y });
+    h.pump();
+    h.click(x, y);
+    h.pump();
+    h.pump();
+    let r = h.shadow_report();
+    println!("compared {} frames, first divergence {:?}, presses {}", r.compared, r.first, h.app.tally.n);
+    assert!(r.compared > 0, "the shadow oracle never ran");
+    assert_eq!(h.app.tally.n, 1, "setup: the click did not land");
+    assert!(r.first.is_none(), "a correct filled session diverged: {:?}", r.first);
+}
+
 // ---------------------------------------------------------------------
 // M41/T41.0 (`docs/plan-boundaries-repair.md` §1.3, R1-F6): the oracle
 // must be able to name a divergence that lives in a widget's own state.

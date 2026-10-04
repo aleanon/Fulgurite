@@ -655,6 +655,7 @@ impl<S: TextBuffer> Widget for TextInput<S> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -812,6 +813,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let s = &st[i];
         let r = rect_of(s);
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
 

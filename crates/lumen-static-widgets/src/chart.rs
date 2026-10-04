@@ -254,6 +254,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::VISIBLE,
                 lumen_static::style::Fields::BACKGROUND,
                 lumen_static::style::Fields::BORDER,
+                lumen_static::style::Fields::BACKGROUND_FILL,
                 lumen_static::style::Fields::RADIUS,
                 lumen_static::style::Fields::CURSOR,
                 lumen_static::style::Fields::PRESSED_DIM,
@@ -266,6 +267,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::COLOR,
                 lumen_static::style::Fields::BACKGROUND,
                 lumen_static::style::Fields::BORDER,
+                lumen_static::style::Fields::BACKGROUND_FILL,
                 lumen_static::style::Fields::RADIUS,
                 lumen_static::style::Fields::FONT_SIZE,
                 lumen_static::style::Fields::CURSOR,
@@ -340,6 +342,7 @@ impl<const KIND: u8> Node for Chart<KIND> {
         if w <= 0.0 || h <= 0.0 || self.data.is_empty() {
             return;
         }
+        lumen_static::ops::fill(st, i, out);
         if s.bg.3 > 0 {
             out.rounded_rect(r, s.bg, s.radius);
             lumen_static::ops::border(st, i, out);

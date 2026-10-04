@@ -18,6 +18,10 @@ struct Echo {
 }
 
 impl Painter for Echo {
+    // M82/T82.3: a leaf with no fill table.
+    fn fills(&self) -> &[lumen_static::style::Fill] {
+        &[]
+    }
     fn rect(&mut self, r: [f32; 4], c: Color) {
         self.calls.push(format!("rect {r:?} {c:?}"));
     }

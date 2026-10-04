@@ -243,6 +243,7 @@ impl<W: Widget> ScrollTable<W> {
                 lumen_static::style::Fields::VISIBLE,
                 lumen_static::style::Fields::BACKGROUND,
                 lumen_static::style::Fields::BORDER,
+                lumen_static::style::Fields::BACKGROUND_FILL,
                 lumen_static::style::Fields::RADIUS,
                 lumen_static::style::Fields::PRESSED_DIM,
                 lumen_static::style::Fields::HOVER_DIM,
@@ -344,6 +345,7 @@ impl<W: Widget> Node for ScrollView<W> {
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
+        lumen_static::ops::fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         lumen_static::ops::border(st, i, out);
         // The scoped containment invariant: content may extend past the

@@ -322,6 +322,16 @@ pub struct NodeState {
     /// byte to `Painter::text_spaced`. One of the two spare tail bytes, so
     /// `NodeState` stays 84 (`tests/cursor.rs`); one is left.
     pub line_height: u8,
+    /// `Style::background_fill`, resolved — M82/T82.3: `0` for none, `n`
+    /// for entry `n - 1` of the fill table the painter answers
+    /// ([`crate::Painter::fills`]). Stamped by
+    /// [`crate::ops::record_painted`] and read by [`crate::ops::fill`],
+    /// for the reason `bg` is here: `paint` has no `&[Style]`. An index
+    /// and not the stops, so what reaches retention and the journal is
+    /// the resolved content `ops::fill` paints, never this byte. The last
+    /// spare tail byte: `NodeState` stays 84 (`tests/cursor.rs`), 84 of
+    /// 84 used.
+    pub fill: u8,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

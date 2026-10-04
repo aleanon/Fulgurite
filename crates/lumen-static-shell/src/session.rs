@@ -819,7 +819,10 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
                     atlas_give_ups: t.atlas_give_ups,
                 };
                 let scale = h.scale();
-                let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
+                // M82/T82.3: the journal paints leaves into its own list,
+                // so it is handed the table the frame resolved.
+                let mut tree = lumen_static_agent::TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states)
+                    .with_fills(&h.list.fills);
                 // The measure the host laid out with, so the audit's
                 // re-layout leaves every widget as the frame did (M57/A3).
                 match metrics {
@@ -1000,6 +1003,9 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
     fn tree(&self) -> lumen_static_agent::TreeRef<'_> {
         lumen_static_agent::TreeRef::of_root(self.host.app.tree(), &self.host.styles, &self.host.states)
             .with_sheet(self.host.stylesheet(), self.host.sheet_findings())
+            // M82/T82.3: the journal paints into its own list, so it is
+            // handed the table the frame resolved.
+            .with_fills(self.host.fills())
     }
 
     fn enqueue(&mut self, ev: Event) {

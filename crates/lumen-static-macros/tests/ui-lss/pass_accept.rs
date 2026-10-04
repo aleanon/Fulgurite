@@ -45,7 +45,7 @@ fn by_hand(loud: bool) -> Vec<Rule> {
         ),
         Rule::new(
             Selector::Class("note"),
-            Patch::new().color_role(Role::Muted).background_role(Role::Surface).border_color_role(Role::Focus),
+            Patch::new().color_role(Role::Muted).background_role(Role::Surface).border_color_role(Role::Focus).background_fill(1),
         ),
         Rule::new(Selector::Id("title"), boxy),
         Rule::new(Selector::Id("badge"), boxy),

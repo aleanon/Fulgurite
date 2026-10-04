@@ -302,6 +302,9 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     pub page: Color,
     /// The palette a stylesheet's roles resolve against (M25/T25.11).
     pub palette: Palette,
+    /// The fill table a node's `Style::background_fill` indexes —
+    /// M82/T82.3 ([`Program::fills`]).
+    pub fills: &'static [lumen_static::style::Fill],
     pub backend: Prefer,
     /// Where `Cmd::Image` gets its pixels. Moved into the window's
     /// `Config` by `run`, which hands it to each backend it makes and
@@ -360,6 +363,7 @@ where
         height: 480,
         page: Color(255, 255, 255, 255),
         palette: Palette::LIGHT,
+        fills: &[],
         backend: Prefer::Auto,
         images: None,
         agent: None,
@@ -390,6 +394,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             height: self.height,
             page: self.page,
             palette: self.palette,
+            fills: self.fills,
             backend: self.backend,
             images: self.images,
             agent: self.agent,
@@ -550,6 +555,21 @@ impl<A: App, I: Invalidation> Program<A, I> {
         self
     }
 
+    /// **The fill table** — M82/T82.3 (`docs/plan-paint-vocabulary.md`):
+    /// a node whose `Style::background_fill` is `n` paints entry `n - 1`
+    /// as a gradient under its background. Role-named stops
+    /// ([`Fill::role`](lumen_static::style::Fill::role)) resolve against
+    /// the palette and follow `Host::set_palette`.
+    ///
+    /// Consumed on the host side, by [`Program::host`] through
+    /// [`Host::set_fills`], so every headless frame paints it and a hot
+    /// swap re-asks the new build's table; never through the window's
+    /// once-read `Config`.
+    pub fn fills(mut self, table: &'static [lumen_static::style::Fill]) -> Self {
+        self.fills = table;
+        self
+    }
+
     pub fn backend(mut self, prefer: Prefer) -> Self {
         self.backend = prefer;
         self
@@ -624,6 +644,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
         let mut host = Host::new(app, self.width, self.height);
         host.set_boot(Rc::clone(&self.boot));
         host.set_palette(self.palette);
+        host.set_fills(self.fills);
         if let Some(sheet) = &self.sheet {
             host.set_sheet_source(Rc::clone(sheet));
         }

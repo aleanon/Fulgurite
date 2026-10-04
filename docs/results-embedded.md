@@ -45,12 +45,12 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **30,378 B** (29.7 KB) | **pass**, at 37.1% of budget; re-measured at M82/T82.2 (2026-10-04; the four-binary table below, +136 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **30,534 B** (29.8 KB) | **pass**, at 37.3% of budget; re-measured at M82/T82.3 (2026-10-04; the four-binary table below, +156 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,316 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M81/T81.5, +40 B (panic locations of the `caret` module) |
-| Total (`size -A`) | ≤ 512 KB flash | **43,759 B** (42.7 KB) | 8.3% of the part; re-measured at M81/T81.5 |
-| RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
+| `.rodata` | — | 13,336 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M82/T82.3, +20 B (the wider `Style` in the fixture's defaults) |
+| Total (`size -A`) | ≤ 512 KB flash | **44,087 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.3 (it read 43,911 B at T82.2's head, which had not rewritten it) |
+| RAM, 100 nodes | ≤ 24 KB | **16.4 KB** state + style | **pass**; measured at M82/T82.3 (2026-10-04), below — `Style` 84 B, `NodeState` 84 B |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
@@ -789,6 +789,30 @@ its seed does not declare `Fields::OVERFLOW` (so the sheet lint reports an
 tier through `fit::cut`, by `char` where there is no allocator, and is not
 in any firmware.
 
+### RAM: `Style` 80 → 84 B, `NodeState` stays 84 — M82/T82.3
+
+| | before | after | Δ |
+|---|---:|---:|---:|
+| `Style` | 80 B (80 used) | **84 B** (81 used) | +4 |
+| `NodeState` | 84 B (83 used) | **84 B** (84 used) | 0 |
+| **per node** (`PER_NODE_RAM`) | 164 B | **168 B** | **+4 (+2.4%)** |
+| 100 nodes | 16.0 KB | **16.4 KB** | +0.4 KB, against 24 KB |
+| `Ui`, the fixture's widget structs, on the target | 1,216 B | **1,216 B** | 0 |
+
+`Style.background_fill: u8`, the fill table index
+(`docs/plan-paint-vocabulary.md`), needs one byte in `Style` and its paint
+copy one in `NodeState`. M80 had taken both of `Style`'s spare tail bytes
+(`line_height`, `overflow`), so the byte cost a 4-byte slot; it took
+`NodeState`'s last spare byte, which did not grow. That is the
+re-budget `docs/plan-iced-roadmap.md` §2.1 assigned this task, and the
+figures are the plan's (81/84 and 84/84). `tests/cursor.rs` asserts both
+sizes and, beside them, the **used** bytes (the field sizes summed, with
+every field destructured by name), because a second `u8` beside this one
+would still pad to 84 and `size_of` alone would not see it; the
+injection reads 82 against 81. `fixtures/embedded/src/lib.rs` asserts
+`STYLE == 84` and `PER_NODE_RAM == 168` on the target; `Ui` holds no
+`Style`, and its assertion (1,216) held on the thumb build unchanged.
+
 ### `Selectable` costs the firmware nothing — M80/T80.4
 
 `just firmware-delta 1cd123e firmware=0 firmware_interactive=0
@@ -960,15 +984,35 @@ corner instead of a `rect`, and takes the shape and corner it ignores;
 on the paint-only binary the call to `Checksum`'s `rounded_rect` is
 inlined into it). Printed by `just firmware-delta dfb72c5
 firmware_interactive=400`, the task's bound, with `firmware_interactive`
-at 18,804 B of headroom.
+at 18,804 B of headroom. Rewritten by M82/T82.3 (`Style.background_fill`
+and `ops::fill` at every border site): **+156 B** on `firmware`, **+288 B**
+on `firmware_interactive`, **+220 B** on the other two, `.rodata` +20–32;
+the attribution is its own section below. Printed by `just firmware-delta
+22ce8f8` (K4's default, `firmware_interactive=1000`), with
+`firmware_interactive` at 18,516 B of headroom.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 30,378 | 37.1% | 51,542 | 13,316 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 |
-| `firmware_interactive` | **63,116** | **77.0%** | **18,804** | 21,846 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** |
-| `firmware_bind` | 33,718 | 41.2% | 48,202 | 13,920 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 |
-| `firmware_cascade` | 32,398 | 39.5% | 49,522 | 14,092 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 30,534 | 37.3% | 51,386 | 13,336 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 |
+| `firmware_interactive` | **63,404** | **77.4%** | **18,516** | 21,878 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** |
+| `firmware_bind` | 33,938 | 41.4% | 47,982 | 13,940 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 |
+| `firmware_cascade` | 32,618 | 39.8% | 49,302 | 14,124 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 |
+
+**T82.3's cost, from a symbol diff of the two builds** (attributions, not
+a partition): `ops::fill` **+312** in all four — the index check, the
+`Painter::fills` lookup through the vtable, the entry's copy, the
+disabled fade and the `gradient` call; its call sites in `Label`,
+`Button` and `TextInput` paint about **+32–40** each and the derive's
+container paint +16; on the two binaries that cascade a sheet
+`cascade_range` **+66** (`Patch::apply_to`'s new branch); `Checksum::fills`
++10; every `type_defaults` +4–12 (the wider `Style`); and about −150 in
+`_start` and −30 to −76 in the fixture's derived `layout`/`place` from
+code moving with the larger `Style` copies. `.rodata` +20 (the paint-only
+and bind binaries) and +32 (the two that also carry the `Patch` table).
+**Neither the call sites nor `ops::fill`'s body is in D3's or D6's list**
+(D6 accepts the `fills` getter, which is the 10 B): they are reported to
+the owner here, under K4's 1,000 B cap at 288 B.
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

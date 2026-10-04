@@ -33,6 +33,9 @@ struct Ui {
     /// (M80/T80.2): its label is one centred line.
     #[widget_id("go")]
     go: lumen_static_widgets::ops::Button<(), alloc::string::String>,
+    /// A surface that paints a fill under its background (M82/T82.3).
+    #[widget_id("card")]
+    card: lumen_static_widgets::surface::Card<Fixed>,
 }
 
 fn bind(_: &mut Fixed, _: usize) {}
@@ -178,5 +181,24 @@ fn a_line_height_on_a_button_is_reported_and_on_a_label_is_not() {
         found,
         vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::LINE_HEIGHT) }],
         "a line height on a `Button` is a no-op; on a `Label` it is not"
+    );
+}
+
+/// **A fill on a node that does not paint one is reported** — M82/T82.3.
+/// `Card` calls `ops::fill` and declares `Fields::BACKGROUND_FILL`; a
+/// `CheckBox` draws a body and a mark, calls neither `ops::border` nor
+/// `ops::fill`, and does not, so the same rule on it is a no-op the lint
+/// names.
+#[test]
+fn a_fill_on_a_checkbox_is_reported_and_on_a_card_is_not() {
+    let on_card = lint(&[Rule::new(Selector::Id("card"), Patch::new().background_fill(1))]);
+    println!("on the card: {} finding(s) (bound 0)", on_card.len());
+    assert!(on_card.is_empty(), "a fill on a `Card` is read: {on_card:?}");
+    let found = lint(&[Rule::new(Selector::Id("agree"), Patch::new().background_fill(1))]);
+    println!("on the checkbox: {found:?}");
+    assert_eq!(
+        found,
+        vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::BACKGROUND_FILL) }],
+        "a fill on a `CheckBox` is a no-op the lint must name"
     );
 }

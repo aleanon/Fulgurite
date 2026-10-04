@@ -101,6 +101,40 @@ pub fn border(st: &[NodeState], i: usize, out: &mut dyn crate::Painter) {
     out.stroked_rect(rect_of(s), s.border_color, s.radius, s.border_width as f32);
 }
 
+/// Draw `i`'s fill, if it has one — M82/T82.3
+/// (`docs/plan-paint-vocabulary.md`).
+///
+/// [`NodeState::fill`] is an index into the table the painter answers
+/// ([`crate::Painter::fills`]): `0` draws nothing, `n` draws entry
+/// `n - 1` as an ordinary inline [`crate::Painter::gradient`] over the
+/// node's box, rounded by its radius. So what reaches `Recording`,
+/// `hash_into`, the journal and the window is the resolved stops, never
+/// the index (`docs/plan-iced-roadmap.md` §2.9). An index past the table's
+/// end draws nothing, which is also what a painter with no table (`&[]`,
+/// the firmware's `Checksum`) does: it paints the flat `bg` alone.
+///
+/// Called at every one of [`border`]'s call sites, **before** the node's
+/// flat `bg`, so the fill shows where the background is transparent and a
+/// background colour still covers it; `scripts/check_fill_paint.sh` keeps
+/// the two call sites paired. A disabled node's stops fade to 40% alpha,
+/// as [`record_painted`] fades `bg` (M57/A16).
+pub fn fill(st: &[NodeState], i: usize, out: &mut dyn crate::Painter) {
+    let s = &st[i];
+    if s.fill == 0 {
+        return;
+    }
+    let Some(f) = out.fills().get(s.fill as usize - 1).copied() else {
+        return;
+    };
+    let mut stops = f.stops;
+    if s.disabled {
+        for c in stops.color.iter_mut() {
+            c.3 = (c.3 as u16 * 2 / 5) as u8;
+        }
+    }
+    out.gradient(rect_of(s), stops, f.shape, s.radius);
+}
+
 pub fn rect_of(st: &NodeState) -> crate::display::Rect {
     [st.pos.x, st.pos.y, st.pos.x + st.size.w, st.pos.y + st.size.h]
 }
@@ -378,6 +412,8 @@ pub fn record_painted(
         st[i].font_size = style.font_size;
         st[i].font_weight = style.font_weight;
         st[i].line_height = style.line_height;
+        // M82/T82.3: the index; `ops::fill` fades the stops it resolves.
+        st[i].fill = style.background_fill;
         st[i].shadow = style.shadow;
         st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
         return record(st, i, limits, size);
@@ -396,6 +432,8 @@ pub fn record_painted(
     st[i].font_weight = style.font_weight;
     // M80/T80.2: the line pitch, for a `Label`'s `text_spaced`.
     st[i].line_height = style.line_height;
+    // M82/T82.3: the fill table index, for `ops::fill` at paint.
+    st[i].fill = style.background_fill;
     st[i].shadow = style.shadow;
     st[i].pad = (style.padding.left, style.padding.top, style.padding.right, style.padding.bottom);
     record(st, i, limits, size)

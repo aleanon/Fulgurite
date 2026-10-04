@@ -18,7 +18,7 @@ use lumen_static::cx::LayoutCx;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{EventCtx, Handlers, NodeSel};
-use lumen_static::ops::{border, record_painted, rect_of, resolve_self};
+use lumen_static::ops::{border, fill, record_painted, rect_of, resolve_self};
 use lumen_static::style::{Length, Seed, Style};
 use lumen_static::text::{Dirty, MeasureKey, Measured, TextStorage};
 use lumen_static::widget::{Node, Widget};
@@ -271,6 +271,7 @@ impl<S: TextStorage> Label<S> {
     #[inline]
     pub(crate) fn paint_ground(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
+        fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         border(st, i, out);
     }
@@ -356,6 +357,7 @@ impl<S: TextStorage> Widget for Label<S> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -692,6 +694,7 @@ impl<S: 'static, T: TextStorage, const ROW: bool> Widget for Button<S, T, ROW> {
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,
+            lumen_static::style::Fields::BACKGROUND_FILL,
             lumen_static::style::Fields::RADIUS,
             lumen_static::style::Fields::FONT_SIZE,
             lumen_static::style::Fields::FONT_WEIGHT,
@@ -729,6 +732,7 @@ impl<S: 'static, T: TextStorage, const ROW: bool> Node for Button<S, T, ROW> {
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
         let r = rect_of(&st[i]);
+        fill(st, i, out);
         out.rounded_rect(r, st[i].bg, st[i].radius);
         border(st, i, out);
         // Centre the *measured* line box in the button. The line box,

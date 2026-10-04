@@ -411,6 +411,36 @@ use lumen_static_widgets::{TextInput};
     }
 }
 
+/// **A deferred node's fill paints in phase 2** — M82/T82.3. The fill
+/// table reaches `ops::fill` through `Painter::fills`, and a deferred
+/// subtree is repainted through `Deferring`, so a `Deferring` that
+/// answered `&[]` (or an inherited default, were `fills` provided) would
+/// drop every fill inside a popup while the inline frame kept them.
+#[test]
+fn a_deferred_nodes_fill_paints_in_phase_two() {
+    use lumen_static::display::{Color, GradShape, Stops};
+    use lumen_static::style::Fill;
+    let (ui, _, mut st) = build(true);
+    let menu = lumen_static::style::index_of_wid(Ui::SUB_TABLE, "pop").expect("the popup") + 1;
+    st[menu].fill = 1;
+    println!("menu node {menu}: size {:?}, fill {}", st[menu].size, st[menu].fill);
+    assert!(st[menu].size.w > 0.0 && st[menu].size.h > 0.0, "setup: the popup's content is laid out");
+    let mut list = DisplayList::new();
+    list.set_fills(&[Fill::new(
+        Stops::two(Color(200, 0, 0, 255), Color(0, 0, 200, 255)),
+        GradShape::Linear { angle: 0.0 },
+    )]);
+    let mut ov: Overlays<4> = Overlays::default();
+    pass::paint_overlaid(&ui, &st, &mut list, &mut ov);
+    assert_eq!(ov.len(), 1, "setup: the popup deferred itself");
+    let c = cmds(&list);
+    let last_pop = c.iter().rposition(|(k, _)| *k == "pop").expect("the scroller clipped");
+    let grads: Vec<usize> = c.iter().enumerate().filter(|(_, (k, _))| *k == "grad").map(|(n, _)| n).collect();
+    println!("gradients at {grads:?} (want 1, after the scroller's last pop at {last_pop})");
+    assert_eq!(grads.len(), 1, "the deferred node's fill did not paint in phase 2");
+    assert!(grads[0] > last_pop, "the fill painted inline, not in the overlay phase");
+}
+
 /// **`Deferring` must forward every `Painter` method, including the
 /// provided ones** — found 2026-09-10 by the M18 spec review.
 ///
@@ -494,6 +524,10 @@ fn deferring_forwards_every_command() {
     // while the test looks thorough.
     struct Surfaced(Option<lumen_static::display::Rect>);
     impl Painter for Surfaced {
+        // M82/T82.3: a leaf with no fill table.
+        fn fills(&self) -> &[lumen_static::style::Fill] {
+            &[]
+        }
         fn rect(&mut self, _: lumen_static::display::Rect, _: Color) {}
         fn text_spaced(
             &mut self,
