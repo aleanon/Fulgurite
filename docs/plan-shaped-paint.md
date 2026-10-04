@@ -681,6 +681,37 @@ rather than as a display-list command: see the first decision.*
   outside the id (the size passed in, the face the weight picks, phase 0)
   and that distinct ids and distinct keys agree in number; the id is made
   from a key inside `place_run_into`, so the trip is both ways.
+- T81.2: **one test in `tests/shaping.rs` asserted the defect.**
+  `a_mixed_line_produces_runs_in_both_directions` required the reported
+  bytes to go backwards somewhere, which is the visual order this task
+  removes. "Stays green on the rebuilt `ComplexText`" held for the other
+  eight; that one now asserts what it was for in source-order terms:
+  bytes rising, x falling somewhere, both `rtl` values present.
+- T81.2: **the first build was over the 64 B bound, and not by the
+  `bool`.** `BakedFace::shape` grew 8 B; the literal `Cluster { ..,
+  rtl: false }` in `InlineClusters::default` took `TextInput::default`
+  out of line at 602 B (+150 B on `firmware`). Through a `const` element
+  it is a clear again, and the net is **−220 B** (`docs/results-embedded.md`
+  M81/T81.2). That saving hides the planned injection from a comparison
+  against the parent (−48 B with it on `firmware_interactive`), so the
+  injection was run against a dangling snapshot commit of this task's
+  tree, where it prints +192 B and fails all four by name.
+- T81.2: **the corpus has no paragraph and no word wider than 80 px at
+  16 px.** The wrap gate joins the containment corpus's twelve strings
+  into one paragraph; its 80..400 sweep breaks only at opportunities, so
+  a 40 px case follows that breaks inside five words and exercises the
+  in-word check.
+- T81.2: **one committed face**, so the fallback gate's "face 0 lacks
+  Hebrew" is the source's rule (it answers face 2 for the Hebrew block),
+  with the pinned face behind all three ids; only the key's face can
+  tell them apart, which is what the gate reads.
+- T81.2: details the decisions left open, now the shaper's rustdoc: a
+  `ShapedRun` also carries `ShapedLine`s (byte range, width, base
+  direction), which T81.3's measure and ellipsis need; the trailing
+  insertion point sits at the paragraph direction's end of the last line
+  (x 0 for a right-to-left paragraph, lines being laid out from 0); a
+  soft-wrapped line's width leaves out the whitespace it ends in; a line
+  separator is shaped as a space, drawn as nothing and takes no width.
 
 **What the review found (M81).**
 

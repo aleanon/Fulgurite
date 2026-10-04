@@ -46,10 +46,10 @@ impl TextMeasure for Prop {
     fn shape(&mut self, t: &str, size: f32, weight: f32, max_w: f32, sink: &mut dyn GlyphSink) -> Size {
         let mut x = 0.0;
         for (b, c) in t.char_indices() {
-            sink.cluster(Cluster { byte: b as u32, x, line: 0 });
+            sink.cluster(Cluster { byte: b as u32, x, line: 0, rtl: false });
             x += advance(c, size);
         }
-        sink.cluster(Cluster { byte: t.len() as u32, x, line: 0 });
+        sink.cluster(Cluster { byte: t.len() as u32, x, line: 0, rtl: false });
         self.measure_weighted(t, size, weight, max_w)
     }
 }

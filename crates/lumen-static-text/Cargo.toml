@@ -25,13 +25,20 @@ name = "lumen_static_text"
 # docs/plan-iced-roadmap.md K2), after M81/T81.1 moved the shell to the
 # dev-dependencies below: **21** packages (27 with the shell still a
 # normal dependency), against the core's 7. The 2026-09-07 figures
-# counted differently and are kept as measured.
+# counted differently and are kept as measured. **22** since M81/T81.2
+# added `unicode-linebreak` (no dependencies of its own), by the same
+# command.
 [dependencies]
 lumen-static = { path = "../lumen-static" }
 # Shaping proper: cluster-correct segmentation, Arabic joining, Indic
 # reordering. `unicode-bidi` orders the runs; rustybuzz shapes each.
 rustybuzz = "0.20"
 unicode-bidi = "0.3"
+# UAX #14 line-break opportunities for `Shaper`'s greedy breaker
+# (M81/T81.2, docs/plan-shaped-paint.md "The shaper"): one crate, no
+# dependencies of its own. K81e's fallback, if the feature's price
+# fires, is breaking at whitespace instead.
+unicode-linebreak = "0.1"
 
 # M81/T81.1 (D1 a, docs/plan-shaped-paint.md): the shell is a DEV
 # dependency only. `src/` names `lumen_static` alone; the shell serves

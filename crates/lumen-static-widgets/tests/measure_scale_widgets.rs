@@ -35,9 +35,9 @@ impl TextMeasure for HintedClusters {
     fn shape(&mut self, t: &str, size: f32, weight: f32, max_w: f32, sink: &mut dyn GlyphSink) -> Size {
         let k = self.0.scale;
         for (n, (b, _)) in t.char_indices().enumerate() {
-            sink.cluster(Cluster { byte: b as u32, x: n as f32 * size + k, line: 0 });
+            sink.cluster(Cluster { byte: b as u32, x: n as f32 * size + k, line: 0, rtl: false });
         }
-        sink.cluster(Cluster { byte: t.len() as u32, x: t.chars().count() as f32 * size + k, line: 0 });
+        sink.cluster(Cluster { byte: t.len() as u32, x: t.chars().count() as f32 * size + k, line: 0, rtl: false });
         self.0.measure_weighted(t, size, weight, max_w)
     }
 }

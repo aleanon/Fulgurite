@@ -147,6 +147,7 @@ fn up_and_down_move_by_geometry_when_the_measurer_reports_lines() {
                     byte: b as u32,
                     x: (i % per) as f32 * 8.0,
                     line: (i / per) as u16,
+                    rtl: false,
                 });
             }
             self.measure(text, 16.0, max_w)

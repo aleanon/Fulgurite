@@ -22,15 +22,35 @@ use crate::desc::Size;
 /// test may land on. For Latin they coincide; for a ligature or a
 /// combining sequence one glyph carries several source bytes and only
 /// the boundaries are addressable.
+///
+/// **The contract, from M81/T81.2** (`docs/plan-shaped-paint.md`):
+/// clusters arrive in **source order** (rising [`Cluster::byte`]), and
+/// [`Cluster::x`] is the cluster's **leading** edge — the edge reading
+/// starts from, which is the left edge in a left-to-right run and the
+/// right edge in a right-to-left one, as [`Cluster::rtl`] says. So in a
+/// right-to-left run x *falls* as the byte rises. `ComplexText` used to
+/// report visual order with left edges, which broke "in source order";
+/// every measurer here now keeps it. A measurer that shapes no
+/// right-to-left text (`BakedFace`, `FontMetrics`) reports `rtl: false`
+/// throughout, and for it nothing changed.
+///
+/// 12 bytes: `rtl` takes a byte of what was padding after `line`
+/// (`docs/results-embedded.md`, M81/T81.2, prints the size).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cluster {
     /// Byte offset into the source string. Always on a `char` boundary.
     pub byte: u32,
-    /// X from the run's origin, in px — the left edge of the cluster.
+    /// X from the run's origin, in px — the cluster's leading edge: its
+    /// left edge when `rtl` is clear, its right edge when it is set.
     pub x: f32,
     /// Which line the cluster landed on, 0-based. Multiply by
     /// [`TextMeasure::line_height`] for its y.
     pub line: u16,
+    /// Whether the cluster sits in a right-to-left run, so `x` is its
+    /// right edge and its trailing edge lies to the left. The trailing
+    /// insertion point (`byte` = the text's length) carries the
+    /// paragraph's direction.
+    pub rtl: bool,
 }
 
 /// Receives cluster boundaries from [`TextMeasure::shape`].
@@ -43,7 +63,9 @@ pub struct Cluster {
 /// says so through [`GlyphSink::is_full`] so a caller can tell a
 /// truncated run from a short one.
 pub trait GlyphSink {
-    /// Record one cluster boundary. Called in source order.
+    /// Record one cluster boundary. Called in source order, with `x` the
+    /// leading edge ([`Cluster`]'s contract), whatever the run's
+    /// direction.
     fn cluster(&mut self, c: Cluster);
 
     /// Whether further clusters would be dropped. `shape` checks this

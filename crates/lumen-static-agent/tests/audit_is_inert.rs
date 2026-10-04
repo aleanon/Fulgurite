@@ -202,7 +202,7 @@ mod bounded {
             let per_line = if max_w.is_finite() && max_w > 0.0 { (max_w / adv).floor().max(1.0) as usize } else { usize::MAX };
             for b in 0..=text.len() {
                 let (line, col) = (b / per_line, b % per_line);
-                sink.cluster(lumen_static::cx::Cluster { byte: b as u32, x: col as f32 * adv, line: line as u16 });
+                sink.cluster(lumen_static::cx::Cluster { byte: b as u32, x: col as f32 * adv, line: line as u16, rtl: false });
             }
             self.measure_weighted(text, size, weight, max_w)
         }

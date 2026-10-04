@@ -169,7 +169,7 @@ impl TextMeasure for Lined {
     ) -> Size {
         let mut line = 0u16;
         for (b, ch) in text.char_indices() {
-            sink.cluster(lumen_static::Cluster { byte: b as u32, x: 0.0, line });
+            sink.cluster(lumen_static::Cluster { byte: b as u32, x: 0.0, line, rtl: false });
             if ch == '\n' {
                 line += 1;
             }

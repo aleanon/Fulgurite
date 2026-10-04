@@ -41,6 +41,7 @@ impl lumen_static::TextMeasure for Wrapping {
                 byte: b as u32,
                 x: (i % per) as f32 * 8.0,
                 line: (i / per) as u16,
+                rtl: false,
             });
         }
         self.measure(text, 16.0, max_w)

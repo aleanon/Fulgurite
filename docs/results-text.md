@@ -664,3 +664,30 @@ crate, rustybuzz and five unicode tables; ttf-parser is already there);
 the text crate 21 (27 while the shell was a normal dependency). The
 stripped showcase delta is K81e's, measured in T81.3 when the feature
 has code.
+
+## M81/T81.2 — `Shaper`, `FaceSource`, and clusters in source order (2026-10-04)
+
+`lumen-static-text` gains `Shaper` over a `FaceSource` (bidi levels only
+when a character can be right to left, runs by direction and face,
+rustybuzz per run in logical order, greedy UAX #14 breaking, each line
+reordered visually) and its output `ShapedRun` (`ShapedGlyph`s keyed by
+the core's `GlyphKey`, `Cluster`s, `ShapedLine`s). `ComplexText` is a
+single-face `FaceSource` over it: it now wraps to `max_w` and reports
+clusters in source order with leading-edge `x`. The core's `Cluster`
+gains `rtl`, set by every constructor. Nothing paints from the shaper
+yet (T81.3). Gates in `crates/lumen-static-text/tests/shaper.rs`, pinned
+face, 16 px:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| Hebrew source order | `שלום`'s clusters (byte, leading x, rtl) | (0, **35.41**), (2, 24.07), (4, 14.98), (6, 10.62), all `rtl`; the first equals the run's width | byte rises, x strictly falls, `rtl` set | lines laid out in logical order (an RTL run's clusters not reversed): x **11.34, 20.43, 24.79, 35.41**, "Hebrew leading edges do not fall" |
+| — accept, same test | `Latin` | x 0, 8.91, 18.72, 24.99, 29.44, 39.58, `rtl` clear | x strictly rises | — |
+| wrap, 80..400 px step 8 | the containment corpus's twelve strings as one paragraph | 8 lines at 80 px (setup > 1); worst overshoot **−0.578 px** (at 88); 101 breaks at an opportunity, 0 inside a word | ≤ 0.5 px; every break at a UAX #14 opportunity or inside a word wider than `max_w` | the breaker ignores `max_w`: **1 line** at 80 px, overshoot **446.0 px** |
+| — in-word breaks, 40 px | the same paragraph | 15 lines, worst −0.430 px; 9 at an opportunity, **5** inside `Settings` (65.6 px), `jejunj`, `POSITIVE`, `gypsy`, `Mahal` | the same; setup in-word > 0 | — |
+| weight and fallback | faces per char, a source with face 0 regular, 1 bold, 2 Hebrew | `a`, `b` → 0; `ש ל ו ם` → **2**; `ab` at 700 → **1, 1** | Hebrew 2, Latin 0, bold 1 | the shaper ignores the source's face: "Hebrew 'ש' (U+05E9) was keyed face 0" |
+| `size_of::<Cluster>()` | bytes | **12** | 12 | — (accept direction at HEAD) |
+| firmware | `.text` Δ against `cdaf0ec`, four binaries | **−220 / −240 / −220 / −220 B** | 64 B each | `docs/results-embedded.md` M81/T81.2 |
+
+Crate counts by K2's method after `unicode-linebreak` (one crate, no
+dependencies): the text crate **22**, the shell with `shaping` **28**,
+`lumen-static-winit` with `shaping` **104** (96 default, unchanged).

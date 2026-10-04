@@ -45,7 +45,7 @@ impl lumen_static::TextMeasure for Chars {
         use lumen_static::cx::Cluster;
         let (mut x, mut line, mut w) = (0.0f32, 0u16, 0.0f32);
         for (b, c) in t.char_indices() {
-            sink.cluster(Cluster { byte: b as u32, x, line });
+            sink.cluster(Cluster { byte: b as u32, x, line, rtl: false });
             if c == '\n' {
                 x = 0.0;
                 line += 1;
@@ -54,7 +54,7 @@ impl lumen_static::TextMeasure for Chars {
                 w = w.max(x);
             }
         }
-        sink.cluster(Cluster { byte: t.len() as u32, x, line });
+        sink.cluster(Cluster { byte: t.len() as u32, x, line, rtl: false });
         Size { w, h: size * (line as f32 + 1.0) }
     }
     fn line_height(&mut self, size: f32) -> f32 {

@@ -49,6 +49,7 @@ shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Empty of code at M81/T81.1. Default-OFF: by K2's method (above, at
 # `clipboard`) it costs **+7 crates** (96 -> 103, 2026-10-04): the text crate,
 # rustybuzz and five unicode tables; ttf-parser is already in the graph.
+# **+8** (96 -> 104) since M81/T81.2 added `unicode-linebreak`.
 shaping = ["lumen-static-shell/shaping"]
 # Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
 # crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e

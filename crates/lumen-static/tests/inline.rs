@@ -71,13 +71,13 @@ fn clusters_fill_and_report_full() {
     let mut c: InlineClusters<3> = InlineClusters::default();
     assert!(!c.is_full());
     for i in 0..3 {
-        c.cluster(Cluster { byte: i, x: i as f32, line: 0 });
+        c.cluster(Cluster { byte: i, x: i as f32, line: 0, rtl: false });
     }
     assert!(c.is_full(), "shape() stops early on this");
     assert_eq!(c.as_slice().len(), 3);
 
     // Past capacity is dropped, not written out of bounds.
-    c.cluster(Cluster { byte: 99, x: 9.0, line: 0 });
+    c.cluster(Cluster { byte: 99, x: 9.0, line: 0, rtl: false });
     assert_eq!(c.as_slice().len(), 3);
     assert_eq!(c.as_slice()[2].byte, 2);
 

@@ -107,7 +107,7 @@ fn an_empty_run_still_has_one_caret_position() {
     let mut m = metrics();
     let mut out: Vec<Cluster> = Vec::new();
     let size = m.shape("", 16.0, 400.0, f32::INFINITY, &mut out);
-    assert_eq!(out, vec![Cluster { byte: 0, x: 0.0, line: 0 }], "an empty field has a caret");
+    assert_eq!(out, vec![Cluster { byte: 0, x: 0.0, line: 0, rtl: false }], "an empty field has a caret");
     assert_eq!(size.w, 0.0);
     assert!(size.h > 0.0, "an empty line is still a line tall");
 }

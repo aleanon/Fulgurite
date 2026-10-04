@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **29,586 B** (28.9 KB) | **pass**, at 36.1% of budget; re-measured at M80/T80.5 and unchanged at M81/T81.1 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **29,366 B** (28.7 KB) | **pass**, at 35.8% of budget; re-measured at M81/T81.2 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,276 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.5 |
-| Total (`size -A`) | ≤ 512 KB flash | **43,079 B** (42.1 KB) | 8.2% of the part; re-measured at M80/T80.5 |
+| `.rodata` | — | 13,276 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M81/T81.2, unchanged |
+| Total (`size -A`) | ≤ 512 KB flash | **42,859 B** (41.9 KB) | 8.2% of the part; re-measured at M81/T81.2 |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -828,6 +828,40 @@ on every binary. The core gained `text::GlyphKey`, a plain 8 B struct no
 firmware names, and the shell, which the firmware does not link, wraps
 it in `GlyphId`.
 
+### `Cluster::rtl` — M81/T81.2
+
+`just firmware-delta cdaf0ec firmware=64 firmware_interactive=64
+firmware_bind=64 firmware_cascade=64` (K4's comparator at the plan's
+tighter 64 B per binary): **−220 / −240 / −220 / −220 B** `.text`,
+`.rodata` +0 on all four. `size_of::<Cluster>()` stays **12 B**
+(`crates/lumen-static-text/tests/shaper.rs` prints it): `rtl` takes a
+byte of `line`'s padding.
+
+**What the field costs, from a symbol diff of the two builds**:
+`BakedFace::shape` **+8 B** (the `rtl: false` stores in its cluster
+constructors), the one growth on every binary. The rest is codegen the
+field moved: `TextInput::paint` −42, `place` −8, `caret_rect` −8 and
+`on_event` −16 on the interactive binary, and `Panel::new` /
+`Device::new` **−176**, the fixture's zeroing of the default tree.
+
+**The first build was over the bound**: +150 / +134 / +154 / +154 B. With
+the literal `Cluster { .., rtl: false }` repeated in
+`InlineClusters::default`, `TextInput::default` came out of line at
+**602 B** where `Panel::new` had cleared the buffer with
+`__aeabi_memclr8`. Written through a `const` element the default is a
+clear again, and `Panel::new` comes out 176 B smaller than at the parent
+— so this task's net is negative, and part of it is a saving the parent
+could have had.
+
+**That saving hides the plan's injection from the parent comparison**,
+which is a finding about the gate, not a pass: `BakedFace` computing
+`rtl` through an `#[inline(never)]` range-check chain over the Hebrew and
+Arabic blocks, called per cluster, prints −36 / −48 / −32 / −28 B against
+`cdaf0ec` and passes. Against a snapshot of this task's tree (a dangling
+commit of the work tree, so the base is T81.2 without the injection) the
+same injection prints **+184 / +192 / +188 / +192 B** and fails all four
+by name; restored, the snapshot comparison prints +0 on all four.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the
@@ -864,16 +898,18 @@ T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
 (`Style.line_height` measured by `Label` and painted through
 `text_spaced`), T80.3 (`Style.overflow`, with the leaf tier reading it
 as `Wrap`, and `Label` measuring against its own width less its padding)
-and T80.5 (the `Node::caret_rect` slot; T80.4 moved nothing), and
+and T80.5 (the `Node::caret_rect` slot; T80.4 moved nothing),
 re-measured by M81/T81.1 (the core's `GlyphKey`, which no firmware
-names: Δ 0 on all four). M80a's column is T80.0–T80.3, as K80b bounds it.
+names: Δ 0 on all four), and rewritten by M81/T81.2 (`Cluster::rtl`, and
+`InlineClusters::default` through a `const` element; the section below).
+M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 29,586 | 36.1% | 52,334 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 |
-| `firmware_interactive` | **63,188** | **77.1%** | **18,732** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 |
-| `firmware_bind` | 33,046 | 40.3% | 48,874 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — | +0 |
-| `firmware_cascade` | 31,726 | 38.7% | 50,194 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — | +0 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 29,366 | 35.8% | 52,554 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 |
+| `firmware_interactive` | **62,948** | **76.8%** | **18,972** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** |
+| `firmware_bind` | 32,826 | 40.1% | 49,094 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 |
+| `firmware_cascade` | 31,506 | 38.5% | 50,414 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 |
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

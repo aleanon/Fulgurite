@@ -183,8 +183,14 @@ pub struct InlineClusters<const N: usize> {
 }
 
 impl<const N: usize> Default for InlineClusters<N> {
+    /// Through a `const` element, not a literal in the repeat: when
+    /// M81/T81.2 gave `Cluster` its `rtl` field, the literal form stopped
+    /// lowering to a clear and `TextInput::default` came out of line at
+    /// 602 B, +150 B of firmware `.text`; the `const` form is a clear
+    /// again (`docs/results-embedded.md`, M81/T81.2).
     fn default() -> Self {
-        InlineClusters { buf: [Cluster { byte: 0, x: 0.0, line: 0 }; N], len: 0 }
+        const EMPTY: Cluster = Cluster { byte: 0, x: 0.0, line: 0, rtl: false };
+        InlineClusters { buf: [EMPTY; N], len: 0 }
     }
 }
 

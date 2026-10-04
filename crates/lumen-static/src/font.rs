@@ -137,7 +137,7 @@ impl TextMeasure for BakedFace {
         if text.is_empty() {
             // One cluster: the caret position in an empty field. Same
             // contract as the desktop measurer.
-            sink.cluster(Cluster { byte: 0, x: 0.0, line: 0 });
+            sink.cluster(Cluster { byte: 0, x: 0.0, line: 0, rtl: false });
             return Size { w: 0.0, h: lh };
         }
 
@@ -183,7 +183,7 @@ impl TextMeasure for BakedFace {
                 }
             }
             if !sink.is_full() {
-                sink.cluster(Cluster { byte: byte as u32, x, line });
+                sink.cluster(Cluster { byte: byte as u32, x, line, rtl: false });
             }
             x += adv;
             if ch != ' ' {
@@ -196,7 +196,7 @@ impl TextMeasure for BakedFace {
         widest = widest.max(x);
         // The insertion point after the last character.
         if !sink.is_full() {
-            sink.cluster(Cluster { byte: text.len() as u32, x, line });
+            sink.cluster(Cluster { byte: text.len() as u32, x, line, rtl: false });
         }
         Size { w: crate::num::ceil(widest), h: crate::num::ceil(lh * (line as f32 + 1.0)) }
     }

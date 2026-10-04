@@ -712,7 +712,7 @@ impl FontStack {
             let line = line_of(gi);
             if !sink.is_full() {
                 let byte = if step { caller.next().unwrap_or(text.len()) } else { g.byte_offset };
-                sink.cluster(Cluster { byte: byte as u32, x: g.x, line });
+                sink.cluster(Cluster { byte: byte as u32, x: g.x, line, rtl: false });
             } else if step {
                 caller.next();
             }
@@ -720,7 +720,7 @@ impl FontStack {
         }
         // The insertion point after the last character.
         if !sink.is_full() {
-            sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1 });
+            sink.cluster(Cluster { byte: text.len() as u32, x: end.0, line: end.1, rtl: false });
         }
         Self::extent(&faces, layout, px)
     }
@@ -1242,7 +1242,7 @@ impl TextMeasure for FontMetrics {
     ) -> Size {
         if text.is_empty() {
             // One cluster: the caret position in an empty field.
-            sink.cluster(Cluster { byte: 0, x: 0.0, line: 0 });
+            sink.cluster(Cluster { byte: 0, x: 0.0, line: 0, rtl: false });
             return Size { w: 0.0, h: self.line_height(size) };
         }
         // Clusters are reported in logical x, because a caret is placed

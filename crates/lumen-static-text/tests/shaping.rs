@@ -89,11 +89,17 @@ fn a_mixed_line_produces_runs_in_both_directions() {
     for cl in &c.0 {
         assert!(text.is_char_boundary(cl.byte as usize));
     }
+    // Since M81/T81.2 clusters arrive in source order with leading-edge
+    // x (`Cluster`'s contract), so two directions show as x falling
+    // somewhere while the byte rises, and as both `rtl` values. This
+    // used to assert that the *bytes* went backwards -- the visual order
+    // `ComplexText` reported, which broke `GlyphSink`'s "source order".
     let bytes: Vec<u32> = c.0.iter().map(|c| c.byte).collect();
-    assert!(
-        bytes.windows(2).any(|w| w[1] < w[0]),
-        "a visual-order layout revisits earlier bytes: {bytes:?}"
-    );
+    let xs: Vec<f32> = c.0.iter().map(|c| c.x).collect();
+    println!("bytes {bytes:?}, x {xs:?}");
+    assert!(bytes.windows(2).all(|w| w[1] > w[0]), "clusters not in source order: {bytes:?}");
+    assert!(xs.windows(2).any(|w| w[1] < w[0]), "x never falls, so nothing ran right to left: {xs:?}");
+    assert!(c.0.iter().any(|c| c.rtl) && c.0.iter().any(|c| !c.rtl), "both directions are reported");
 }
 
 #[test]

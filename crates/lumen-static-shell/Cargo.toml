@@ -71,7 +71,8 @@ truetype = ["dep:fontdue"]
 # under a loader built without. Its cost by K2's method (`cargo tree -p
 # lumen-static-shell -e normal --prefix none`, `(*)` stripped,
 # deduplicated): **8 -> 27** packages over the default, 16 -> 27 over
-# `truetype` (2026-10-04, T81.1).
+# `truetype` (2026-10-04, T81.1); **28** since T81.2 added
+# `unicode-linebreak` to the text crate (16 -> 28 over `truetype`).
 shaping = ["truetype", "dep:lumen-static-text"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It

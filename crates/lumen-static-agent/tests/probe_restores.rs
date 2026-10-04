@@ -55,9 +55,9 @@ impl TextMeasure for Monospace {
     }
     fn shape(&mut self, text: &str, size: f32, _weight: f32, max_w: f32, sink: &mut dyn GlyphSink) -> Size {
         for (i, (b, _)) in text.char_indices().enumerate() {
-            sink.cluster(Cluster { byte: b as u32, x: i as f32 * ADVANCE, line: 0 });
+            sink.cluster(Cluster { byte: b as u32, x: i as f32 * ADVANCE, line: 0, rtl: false });
         }
-        sink.cluster(Cluster { byte: text.len() as u32, x: text.chars().count() as f32 * ADVANCE, line: 0 });
+        sink.cluster(Cluster { byte: text.len() as u32, x: text.chars().count() as f32 * ADVANCE, line: 0, rtl: false });
         self.measure(text, size, max_w)
     }
 }

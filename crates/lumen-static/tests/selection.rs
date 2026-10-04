@@ -34,7 +34,7 @@ impl TextMeasure for Monospace {
         sink: &mut dyn GlyphSink,
     ) -> Size {
         for (i, (b, _)) in text.char_indices().enumerate() {
-            sink.cluster(Cluster { byte: b as u32, x: i as f32 * ADVANCE, line: 0 });
+            sink.cluster(Cluster { byte: b as u32, x: i as f32 * ADVANCE, line: 0, rtl: false });
         }
         // The insertion point after the last character, as a real
         // shaper reports it.
@@ -42,6 +42,7 @@ impl TextMeasure for Monospace {
             byte: text.len() as u32,
             x: text.chars().count() as f32 * ADVANCE,
             line: 0,
+            rtl: false,
         });
         self.measure(text, size, max_w)
     }
