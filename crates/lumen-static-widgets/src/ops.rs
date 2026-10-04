@@ -43,10 +43,125 @@ use lumen_static::widget::{Node, Widget};
 /// `lines × pitch` (`lumen_static::cx::measure_spaced`) and hands the byte
 /// to `Painter::text_spaced`, so the renderer places the lines on the same
 /// pitch the box was measured at.
-#[derive(Default)]
+///
+/// **It reads `Style::overflow`** (M80/T80.3): under `Clip` or `Ellipsis`
+/// it is one line, cut in layout at a grapheme boundary by
+/// [`crate::fit::cut`], and paints the prefix (then `…`). The cut is made
+/// inside the memo's miss, so a still frame cuts nothing, and against the
+/// width the label will **occupy** — its own resolved width less its
+/// padding, not the width its parent offered (a `Fixed(90)` label in a
+/// 200 px column measured at 200 before M80/T80.3, and painted past its
+/// box). `observe` still publishes the whole text: a reader is not short
+/// of room. **Without an allocator it reads every mode as `Wrap`** (K80b's
+/// fallback; see `measure_label`).
 pub struct Label<S: TextStorage = &'static str> {
     pub text: Dirty<S>,
     measure: Measured,
+    /// The cut, from layout — M80/T80.3: the prefix's end byte
+    /// (`u32::MAX` = paint the whole text, as before `overflow` existed)
+    /// and where the `…` starts from the content box's left edge, which
+    /// is negative under `Clip` (no mark). **+8 B per `Label`** where
+    /// there is an allocator; **absent in the leaf tier**, which reads
+    /// every `TextOverflow` as `Wrap` (K80b's fallback,
+    /// `docs/results-embedded.md` M80/T80.3).
+    #[cfg(feature = "alloc")]
+    fit: (u32, f32),
+}
+
+impl<S: TextStorage + Default> Default for Label<S> {
+    fn default() -> Self {
+        Label::new(S::default())
+    }
+}
+
+/// Whether `Label` reads [`Style::overflow`]: where there is an
+/// allocator. The leaf tier reads every mode as `Wrap` (K80b's fallback),
+/// so its seed does not declare the bit and the sheet lint reports an
+/// `overflow` rule there as the no-op it is.
+const LABEL_OVERFLOW: lumen_static::style::Fields =
+    if cfg!(feature = "alloc") { lumen_static::style::Fields::OVERFLOW } else { lumen_static::style::Fields::NONE };
+
+/// `Label::fit` when nothing is cut.
+const UNCUT: (u32, f32) = (u32::MAX, -1.0);
+
+/// The width a label's text is measured and cut against — M80/T80.3: the
+/// width the node will occupy (its `width` resolved under `limits`, which
+/// for `Shrink` is the offer and for `Fixed` its own) less its padding.
+/// Until then `Label` measured against the offer and ignored its padding,
+/// so a fixed-width label wrapped as wide as its parent and painted past
+/// its own box (`docs/plan-text-fit.md`, "What building found", T80.2).
+///
+/// **The width half of `resolve_self`, written out**: only `Fixed` differs
+/// from the offer (`Shrink` and `Fill` resolve to it, a hidden label lays
+/// out to nothing whatever it measured), and this runs on every layout,
+/// memo hit included. Calling `resolve_self` here cost the
+/// "layout, memo warm" arm of `--bin bindings` about 1.1 ns of a 7.8 ns hit,
+/// outside the parent's spread (K80c, `docs/results-text.md` M80/T80.3).
+#[inline]
+fn text_room(limits: Constraints, style: &Style) -> f32 {
+    let own = match style.width {
+        Length::Fixed(v) => lumen_static::num::clamp(v, limits.min_w, limits.max_w),
+        _ => limits.max_w,
+    };
+    (own - style.padding.left - style.padding.right).max(0.0)
+}
+
+/// The limits the memo keys on: the offer, with its width replaced by the
+/// room the text gets, so a padding or width restyle under the same offer
+/// re-measures.
+fn text_limits(limits: Constraints, style: &Style) -> Constraints {
+    Constraints { max_w: text_room(limits, style), ..limits }
+}
+
+/// The label's content box and its cut, measured — one function so
+/// `layout` and `probe` cannot measure different labels.
+///
+/// **The leaf tier reads every `TextOverflow` as `Wrap`** — K80b's own
+/// fallback (`docs/plan-text-fit.md`): the cut cost the paint-only
+/// firmware about 2 KB of `.text` against M80a's 1,024 B, so with no
+/// allocator a `Clip` or `Ellipsis` label wraps as it did before the field
+/// existed (`docs/results-embedded.md` M80/T80.3).
+fn measure_label(cx: &mut LayoutCx, text: &str, s: &Style, room: f32) -> (Size, (u32, f32)) {
+    let scale = cx.scale();
+    let (px, wt, lh) = (s.font_size, s.font_weight, s.line_height);
+    #[cfg(not(feature = "alloc"))]
+    {
+        (lumen_static::cx::measure_spaced(cx.text, scale, text, px, wt, lh, room), UNCUT)
+    }
+    #[cfg(feature = "alloc")]
+    measure_cut(cx, text, s, room, scale, px, wt, lh)
+}
+
+/// [`measure_label`] where there is an allocator: `Wrap`, or the cut.
+#[cfg(feature = "alloc")]
+#[allow(clippy::too_many_arguments)]
+fn measure_cut(cx: &mut LayoutCx, text: &str, s: &Style, room: f32, scale: f32, px: f32, wt: f32, lh: u8) -> (Size, (u32, f32)) {
+    use lumen_static::style::TextOverflow;
+    let mark = match s.overflow {
+        TextOverflow::Wrap => {
+            return (lumen_static::cx::measure_spaced(cx.text, scale, text, px, wt, lh, room), UNCUT);
+        }
+        TextOverflow::Clip => false,
+        TextOverflow::Ellipsis => true,
+    };
+    match crate::fit::cut(cx.text, text, px, wt, room, mark) {
+        // One line that fits: measured exactly as `Wrap` measures it, so an
+        // untruncated `Ellipsis` label paints what a `Wrap` one does.
+        None => (lumen_static::cx::measure_spaced(cx.text, scale, text, px, wt, lh, room), UNCUT),
+        Some((end, w)) => {
+            // One line tall: the prefix's height and the mark's, whichever
+            // inks taller, at the pitch.
+            let prefix = text.get(..end).unwrap_or("");
+            let line = lumen_static::cx::measure_spaced(cx.text, scale, prefix, px, wt, lh, f32::INFINITY);
+            let e = lumen_static::cx::measure_spaced(cx.text, scale, crate::fit::ELLIPSIS, px, wt, lh, f32::INFINITY);
+            let h = line.h.max(e.h);
+            if mark {
+                (Size { w: w + e.w, h }, (end as u32, w))
+            } else {
+                (Size { w, h }, (end as u32, -1.0))
+            }
+        }
+    }
 }
 
 impl<S: lumen_static::text::TextBuffer> lumen_static::bind::TextTarget for Label<S> {
@@ -60,7 +175,12 @@ impl<S: lumen_static::text::TextBuffer> lumen_static::bind::TextTarget for Label
 
 impl<S: TextStorage> Label<S> {
     pub fn new(text: S) -> Self {
-        Label { text: Dirty::new(text), measure: Measured::new() }
+        Label {
+            text: Dirty::new(text),
+            measure: Measured::new(),
+            #[cfg(feature = "alloc")]
+            fit: UNCUT,
+        }
     }
 
     /// Replace the text, marking it for re-measurement.
@@ -100,6 +220,31 @@ impl<S: TextStorage> Label<S> {
         self.text.get().as_ref()
     }
 
+    /// The part of the text the last layout painted, and whether it was
+    /// cut — M80/T80.3, the same answer `AppBar::shown_title` gives. The
+    /// whole text and `false` under `Wrap`, or when it fits.
+    pub fn shown(&self) -> (&str, bool) {
+        let t = self.text.get().as_ref();
+        let end = self.fit().0;
+        if end == u32::MAX {
+            return (t, false);
+        }
+        (t.get(..end as usize).unwrap_or(""), true)
+    }
+
+    /// The cut, or [`UNCUT`] in the leaf tier, which never cuts.
+    #[inline]
+    fn fit(&self) -> (u32, f32) {
+        #[cfg(feature = "alloc")]
+        {
+            self.fit
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            UNCUT
+        }
+    }
+
     /// Whether the memo would serve a layout under `limits` and `style`
     /// without re-measuring.
     ///
@@ -112,7 +257,8 @@ impl<S: TextStorage> Label<S> {
     /// the frame measured with (`TextMeasure::generation`, 0 for a
     /// stand-in).
     pub fn measure_is_warm(&self, limits: Constraints, style: &Style, scale: f32, generation: u32) -> bool {
-        !self.text.is_dirty() && self.measure.is_warm(MeasureKey::of(limits, style, scale, generation))
+        !self.text.is_dirty()
+            && self.measure.is_warm(MeasureKey::of(text_limits(limits, style), style, scale, generation))
     }
 }
 
@@ -140,7 +286,7 @@ impl<S: TextStorage> Widget for Label<S> {
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
             lumen_static::style::Fields::LINE_HEIGHT,
-        ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
+        ]).union(LABEL_OVERFLOW)).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 
 impl<S: TextStorage> Node for Label<S> {
@@ -167,21 +313,25 @@ impl<S: TextStorage> Node for Label<S> {
         // a line counter rather than taking the face's own spacing; 0 is
         // `measure_weighted` exactly, so a label that sets nothing measures
         // as it always did.
+        //
+        // **And the cut** — M80/T80.3: under `Clip`/`Ellipsis` the miss
+        // also decides where the line ends, so it is keyed exactly as the
+        // box is (the overflow byte is in `flow`) and a still frame cuts
+        // nothing. Both are measured against the width the label occupies,
+        // not the width it was offered (`text_room`).
         let text = self.text.get().as_ref();
         let dirty = self.text.is_dirty();
-        let px = style[i].font_size;
-        let key = MeasureKey::new(cx, limits, &style[i]);
-        let scale = cx.scale();
+        let tl = text_limits(limits, &style[i]);
+        let key = MeasureKey::new(cx, tl, &style[i]);
+        #[cfg(feature = "alloc")]
+        let fit = &mut self.fit;
         let content = self.measure.get_or(key, dirty, || {
-            lumen_static::cx::measure_spaced(
-                cx.text,
-                scale,
-                text,
-                px,
-                style[i].font_weight,
-                style[i].line_height,
-                limits.max_w,
-            )
+            let (size, _cut) = measure_label(cx, text, &style[i], tl.max_w);
+            #[cfg(feature = "alloc")]
+            {
+                *fit = _cut;
+            }
+            size
         });
         self.text.clear_dirty();
         let pad = style[i].padding;
@@ -206,16 +356,7 @@ impl<S: TextStorage> Node for Label<S> {
         // padding, so a probe of the tally's 76 px value asked for a
         // box a fifth its size.
         let text = self.text.get().as_ref();
-        let scale = cx.scale();
-        let content = lumen_static::cx::measure_spaced(
-            cx.text,
-            scale,
-            text,
-            style[i].font_size,
-            style[i].font_weight,
-            style[i].line_height,
-            limits.max_w,
-        );
+        let (content, _cut) = measure_label(cx, text, &style[i], text_room(limits, &style[i]));
         let pad = style[i].padding;
         let boxed = Size { w: content.w + pad.horizontal(), h: content.h + pad.vertical() };
         record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
@@ -228,15 +369,27 @@ impl<S: TextStorage> Node for Label<S> {
         // include it. At the pitch `record_painted` stamped (M80/T80.2):
         // the renderer places the lines, so the box `layout` measured and
         // the lines painted come from one rule.
+        //
+        // Cut (M80/T80.3): the prefix layout kept, then the `…` where
+        // layout measured the prefix to end — two ordinary runs, as
+        // `AppBar` paints its title, so each is damaged by its own rect
+        // and neither reaches past the node.
         let p = st[i].pad;
-        out.text_spaced(
-            [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3],
-            self.text.get().as_ref(),
-            st[i].font_size,
-            st[i].font_weight,
-            st[i].line_height,
-            st[i].fg,
-        );
+        let content = [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3];
+        let t = self.text.get().as_ref();
+        let (px, wt, lh, fg) = (st[i].font_size, st[i].font_weight, st[i].line_height, st[i].fg);
+        let (end, mark) = self.fit();
+        if end == u32::MAX {
+            out.text_spaced(content, t, px, wt, lh, fg);
+            return;
+        }
+        // `get`, not an index: a reload restores the text without the dirty
+        // bit, and a cut from the old text must not panic before the next
+        // layout recomputes it.
+        out.text_spaced(content, t.get(..end as usize).unwrap_or(""), px, wt, lh, fg);
+        if mark >= 0.0 {
+            out.text_spaced([content[0] + mark, content[1], content[2], content[3]], crate::fit::ELLIPSIS, px, wt, lh, fg);
+        }
     }
     lumen_static::leaf_common!(Label<S>, 0);
 

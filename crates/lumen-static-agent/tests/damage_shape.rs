@@ -336,3 +336,89 @@ fn two_distant_changes_stay_two_regions() {
         area(hull)
     );
 }
+
+// ---- M80/T80.3: a cut label's two runs -----------------------------------
+
+/// Two labels in a column, each cut to one line — the `…` run is a second
+/// `Cmd::Text` per label, so the shared text buffer holds four runs and a
+/// cut that moves shifts the offset of every run after it (S2,
+/// `docs/plan-iced-roadmap.md` §2.9).
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Cuts {
+    #[widget_id("first")]
+    first: Label<String>,
+    #[widget_id("second")]
+    second: Label<String>,
+}
+
+struct CutFixture {
+    app: Cuts,
+    states: [NodeState; Cuts::NODE_COUNT],
+    styles: Vec<lumen_static::Style>,
+    agent: Agent,
+}
+
+impl CutFixture {
+    /// Both labels 80 px wide under `overflow`, with texts far longer.
+    fn new(overflow: lumen_static::TextOverflow) -> Self {
+        let mut app = Cuts::default();
+        app.first.set("a first label far too long for its box".into());
+        app.second.set("a second label far too long for its box".into());
+        let patch = Patch::new().width(Length::Fixed(80.0)).overflow(overflow);
+        let sheet = [Rule::new(Selector::Id("first"), patch), Rule::new(Selector::Id("second"), patch)];
+        let mut styles = vec![lumen_static::Style::default(); Cuts::NODE_COUNT];
+        lumen_static::style::cascade_deep(&mut app, &sheet, &mut styles);
+        let mut f = CutFixture { app, states: [NodeState::default(); Cuts::NODE_COUNT], styles, agent: Agent::new() };
+        f.frame();
+        f
+    }
+
+    fn frame(&mut self) {
+        pass::layout(&mut self.app, &self.styles, &mut self.states, VIEW);
+        let mut tree = TreeMut::of_root(&mut self.app, &self.styles, &self.states);
+        self.agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(1000, 500));
+    }
+
+    fn result(&self, method: &str) -> Value {
+        let tree = TreeRef::of_root(&self.app, &self.styles, &self.states);
+        let resp = self
+            .agent
+            .dispatch(&tree, &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": {} }));
+        assert!(resp.get("error").is_none(), "unexpected error: {resp}");
+        resp["result"].clone()
+    }
+
+    fn changed_wids(&self) -> Vec<String> {
+        self.result("ui.lastChange")["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["wid"].as_str().map(str::to_owned).unwrap_or_else(|| format!("#{}", c["index"])))
+            .collect()
+    }
+}
+
+/// **S2 with a second run in play** — M80/T80.3. The `…` is an ordinary
+/// `Cmd::Text`, whose hash folds the run's length and never its offset in
+/// the shared buffer (M27/T27.3). Changing the first label's text so its
+/// cut moves reports the first label and **not** the second, whose prefix
+/// and mark both sit after it in the buffer.
+#[test]
+fn a_moved_cut_does_not_report_the_next_cut_label() {
+    let mut f = CutFixture::new(lumen_static::TextOverflow::Ellipsis);
+    let before = f.app.first.shown().0.to_owned();
+    assert!(f.app.first.shown().1 && f.app.second.shown().1, "setup: both labels are cut");
+    // A space where the old cut ended, so the new cut drops it: shorter.
+    f.app.first.set("abcdef label far too long for its box".into());
+    f.frame();
+    let after = f.app.first.shown().0.to_owned();
+    let wids = f.changed_wids();
+    println!("first cut {before:?} -> {after:?}; second {:?}; changed {wids:?} (bound: second absent)", f.app.second.shown());
+    assert_ne!(before.len(), after.len(), "setup: the first label's cut did not move");
+    assert!(wids.contains(&"first".to_string()), "setup: the first label's change was not reported: {wids:?}");
+    assert!(
+        !wids.contains(&"second".to_string()),
+        "the second cut label reported a change it did not make -- a run's offset entered the hash: {wids:?}"
+    );
+}

@@ -238,6 +238,7 @@ fn val(v: &Val) -> Ts2 {
         Val::Role(role) => variant(quote!(Role), role.variant()),
         Val::Align(a) => variant(quote!(Align), a.variant()),
         Val::Cursor(c) => variant(quote!(Cursor), c.variant()),
+        Val::TextOverflow(o) => variant(quote!(TextOverflow), o.variant()),
         Val::Length(Length::Fixed(x)) => {
             let l = f32_lit(x);
             quote!(::lumen_static::style::Length::Fixed(#l))

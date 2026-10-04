@@ -1551,6 +1551,8 @@ impl Agent {
             // spacing -- so a drive can ask whether a line-height rule
             // reached the node, for the reason the border is here.
             "line_height": s.line_height,
+            // M80/T80.3: `Wrap`, `Clip` or `Ellipsis`, for the same reason.
+            "overflow": format!("{:?}", s.overflow),
             "align": format!("{:?}", s.align),
             "visible": s.visible,
             "disabled": s.disabled,

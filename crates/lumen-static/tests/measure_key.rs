@@ -208,3 +208,36 @@ fn a_line_height_change_under_the_same_limits_re_measures() {
     assert_ne!(h_spaced, h_face, "the memo served the face spacing's box after a line-height change");
     assert_eq!(h_spaced, 48.0, "two lines at 24/16 of 16 px are 48 px");
 }
+
+/// **An overflow change under the same limits re-measures** — M80/T80.3,
+/// the case T80.2's gate list reserved for it. The overflow byte sits
+/// beside the line height in `MeasureKey`'s `flow`; without it a `Wrap` →
+/// `Ellipsis` restyle was served the stale two-line box (the M45/T45.2
+/// shape). A hard break makes the cut here, so the stand-in measurer's
+/// widths do not matter.
+#[test]
+fn an_overflow_change_under_the_same_limits_re_measures() {
+    let mut m = Lined::default();
+    let mut l: Label<String> = Label::new("one\ntwo".into());
+    let wrap = Style::default();
+    let cut = Style { overflow: lumen_static::TextOverflow::Ellipsis, ..wrap };
+    let lay = |l: &mut Label<String>, m: &mut Lined, s: Style| {
+        let mut cx = LayoutCx::new(m);
+        let (sty, mut st) = ([s], [NodeState::default()]);
+        l.layout(&mut cx, LIMITS, &sty, &mut st, 0).h
+    };
+    let h_wrap = lay(&mut l, &mut m, wrap);
+    let warm_before = l.measure_is_warm(LIMITS, &wrap, 1.0, 0);
+    let cold_after = !l.measure_is_warm(LIMITS, &cut, 1.0, 0);
+    let h_cut = lay(&mut l, &mut m, cut);
+    println!(
+        "Wrap: h {h_wrap} (warm after: {warm_before}); Ellipsis, same text and limits: h {h_cut} \
+         (cold before: {cold_after}); shown {:?}",
+        l.shown()
+    );
+    assert!(warm_before, "setup: the first layout left the memo cold");
+    assert_eq!(h_wrap, 32.0, "setup: two lines under Wrap");
+    assert!(cold_after, "the key does not hold the overflow: an Ellipsis layout would be served the Wrap box");
+    assert_eq!(h_cut, 16.0, "the memo served the two-line box after a Wrap -> Ellipsis restyle");
+    assert_eq!(l.shown(), ("one", true), "the cut ends the visible line at the hard break");
+}

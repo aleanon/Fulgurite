@@ -102,9 +102,10 @@ Accepted in v1:
   `border-color`, `font-size`, `font-weight`, `width`, `height`,
   `spacing`, `align`, `visible`, `disabled` (M57/A16, added at the M56
   merge), `cursor`, `focus-ring`,
-  `box-shadow`, `hover-dim`, `pressed-dim`, `line-height` (M80/T80.2)),
+  `box-shadow`, `hover-dim`, `pressed-dim`, `line-height` (M80/T80.2),
+  `text-overflow` (M80/T80.3)),
   values as the setter takes
-  them (`px`, `#rrggbb[aa]`, keywords for `align`/`cursor`, `fixed(n)` /
+  them (`px`, `#rrggbb[aa]`, keywords for `align`/`cursor`/`text-overflow`, `fixed(n)` /
   `fill` / `shrink` for lengths).
 - `@tokens { name: value; }` — compile-time constants, `$name` to use.
 - **Palette roles as tokens:** `$page`, `$surface`, `$control`, `$text`,

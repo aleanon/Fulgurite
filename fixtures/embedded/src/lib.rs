@@ -460,8 +460,16 @@ pub mod sizes {
     // each `Button`'s `FoldedText` +8 (its `u64` fold rounds the tuple up
     // to eight). Attributed by removing the field: 1,192 again.
     // `docs/results-embedded.md` M80/T80.2.
-    #[cfg(target_pointer_width = "32")]
+    //
+    // **Unchanged at 1,216 by M80/T80.3** in the leaf tier: `Label.fit`
+    // (+8 B, which made this 1,224 on the first build) is compiled out of
+    // it with the cut itself, K80b's fallback. The `alloc-tier` record
+    // build keeps the cut, so there the title `Label` is 8 B larger and the
+    // tree **1,224** (`docs/results-embedded.md` M80/T80.3).
+    #[cfg(all(target_pointer_width = "32", not(feature = "alloc-tier")))]
     const _: () = assert!(UI == 1216, "Ui is no longer 1216 B on the target; re-budget docs/results-frame-and-types.md");
+    #[cfg(all(target_pointer_width = "32", feature = "alloc-tier"))]
+    const _: () = assert!(UI == 1224, "the alloc-tier Ui is no longer 1224 B on the target; re-budget docs/results-embedded.md");
 
     // **A depth backstop, not the stack budget's measurement** — M52/T52.6.
     //

@@ -2,7 +2,7 @@
 //! construct v1 accepts, lowered to exactly the rules a person would
 //! write -- compared here field for field, through `Debug` so the case
 //! does not depend on T61.2's `PartialEq`.
-use lumen_static::style::{Align, Cursor, Edges, Length, Patch, Role, Rule, Selector};
+use lumen_static::style::{Align, Cursor, Edges, Length, Patch, Role, Rule, Selector, TextOverflow};
 use lumen_static::{include_lss, Color, StaticTree};
 use lumen_static_widgets::ops::{Fixed, Label};
 
@@ -41,7 +41,7 @@ fn by_hand(loud: bool) -> Vec<Rule> {
         Rule::new(Selector::Any, Patch::new().spacing(6.0)),
         Rule::new(
             Selector::Kind("label"),
-            Patch::new().color(Color(0xf1, 0xf5, 0xfb, 0xff)).font_size(15.0).font_weight(600.0).line_height(1.5),
+            Patch::new().color(Color(0xf1, 0xf5, 0xfb, 0xff)).font_size(15.0).font_weight(600.0).line_height(1.5).overflow(TextOverflow::Ellipsis),
         ),
         Rule::new(
             Selector::Class("note"),

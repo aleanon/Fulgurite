@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **29,302 B** (28.6 KB) | **pass**, at 35.8% of budget; re-measured at M80/T80.2 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **29,526 B** (28.8 KB) | **pass**, at 36.0% of budget; re-measured at M80/T80.3 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,260 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.2 |
-| Total (`size -A`) | ≤ 512 KB flash | **42,779 B** (41.8 KB) | 8.2% of the part; re-measured at M80/T80.2 |
+| `.rodata` | — | 13,260 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.3 |
+| Total (`size -A`) | ≤ 512 KB flash | **43,003 B** (42.0 KB) | 8.2% of the part; re-measured at M80/T80.3 |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -753,7 +753,41 @@ which alignment makes **24**: the title `Label`'s `Measured` +4, the field
 1,192 exactly. `Style` stays **80 B** and `NodeState` **84 B** (T80.2 took
 one spare tail byte of each, `line_height`), so `PER_NODE_RAM` is still
 164 B, **16.0 KB per 100 nodes** (`tests/cursor.rs` prints it). T80.3's
-`Label.fit` is the next `Ui` move.
+`Label.fit` was to be the next `Ui` move; it is not on the target (below).
+
+### `Ui` stays 1,216 B on the target — M80/T80.3
+
+T80.3 gave `Label` its cut, `fit: (u32, f32)`, **+8 B per `Label`** where
+there is an allocator (`Label<&str>` 72 → 80 B and `Label<String>` 80 → 88
+on the host; `AppBar` 72 → 104, the memo moved onto a `FoldedText` keyed by
+`MeasureKey`). With the field on the leaf tier the fixture's `Ui` measured
+**1,224 B** on `thumbv7em-none-eabihf` (one title `Label`, +8). K80b's
+fallback (next section) takes the cut out of the leaf tier, and the field
+with it, so the asserted figure is unchanged at **1,216 B**; the
+`alloc-tier` record build keeps the cut and asserts **1,224 B**. `Style` stays
+**80 B**, using its last spare tail byte for `overflow`, and `NodeState`
+**84 B**, untouched (the cut is made in layout and paint needs no copy):
+`PER_NODE_RAM` is 164 B, **16.0 KB per 100 nodes** (K80a holds;
+`tests/cursor.rs` prints it).
+
+### K80b's fallback: the leaf tier reads `TextOverflow` as `Wrap` — M80/T80.3
+
+`just firmware-delta 3b99585 print` on the first build, with the cut in
+every tier: `firmware` **+5,622 B** `.text` and **+3,078 B** `.rodata`. Most
+of that was not the cut: `&text[..end]` indexing linked `str`'s slice-error
+path (`slice_error_fail_rt` 1,096 B, `char::escape_debug_ext` 490,
+`unicode::printable::is_printable` 720, the `grapheme_extend` offsets table 767,
+`Formatter::pad` 470) for a panic the code cannot reach, since every
+offset is a boundary by construction. With every slice a `get` the cut
+still cost **+2,024 B** on `firmware` and +1,844 B on
+`firmware_interactive` (`fit::cut` 744 B, `measure_label` 388,
+`Label::layout`/`paint` growth), which would have put M80a at 2,710 of
+K80b's 1,024 B. So the plan's own fallback applies: without `alloc`,
+`Label` measures every mode as `Wrap`, its `fit` field is compiled out, and
+its seed does not declare `Fields::OVERFLOW` (so the sheet lint reports an
+`overflow` rule there as the no-op it is). `AppBar` keeps cutting in every
+tier through `fit::cut`, by `char` where there is no allocator, and is not
+in any firmware.
 
 ### The headline re-measured at the M56 merge — 2026-09-29
 
@@ -787,16 +821,30 @@ dated tables above and below were measured against the 64 KB ceiling
 that held then, and stay as measured. First written by M80/T80.0 at
 `553fa5e` (the M56/M61 merge; the "at `553fa5e`" column), rewritten by
 T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
-`Cmd::Text.line_height` byte folded by `Checksum`) and T80.2
+`Cmd::Text.line_height` byte folded by `Checksum`), T80.2
 (`Style.line_height` measured by `Label` and painted through
-`text_spaced`).
+`text_spaced`) and T80.3 (`Style.overflow`, with the leaf tier reading it
+as `Wrap`, and `Label` measuring against its own width less its padding).
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | M80a so far (K80b) |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 29,302 | 35.8% | 52,618 | 13,260 | 28,616 | +56 | +630 | 686 of 1,024 |
-| `firmware_interactive` | **62,776** | **76.6%** | **19,144** | 21,762 | 61,922 | **+52** | **+802** | 854 of 1,536 |
-| `firmware_bind` | 32,742 | 40.0% | 49,178 | 13,864 | 32,008 | +56 | +678 | — |
-| `firmware_cascade` | 31,430 | 38.4% | 50,490 | 14,036 | 30,644 | +56 | +730 | — |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | M80a (K80b) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 29,526 | 36.0% | 52,394 | 13,260 | 28,616 | +56 | +630 | +224 | **910 of 1,024** |
+| `firmware_interactive` | **63,072** | **77.0%** | **18,848** | 21,762 | 61,922 | **+52** | **+802** | **+296** | **1,150 of 1,536** |
+| `firmware_bind` | 32,990 | 40.3% | 48,930 | 13,864 | 32,008 | +56 | +678 | +248 | — |
+| `firmware_cascade` | 31,666 | 38.7% | 50,254 | 14,036 | 30,644 | +56 | +730 | +236 | — |
+
+**T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
+room `Label` now measures against, its own width less its padding:
+M80/T80.2's carried defect, fixed here) about **+120**, `measure_label`
++66 and the `Label`/`Button`/`TextInput` layouts a few bytes each (the key's
+`flow` word now carries the overflow byte), every `type_defaults` about +4
+(the `overflow` byte in each default `Style`), and on the two cascading
+binaries `Patch::apply_to`'s new branch. `.rodata` +0. Printed by `just
+firmware-delta 3b99585` (K4's default, `firmware_interactive=1000`), and
+M80a's total by `just firmware-delta 845de0c firmware=1024
+firmware_interactive=1536` (K80b): **+910 B** and **+1,150 B**, both under
+their bounds, after the fallback above; the same invocation without it
+would have printed +2,710 B on `firmware`.
 
 **T80.2's cost, from a symbol diff of the two builds** (inlining moves
 code between symbols, so these are attributions, not a partition):

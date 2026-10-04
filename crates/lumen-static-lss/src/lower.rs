@@ -12,7 +12,7 @@
 //!
 //! **`scripts/check_lss_setters.sh` holds the table to the core**: every
 //! `Patch` setter must be named here, and every name here must be a
-//! setter, or `just static` fails. The mirrored enums ([`Align`],
+//! setter, or `just static` fails. The mirrored enums ([`Align`], [`TextOverflow`],
 //! [`Cursor`], [`Role`]) are held to theirs the same way.
 
 use std::collections::HashMap;
@@ -69,6 +69,8 @@ pub enum Val {
     Edges(Edges),
     Align(Align),
     Cursor(Cursor),
+    /// `text-overflow` — M80/T80.3.
+    TextOverflow(TextOverflow),
 }
 
 /// `lumen_static::style::Length`.
@@ -137,6 +139,12 @@ mirror!(
 );
 
 mirror!(
+    /// `lumen_static::style::TextOverflow` — M80/T80.3, spelled as CSS's
+    /// `text-overflow` and `white-space` spell the three behaviours.
+    TextOverflow { Wrap = "wrap", Clip = "clip", Ellipsis = "ellipsis" }
+);
+
+mirror!(
     /// `lumen_static::style::Role` — spelled `$page`, `$on-accent`, …: a
     /// colour a `.lss` names by role follows `Host::set_palette`, exactly
     /// as `Patch::color_role` does (M25/T25.11).
@@ -176,6 +184,8 @@ pub enum Takes {
     Colour,
     Align,
     Cursor,
+    /// `wrap`, `clip` or `ellipsis` — M80/T80.3.
+    Overflow,
     Bool,
 }
 
@@ -192,6 +202,7 @@ impl Takes {
             Takes::Cursor => {
                 "`default`, `text`, `pointer`, `grab`, `grabbing`, `col-resize`, `row-resize` or `not-allowed`"
             }
+            Takes::Overflow => "`wrap`, `clip` or `ellipsis`",
             Takes::Bool => "`true` or `false`",
         }
     }
@@ -238,6 +249,9 @@ pub const PROPERTIES: &[Property] = &[
     // M80/T80.2: a ratio of the font size, as CSS's unitless
     // `line-height` is; the cascade rounds it to sixteenths.
     Property { name: "line-height", setter: "line_height", role_setter: None, takes: Takes::Number },
+    // M80/T80.3: CSS's name. `wrap` has no CSS spelling under this
+    // property (CSS wraps by `white-space`), and is the default.
+    Property { name: "text-overflow", setter: "overflow", role_setter: None, takes: Takes::Overflow },
 ];
 
 /// Names a CSS writer reaches for that v1 spells differently, or does
@@ -537,6 +551,7 @@ fn typed(takes: Takes, v: &Value) -> Option<Val> {
         }
         Takes::Align => keyword(v).and_then(Align::from_keyword).map(Val::Align),
         Takes::Cursor => keyword(v).and_then(Cursor::from_keyword).map(Val::Cursor),
+        Takes::Overflow => keyword(v).and_then(TextOverflow::from_keyword).map(Val::TextOverflow),
         Takes::Bool => match keyword(v)? {
             "true" => Some(Val::Bool(true)),
             "false" => Some(Val::Bool(false)),

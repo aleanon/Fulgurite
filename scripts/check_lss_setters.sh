@@ -9,8 +9,9 @@
 # nothing would say so. This reads both files and compares the sets, in
 # both directions, and prints the counts beside the verdict.
 #
-# The same for the three enums the lowering mirrors -- `Align`, `Cursor`
-# and `Role` -- whose variants a `.lss` keyword lowers to by name.
+# The same for the four enums the lowering mirrors -- `Align`, `Cursor`,
+# `Role` and (M80/T80.3) `TextOverflow` -- whose variants a `.lss` keyword
+# lowers to by name.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
@@ -44,7 +45,7 @@ if extra:
     print(f"lss-setters: .lss declarations naming no Patch setter: {extra}", file=sys.stderr)
     rc = 1
 
-for enum in ("Align", "Cursor", "Role"):
+for enum in ("Align", "Cursor", "Role", "TextOverflow"):
     core = re.findall(r"^\s+([A-Z]\w*)\s*[,(]", block(style, f"pub enum {enum} {{"), re.M)
     m = re.search(r"\b" + enum + r"\s*\{([^}]*)\}", lower)
     mirror = re.findall(r"(\w+)\s*=\s*\"", m.group(1)) if m else []

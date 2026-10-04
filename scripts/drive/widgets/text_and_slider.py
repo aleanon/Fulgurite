@@ -417,6 +417,60 @@ def _remember_face(c):
     c.__dict__["_h_face"] = _label_h(c)
 
 
+# --- M80/T80.3: the second switch cuts the same paragraph to one line ---
+LABEL_ELLIPSIS = "#d_label_ellipsis > #labelled-control"
+
+
+def _press_ellipsis(c):
+    c.__dict__["_h0"] = _label_h(c)
+    c.__dict__["_prose"] = c.value()
+    c.click(LABEL_ELLIPSIS)
+
+
+def _one_line(c):
+    """One line of the height it wrapped at, and still the whole text.
+
+    The wrapped height is a whole number of lines at the face's spacing,
+    so one line is that height over the line count; and the agent still
+    publishes, and `~` still matches, the **whole** paragraph: the cut is
+    paint's, and a reader is not short of room (M57's D7). The selector
+    names the paragraph's **last** word, which the cut drops, so only the
+    whole text can match it (a selector term cannot hold a space, so `~=`
+    cannot name the paragraph).
+    """
+    st = c.styles()
+    h, h0 = _label_h(c), c._h0
+    lines = round(h0 / h) if h else 0
+    whole = c.value()
+    tail = c._prose.split()[-1]
+    hit = c.c.rpc("ui.resolve", selector="~" + tail).get("index")
+    me = c.c.rpc("ui.resolve", selector=c.sel).get("index")
+    ok = (st.get("overflow") == "Ellipsis" and lines >= 2 and abs(h0 - lines * h) <= 0.5
+          and whole == c._prose and hit is not None and hit == me)
+    return ok, (f"overflow {st.get('overflow')} (want Ellipsis); height {h0:.1f} -> {h:.1f}, "
+                f"{h0:.1f} = {lines} x {h:.1f} (+- 0.5; lines >= 2); published value whole: "
+                f"{whole == c._prose} ({len(whole)} of {len(c._prose)} chars); ~{tail} "
+                f"(past the cut) resolves to node {hit} (the label is {me})")
+
+
+def _press_wrap(c):
+    c.__dict__["_h0"] = _label_h(c)
+    c.click(LABEL_ELLIPSIS)
+
+
+def _wrapped(c):
+    """Wrapped again: the byte back to Wrap and the height it had."""
+    st = c.styles()
+    h, h0 = _label_h(c), c._h0
+    ok = st.get("overflow") == "Wrap" and h - h0 > 0.5 and abs(h - c._h_wrap) <= 0.5
+    return ok, (f"overflow {st.get('overflow')} (want Wrap); height {h0:.1f} -> {h:.1f} "
+                f"(want the wrapped {c._h_wrap:.1f} +- 0.5)")
+
+
+def _remember_wrap(c):
+    c.__dict__["_h_wrap"] = _label_h(c)
+
+
 LABEL = ("Label", "#d_label_a", [
     Action(
         visible=True,
@@ -442,6 +496,27 @@ LABEL = ("Label", "#d_label_a", [
         expect=_unspaced,
         subject="#d_label_spacing",
         injection="drop `flow` from MeasureKey::of (the memo serves the spaced box)",
+    ),
+    Action(
+        visible=True,
+        name="the ellipsis switch cuts the paragraph to one line, and it still publishes the whole text",
+        needs="the paragraph wrapped at the face's spacing",
+        setup=_remember_wrap,
+        do=_press_ellipsis,
+        expect=_one_line,
+        isolate=_press_outside,
+        subject="#d_label_ellipsis",
+        injection="Label reads every overflow as Wrap (the leaf tier's rule, on the host): "
+                  "the height stays wrapped",
+    ),
+    Action(
+        visible=True,
+        name="a second press wraps the paragraph again",
+        needs="the label cut to one line",
+        do=_press_wrap,
+        expect=_wrapped,
+        subject="#d_label_ellipsis",
+        injection="drop the overflow byte from MeasureKey's flow (the memo serves the one-line box)",
     ),
 ])
 

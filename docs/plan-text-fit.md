@@ -868,12 +868,64 @@ in the accept direction in the same session.*
   and the showcase constrains the demo struct (`DLabel` 320 px), which a
   derived container offers to its children since M56. Owed to whichever
   task next touches `Label`'s layout (T80.3 measures the cut there).
+  **Fixed by T80.3** (below).
 - T80.2: **the live gate reads the height from `ui.resolve`'s bounds**,
   the same `NodeState` box `ui.getLayout` reports, and the agent's
   `ui.getAppliedStyles` now reports `line_height`, so the drive asserts
   the byte reached the node (24) beside the box it produced.
 - T80.2: `MeasureKey`'s `flow` holds the line height only; the overflow
   byte is T80.3's, as the gate list says.
+
+- T80.3: **K80b's fallback was needed, and most of the first build's cost
+  was not the cut.** With the cut in every tier the paint-only firmware
+  grew **+5,622 B**: `&text[..end]` indexing linked `str`'s slice-error
+  path (its `Debug` escaping and the Unicode printable tables) for a panic
+  that cannot happen. With every slice a `get` it was still **+2,024 B**,
+  2,710 of K80b's 1,024 cumulative, so the leaf tier reads `TextOverflow`
+  as `Wrap`: `Label`'s cut, its `fit` field and its seed's `OVERFLOW` bit
+  are behind `alloc`. Measured after: **+224 B** (`firmware`), **+296 B**
+  (`firmware_interactive`); M80a's total 910 of 1,024 and 1,150 of 1,536.
+  The embedded `Ui` therefore stays 1,216 B (1,224 with the field), not
+  the "+8 B, the firmware's included" Decisions planned.
+- T80.3: **the carried T80.2 defect is fixed here**, because the cut needs
+  it: a `Label` measures (and cuts) against the width it occupies, its
+  `width` resolved under the offer less its padding, and keys its memo on
+  that room so a padding or width restyle under the same offer
+  re-measures. Its own gate is in `shell/tests/text_containment.rs`
+  (`Fixed(90)` with 8 px padding offered 480 px: 4 lines, ink inside;
+  measured against the offer, 1 line and 54 px of ink past the box). The
+  T80.2 line-height gate's window-width workaround is no longer needed and
+  its comment says so.
+- T80.3: **K80c fired once, on that fix, and the fix was rewritten.**
+  Calling `resolve_self` for the room on every layout cost `--bin
+  bindings`' "layout, memo warm" arm 9.81 ns (median of eight) against the
+  parent's 7.13–7.92; with the room left at the offer the same build read
+  about 8.3 ns and the base 7.77, so about 1.1 ns was the call. Writing
+  out the width half (`Fixed` clamps, everything else is the offer) reads
+  7.88 against 7.33–13.49, and `grid` and `retain --text` were inside
+  throughout (`docs/results-text.md` M80/T80.3).
+- T80.3: **`AppBar`'s mask had never been measured either**, and
+  `style_reads.rs` had no probe for it, so "the `Label` and `AppBar`
+  probes' text lengthened" had one probe to lengthen. Added; its first
+  measurement found the seed omitting `radius` (the bar's ground and
+  shadow are rounded by it) and declaring `shadow` as unread only because
+  the `shadow` probe's 6.0 equalled `AppBar`'s own default. The probe is
+  7.0 now and the seed declares `radius`.
+- T80.3: **the `Clip` gate cannot be the agent's.** The plan put it beside
+  the S2 gate in `damage_shape.rs`, but the agent's journal signs nodes,
+  not runs, so a label painting its whole text in a rect of its natural
+  width under a clip still reported 1.00× there (the injection stayed
+  green). `Recording` damages a run's whole rect whatever clip is pushed,
+  so the gate asks the host's retained damage
+  (`shell/tests/text_containment.rs`): 1.00× green, **6.00×** under the
+  injection.
+- T80.3: **the drive's `~` check names the paragraph's last word**, which
+  the cut drops: a selector term cannot hold a space, so `~=` cannot name
+  a paragraph, and the last word matches only if the whole text is still
+  published.
+- T80.3: `AppBar` reads `Wrap` as `Ellipsis` (a bar is one line) and its
+  type default is `Ellipsis`, so the `overflow` probe is `Clip`, which
+  differs from both kinds' defaults.
 
 **What the review found (M80).**
 

@@ -294,12 +294,13 @@ fn prose_index() -> usize {
 /// A host laying `PROSE` out at `lh` sixteenths and `scale`, with the
 /// pinned face; the label's logical box and the canvas it painted.
 ///
-/// **The window is the label's width**, not a `Fixed` width on the label:
-/// `Label::layout` measures its text against the limits it is offered,
-/// not against its own resolved width, so a fixed-width label in a wider
-/// parent measures fewer lines than it paints (recorded in
-/// `docs/plan-text-fit.md`, "What building found"). That is not the
-/// mechanism under test here, so the setup avoids it.
+/// **The window is the label's width**, not a `Fixed` width on the label.
+/// When this was written `Label::layout` measured its text against the
+/// limits it was offered, not its own resolved width, so a fixed-width
+/// label in a wider parent measured fewer lines than it painted. M80/T80.3
+/// fixed that (its gate is `text_containment.rs`'s
+/// `a_fixed_width_label_wraps_at_its_own_width_less_padding`); the setup is
+/// kept so this gate measures what it always measured.
 fn label_frame(font: &FontStack, lh: u8, scale: f32) -> (lumen_static::NodeState, Canvas) {
     let (lw, lhgt) = (LABEL_W, 160.0f32);
     let (w, h) = ((lw * scale).round() as u32, (lhgt * scale).round() as u32);

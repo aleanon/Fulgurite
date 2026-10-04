@@ -244,7 +244,8 @@ What v1 accepts:
   lengths, in CSS order), `spacing`, `align`, `visible`, `disabled`, `cursor`,
   `focus-ring`, `color`, `background`, `border-width`, `border-color`,
   `border-radius`, `font-size`, `font-weight`, `box-shadow`, `hover-dim`,
-  `pressed-dim`, `line-height` (a bare ratio, `1.5`). A setter added to `Patch` without a declaration here
+  `pressed-dim`, `line-height` (a bare ratio, `1.5`), `text-overflow`
+  (`wrap`, `clip` or `ellipsis`). A setter added to `Patch` without a declaration here
   fails `just static`.
 * **`@tokens { name: value; }`**, used as `$name`.
 * **Palette roles as tokens**: `$page`, `$surface`, `$control`, `$text`,

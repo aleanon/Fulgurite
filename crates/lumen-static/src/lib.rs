@@ -230,7 +230,7 @@ pub use retain::Incremental;
 pub use display::{Cmd, Color, ImageId, ImageSource, Painter, Scaled};
 #[cfg(feature = "alloc")]
 pub use display::{DisplayList, Renderer};
-pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style};
+pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style, TextOverflow};
 pub use inline::{InlineClusters, InlineText};
 pub use text::{ClusterBuf, Dirty, MeasureKey, Measured, TextBuffer, TextStorage};
 #[cfg(feature = "reload")]

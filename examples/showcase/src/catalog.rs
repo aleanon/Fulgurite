@@ -297,6 +297,8 @@ fn toggle<const K: u8>(on_: bool, on_toggle: fn(&mut Store, &EventCtx)) -> Toggl
 
 /// The `Label` demo's paragraph: long enough to wrap to several lines in
 /// its 320 px demo, so a line height shows as a taller box (M80/T80.2).
+// The same paragraph is cut to one line by the "ellipsis" switch
+// (M80/T80.3), which is why it is longer than its 320 px box.
 pub const LABEL_PROSE: &str = "The quick brown fox jumps over the lazy dog, \
     and every line of this paragraph moves when the line height changes.";
 
@@ -304,6 +306,12 @@ pub const LABEL_PROSE: &str = "The quick brown fox jumps over the lazy dog, \
 /// `style_by` (M80/T80.2).
 fn flip_spacing(s: &mut Store, _: &EventCtx) {
     s.spaced = !s.spaced;
+}
+
+/// The `Label` demo's second switch: one line, cut with an ellipsis, by
+/// the same `style_by` (M80/T80.3).
+fn flip_ellipsis(s: &mut Store, _: &EventCtx) {
+    s.ellipsis = !s.ellipsis;
 }
 
 fn flip_a(s: &mut Store, _: &EventCtx) {
@@ -335,8 +343,13 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Label(DLabel {
             spacing: Labelled::new(toggle(s.store.spaced, flip_spacing), "1.5× line height"),
+            ellipsis: Labelled::new(toggle(s.store.ellipsis, flip_ellipsis), "One line, with an ellipsis"),
             a: { let mut l = Label::<String>::default(); l.set(LABEL_PROSE.into()); l } })),
-        |s| format!("line height: {}", if s.store.spaced { "1.5×" } else { "the face's" })),
+        |s| format!(
+            "line height: {}; overflow: {}",
+            if s.store.spaced { "1.5×" } else { "the face's" },
+            if s.store.ellipsis { "ellipsis" } else { "wrap" }
+        )),
     entry!("Text", "Badge", "A count, a status and a tag.",
         false,
         |s| on(s, Demo::Badge(DBadge {

@@ -429,3 +429,82 @@ invocations a side under `just bench-lock`, base `076ae16`): `grid`'s
 build + `Incremental` 19,250.6 ns (18,759.9–19,746.8) → **18,867.5**;
 `bindings`' "layout, memo warm" 7.54 ns (6.79–13.02) → **7.71**. All
 three inside the parent's spread; the rule did not fire.
+
+## M80/T80.3 — `TextOverflow::Clip` and `Ellipsis` (2026-10-04)
+
+`Style.overflow: TextOverflow { Wrap, Clip, Ellipsis }` (`Style`'s last
+spare byte, so 80 B), `Patch::overflow`, `Fields::OVERFLOW` (bit 18;
+`EACH` 18 → 19), `.lss` `text-overflow` (`Takes::Overflow`,
+`lower::Val::TextOverflow`, the shell's `set` arm and the macro's quote
+arm), the overflow byte in `MeasureKey`'s `flow`, `edit::floor_boundary`,
+and `fit::cut`, the grapheme-snapped binary search `Label` and `AppBar`
+share. `Label` keeps its cut as `fit: (u32, f32)` from inside the memo's
+miss and paints the prefix and `…` as two runs; it measures and cuts
+against its own width less its padding (T80.2's carried defect). Without
+an allocator `Label` reads every mode as `Wrap` (K80b's fallback,
+`docs/results-embedded.md` M80/T80.3). Pinned face at 16 px unless a row
+says otherwise:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| corpus, `shell/tests/ellipsis_graphemes.rs`, `AppBar` and an `Ellipsis` `Label` | cuts inside the ZWJ family / flag / skin tone / accent | 0 / 0 / 0 / 0 for both (20 / 10 / 10 / 0 at `553fa5e`); near 542 / 352 / 352 / 138 (bar), 383 / 214 / 214 / 122 (label) | 0 inside, > 0 near | `floor_boundary` snaps to `char`: bar **20 / 10 / 10**, label **18 / 9 / 9**; the accent stays 0 (advance 0, T80.0) |
+| | the old pins against the new code | — | — | `[0, 20, 10, 10]` asserted, `[0, 0, 0, 0]` measured: red, as the flip should be |
+| `.lss`, `shell/tests/lss_parity.rs` | `pass_accept.lss` rules both ways (it gained `text-overflow: ellipsis`) | 6 / 6, loud 7 / 7, equal | equal | `set` arm deleted: panics "no setter `overflow` taking TextOverflow(Ellipsis)"; the macro maps `ellipsis` to `Clip`: "rule 1 (Kind(\"label\")) differs" with both patches printed |
+| masks, `widgets/tests/style_reads.rs` (34 kinds; `AppBar` added) | kinds reading `overflow` | `label`, `appbar` | exactly those | probe texts left short: "label: declares unread [overflow]", "appbar: declares unread [overflow]" |
+| | setup: the probe text under `Wrap` at 200 / 400 px | 4 / 2 lines | > 1 | — |
+| fits its box, `shell/tests/text_containment.rs`, 46 widths × 5 texts | truncated cases; worst ink overhang right/top/bottom | **201** of 230; **0 px** | ≥ 30; 0 | `fit::cut` forgets the mark's width: **14 px** |
+| | uncut cases byte-identical to `Wrap` | 29 of 29 | all | — (accept) |
+| the carried defect, same file: `Fixed(90)`, padding 8, offered 480 | lines measured; ink overhang | 4 lines; 0 px | > 1; 0 | measured against the offer: **1 line, 54 px** |
+| `Clip` damage, same file (the host's retained damage) | damage / the label's box | 1,520 / 1,520 px² = **1.00×** | 1.00× | whole text in a 10,000 px rect under a clip: **6.00×** (window-clipped) |
+| S2, `agent/tests/damage_shape.rs`, two cut labels in a column | the journal's changed ids after the first cut moves (`"a first"` → `"abcdef"`) | `["first"]` | second absent | `Cmd::hash_into` folds `text.0`: `["first", "second"]` |
+| memo, `lumen-static/tests/measure_key.rs`, `"one\ntwo"` | warm under `Wrap`, cold under `Ellipsis`; height | warm / cold; 32 → 16, shown `"one"` | cold, heights differ | overflow dropped from `flow`: still warm, **32** served |
+| cost (K80d), `shell/tests/fit_cost.rs`, 1,568 cuts over 7 titles | runs measured per cut, worst, by title length | 8 (49–64 B), 11 (352–408 B), 6 (13 B) | `⌈log2 len⌉ + 3` = 9 / 12 / 7 | linear search: **50–65, 135–147, 14** |
+| sizes, `lumen-static/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a holds) |
+
+`size_of` on the host (alloc tier): `Label<&str>` 72 → **80 B**,
+`Label<String>` 80 → 88 B (the `fit` pair); `AppBar` 72 → **104 B**, its
+hand-rolled `(fold, room, size, weight)` key replaced by a `FoldedText`
+under `MeasureKey::new`, which adds the measurer's generation and the
+overflow byte the old key never had. The embedded `Ui` is unchanged at
+1,216 B because the leaf tier has no cut.
+
+**Live**, `just widget-drive Label`, all four legs green (`Everything`,
+`Boundaries`, the shadow oracle with 375 frames compared and none
+diverging, and scale 2): the ellipsis switch takes the paragraph from
+**88 → 22 px** (4 × 22, Noto Sans; 66 → 22 at scale 2, 3 × 22),
+`getAppliedStyles` reports `overflow: Ellipsis`, the agent still publishes
+all 113 characters, and `~changes.` (the last word, which the cut drops)
+still resolves to the label; its pixels change (`ui.regionHash`, 27,544 px
+at scale 1); the press outside changes nothing (22 → 22); a second press
+wraps it back to 88. Under the injection the inventory names (`Label`
+reads every mode as `Wrap`, the leaf tier's rule, on the host) the action
+fails on all four legs, "height 88.0 -> 88.0" (66 → 66 at scale 2).
+Damage over the label is **1.05×** (cut) and
+**1.47×** (re-wrapped) of its own box at scale 1, **2.09×** at scale 2,
+under the journal's bound of 4.0: the label's box changes height and the
+stage re-centres the demo, so the region over it holds its old and new
+rects, where T80.2's line height grew the box in place and read 1.00×.
+`just widget-drive AppBar` (inventory unchanged) is green on all four
+legs, the oracle comparing 411 frames with none diverging. The headless
+twin is `the_label_demos_ellipsis_switch_cuts_to_one_line`.
+
+**K80c** (eight invocations a side under `just bench-lock`, base
+`3b99585`) **fired on the first build** and was answered: `bindings`'
+"layout, memo warm" read **9.81 ns** against the parent's 7.13–7.92,
+because `Label` now computes the room it measures against on every layout,
+memo hit included, and called `resolve_self` for it. Attributed by putting
+the room back at the offer (the rest of T80.3 kept): about 8.3 ns against
+the base's 7.77, so the call was about 1.1 ns. With the width half of
+`resolve_self` written out (`text_room` in `ops.rs`): `grid`'s `mark_all`
+frame 96.29 µs (93.11–100.50) → **96.73**; `retain --text`'s build +
+`Incremental` 18,712.2 ns (18,585.8–19,849.5) → **18,989.6**; "layout,
+memo warm" 7.82 ns (7.33–13.49) → **7.88**. All three inside; the rule
+does not fire on the committed code.
+
+Firmware, `just firmware-delta 3b99585`: **+224 B** `.text` on
+`firmware`, **+296 B** on `firmware_interactive` (bound 1,000), +248 /
++236 on `firmware_bind` / `firmware_cascade`, `.rodata` +0; K80b, `just
+firmware-delta 845de0c firmware=1024 firmware_interactive=1536`: **910 of
+1,024 B** and **1,150 of 1,536 B**, after the fallback (2,710 B on
+`firmware` without it).
+

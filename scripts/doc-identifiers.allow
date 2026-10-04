@@ -134,7 +134,6 @@ LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?
 TRANSITION                     # proposed by ?
 PhysicalSize                   # proposed by M80
-TextOverflow                   # proposed by M80
 TextSource                     # proposed by M80
 BASIC_CHECKSUM                 # proposed by M81
 FaceSource                     # proposed by M81

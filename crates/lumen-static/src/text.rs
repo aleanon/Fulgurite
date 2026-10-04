@@ -129,11 +129,13 @@ impl<T> core::ops::Deref for Dirty<T> {
 ///
 /// # How the text flows — M80/T80.2
 ///
-/// `flow` holds [`Style::line_height`] (the low byte; M80/T80.3 puts the
-/// overflow mode in the next), filled from the `Style` this constructor
-/// already takes, so every text memo keys on it without a call-site
-/// change. Without it a restyle that changed only the line height served
-/// the box measured at the old pitch (`crates/lumen-static/tests/measure_key.rs`).
+/// `flow` holds [`Style::line_height`] in the low byte and
+/// [`Style::overflow`] in the next (M80/T80.3), filled from the `Style`
+/// this constructor already takes, so every text memo keys on both
+/// without a call-site change. Without it a restyle that changed only the
+/// line height served the box measured at the old pitch, and a `Wrap` →
+/// `Ellipsis` restyle the stale multi-line box
+/// (`crates/lumen-static/tests/measure_key.rs`, both cases).
 /// Four bytes on every memo-holding widget, 32 → 36; the embedded `Ui`
 /// re-budget attributes them (`docs/results-embedded.md` M80/T80.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,7 +178,7 @@ impl MeasureKey {
             weight: style.font_weight.to_bits(),
             scale: scale.to_bits(),
             generation,
-            flow: style.line_height as u32,
+            flow: style.line_height as u32 | (style.overflow as u32) << 8,
         }
     }
 }

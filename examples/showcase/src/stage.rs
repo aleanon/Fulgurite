@@ -503,15 +503,18 @@ pub struct DTooltip {
     pub a: Tooltip<Button<Store, String>, String>,
 }
 
-/// A paragraph, and a switch that restyles it — M80/T80.2. The switch
-/// writes the store, and the program's `style_by` turns that into a
-/// `line_height(1.5)` rule on the label, so the demo shows a style field
-/// changing a measured box, not a widget field.
+/// A paragraph, and two switches that restyle it — M80/T80.2 and T80.3.
+/// Each writes the store, and the program's `style_by` turns that into a
+/// `line_height(1.5)` or `overflow(Ellipsis)` rule on the label, so the
+/// demo shows a style field changing a measured box, not a widget field.
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 12.0)]
 pub struct DLabel {
     #[widget_id("d_label_spacing")]
     pub spacing: PairSwitch,
+    /// M80/T80.3: one line, cut with `…`, in the demo's fixed 320 px.
+    #[widget_id("d_label_ellipsis")]
+    pub ellipsis: PairSwitch,
     #[widget_id("d_label_a")]
     pub a: Label<String>,
 }

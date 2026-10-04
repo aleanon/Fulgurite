@@ -152,7 +152,7 @@ fn a_refusal_drops_its_rule_and_keeps_parsing() {
 // ---- T61.2: lowering -------------------------------------------------
 
 use crate::compile;
-use crate::lower::{Align, Cursor, Edges, Length, Role, Rule as LRule, Setter, Val, PROPERTIES};
+use crate::lower::{Align, Cursor, Edges, Length, Role, Rule as LRule, Setter, TextOverflow, Val, PROPERTIES};
 
 fn lowered(src: &str) -> crate::Sheet {
     compile(src).unwrap_or_else(|e| panic!("{:#?}", e.iter().map(|e| e.at("t.lss")).collect::<Vec<_>>()))
@@ -172,6 +172,7 @@ fn every_property_lowers_to_its_setter() {
             color: $ink; background: $surface; border-width: 1px; border-color: $focus;
             border-radius: 8px; font-size: 15px; font-weight: 600; box-shadow: 12px;
             pressed-dim: 0.15; hover-dim: 0.07; disabled: true; line-height: 1.5;
+            text-overflow: ellipsis;
          }
          #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
          #c { width: fill(3); padding: 1px 2px 3px 4px; }",
@@ -197,6 +198,7 @@ fn every_property_lowers_to_its_setter() {
         set("hover_dim", Val::F32(0.07)),
         set("disabled", Val::Bool(true)),
         set("line_height", Val::F32(1.5)),
+        set("overflow", Val::TextOverflow(TextOverflow::Ellipsis)),
     ];
     assert_eq!(s.base[0].setters, want_a);
     assert_eq!(

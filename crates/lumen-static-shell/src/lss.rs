@@ -30,7 +30,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use lumen_static::display::Color;
-use lumen_static::style::{Align, Cursor, Edges, Length, Patch, Role, Rule, Selector};
+use lumen_static::style::{Align, Cursor, Edges, Length, Patch, Role, Rule, Selector, TextOverflow};
 use lumen_static_lss::ast::Part;
 use lumen_static_lss::lower::{self, Val};
 
@@ -112,6 +112,7 @@ fn set(p: Patch, method: &str, v: Val) -> Patch {
         ("pressed_dim", Val::F32(x)) => p.pressed_dim(x),
         ("hover_dim", Val::F32(x)) => p.hover_dim(x),
         ("line_height", Val::F32(x)) => p.line_height(x),
+        ("overflow", Val::TextOverflow(o)) => p.overflow(overflow(o)),
         (m, v) => panic!("lumen_static_shell::lss: no setter `{m}` taking {v:?}"),
     }
 }
@@ -147,6 +148,14 @@ fn cursor(c: lower::Cursor) -> Cursor {
         lower::Cursor::ColResize => Cursor::ColResize,
         lower::Cursor::RowResize => Cursor::RowResize,
         lower::Cursor::NotAllowed => Cursor::NotAllowed,
+    }
+}
+
+fn overflow(o: lower::TextOverflow) -> TextOverflow {
+    match o {
+        lower::TextOverflow::Wrap => TextOverflow::Wrap,
+        lower::TextOverflow::Clip => TextOverflow::Clip,
+        lower::TextOverflow::Ellipsis => TextOverflow::Ellipsis,
     }
 }
 

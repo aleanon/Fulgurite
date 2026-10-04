@@ -34,6 +34,31 @@ pub(crate) fn prev_boundary(s: &str, at: usize) -> Option<usize> {
     s[..at].char_indices().next_back().map(|(i, _)| i)
 }
 
+/// The last boundary at or before `at` in `s` — M80/T80.3, for
+/// [`crate::fit::cut`]: a byte offset snapped **down** to where a reader's
+/// character starts, so a cut there never keeps half a ZWJ family, a flag
+/// or a skin tone. `at` past the end is the end; 0 is always a boundary.
+///
+/// By grapheme where there is an allocator and by `char` in the leaf
+/// tier, the module's rule: a `char` snap still never splits a
+/// character's bytes, so the slice it bounds cannot panic.
+pub(crate) fn floor_boundary(s: &str, at: usize) -> usize {
+    let mut at = at.min(s.len());
+    while !s.is_char_boundary(at) {
+        at -= 1;
+    }
+    #[cfg(feature = "alloc")]
+    {
+        let mut c = unicode_segmentation::GraphemeCursor::new(at, s.len(), true);
+        if let Ok(false) = c.is_boundary(s, 0) {
+            if let Ok(Some(b)) = c.prev_boundary(s, 0) {
+                return b;
+            }
+        }
+    }
+    at
+}
+
 /// The boundary after `at` in `s`, if any.
 pub(crate) fn next_boundary(s: &str, at: usize) -> Option<usize> {
     if at >= s.len() {

@@ -55,6 +55,28 @@ sheet a function of the switch:
 
 What it measures and costs is in `docs/results-text.md` (M80/T80.2).
 
+## Overflow: one line, cut where a reader's character ends
+
+`overflow` is the other text-flow field: `TextOverflow::Wrap` (the default),
+`Clip` or `Ellipsis` — `text-overflow: ellipsis` in a `.lss`. `Clip` and
+`Ellipsis` make the text **one line, cut in layout**: the widget keeps the
+longest prefix whose width, with the `…`'s, fits the width it occupies, and
+paints only that. The prefix ends on a grapheme boundary, so a ZWJ family, a
+flag or a skin tone is kept whole or dropped whole, and a hard line break ends
+the visible line. `Clip` is the same cut with no mark, not a run clipped
+mid-glyph: a run that reached past its node would also be damaged past it.
+`Label` and `AppBar` read it (a bar is one line, so it reads `Wrap` as
+`Ellipsis`); the screen reader still gets the whole text. Without an
+allocator a `Label` reads every mode as `Wrap`, because the cut did not fit the
+firmware's budget. The same demo's second switch:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:text_overflow}}
+```
+
+What the cut costs, in shaping and in flash, is in `docs/results-text.md`
+and `docs/results-embedded.md` (M80/T80.3).
+
 ## Complex scripts are a crate, not a feature
 
 `lumen-static-text` is separate on purpose. That is the M15 gating

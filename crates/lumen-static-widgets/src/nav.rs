@@ -465,6 +465,13 @@ pub const MAX_APPBAR_NODES: usize = 64;
 /// is a hidden subtree that takes no room. The title fills what is left
 /// and **ends in an ellipsis** when it does not fit, which the rustdoc
 /// claimed and nothing tested: it drew past the bar.
+///
+/// **The cut is `Style::overflow`'s** — M80/T80.3: `Ellipsis` by default,
+/// `Clip` for a cut with no mark, and `Wrap` reads as `Ellipsis`, because a
+/// bar is one line. The search is [`crate::fit::cut`], shared with
+/// `Label`, which cuts at a **grapheme** boundary; `fit_title` searched
+/// `char` boundaries and kept half a ZWJ family, flag or skin tone before
+/// the `…`.
 pub struct AppBar<
     S: lumen_static::text::TextStorage = &'static str,
     L: Widget = Option<crate::ops::Spacer>,
@@ -473,12 +480,15 @@ pub struct AppBar<
     pub title: S,
     pub leading: L,
     pub actions: A,
-    /// How much of the title fits, from layout: its byte length, whether
-    /// it was cut, and the drawn prefix's width.
-    fit: (usize, bool, f32),
-    /// What `fit` was computed under: the title's fold, the room and the
-    /// font, so a still frame measures nothing.
-    fit_key: (u64, u32, u32, u32),
+    /// How much of the title fits, from layout — the same pair `Label`
+    /// keeps: the prefix's end byte (`u32::MAX` = uncut) and where the `…`
+    /// starts from the title's left edge (negative under `Clip`: no mark).
+    fit: (u32, f32),
+    /// What `fit` was computed under, so a still frame measures nothing:
+    /// the title's fold under a [`MeasureKey`](lumen_static::text::MeasureKey)
+    /// for the room (M80/T80.3), which adds the measurer's generation and
+    /// the overflow byte that the hand-rolled key never had.
+    fit_key: lumen_static::text::FoldedText,
     /// The title's box, from `place`.
     title_x: (f32, f32),
 }
@@ -505,7 +515,7 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
 
     /// A bar with both slots.
     pub fn with(title: S, leading: L, actions: A) -> Self {
-        AppBar { title, leading, actions, fit: (0, false, 0.0), fit_key: (0, 0, 0, 0), title_x: (0.0, 0.0) }
+        AppBar { title, leading, actions, fit: (u32::MAX, -1.0), fit_key: lumen_static::text::FoldedText::new(), title_x: (0.0, 0.0) }
     }
 
     fn act() -> usize {
@@ -515,13 +525,16 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
     /// The part of the title drawn, and whether it was cut.
     pub fn shown_title(&self) -> (&str, bool) {
         let t = self.title.as_ref();
-        (&t[..self.fit.0.min(t.len())], self.fit.1)
+        if self.fit.0 == u32::MAX {
+            return (t, false);
+        }
+        (t.get(..self.fit.0 as usize).unwrap_or(""), true)
     }
 }
 
 /// The gap between a slot and the title.
 const SLOT_GAP: f32 = 8.0;
-const ELLIPSIS: &str = "…";
+const ELLIPSIS: &str = crate::fit::ELLIPSIS;
 
 pub struct AppBarTable<L, A>(core::marker::PhantomData<(L, A)>);
 
@@ -551,7 +564,11 @@ impl<L: Widget, A: Widget> AppBarTable<L, A> {
                 Fields::FONT_SIZE,
                 Fields::FONT_WEIGHT,
                 Fields::SHADOW,
+                // M80/T80.3: the bar's ground and its shadow are rounded by
+                // it, and the mask had never been measured to say so.
+                Fields::RADIUS,
                 Fields::VISIBLE,
+                Fields::OVERFLOW,
             ]),).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::OnAccent).background(lumen_static::style::Role::Accent));
         lumen_static::widget::splice_seeds(&mut s, 1, L::SEEDS);
         lumen_static::widget::splice_seeds(&mut s, 1 + L::NODE_COUNT, A::SEEDS);
@@ -572,6 +589,8 @@ fn appbar_defaults() -> Style {
         font_size: 18.0,
         font_weight: 600.0,
         shadow: 6.0,
+        // M80/T80.3: a bar's title is one line, cut with a mark.
+        overflow: lumen_static::style::TextOverflow::Ellipsis,
         ..Style::default()
     }
 }
@@ -660,8 +679,8 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> Node for AppBar<S
         let (x0, x1) = self.title_x;
         let (shown, cut) = self.shown_title();
         out.text_weighted([x0, y0, x1, y1], shown, s.font_size, s.font_weight, s.fg);
-        if cut {
-            let e = x0 + self.fit.2;
+        if cut && self.fit.1 >= 0.0 {
+            let e = x0 + self.fit.1;
             out.text_weighted([e, y0, x1, y1], ELLIPSIS, s.font_size, s.font_weight, s.fg);
         }
         self.leading.paint(st, i + Self::LEAD, out);
@@ -712,47 +731,26 @@ impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> Node for AppBar<S
 }
 
 impl<S: lumen_static::text::TextStorage, L: Widget, A: Widget> AppBar<S, L, A> {
-    /// How much of the title fits in `room`, with an ellipsis when not all
-    /// of it does: the longest prefix, on a char boundary, whose width
-    /// plus the ellipsis's fits. A binary search over boundaries, and
-    /// memoised, so a still frame measures nothing.
+    /// How much of the title fits in `room`: [`crate::fit::cut`], with a
+    /// mark unless the style says `Clip`, memoised under a
+    /// [`MeasureKey`](lumen_static::text::MeasureKey) for the room and the
+    /// title's fold, so a still frame measures nothing.
     fn fit_title(&mut self, cx: &mut LayoutCx, room: f32, me: &Style) {
         let t = self.title.as_ref();
-        let key = (
-            lumen_static::text::FoldedText::fold_of(t),
-            room.to_bits(),
-            me.font_size.to_bits(),
-            me.font_weight.to_bits() ^ cx.scale().to_bits().rotate_left(7),
+        let key = lumen_static::text::MeasureKey::new(
+            cx,
+            Constraints { min_w: 0.0, max_w: room, min_h: 0.0, max_h: 0.0 },
+            me,
         );
-        if key == self.fit_key {
-            return;
-        }
-        self.fit_key = key;
-        let (px, wt) = (me.font_size, me.font_weight);
-        let mut w = |s: &str| cx.text.measure_weighted(s, px, wt, f32::INFINITY).w;
-        let full = w(t);
-        if full <= room {
-            self.fit = (t.len(), false, full);
-            return;
-        }
-        let e = w(ELLIPSIS);
-        // The byte offset of the `k`-th character boundary, found by
-        // walking rather than collected: this runs in layout, which
-        // allocates nothing in steady state, and in the no-allocator tier.
-        let at = |k: usize| t.char_indices().nth(k).map_or(t.len(), |(b, _)| b);
-        let (mut lo, mut hi) = (0usize, t.chars().count());
-        while lo < hi {
-            let mid = (lo + hi).div_ceil(2);
-            if w(&t[..at(mid)]) + e <= room {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        let cut = at(lo);
-        // Drop a trailing space before the ellipsis: "Inbox …" is a gap.
-        let cut = t[..cut].trim_end().len();
-        self.fit = (cut, true, w(&t[..cut]));
+        let fit = &mut self.fit;
+        self.fit_key.get_or(key, t, || {
+            let mark = me.overflow != lumen_static::style::TextOverflow::Clip;
+            *fit = match crate::fit::cut(cx.text, t, me.font_size, me.font_weight, room, mark) {
+                None => (u32::MAX, -1.0),
+                Some((end, w)) => (end as u32, if mark { w } else { -1.0 }),
+            };
+            Size::default()
+        });
     }
 }
 

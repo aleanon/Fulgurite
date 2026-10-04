@@ -29,7 +29,7 @@ use lumen_static::display::DisplayList;
 use lumen_static_widgets::ops::{Button, Fixed, Label, Spacer};
 use lumen_static::repeat::Repeat;
 use lumen_static_widgets::select::Select;
-use lumen_static::style::{Cursor, Fields, Seed};
+use lumen_static::style::{Cursor, Fields, Seed, TextOverflow};
 use lumen_static::{pass, Align, Color, Constraints, Dyn, Edges, Either, ImageId, Length, List, Node, NodeState, Patch, Point, Rule, Selector, Size, StaticTree, Widget};
 use lumen_static_widgets::{CheckBox, Glass, Image, Popup, Radio, ScrollView, Slider, Switch, TextArea, TextInput};
 use lumen_static_widgets::prelude::*;
@@ -84,7 +84,9 @@ fn patch_for(name: &str) -> Patch {
         "radius" => p.radius(7.5),
         "font_size" => p.font_size(23.0),
         "font_weight" => p.font_weight(800.0),
-        "shadow" => p.shadow(6.0),
+        // 7, not 6: 6 is `AppBar`'s own default, so the probe could not
+        // move it (M80/T80.3, the first time a bar was measured).
+        "shadow" => p.shadow(7.0),
         "pressed_dim" => p.pressed_dim(0.5),
         "hover_dim" => p.hover_dim(0.5),
         // One probe for the pair: a width with no colour draws
@@ -94,6 +96,10 @@ fn patch_for(name: &str) -> Patch {
         // M80/T80.2: 1.5x changes even a single line's height (CSS's
         // rule, "a single line included"), and the paint byte either way.
         "line_height" => p.line_height(1.5),
+        // M80/T80.3: differs from `Label`'s default (`Wrap`) and from
+        // `AppBar`'s (`Ellipsis`), so it moves both: a label that wrapped
+        // becomes one line, and a bar's cut title loses its mark.
+        "overflow" => p.overflow(TextOverflow::Clip),
         other => panic!("no probe value for field {other}"),
     }
 }
@@ -268,7 +274,10 @@ macro_rules! kinds {
 }
 
 kinds! {
-    PLabel: Label<String> = [|r| r.w.set("probe text".to_owned())];
+    // M80/T80.3: long enough to wrap at `BASE`'s 200 px (and at the
+    // shrink base's 400), or `overflow` has nothing to cut and measures as
+    // unread. `wrapping_label_probes_wrap` asserts that setup.
+    PLabel: Label<String> = [|r| r.w.set(LONG.to_owned())];
     PFixed: Fixed = [|r| { r.w.w = 20.0; r.w.h = 10.0; }];
     PSpacer: Spacer = [|_| {}];
     PButton: Button<(), String> = [|r| r.w.label = "go".to_owned()];
@@ -311,6 +320,30 @@ kinds! {
     // M80/T80.2: one of the three kinds that read `line_height`, and not
     // measured before it.
     PRich: RichText = [|r| r.w = RichText::new("probe words wrap")];
+    // M80/T80.3: the other kind that reads `overflow`; its title is long
+    // enough to be cut at either base's width, or the probe changes nothing.
+    PAppBar: AppBar<String> = [|r| r.w = AppBar::new(LONG.to_owned())];
+}
+
+/// A label and bar text that does not fit one line at 400 px.
+const LONG: &str = "probe text long enough that it cannot fit on one line at four hundred pixels wide";
+
+/// **The `overflow` probe's setup** — M80/T80.3. Under `Wrap` the probe
+/// text breaks onto more than one line at both bases' widths (`BASE`'s
+/// fixed 200 px, `BASE_SHRINK`'s 400 px offer), measured by the stand-in
+/// measurer `pass::layout` uses, so a `Clip` rule has a line to cut; with
+/// the old "probe text" it fit, and `overflow` measured as unread on
+/// `Label` whatever its layout did.
+#[test]
+fn wrapping_label_probes_wrap() {
+    let mut m = lumen_static::BlockMetrics;
+    let one = lumen_static::TextMeasure::measure_weighted(&mut m, LONG, 16.0, 400.0, f32::INFINITY).h;
+    for (name, room) in [("BASE", 200.0), ("BASE_SHRINK", 400.0)] {
+        let h = lumen_static::TextMeasure::measure_weighted(&mut m, LONG, 16.0, 400.0, room).h;
+        let lines = (h / one).round();
+        println!("{name}: probe text at {room} px -> {lines} lines under Wrap (one line {one} px; bound > 1)");
+        assert!(lines > 1.0, "{name}: the probe text fits one line, so `overflow` has nothing to cut");
+    }
 }
 
 fn names(f: Fields) -> String {

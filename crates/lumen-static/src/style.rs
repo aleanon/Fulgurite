@@ -120,6 +120,35 @@ pub enum Cursor {
     NotAllowed,
 }
 
+/// What a single-line text does when it does not fit its box —
+/// M80/T80.3 (`docs/plan-text-fit.md`). Named so it cannot be confused
+/// with `lumen-static-wgpu`'s private `Overflow`.
+///
+/// **`Clip` and `Ellipsis` are one line, cut in layout, by grapheme**:
+/// the widget keeps the longest prefix that fits (with room for `…`
+/// under `Ellipsis`) and paints only that, so a run never reaches past
+/// its node and its damage stays the node's box. `Clip` is **not** a run
+/// clipped mid-glyph: a glyph cut in half says nothing a reader can use.
+/// A hard line break ends the visible line and counts as overflow. The
+/// cut is logical (byte order); its visual side for right-to-left text is
+/// M81's.
+///
+/// Read by `Label` (default `Wrap`) and `AppBar` (default `Ellipsis`; a
+/// bar is one line, so it reads `Wrap` as `Ellipsis`), whose seeds declare
+/// [`Fields::OVERFLOW`]. `.lss` spells it `text-overflow: ellipsis`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TextOverflow {
+    /// Break onto as many lines as the text needs — what every node did
+    /// before the field existed.
+    #[default]
+    Wrap,
+    /// One line, cut at the last grapheme boundary that fits, no mark.
+    Clip,
+    /// One line, cut so the prefix and a `…` fit.
+    Ellipsis,
+}
+
 /// One node's computed style.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Style {
@@ -223,6 +252,13 @@ pub struct Style {
     /// `W1010` finding. Free: one of the two spare bytes in `Style`'s
     /// tail, so `Style` stays 80 B (`tests/cursor.rs`).
     pub line_height: u8,
+    /// What a text that does not fit does — M80/T80.3: wrap (the
+    /// default), or one line cut with or without an ellipsis
+    /// ([`TextOverflow`]). Read by `Label` and `AppBar`, which make the cut
+    /// in layout, so paint needs no copy of it in `NodeState`. The last of
+    /// `Style`'s two spare tail bytes: `Style` stays 80 B
+    /// (`tests/cursor.rs`), and the next field grows it (M82).
+    pub overflow: TextOverflow,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -276,6 +312,7 @@ impl Default for Style {
             border_width: 0,
             border_color: crate::display::Color::TRANSPARENT,
             line_height: 0,
+            overflow: TextOverflow::Wrap,
             cursor: Cursor::Default,
             visible: true,
             disabled: false,
@@ -516,11 +553,14 @@ impl Fields {
     /// lint reports a rule that sets it on anything else rather than let
     /// it be a silent no-op.
     pub const LINE_HEIGHT: Fields = Fields(1 << 17);
+    /// [`Style::overflow`] — M80/T80.3, the next free bit when it landed.
+    /// `Label` and `AppBar` declare it.
+    pub const OVERFLOW: Fields = Fields(1 << 18);
     pub const ALL: Fields = Fields(u32::MAX);
 
     /// Every field with its name, for reports and for the tests that
     /// measure a mask field by field.
-    pub const EACH: [(Fields, &'static str); 18] = [
+    pub const EACH: [(Fields, &'static str); 19] = [
         (Fields::WIDTH, "width"),
         (Fields::HEIGHT, "height"),
         (Fields::PADDING, "padding"),
@@ -539,6 +579,7 @@ impl Fields {
         (Fields::HOVER_DIM, "hover_dim"),
         (Fields::BORDER, "border"),
         (Fields::LINE_HEIGHT, "line_height"),
+        (Fields::OVERFLOW, "overflow"),
     ];
 
     /// The union of a list — how a widget spells its mask at the
@@ -829,6 +870,8 @@ pub struct Patch {
     /// [`Style::line_height`] as the **ratio** a rule wrote (`1.5`), not
     /// the byte: the cascade rounds it to sixteenths ([`Patch::line_height`]).
     pub line_height: Option<f32>,
+    /// [`Style::overflow`] — M80/T80.3.
+    pub overflow: Option<TextOverflow>,
 }
 
 impl Patch {
@@ -857,6 +900,7 @@ impl Patch {
             border_color_role: None,
             disabled: None,
             line_height: None,
+            overflow: None,
         }
     }
 
@@ -982,6 +1026,14 @@ impl Patch {
         self
     }
 
+    /// What a text that does not fit does — M80/T80.3: wrap, or one line
+    /// cut with ([`TextOverflow::Ellipsis`]) or without
+    /// ([`TextOverflow::Clip`]) a `…`. Read by `Label` and `AppBar`.
+    pub const fn overflow(mut self, v: TextOverflow) -> Self {
+        self.overflow = Some(v);
+        self
+    }
+
     /// How much darker the background goes while pressed (0.0–1.0).
     pub const fn pressed_dim(mut self, v: f32) -> Self {
         self.pressed_dim = Some(v);
@@ -1064,6 +1116,9 @@ impl Patch {
         }
         if let Some(v) = self.line_height {
             s.line_height = sixteenths(v);
+        }
+        if let Some(v) = self.overflow {
+            s.overflow = v;
         }
     }
 }
@@ -1250,6 +1305,9 @@ impl Patch {
         }
         if self.line_height.is_some() {
             f |= Fields::LINE_HEIGHT.0;
+        }
+        if self.overflow.is_some() {
+            f |= Fields::OVERFLOW.0;
         }
         Fields(f)
     }

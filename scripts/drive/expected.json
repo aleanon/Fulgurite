@@ -7,13 +7,14 @@
   "M44/T44.10 added Select and ScrollView (owed since M42) and a keyboard action each to PickList, ColorPicker, Tree (two) and DataGrid.",
   "M45/T45.6 added word-Left, double click and triple click to TextInput and TextArea, and Ctrl+End and Home to TextArea.",
   "The M56 merge made NumberInput's letter refusal static: its landing had been read off the click inside `do`, never off the letters.",
-  "M80/T80.2 added Label: its demo's switch sets a 1.5x line height through the program's style_by, and a second press restores it."
+  "M80/T80.2 added Label: its demo's switch sets a 1.5x line height through the program's style_by, and a second press restores it.",
+  "M80/T80.3 added Label's ellipsis switch: one press cuts the paragraph to one line (the whole text still published), a second wraps it again."
  ],
  "counts": {
   "entries": 44,
-  "actions": 141,
-  "landed_checked": 114,
-  "isolated": 58
+  "actions": 143,
+  "landed_checked": 116,
+  "isolated": 59
  },
  "entries": {
   "PickList": [
@@ -203,7 +204,9 @@
   ],
   "Label": [
    "the switch sets a 1.5x line height and the paragraph is lines x pitch",
-   "a second press restores the face's spacing"
+   "a second press restores the face's spacing",
+   "the ellipsis switch cuts the paragraph to one line, and it still publishes the whole text",
+   "a second press wraps the paragraph again"
   ],
   "Button": [
    "a click reaches the application",
