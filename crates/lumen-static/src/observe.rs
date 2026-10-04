@@ -321,6 +321,9 @@ pub fn node_json(table: &[NodeDesc], st: &[NodeState], id: NodeId, n: &AkNode) -
 /// - `numeric`: `{value, min, max, step}`, each present when set — a
 ///   slider, a number field, a progress bar;
 /// - `expanded`, `modal`, `hidden`, `disabled`, `busy`: flags;
+/// - `readOnly`: a text entry that shows and focuses but edits nothing (a
+///   pick list's trigger, M57/B20), so a reader knows not to expect a
+///   caret or an input method there (M80/T80.5's follow-up);
 /// - `actions`: the advertised action names (`"click"`, `"increment"` …).
 ///
 /// Until T48.5 every agent reply that serialised a node dropped all of
@@ -361,6 +364,7 @@ pub fn state_json(n: &AkNode, o: &mut serde_json::Map<String, serde_json::Value>
         ("hidden", n.is_hidden()),
         ("disabled", n.is_disabled()),
         ("busy", n.is_busy()),
+        ("readOnly", n.is_read_only()),
     ] {
         if on {
             o.insert(k.into(), true.into());

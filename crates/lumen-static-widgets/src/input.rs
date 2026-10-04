@@ -158,7 +158,8 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// (`docs/widget-audit.md`, PickList). Read-only, it declines text,
     /// deletion, a paste and an input method's composition (the last two
     /// since M80/T80.5), draws no caret and reports none
-    /// (`Node::caret_rect`).
+    /// (`Node::caret_rect`), and publishes AccessKit's read-only state
+    /// (the agent's `readOnly`).
     pub read_only: bool,
     /// Shown, dimmed, while the field is empty — M57/B15. The text colour
     /// at [`PLACEHOLDER_ALPHA`], so it follows the palette and stays above
@@ -1039,6 +1040,11 @@ impl<S: TextBuffer> Node for TextInput<S> {
             node.set_label(self.label);
         }
         node.set_value(self.text.as_ref());
+        // Published, so a reader (and the drive's IME check) knows this
+        // field opens no candidate window: `caret_rect` is `None` here.
+        if self.read_only {
+            node.set_read_only();
+        }
     }
 }
 

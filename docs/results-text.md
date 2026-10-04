@@ -605,6 +605,19 @@ shown option, against M57/B20's rule; it refuses both now. The catalogue
 gate's first run named it: `textinput #chooser-trigger: composed and
 answered None`.
 
+**A read-only trigger, found by the full catalogue** (follow-up,
+2026-10-04). The live check above demanded an IME area for every focused
+text entry, and a pick list's read-only trigger correctly has none, so
+`just ci d4859b4`'s all-widget drive failed on `PickList` while the
+four-field drive was green (`docs/plan-text-fit.md`, What building found).
+A read-only `TextInput` now publishes `readOnly`, and the check expects
+`app.imeArea` **null** on it:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| live, `widget_drive.sh PickList,Combobox,TextInput,TextArea,NumberInput,SearchField`, six legs | read-only: `app.imeArea` on the focused trigger; editable: \|area centre − caret column\| | read-only **18** checks (3 a leg), null at every one; editable **168** (28 a leg), worst **0.50 px**; the oracle 3,402 frames compared, none diverged | null; ≤ 1 physical px | the agent omits `readOnly`: `PickList/releasing over a row chooses it: node 174 (TextInput) is focused and app.imeArea is null` (the CI failure, by name); a read-only `TextInput` answers a `caret_rect`: `node 174 (TextInput) is read-only and focused and app.imeArea is [639.66, 418.10, 640.66, 439.90], not null` |
+| `agent/tests/tree_fields.rs` | `readOnly` on a pick list's trigger / on an editable `TextInput` | `true` / absent | `true` / absent | the agent omits it: trigger `readOnly null`, the assertion fires by name |
+
 Firmware, `just firmware-delta cf1f623` (K4's default, bound 1,000 B on
 `firmware_interactive`): `.text` **+60 / +116 / +56 / +60 B** (`firmware`,
 `firmware_interactive`, `firmware_bind`, `firmware_cascade`), `.rodata`

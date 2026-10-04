@@ -1024,6 +1024,24 @@ in the accept direction in the same session.*
   Site 8 is a focusable fixture leaf, `Fuse`, whose `caret_rect` panics
   once; its arm is a `Cell`, because `caret_rect` takes `&self` and an
   `update` between the arm and the focus would otherwise disarm it.
+- T80.5 (follow-up): **a full-catalogue drive failed where the
+  single-widget drive was green.** `just ci d4859b4` reported `FAIL
+  PickList [Everything]: PickList/releasing over a row chooses it: node 172
+  (TextInput) is focused and app.imeArea is null`. A pick list's trigger is
+  a *read-only* `TextInput` (M57/B20), and T80.5 itself made a read-only
+  field answer `caret_rect` = `None` -- so the window correctly placed no
+  area, and `_ime_check` demanded one. T80.5's live drive named only the
+  four editable fields, so no drive met a read-only trigger until the
+  whole catalogue ran: AGENT.md's assembly lesson again, each piece right
+  in isolation. Fixed in both directions rather than by skipping the node:
+  a read-only `TextInput` publishes AccessKit's read-only state, the
+  agent's node JSON carries `readOnly: true` (`observe::state_json`, only
+  when set), and `_ime_check` asserts `app.imeArea` is **null** for a
+  focused read-only node (a read-only field must not open a candidate
+  window) and keeps the caret-column check for an editable one. The only
+  catalogue widget embedding a read-only `TextInput` is `PickList`
+  (`choose.rs`, `KIND == PICKLIST`); `docs/results-text.md` T80.5 has the
+  drive's numbers and both injections.
 
 **What the review found (M80).**
 

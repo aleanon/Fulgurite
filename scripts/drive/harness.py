@@ -445,6 +445,8 @@ def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
     px of the caret column **found in `ui.screenshot`'s pixels** — never
     `caret_rect` compared with itself. `None` when no such node is
     focused, so the check runs after every focusing action and only then.
+    A focused node the agent reports `readOnly` must have **no** area
+    (`app.imeArea` null): it shows no caret and composes nothing.
 
     The caret column is the column with the longest unbroken run of ink
     inside the field's padded box (and the caret's pixel into its right
@@ -461,6 +463,18 @@ def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
     if not (first <= i < end) or node.get("role") not in IME_ROLES:
         return None
     area = c.rpc("app.imeArea").get("area")
+    # **A read-only field opens no candidate window** -- the refuse
+    # direction. A pick list's trigger is a read-only `TextInput`
+    # (M57/B20) that focuses, answers `caret_rect` = None and declines an
+    # input method's text, and publishes `readOnly` so this check can tell
+    # it from a field whose window forgot the area. Found by the first
+    # full-catalogue drive after T80.5, which only drove editable fields.
+    if node.get("readOnly"):
+        if area is not None:
+            raise Failed(f"node {i} ({node.get('role')}) is read-only and focused and app.imeArea "
+                         f"is {area}, not null: a read-only field opened an IME area "
+                         f"(injection: a read-only TextInput answers a caret_rect)")
+        return f"ime: node {i} is read-only, app.imeArea null (expected null)"
     if area is None:
         raise Failed(f"node {i} ({node.get('role')}) is focused and app.imeArea is null: "
                      f"the window placed no IME area (injection: Win never calls set_ime_cursor_area)")

@@ -50,6 +50,8 @@ struct Ui {
     modal: Modal<Label>,
     #[widget_id("either")]
     either: Either<Shown, Gone>,
+    #[widget_id("field")]
+    field: TextInput,
 }
 
 impl Default for Ui {
@@ -60,6 +62,7 @@ impl Default for Ui {
             chooser: PickList::default(),
             modal: Modal::default(),
             either: Either::new(Shown::default(), Gone::default()),
+            field: TextInput::default(),
         }
     }
 }
@@ -165,6 +168,32 @@ fn get_tree_carries_the_state_a_screen_reader_announces() {
     // And a node that is showing is not marked hidden.
     let shown = node(&tree, "shown");
     assert!(shown.get("hidden").is_none(), "a showing node reported hidden: {shown}");
+}
+
+/// M80/T80.5's follow-up: a read-only text entry says so. A pick list's
+/// trigger is a read-only `TextInput` (M57/B20) that focuses but answers
+/// no caret, so the live drive's IME check must expect *no* area there --
+/// and can only tell it from a window that forgot the area if the tree
+/// carries `readOnly`. Both directions: the trigger reports it, an
+/// editable field does not.
+#[test]
+fn a_read_only_text_entry_reports_read_only() {
+    let h = host();
+    let tree = call(&h, "ui.getTree", json!({}));
+    let nodes = tree["nodes"].as_array().expect("nodes");
+    let trigger = nodes
+        .iter()
+        .find(|n| n["wid"] == lumen_static_widgets::choose::PART_TRIGGER)
+        .expect("setup: no pick-list trigger in the tree");
+    let field = node(&tree, "field");
+    println!(
+        "trigger role {} readOnly {}; field role {} readOnly {}",
+        trigger["role"], trigger["readOnly"], field["role"], field["readOnly"]
+    );
+    assert_eq!(trigger["role"], "TextInput", "setup: the trigger is not a text entry: {trigger}");
+    assert_eq!(field["role"], "TextInput", "setup: #field is not a text entry: {field}");
+    assert_eq!(trigger["readOnly"], true, "a pick list's read-only trigger did not report readOnly: {trigger}");
+    assert!(field.get("readOnly").is_none(), "an editable field reported readOnly: {field}");
 }
 
 /// T48.5: `observe::dump` and `ui.getTree` over the same tree are

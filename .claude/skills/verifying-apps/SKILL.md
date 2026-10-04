@@ -127,7 +127,9 @@ display list, not pixels) and answers `measured`, `unmeasured` and the
 `id`, `role`, `value`, `label`, `bounds`, `children`, `src` and `wid`,
 `ui.getTree` carries — only when set — `toggled` (`"true"`/`"false"`/
 `"mixed"`), `numeric` (`value`, `min`, `max`, `step`), `expanded`,
-`modal`, `hidden`, `disabled`, `busy` and `actions`. An unchecked box
+`modal`, `hidden`, `disabled`, `busy`, `readOnly` (a text entry that
+focuses but edits nothing, e.g. a pick list's trigger: no caret, and
+`app.imeArea` stays null) and `actions`. An unchecked box
 reads `toggled: "false"`, never an absent field; `ui.resolve` and
 `ui.getLayout` carry the same fields (T48.6).
 
