@@ -6,6 +6,32 @@ and the commits. The plan-wide budgets and kill rules K1–K4 are
 `docs/plan-iced-roadmap.md` §2 and §4; the firmware's four-binary table
 is `docs/results-embedded.md`'s.
 
+## M82a's headline — gradients, closed at T82.4 (2026-10-04)
+
+**A gradient is now radial or linear, rounded or square, and reachable
+from a stylesheet, for no `Cmd` growth and no frame cost.** The figures
+are the task sections below and the kill-rule table at the end; this
+section cites them and states none of its own.
+
+- **The command did not grow.** `Stops` gave up 15 B (T82.1) and the
+  wider `Gradient` spent them: the K82a mirror reads 56 of 56 and `Cmd`
+  stays 60 (T82.1, T82.2).
+- **A `Style` byte reaches paint as content, never as an index.**
+  `background_fill` is resolved against `Painter::fills` at every one of
+  the border sites, so retention, the journal and the window see an
+  ordinary gradient (T82.3: three sites, the palette, `set_fills`, the
+  journal at 1.00×, the shadow oracle, the live Card).
+- **What it cost.** `Style` grew by one 4-byte slot and `NodeState` not
+  at all (T82.3's sizes row); the K3 arms stayed inside their spreads
+  with no fill in the tree (T82.3's K82c table); and the firmware's
+  milestone total is in the kill-rule table, worst on
+  `firmware_interactive`.
+- **Two shipped defects found on the way**, neither a gradient's own:
+  the GPU had only ever drawn the first gradient in a frame (T82.2), and
+  the D4 contrast walk judged text on the stage behind a fill (T82.3).
+  `Host::show` dropping the fill table on a retry was caught before it
+  shipped (`docs/plan-paint-vocabulary.md`, "What building found").
+
 ## Thresholds, written before anything is built (T82.0, 2026-10-04)
 
 M82's own kill rules and the bounds its tasks state, copied from the
@@ -165,3 +191,31 @@ assignment (84 / 84; `Cmd` 60 and `Event` 16 untouched); the embedded `Ui`
 is unchanged at 1,216 B. The firmware attribution is in
 `docs/results-embedded.md` M82/T82.3: `ops::fill`'s body and its call
 sites, which neither D3 nor D6 accepted, are reported to the owner there.
+
+## M82a's kill rules, at its close (T82.4, 2026-10-04)
+
+Every rule M82a could read, with its number, fired or not (S5). The
+milestone's firmware total is T82.0's base (`b873ab0`, the T82.0 row
+above) against T82.3's head: the sum of the three task deltas, each
+printed by `just firmware-delta <parent>` against its own parent. T82.4
+changes no linked code: `just firmware-delta 975b9cb firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0` prints **+0**
+`.text` and **+0** `.rodata` on all four.
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K82a — the gradient fits | `GradientPayload` ≤ 56 B, `Cmd` 60 | **56 B**, `Cmd` **60** (T82.1, T82.2) | holds; `corner` stays in the command |
+| K82b — firmware floor | `firmware_interactive` ≥ 1,024 B under 81,920 after every task; no binary over | least headroom **18,516 B** (T82.3); largest binary 63,404 B | holds |
+| K82b / K4 — per task | `firmware_interactive` Δ ≤ 1,000 B (T82.2: 400) | T82.1 **+16**, T82.2 **+16** (of 400), T82.3 **+288** | holds |
+| — M82a's total | recorded | `firmware` **+308**, `firmware_interactive` **+320**, `firmware_bind` / `firmware_cascade` **+252** | recorded |
+| K82c (K3) — no fill, no frame cost | each row inside the base's eight-run spread | all seven rows inside (T82.3) | holds; neither step taken |
+| K1 — the struct budget | `Style` ≤ 84, `NodeState` ≤ 88; `Cmd` 60, `Event` 16 | `Style` **84** (81 used), `NodeState` **84**; `Cmd` 60, `Event` 16; embedded `Ui` 1,216 B unchanged (T82.3) | holds |
+| K2 — default-off | crate count, new features | M82a adds no feature and no dependency | not applicable |
+| K82d, K82e, K2 (`vector-text`) | — | M82b's (T82.6, T82.8, T82.7) | not yet read |
+
+**`ops::fill`'s body and its call sites** (T82.3's symbol diff:
+`ops::fill` +312 B in all four binaries, the call sites about +32–40
+each) are in neither D3's list nor D6's, which accepts the `fills`
+getter. They are recorded as part of the accepted `fills` feature, by
+the coordinator at M82a's close, unless the owner says otherwise
+(`docs/results-embedded.md` M82/T82.3).

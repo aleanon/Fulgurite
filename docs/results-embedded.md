@@ -1012,7 +1012,10 @@ code moving with the larger `Style` copies. `.rodata` +20 (the paint-only
 and bind binaries) and +32 (the two that also carry the `Patch` table).
 **Neither the call sites nor `ops::fill`'s body is in D3's or D6's list**
 (D6 accepts the `fills` getter, which is the 10 B): they are reported to
-the owner here, under K4's 1,000 B cap at 288 B.
+the owner here, under K4's 1,000 B cap at 288 B. At M82a's close (T82.4)
+they are recorded as part of the accepted `fills` feature, the getter's
+call sites and body together, unless the owner says otherwise
+(`docs/plan-paint-vocabulary.md`, "What building found").
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

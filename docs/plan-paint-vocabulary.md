@@ -2,8 +2,9 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Building: T82.0, T82.1, T82.2 and T82.3 landed 2026-10-04
-> (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
+> its own file. M82a (T82.0–T82.4) built 2026-10-04 and closes on
+> `just ci-verify` of its T82.4 commit (S5), cited in AGENT.md; M82b
+> (T82.5–T82.9) building (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1065,6 +1066,16 @@ crosses.*
   only the fill could move.
 - T82.3: the plan's figures held exactly: bit **19**, 29 sites in 18
   files, `Style` 84 (81 used), `NodeState` 84/84.
+- T82.4 (M82a's close): **`ops::fill`'s body and its call sites are in
+  neither D3's nor D6's list.** T82.3's symbol diff put `ops::fill` at
+  +312 B and each call site at about +32–40; D6 accepts the `fills`
+  getter, which is 10 B of it, and Decisions ("Firmware") had said the
+  branch would be measured and reported. It is recorded as part of the
+  accepted `fills` feature — the getter is useless without the code that
+  reads it — by the coordinator, unless the owner says otherwise
+  (`docs/results-paint-vocabulary.md`, "M82a's kill rules, at its
+  close"). Every M82a kill rule held; K82a held with no byte to spare
+  (56 of 56), as designed.
 
 **What the review found (M82).**
 
