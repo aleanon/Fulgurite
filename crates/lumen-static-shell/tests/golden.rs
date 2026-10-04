@@ -157,7 +157,7 @@ fn a_three_stop_gradient_keeps_its_golden() {
         color: [Color(10, 20, 200, 255), Color(250, 240, 30, 255), Color(200, 30, 40, 255), Color(0, 0, 0, 0)],
         len: 3,
     };
-    list.gradient([8.0, 8.0, 112.0, 72.0], stops, 0.0);
+    list.gradient([8.0, 8.0, 112.0, 72.0], stops, lumen_static::display::GradShape::Linear { angle: 0.0 }, 0.0);
     let grads = list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Gradient { .. })).count();
     assert_eq!(grads, 1, "setup: the frame must hold the gradient it pins");
     c.render(&list, W, H);

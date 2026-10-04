@@ -10,7 +10,7 @@
 //! does not compile here until it is placed, and each command must emit
 //! its own element.
 
-use lumen_static::display::{Cmd, Color, ImageId, Material, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, GradKind, GradShape, ImageId, Material, Renderer, Stops};
 use lumen_static::{DisplayList, Point};
 use lumen_static_shell::svg::Svg;
 
@@ -77,7 +77,7 @@ fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
         (vec![Cmd::Shadow { rect: r, color: RED, radius: 4.0, spread: 3.0 }], 0, r#"opacity="0.35""#),
         (vec![Cmd::Text { rect: [0.0, 0.0, 50.0, 16.0], text: (0, 2), size: 12.0, weight: 400.0, line_height: 0, color: RED }], 0, ">hi</text>"),
         (vec![Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 9.0, y: 9.0 }, width: 2.0, color: RED }], 0, "<line"),
-        (vec![Cmd::Gradient { rect: r, stops: Stops::two(RED, Color(0, 0, 255, 255)), angle: 0.0 }], 0, "<linearGradient"),
+        (vec![Cmd::Gradient { rect: r, stops: Stops::two(RED, Color(0, 0, 255, 255)), kind: GradKind::Linear, geom: [0.0; 3], corner: 0.0 }], 0, "<linearGradient"),
         (vec![Cmd::Image { rect: r, id: ImageId(3), tint: RED }], 0, r#"data-image="3""#),
         (vec![Cmd::Glass { rect: r, radius: 4.0, material: Material::FROSTED }], 0, r#"data-blur="12.00""#),
         (vec![clip], 0, r#"<g clip-path="url(#c0)">"#),
@@ -156,7 +156,7 @@ fn rendering_twice_does_not_accumulate() {
     // `defs` and the clip depth are per-frame state; a renderer reused
     // across frames must not grow.
     let mut l = DisplayList::new();
-    l.gradient([0.0, 0.0, 10.0, 10.0], Stops::two(RED, RED), 0.0);
+    l.gradient([0.0, 0.0, 10.0, 10.0], Stops::two(RED, RED), GradShape::Linear { angle: 0.0 }, 0.0);
     let mut s = Svg::new();
     s.render(&l, 100, 50);
     let first = s.finish();
@@ -176,7 +176,7 @@ fn a_stop_offset_is_written_as_a_fraction() {
         color: [RED, Color(0, 255, 0, 255), Color(0, 0, 255, 255), RED],
         len: 3,
     };
-    let out = render(|l| l.gradient([0.0, 0.0, 10.0, 10.0], stops, 0.0));
+    let out = render(|l| l.gradient([0.0, 0.0, 10.0, 10.0], stops, GradShape::Linear { angle: 0.0 }, 0.0));
     let offsets: Vec<&str> = out.match_indices("offset=\"").map(|(i, m)| {
         let rest = &out[i + m.len()..];
         &rest[..rest.find('"').unwrap()]
@@ -184,4 +184,31 @@ fn a_stop_offset_is_written_as_a_fraction() {
     println!("stop offsets written: {offsets:?} (want the middle one 0.200)");
     assert_eq!(offsets.len(), 3, "setup: three stops must be written");
     assert_eq!(offsets[1], "0.200", "the middle stop at 51/255 was not written as 0.200");
+}
+
+/// M82/T82.2: **a radial, rounded gradient writes a `<radialGradient>`
+/// in user space and the corner as `rx`.** A radial written as the
+/// linear arm would still render something, so the element is asserted
+/// by name, with its resolved centre and radius printed.
+#[test]
+fn a_radial_rounded_gradient_writes_radial_gradient_and_rx() {
+    let out = render(|l| {
+        l.gradient(
+            [0.0, 0.0, 40.0, 20.0],
+            Stops::two(RED, Color(0, 0, 255, 255)),
+            GradShape::Radial { center: [0.25, 0.5], radius: 1.0 },
+            6.0,
+        )
+    });
+    let radial = out.find("<radialGradient").map(|i| &out[i..i + out[i..].find('>').unwrap() + 1]);
+    println!("radial: {radial:?}; linear present: {}; rx=\"6.00\" present: {}", out.contains("<linearGradient"), out.contains(r#"rx="6.00""#));
+    // Centre (10, 10); the farthest corner is (40, 0) or (40, 20), at
+    // sqrt(30² + 10²) = 31.62.
+    assert_eq!(
+        radial,
+        Some(r#"<radialGradient id="g0" gradientUnits="userSpaceOnUse" cx="10.00" cy="10.00" r="31.62">"#),
+        "a radial gradient was not written as a <radialGradient> at its resolved centre and radius"
+    );
+    assert!(!out.contains("<linearGradient"), "a radial also wrote a linear gradient");
+    assert!(out.contains(r#"rx="6.00""#), "the gradient's corner was not written as rx");
 }

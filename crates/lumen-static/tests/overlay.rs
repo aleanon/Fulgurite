@@ -440,10 +440,14 @@ fn deferring_forwards_every_command() {
     fn paint(p: &mut dyn Painter) {
         p.rect([0.0, 0.0, 10.0, 10.0], Color(1, 2, 3, 255));
         p.line(Point { x: 0.0, y: 0.0 }, Point { x: 9.0, y: 9.0 }, 1.0, Color(9, 9, 9, 255));
+        // M82/T82.2: a radial, rounded gradient, so a forward that
+        // rebuilt the shape (as `Linear`) or dropped the corner changes
+        // the stream.
         p.gradient(
             [0.0, 0.0, 10.0, 10.0],
             Stops::two(Color(10, 0, 0, 255), Color(0, 0, 10, 255)),
-            0.0,
+            lumen_static::display::GradShape::Radial { center: [0.25, 0.75], radius: 0.5 },
+            3.0,
         );
         p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255));
         p.glass(

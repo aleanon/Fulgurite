@@ -382,7 +382,12 @@ impl Node for Skeleton {
         for n in 0..3 {
             let x = c + (k + n as f32) * SHIMMER_PERIOD - SHIMMER_BAND / 2.0;
             if x < r[2] && x + SHIMMER_BAND > r[0] {
-                out.gradient([x, r[1], x + SHIMMER_BAND, r[3]], stops, 0.0);
+                out.gradient(
+                [x, r[1], x + SHIMMER_BAND, r[3]],
+                stops,
+                lumen_static::display::GradShape::Linear { angle: 0.0 },
+                0.0,
+            );
             }
         }
         out.pop_clip();

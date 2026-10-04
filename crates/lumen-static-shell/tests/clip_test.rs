@@ -246,7 +246,13 @@ fn every_command() -> Vec<(&'static str, lumen_static::Cmd, f32, bool)> {
         ),
         (
             "Gradient",
-            Cmd::Gradient { rect: big, stops: Stops::two(ink, Color(30, 30, 200, 255)), angle: 0.0 },
+            Cmd::Gradient {
+                rect: big,
+                stops: Stops::two(ink, Color(30, 30, 200, 255)),
+                kind: lumen_static::display::GradKind::Linear,
+                geom: [0.0; 3],
+                corner: 0.0,
+            },
             area(big),
             false,
         ),

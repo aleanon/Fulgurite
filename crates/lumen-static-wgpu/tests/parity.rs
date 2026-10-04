@@ -31,7 +31,7 @@
 //! LUMEN_REQUIRE_GPU=1, under which a missing adapter fails
 //! (M43/T43.10), and `the_gpu_half_ran` prints the one that ran.
 
-use lumen_static::display::{Cmd, Color, DisplayList, ImageId, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, DisplayList, GradKind, GradShape, ImageId, Renderer, Stops};
 use lumen_static::Point;
 use lumen_static_shell::software::Canvas;
 use lumen_static_wgpu::Gpu;
@@ -147,7 +147,7 @@ fn frame() -> DisplayList {
     l.shadow([160.0, 70.0, 230.0, 110.0], 8.0, 10.0);
     l.rounded_rect([160.0, 70.0, 230.0, 110.0], Color(30, 38, 54, 255), 8.0);
     l.line(Point { x: 12.0, y: 90.0 }, Point { x: 70.0, y: 130.0 }, 3.0, Color(20, 160, 90, 255));
-    l.gradient([80.0, 88.0, 140.0, 128.0], Stops::two(Color(255, 200, 0, 255), Color(200, 0, 120, 255)), 0.0);
+    l.gradient([80.0, 88.0, 140.0, 128.0], Stops::two(Color(255, 200, 0, 255), Color(200, 0, 120, 255)), GradShape::Linear { angle: 0.0 }, 0.0);
     // Half-transparent, so the blend arithmetic is compared too and not
     // just the coverage.
     l.rect([10.0, 140.0, 70.0, 170.0], Color(0, 120, 200, 128));
@@ -281,7 +281,7 @@ fn the_frame_uses_every_command() {
         Cmd::Shadow { rect: r, color: PAGE, radius: 0.0, spread: 1.0 },
         Cmd::Text { rect: r, text: (0, 0), size: 1.0, weight: 400.0, line_height: 0, color: PAGE },
         Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 1.0, y: 1.0 }, width: 1.0, color: PAGE },
-        Cmd::Gradient { rect: r, stops: Stops::two(PAGE, PAGE), angle: 0.0 },
+        Cmd::Gradient { rect: r, stops: Stops::two(PAGE, PAGE), kind: GradKind::Linear, geom: [0.0; 3], corner: 0.0 },
         Cmd::Image { rect: r, id: CARD_ID, tint: PAGE },
         Cmd::Glass { rect: r, radius: 0.0, material: lumen_static::display::Material::LIQUID },
         Cmd::PushClip { rect: r },
@@ -548,6 +548,94 @@ fn the_gpu_half_ran() {
         Some(g) => println!("adapter: {}", g.adapter()),
         None => println!("adapter: none -- the GPU half of this file compared nothing"),
     }
+}
+
+/// **Radial and rounded gradients on both backends** — M82/T82.2
+/// (`docs/plan-paint-vocabulary.md`).
+///
+/// Two shapes, each rendered by both backends and held to the gradient
+/// region's own bound ([`REGIONS`]):
+///
+/// - a radial whose resolved centre is pixel (47, 47)'s centre and whose
+///   radius is 48 px along that row: the centre pixel is stop 0 and the
+///   pixel at the radius, (95, 47), the last stop, within 2/255 on each
+///   backend. Setup: the list holds exactly one radial `Gradient`;
+/// - a gradient of one colour with `corner = 12` at (150, 20): the pixel
+///   at (1, 1) inside it has coverage ≤ 1/255, and its centre is the stop
+///   colour, on each backend. Not (3, 3), which is half-covered on
+///   correct code.
+///
+/// **And it is the first frame here with two gradients in it.** The
+/// rounded one is second on purpose: until T82.2 the shader's `Grad` was
+/// 112 B against the Rust struct's 96 (a `vec3<u32>` pad aligns to 16),
+/// so every gradient after the first read the wrong entry and drew
+/// nothing (`shader.wgsl`, `Grad`).
+///
+/// Injections (T82.2's commit): the shader measures a radial from its
+/// far end -- centre and edge swapped -- and the radial's region fails
+/// parity; the shader ignores `params.x` for `KIND_GRADIENT`, and the
+/// GPU's corner pixel is the stop colour; the `vec3<u32>` pad restored,
+/// and the GPU's rounded gradient is the page.
+#[test]
+fn radial_and_rounded_gradients_agree_across_backends() {
+    const FROM: Color = Color(250, 30, 30, 255);
+    const TO: Color = Color(30, 30, 250, 255);
+    // 128 x 64 at (16, 16): (47.5 - 16) / 128 and / 64 are exact in binary.
+    let rect = [16.0, 16.0, 144.0, 80.0];
+    let center = [0.24609375, 0.4921875];
+    // The farthest corner from (47.5, 47.5) is (144, 80): 96.5 x 32.5.
+    let radius = 48.0 / (96.5f32 * 96.5 + 32.5 * 32.5).sqrt();
+    let rounded = [150.0, 20.0, 230.0, 80.0];
+    let mut l = DisplayList::new();
+    l.gradient(rect, Stops::two(FROM, TO), GradShape::Radial { center, radius }, 0.0);
+    l.gradient(rounded, Stops::two(FROM, FROM), GradShape::Linear { angle: 0.0 }, 12.0);
+    let radials = l.cmds.iter().filter(|c| matches!(c, Cmd::Gradient { kind: GradKind::Radial, .. })).count();
+    println!("setup: {radials} radial gradient(s), {} command(s) (want 1 and 2)", l.cmds.len());
+    assert_eq!((radials, l.cmds.len()), (1, 2), "the fixture must hold one radial and one rounded gradient");
+
+    let Some(mut g) = gpu() else { return };
+    let mut c = canvas();
+    c.clear(PAGE);
+    c.render(&l, W, H);
+    g.clear(PAGE);
+    g.render(&l, W, H);
+    let gp = g.read_rgba();
+
+    let at = |px: &[u8], x: u32, y: u32| {
+        let i = ((y * W + x) * 4) as usize;
+        Color(px[i], px[i + 1], px[i + 2], 255)
+    };
+    let d = |a: Color, b: Color| a.0.abs_diff(b.0).max(a.1.abs_diff(b.1)).max(a.2.abs_diff(b.2));
+    let cov = |got: Color| {
+        let ch = |g: u8, i: u8, p: u8| if i == p { 0.0 } else { (g as f32 - p as f32) / (i as f32 - p as f32) };
+        ch(got.0, FROM.0, PAGE.0).max(ch(got.1, FROM.1, PAGE.1)).max(ch(got.2, FROM.2, PAGE.2))
+    };
+    let mut wrong = Vec::new();
+    for (name, px) in [("cpu", &c.pixels[..]), ("gpu", &gp[..])] {
+        let (dc, de) = (d(at(px, 47, 47), FROM), d(at(px, 95, 47), TO));
+        let (k, mid) = (cov(at(px, 151, 21)), at(px, 190, 50));
+        println!(
+            "{name}: radial centre {dc}/255 from stop 0, radius {de}/255 from the last stop (bound 2); \
+             corner (1, 1) coverage {:.1}/255 (bound 1), centre {mid:?}",
+            k * 255.0
+        );
+        if dc > 2 || de > 2 {
+            wrong.push(format!("{name}: radial {dc}/{de}"));
+        }
+        if k > 1.0 / 255.0 || mid != FROM {
+            wrong.push(format!("{name}: corner {:.1}/255, centre {mid:?}", k * 255.0));
+        }
+    }
+    let gradient = REGIONS.iter().position(|r| r.name == "gradient").expect("a gradient region");
+    let (ro, rw) = region_over(&c.pixels, &gp, W, [14, 14, 146, 82], 8);
+    let (co, cw) = region_over(&c.pixels, &gp, W, [148, 18, 232, 82], 8);
+    println!(
+        "parity: radial {ro} px over 8 (worst {rw}), rounded {co} px over 8 (worst {cw}); bound {} (the gradient region's)",
+        bound(gradient)
+    );
+    assert!(wrong.is_empty(), "probes off on a backend: {wrong:?}");
+    assert!(ro <= bound(gradient), "the radial disagrees across backends: {ro} px over 8");
+    assert!(co <= bound(gradient), "the rounded gradient disagrees across backends: {co} px over 8");
 }
 
 /// **Each backend passes the line pitch** — M80/T80.1.
@@ -866,4 +954,3 @@ fn images_agree_across_the_backends() {
         assert_eq!(over, 0, "image {name}: {over} px differ by more than 8 inside the placement");
     }
 }
-

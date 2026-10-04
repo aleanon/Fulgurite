@@ -37,38 +37,36 @@ fn the_command_is_free() {
 /// and printed beside its 56 B bound (M82/T82.0,
 /// `docs/plan-paint-vocabulary.md` K82a).
 ///
-/// Since M82/T82.1 the mirror is the layout M82/T82.2 commits to --
-/// `rect`, `stops`, a one-byte kind, a three-float geometry and a corner,
-/// 16 + 21 + 1 + 12 + 4 = 54, padded to 56 -- over the real [`Stops`], so
-/// a change to `Stops` that would not fit T82.2's variant fails here, in
-/// the task that makes it. The variant as it stands today (`rect`,
-/// `stops`, `angle`) is printed beside it: T82.1's byte offsets took it
-/// from 56 to 44, which is the room T82.2 spends. (`plan-paint-vocabulary.md`,
-/// "What building found".)
+/// Since M82/T82.2 the mirror is the variant itself -- `rect`, `stops`,
+/// `kind`, `geom`, `corner`: 16 + 21 + 1 + 12 + 4 = 54, padded to 56 --
+/// over the real [`Stops`] and [`GradKind`], so a change to either that
+/// would not fit fails here by name. (T82.1 mirrored this layout ahead of
+/// the variant with a `u8` kind; "What building found" in the plan.)
 #[test]
 fn the_gradient_payload_fits() {
-    use lumen_static::display::Stops;
+    use lumen_static::display::{GradKind, Stops};
     struct GradientPayload {
         _rect: [f32; 4],
         _stops: Stops,
-        _kind: u8,
+        _kind: GradKind,
         _geom: [f32; 3],
         _corner: f32,
     }
-    struct GradientToday {
-        _rect: [f32; 4],
-        _stops: Stops,
-        _angle: f32,
-    }
+    // The setup: the mirror has the variant's fields, by name and type.
+    let _ = |c: Cmd| match c {
+        Cmd::Gradient { rect, stops, kind, geom, corner } => {
+            GradientPayload { _rect: rect, _stops: stops, _kind: kind, _geom: geom, _corner: corner }
+        }
+        _ => unreachable!(),
+    };
     let payload = core::mem::size_of::<GradientPayload>();
     println!(
-        "Gradient payload (T82.2's layout) {payload} B (bound 56; Stops {} B), today's variant {} B, Cmd {} B (bound 60)",
+        "Gradient payload {payload} B (bound 56; Stops {} B, GradKind {} B), Cmd {} B (bound 60)",
         core::mem::size_of::<Stops>(),
-        core::mem::size_of::<GradientToday>(),
+        core::mem::size_of::<GradKind>(),
         core::mem::size_of::<Cmd>()
     );
     assert!(payload <= 56, "Gradient ({payload} B) grew past 56 and sets Cmd's size; that is a re-budget");
-    assert!(core::mem::size_of::<GradientToday>() <= payload, "today's variant is wider than the planned one");
 }
 
 /// No two command kinds may fold to the same value for the same

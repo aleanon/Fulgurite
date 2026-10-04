@@ -11,13 +11,22 @@
 //! from the wrong quantity" shape: they check pairs nobody paints and
 //! miss pairs somebody does. This reads the list a renderer would draw.
 //!
+//! **A gradient is sampled, not guessed** (M82/T82.2). A run whose ground
+//! is a gradient is measured against the gradient's colour at three
+//! points -- the run's centre and both horizontal ends, on the centre's
+//! row -- and the **minimum** ratio is the run's. The centre alone would
+//! pass a run whose end sits on a failing stop. An end past the
+//! gradient's rect is sampled at the rect's edge: the ground beyond it is
+//! some other fill, which the centre walk did not reach. A gradient with
+//! a translucent sample is still unmeasured, as `"translucent gradient"`.
+//!
 //! **What it cannot measure it counts, never skips.** A run whose ground
-//! is translucent, a gradient, an image or glass is `unmeasured`, with the
-//! reason; a run whose centre is clipped away is `clipped` (nobody sees
-//! it). A caller prints both beside the measured count, so "no text
-//! found" cannot pass.
+//! is translucent, an image or glass is `unmeasured`, with the reason; a
+//! run whose centre is clipped away is `clipped` (nobody sees it). A
+//! caller prints both beside the measured count, so "no text found"
+//! cannot pass.
 
-use lumen_static::display::{Cmd, Color, DisplayList, Rect};
+use lumen_static::display::{Cmd, Color, DisplayList, GradAxis, Rect};
 
 /// WCAG 2.x relative luminance of an sRGB colour (alpha ignored).
 pub fn luminance(c: Color) -> f32 {
@@ -54,6 +63,8 @@ pub struct Run {
     pub rect: Rect,
     /// The text colour as painted: its alpha composited over `ground`.
     pub fg: Color,
+    /// The ground the ratio is against; over a gradient, the worst of the
+    /// three samples (the module's doc).
     pub ground: Color,
     pub ratio: f32,
 }
@@ -101,8 +112,24 @@ enum Ground {
     /// Nothing here; look further down.
     Miss,
     Opaque(Color),
+    /// A gradient, opaque at the run's centre and both ends: those three
+    /// colours, of which the run's ratio is the worst.
+    Sampled([Color; 3]),
     /// Something is here, and it is not one colour.
     Unknown(&'static str),
+}
+
+/// A gradient's colour at the run's centre `(x, y)` and at its two ends,
+/// `x0` and `x1` on the same row, each clamped into the gradient's rect.
+fn gradient_ground(c: &Cmd, x: f32, y: f32, x0: f32, x1: f32) -> Ground {
+    let Cmd::Gradient { rect, stops, kind, geom, .. } = c else { return Ground::Miss };
+    let axis = GradAxis::new(*rect, *kind, *geom);
+    let at = |px: f32| stops.sample(axis.t(px.clamp(rect[0], rect[2]), y));
+    let samples = [at(x), at(x0), at(x1)];
+    if samples.iter().any(|s| s.3 != 255) {
+        return Ground::Unknown("translucent gradient");
+    }
+    Ground::Sampled(samples)
 }
 
 fn ground_at(c: &Cmd, x: f32, y: f32) -> Ground {
@@ -118,7 +145,9 @@ fn ground_at(c: &Cmd, x: f32, y: f32) -> Ground {
     match c {
         Cmd::Rect { rect, color } if holds(rect, x, y) => solid(*color),
         Cmd::RoundedRect { rect, color, radius } if holds_rounded(rect, *radius, x, y) => solid(*color),
-        Cmd::Gradient { rect, .. } if holds(rect, x, y) => Ground::Unknown("gradient"),
+        // The caller samples it (`gradient_ground`); here it only claims
+        // the point, inside its rounded corners.
+        Cmd::Gradient { rect, corner, .. } if holds_rounded(rect, *corner, x, y) => Ground::Sampled([Color(0, 0, 0, 0); 3]),
         Cmd::Image { rect, .. } if holds(rect, x, y) => Ground::Unknown("image"),
         Cmd::Glass { rect, .. } if holds(rect, x, y) => Ground::Unknown("glass"),
         Cmd::Shadow { rect, .. } if holds(rect, x, y) => Ground::Unknown("shadow"),
@@ -170,6 +199,10 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
             }
             match ground_at(&list.cmds[j], x, y) {
                 Ground::Miss => continue,
+                Ground::Sampled(_) => {
+                    ground = gradient_ground(&list.cmds[j], x, y, rect[0], rect[2]);
+                    break;
+                }
                 g => {
                     ground = g;
                     break;
@@ -180,6 +213,19 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
             Ground::Opaque(g) => {
                 let fg = over(*color, g);
                 report.measured.push(Run { index: k, text: s.to_string(), rect: *rect, fg, ground: g, ratio: ratio(fg, g) });
+            }
+            Ground::Sampled(samples) => {
+                // The worst of the three: a run is as legible as its least
+                // legible part.
+                let (fg, g, r) = samples
+                    .iter()
+                    .map(|g| {
+                        let fg = over(*color, *g);
+                        (fg, *g, ratio(fg, *g))
+                    })
+                    .min_by(|a, b| a.2.total_cmp(&b.2))
+                    .expect("three samples");
+                report.measured.push(Run { index: k, text: s.to_string(), rect: *rect, fg, ground: g, ratio: r });
             }
             Ground::Unknown(why) => report.unmeasured.push((k, s.to_string(), why)),
             Ground::Miss => unreachable!(),

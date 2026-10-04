@@ -22,11 +22,20 @@ struct Globals {
 // Four colour stops, out of line: they are 96 bytes and almost no frame
 // has a gradient in it, so paying for them per instance would make
 // every rect 60% bigger to describe something it is not.
+//
+// **Three `u32`s of padding, not a `vec3<u32>`** (M82/T82.2). A `vec3`
+// aligns to 16, so `_pad: vec3<u32>` sat at offset 96 and made the WGSL
+// struct 112 B against the Rust `Grad`'s 96: `grads[0]` read correctly
+// and every later index read 16 B further per entry, so **only the first
+// gradient in a frame was ever drawn**. No parity frame had held two
+// until T82.2's radial-and-rounded gate.
 struct Grad {
     color: array<vec4<f32>, 4>,
     at: vec4<f32>,
     len: u32,
-    _pad: vec3<u32>,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -91,10 +100,12 @@ struct Instance {
     // `software::clipped` computes, arrived at by the same walk.
     @location(1) clip: vec4<f32>,
     @location(2) color: vec4<f32>,
-    // (corner radius, shadow spread / line half-width, unused, gradient index)
+    // (corner radius -- a gradient's too, M82/T82.2 --, shadow spread / line
+    // half-width, unused, gradient index)
     @location(3) params: vec4<f32>,
     // Atlas uv rect for a glyph or an image; the shadow's box; the
-    // line's two endpoints; the gradient's axis and span.
+    // line's two endpoints; the gradient's axis and span, or its centre
+    // and radius with `w` = 1 (`GradAxis::uv`).
     @location(4) uv: vec4<f32>,
     @location(5) kind: u32,
 };
@@ -287,13 +298,24 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             cov = clamp(hw + 0.5 - sd_segment(p, in.uv.xy, in.uv.zw), 0.0, 1.0);
         }
         case KIND_GRADIENT: {
-            // Hard-edged, like the software fill: a gradient is a fill,
-            // not a shape.
-            if (p.x < in.rect.x || p.x > in.rect.z || p.y < in.rect.y || p.y > in.rect.w) {
+            // Square (`params.x == 0`): hard-edged, like the software
+            // fill -- a gradient is a fill, not a shape. Rounded (M82/T82.2):
+            // the rounded box's coverage from `sd_round_box`, as
+            // `software::Canvas::fill_gradient` multiplies by it.
+            if (in.params.x > 0.0) {
+                cov = clamp(0.5 - sd_round_box(p, in.rect, in.params.x), 0.0, 1.0);
+            } else if (p.x < in.rect.x || p.x > in.rect.z || p.y < in.rect.y || p.y > in.rect.w) {
                 discard;
             }
-            let c = (in.rect.xy + in.rect.zw) * 0.5;
-            let t = dot(p - c, in.uv.xy) / in.uv.z + 0.5;
+            // `GradAxis::t`: linear is `(ux, uy, span, 0)` from the rect's
+            // centre, radial `(cx, cy, radius, 1)`.
+            var t = 0.0;
+            if (in.uv.w > 0.5) {
+                t = distance(p, in.uv.xy) / in.uv.z;
+            } else {
+                let c = (in.rect.xy + in.rect.zw) * 0.5;
+                t = dot(p - c, in.uv.xy) / in.uv.z + 0.5;
+            }
             col = grad_sample(u32(in.params.w), t);
         }
         case KIND_GLYPH: {

@@ -23,7 +23,7 @@
 //! deliberately *not* snapped as well: one rule in one place is enough.
 
 use lumen_static::desc::Point;
-use lumen_static::display::{Cmd, Color, DisplayList, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, DisplayList, GradAxis, GradKind, Renderer, Stops};
 
 /// An RGBA8 pixel buffer.
 /// **Keeps its name; M27's widget is PaintBox** (T27.2, 2026-09-18).
@@ -1083,20 +1083,43 @@ impl Surface<'_> {
         }
     }
 
-    /// Fill `dst` with a linear gradient at `angle`, limited to `area`.
-    fn fill_gradient(&mut self, dst: [f32; 4], area: [f32; 4], stops: Stops, angle: f32) {
-        let (cx, cy) = ((dst[0] + dst[2]) / 2.0, (dst[1] + dst[3]) / 2.0);
-        let (ux, uy) = (angle.cos(), angle.sin());
-        // Half-extent of the box along the gradient's axis, so t spans
-        // 0..1 across the whole rect whatever the angle.
-        let half = ((dst[2] - dst[0]) * ux).abs() / 2.0 + ((dst[3] - dst[1]) * uy).abs() / 2.0;
-        let span = if half > 0.0 { half * 2.0 } else { 1.0 };
+    /// Fill `dst` with a gradient, limited to `area` (M82/T82.2).
+    ///
+    /// The parameter comes from [`GradAxis`], the formula the GPU backend
+    /// uploads too. With `corner > 0` each pixel's colour is multiplied
+    /// by the rounded box's coverage from [`sd_round_box`] -- the
+    /// expression `shader.wgsl`'s `KIND_GRADIENT` case applies to the same
+    /// `params.x` -- so a rounded gradient's corner antialiases as a
+    /// `RoundedRect`'s does. At `corner == 0` there is no coverage term at
+    /// all: the fill stays hard-edged, byte-identical to the gradient
+    /// before M82 (`tests/golden.rs`'s `gradient3`).
+    fn fill_gradient(
+        &mut self,
+        dst: [f32; 4],
+        area: [f32; 4],
+        stops: Stops,
+        kind: GradKind,
+        geom: [f32; 3],
+        corner: f32,
+    ) {
+        let axis = GradAxis::new(dst, kind, geom);
+        // The corner clamps to half the shorter side, as a rounded rect's
+        // does; past that `sd_round_box` would describe no box at all.
+        let rad = corner.min((dst[2] - dst[0]) / 2.0).min((dst[3] - dst[1]) / 2.0);
+        let rounded = rad > 0.0;
         for y in (area[1].floor() as i64).max(self.y0)..(area[3].ceil() as i64).min(self.y_hi()) {
             for x in area[0].floor().max(0.0) as i64..(area[2].ceil() as i64).min(self.width as i64)
             {
-                let (px, py) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
-                let t = (px * ux + py * uy) / span + 0.5;
-                self.blend(x, y, stops.sample(t));
+                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                let c = stops.sample(axis.t(px, py));
+                if rounded {
+                    let cov = rr_cov(px, py, dst, rad);
+                    if cov > 0.0 {
+                        self.blend_cov(x, y, c, (cov * 255.0) as u8);
+                    }
+                } else {
+                    self.blend(x, y, c);
+                }
             }
         }
     }
@@ -1340,9 +1363,9 @@ impl Surface<'_> {
                         self.stroke_line(*a, *b, *width, *color, clip.as_slice());
                     }
                 }
-                Cmd::Gradient { rect, stops, angle } => {
+                Cmd::Gradient { rect, stops, kind, geom, corner } => {
                     if let Some(r) = clipped(*rect, clip.as_slice()) {
-                        self.fill_gradient(*rect, r, *stops, *angle);
+                        self.fill_gradient(*rect, r, *stops, *kind, *geom, *corner);
                     }
                 }
                 Cmd::Image { rect, id, tint } => {

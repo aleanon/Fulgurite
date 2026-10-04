@@ -88,3 +88,10 @@ path = "src/bin/spawn.rs"
 name = "banded_pool"
 path = "src/bin/banded_pool.rs"
 required-features = ["threads"]
+
+# M82/T82.2: what a gradient costs on the software canvas, by shape --
+# linear, radial and rounded radial, in ns per Mpx
+# (docs/results-paint-vocabulary.md). T82.5 and T82.8 add arms.
+[[bin]]
+name = "vocabulary"
+path = "src/bin/vocabulary.rs"

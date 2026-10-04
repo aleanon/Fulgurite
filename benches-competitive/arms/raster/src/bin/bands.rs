@@ -21,7 +21,7 @@ use lumen_static_shell::text::FontStack;
 
 fn scene(w: u32, h: u32, list: &mut DisplayList) {
     let (fw, fh) = (w as f32, h as f32);
-    list.gradient([0.0, 0.0, fw, 64.0], Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)), 1.57);
+    list.gradient([0.0, 0.0, fw, 64.0], Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)), lumen_static::display::GradShape::Linear { angle: 1.57 }, 0.0);
     let cols = (fw / 220.0).max(1.0) as u32;
     let rows = (fh / 90.0).max(1.0) as u32;
     for r in 0..rows {

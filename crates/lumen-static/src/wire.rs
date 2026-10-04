@@ -25,7 +25,7 @@
 
 use alloc::vec::Vec;
 
-use crate::display::{Cmd, Color, DisplayList, ImageId, Material, Rect, Stops, MAX_STOPS};
+use crate::display::{Cmd, Color, DisplayList, GradKind, ImageId, Material, Rect, Stops, MAX_STOPS};
 use crate::desc::Point;
 
 /// The encoding's version. Bumped when a field changes meaning or a
@@ -39,7 +39,14 @@ use crate::desc::Point;
 /// steps, not an `f32` ([`Stops`]). A version-2 gradient is 12 B longer,
 /// and a version-2 buffer with no gradient at all has the same layout, so
 /// only this byte refuses it.
-pub const VERSION: u8 = 3;
+///
+/// 4 since M82/T82.2: tag 6 (`Cmd::Gradient`) carries a kind byte, a
+/// three-float geometry and a corner where it carried an angle. A
+/// version-3 gradient is 13 B shorter, and a version-3 buffer with no
+/// gradient has the same layout, so again only this byte refuses it --
+/// without it a version-3 buffer whose length happened to fit would
+/// decode into wrong geometry rather than `None`.
+pub const VERSION: u8 = 4;
 
 /// Append `list`'s encoding to `out`.
 pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
@@ -99,7 +106,7 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.f32(width);
                 w.color(color);
             }
-            Cmd::Gradient { rect, stops, angle } => {
+            Cmd::Gradient { rect, stops, kind, geom, corner } => {
                 w.u8(6);
                 w.rect(rect);
                 w.u8(stops.len);
@@ -107,7 +114,11 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                     w.u8(stops.at[i]);
                     w.color(stops.color[i]);
                 }
-                w.f32(angle);
+                w.u8(kind as u8);
+                for v in geom {
+                    w.f32(v);
+                }
+                w.f32(corner);
             }
             Cmd::Image { rect, id, tint } => {
                 w.u8(7);
@@ -199,7 +210,13 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
                     stops.at[i] = r.u8()?;
                     stops.color[i] = r.color()?;
                 }
-                Cmd::Gradient { rect, stops, angle: r.f32()? }
+                let kind = match r.u8()? {
+                    0 => GradKind::Linear,
+                    1 => GradKind::Radial,
+                    _ => return None,
+                };
+                let geom = [r.f32()?, r.f32()?, r.f32()?];
+                Cmd::Gradient { rect, stops, kind, geom, corner: r.f32()? }
             }
             7 => Cmd::Image { rect: r.rect()?, id: ImageId(r.u32()?), tint: r.color()? },
             8 => Cmd::Glass {
@@ -325,7 +342,7 @@ mod tests {
         l.cmds.push(Cmd::Line { a: Point { x: 1.0, y: 2.0 }, b: Point { x: 3.0, y: 4.0 }, width: 1.0, color: Color::BLACK });
         let mut stops = Stops { at: [0, 128, 255, 0], color: [Color(1, 1, 1, 1); MAX_STOPS], len: 3 };
         stops.color[2] = Color(200, 100, 50, 255);
-        l.cmds.push(Cmd::Gradient { rect: [3.0; 4], stops, angle: 90.0 });
+        l.cmds.push(Cmd::Gradient { rect: [3.0; 4], stops, kind: GradKind::Radial, geom: [0.25, 0.75, 0.5], corner: 6.0 });
         l.cmds.push(Cmd::Image { rect: [4.0; 4], id: ImageId(77), tint: Color::BLACK });
         let mut m = Material::FROSTED;
         m.morph_x = -300;
@@ -394,7 +411,7 @@ mod tests {
             color: [Color(1, 2, 3, 255), Color(4, 5, 6, 255), Color(7, 8, 9, 255), Color::TRANSPARENT],
             len: 3,
         };
-        l.gradient([0.0, 0.0, 40.0, 20.0], stops, 0.0);
+        l.gradient([0.0, 0.0, 40.0, 20.0], stops, crate::display::GradShape::Linear { angle: 0.0 }, 0.0);
         assert_eq!(l.cmds.len(), 1, "the fixture must hold the gradient it round-trips");
         let mut b = Vec::new();
         encode(&l, &mut b);
@@ -412,9 +429,58 @@ mod tests {
         assert!(decode(&same).is_some(), "setup: the fixture's body must decode under this layout");
         let old = decode(&V2_RECT);
         println!("a version-{} buffer decodes: {}", V2_RECT[0], old.is_some());
-        println!("wire::VERSION = {VERSION} (want 3)");
-        assert_eq!(VERSION, 3, "Stops' offsets changed meaning (M82/T82.1); VERSION must be 3");
+        println!("wire::VERSION = {VERSION} (want > 2)");
+        // `> 2`, not `== 3`, since M82/T82.2 bumped it again; the literal
+        // pin moved to the test below.
+        const { assert!(VERSION > 2, "Stops' offsets changed meaning (M82/T82.1); VERSION must be past 2") };
         assert!(old.is_none(), "a version-2 buffer decoded under version {VERSION}");
+    }
+
+    /// M82/T82.2: a radial, rounded gradient round-trips with its kind,
+    /// geometry and corner, and a buffer from the version-3 encoder is
+    /// refused.
+    ///
+    /// The fixture is a **literal**, as T82.1's is: a rect and no
+    /// gradient, so its layout is the same under version 4 and only the
+    /// version byte can refuse it.
+    #[test]
+    fn a_radial_round_trips_and_a_version_3_buffer_is_refused() {
+        use crate::display::GradShape;
+        let mut l = DisplayList::new();
+        let stops = Stops::two(Color(1, 2, 3, 255), Color(7, 8, 9, 255));
+        l.gradient([0.0, 0.0, 40.0, 20.0], stops, GradShape::Radial { center: [0.25, 0.5], radius: 0.75 }, 6.0);
+        assert!(
+            matches!(l.cmds[..], [Cmd::Gradient { kind: GradKind::Radial, .. }]),
+            "setup: the fixture must hold exactly one radial gradient"
+        );
+        let mut b = Vec::new();
+        encode(&l, &mut b);
+        let d = decode(&b).expect("decodes");
+        println!("radial gradient: {} B encoded at version {VERSION}, round trip equal: {}", b.len(), d.cmds == l.cmds);
+        assert_eq!(d.cmds, l.cmds, "the radial gradient did not survive the trip");
+
+        // A kind byte no build knows is refused, not read as some shape:
+        // the kind sits after the rect (16), the stop count (1) and four
+        // stops (5 each) of tag 6, which follows the 6-byte header.
+        let mut bad = b.clone();
+        let at = 1 + 1 + 4 + 1 + 16 + 1 + 4 * 5;
+        assert_eq!(bad[at], GradKind::Radial as u8, "setup: the kind byte is where the layout says");
+        bad[at] = 9;
+        assert!(decode(&bad).is_none(), "an unknown gradient kind decoded");
+
+        // `encode` at dfb72c5 (version 3) of one rect [1, 2, 30, 40] in
+        // Color(10, 20, 30, 255), no bounds.
+        const V3_RECT: [u8; 31] = [
+            3, 0, 1, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 240, 65, 0, 0, 32, 66, 10, 20, 30, 255, 0, 0, 0, 0,
+        ];
+        let mut same = V3_RECT;
+        same[0] = VERSION;
+        assert!(decode(&same).is_some(), "setup: the fixture's body must decode under this layout");
+        let old = decode(&V3_RECT);
+        println!("a version-{} buffer decodes: {}", V3_RECT[0], old.is_some());
+        println!("wire::VERSION = {VERSION} (want 4)");
+        assert_eq!(VERSION, 4, "tag 6's fields changed meaning (M82/T82.2); VERSION must be 4");
+        assert!(old.is_none(), "a version-3 buffer decoded under version {VERSION}");
     }
 
     #[test]

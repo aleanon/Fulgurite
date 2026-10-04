@@ -201,13 +201,23 @@ pub enum Cmd {
     /// focus rings, a chart's axes. Arbitrary paths are the expensive
     /// tenth and are gated separately.
     Line { a: Point, b: Point, width: f32, color: Color },
-    /// A linear gradient across `rect` — T15.3.
+    /// A linear or radial gradient across `rect`, its corners rounded by
+    /// `corner` px — T15.3, widened by M82/T82.2.
     ///
     /// Stops are **inline and bounded** ([`MAX_STOPS`]), so this costs no
     /// allocator either. Four is what a button, a card or a backdrop
     /// needs; a gradient with more stops than that is a texture, and
     /// belongs in an image.
-    Gradient { rect: Rect, stops: Stops, angle: f32 },
+    ///
+    /// The shape travels as `kind` and `geom` rather than as a
+    /// [`GradShape`], which [`GradShape::from_parts`] rebuilds: an enum
+    /// holding three floats is 16 B with its tag and alignment, and this
+    /// payload -- 16 + 21 + 1 + 12 + 4 = 54, padded to 56 -- is the one
+    /// that sets `Cmd`'s 60 B (`tests/glass_cmd.rs`, K82a in
+    /// `docs/plan-paint-vocabulary.md`). `geom` is `[angle, 0, 0]` for
+    /// `Linear` and `[cx, cy, radius]` for `Radial`, all relative to
+    /// `rect`, so only `corner` is a length.
+    Gradient { rect: Rect, stops: Stops, kind: GradKind, geom: [f32; 3], corner: f32 },
     /// A host-owned image, drawn into `rect` — T15.2.
     ///
     /// **`id` names a surface the host holds; the core never carries
@@ -622,6 +632,138 @@ impl Stops {
     }
 }
 
+/// Which gradient a [`Cmd::Gradient`] draws — M82/T82.2.
+///
+/// One byte, so the widened command still fits the 56 B payload that
+/// sets `Cmd`'s size (`docs/plan-paint-vocabulary.md`, Decisions). The
+/// discriminants are the wire encoding's (`wire.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GradKind {
+    Linear = 0,
+    Radial = 1,
+}
+
+/// A gradient's shape, **relative to the rect it fills** — M82/T82.2.
+///
+/// Resolution-free on purpose, for two reasons
+/// (`docs/plan-paint-vocabulary.md` Decisions): a `const` table entry
+/// cannot know the size of the node it will fill, and [`Scaled`] then
+/// forwards the shape unchanged -- only a gradient's `corner` is a
+/// length.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GradShape {
+    /// Along the axis at `angle` radians (0 runs left to right), spanning
+    /// the whole rect whatever the angle.
+    Linear { angle: f32 },
+    /// Circular, from `center` -- a fraction of the rect, `[0.5, 0.5]` its
+    /// middle -- out to `radius`, a fraction of the distance from the
+    /// centre to the rect's **farthest corner**, so 1.0 is CSS's
+    /// `farthest-corner`. Ellipses are not built.
+    Radial { center: [f32; 2], radius: f32 },
+}
+
+impl GradShape {
+    /// The command's `kind` byte.
+    pub const fn kind(self) -> GradKind {
+        match self {
+            GradShape::Linear { .. } => GradKind::Linear,
+            GradShape::Radial { .. } => GradKind::Radial,
+        }
+    }
+
+    /// The command's `geom`: `[angle, 0, 0]` or `[cx, cy, radius]`.
+    pub const fn geom(self) -> [f32; 3] {
+        match self {
+            GradShape::Linear { angle } => [angle, 0.0, 0.0],
+            GradShape::Radial { center, radius } => [center[0], center[1], radius],
+        }
+    }
+
+    /// The shape a command's `kind` and `geom` describe: the inverse of
+    /// [`kind`](Self::kind) and [`geom`](Self::geom).
+    pub const fn from_parts(kind: GradKind, geom: [f32; 3]) -> GradShape {
+        match kind {
+            GradKind::Linear => GradShape::Linear { angle: geom[0] },
+            GradKind::Radial => GradShape::Radial { center: [geom[0], geom[1]], radius: geom[2] },
+        }
+    }
+}
+
+/// Where a pixel sits along a gradient over a concrete rect: the one
+/// formula every renderer and the contrast check use — M82/T82.2.
+///
+/// Resolved once per command, so a per-pixel [`t`](Self::t) is a dot
+/// product (linear) or a length (radial) and no trigonometry. The GPU
+/// backend uploads exactly these fields ([`GradAxis::uv`]), so the two
+/// backends cannot compute the parameter differently.
+///
+/// Behind `std`: the axis needs `cos`, `sin` and an exact square root,
+/// which `core` lacks and [`crate::num`] does not supply, and nothing
+/// below the `std` tier interpolates a gradient -- a firmware painter
+/// takes [`Painter::gradient`]'s flat default.
+#[cfg(feature = "std")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GradAxis {
+    radial: bool,
+    /// The point `t` is measured from: the rect's centre for a linear
+    /// gradient, the resolved `center` for a radial one.
+    c: [f32; 2],
+    /// The unit axis (linear); unused for radial.
+    u: [f32; 2],
+    /// The length over which `t` runs 0..1: the rect's extent along the
+    /// axis (linear), or the radius in px (radial). Never 0.
+    span: f32,
+}
+
+#[cfg(feature = "std")]
+impl GradAxis {
+    pub fn new(rect: Rect, kind: GradKind, geom: [f32; 3]) -> GradAxis {
+        let (w, h) = (rect[2] - rect[0], rect[3] - rect[1]);
+        match kind {
+            GradKind::Linear => {
+                let (ux, uy) = (geom[0].cos(), geom[0].sin());
+                // Half-extent of the box along the gradient's axis, so t
+                // spans 0..1 across the whole rect whatever the angle.
+                let half = (w * ux).abs() / 2.0 + (h * uy).abs() / 2.0;
+                let span = if half > 0.0 { half * 2.0 } else { 1.0 };
+                GradAxis { radial: false, c: [(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0], u: [ux, uy], span }
+            }
+            GradKind::Radial => {
+                let (cx, cy) = (rect[0] + geom[0] * w, rect[1] + geom[1] * h);
+                // The farthest corner, so `radius` 1.0 reaches it.
+                let dx = (cx - rect[0]).abs().max((rect[2] - cx).abs());
+                let dy = (cy - rect[1]).abs().max((rect[3] - cy).abs());
+                let r = geom[2] * (dx * dx + dy * dy).sqrt();
+                GradAxis { radial: true, c: [cx, cy], u: [0.0, 0.0], span: if r > 0.0 { r } else { 1.0 } }
+            }
+        }
+    }
+
+    /// The gradient parameter at `(x, y)`, unclamped ([`Stops::sample`]
+    /// clamps): 0 at the start (the centre, for radial), 1 at the end.
+    #[inline]
+    pub fn t(&self, x: f32, y: f32) -> f32 {
+        let (px, py) = (x - self.c[0], y - self.c[1]);
+        if self.radial {
+            (px * px + py * py).sqrt() / self.span
+        } else {
+            (px * self.u[0] + py * self.u[1]) / self.span + 0.5
+        }
+    }
+
+    /// The four floats a GPU needs to compute [`t`](Self::t) itself:
+    /// `(ux, uy, span, 0)` for linear (measured from the rect's centre),
+    /// `(cx, cy, radius, 1)` for radial.
+    pub fn uv(&self) -> [f32; 4] {
+        if self.radial {
+            [self.c[0], self.c[1], self.span, 1.0]
+        } else {
+            [self.u[0], self.u[1], self.span, 0.0]
+        }
+    }
+}
+
 /// A host-owned image.
 ///
 /// Opaque on purpose: the core never looks inside one, so a host may
@@ -731,12 +873,18 @@ impl Cmd {
                 }
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
-            Cmd::Gradient { rect, stops, angle } => {
+            Cmd::Gradient { rect, stops, kind, geom, corner } => {
                 f(h, 9);
                 for v in rect {
                     f(h, v.to_bits() as u64);
                 }
-                f(h, angle.to_bits() as u64);
+                // M82/T82.2: the shape and the corner, so a radial whose
+                // centre moves inside the same rect is a change.
+                f(h, *kind as u64);
+                for v in geom {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, corner.to_bits() as u64);
                 f(h, stops.len as u64);
                 for k in 0..(stops.len as usize).min(MAX_STOPS) {
                     f(h, stops.at[k] as u64);
@@ -874,15 +1022,19 @@ pub trait Painter {
         let _ = (a, b, width, color);
     }
 
-    /// A linear gradient across `rect`, at `angle` radians.
+    /// A gradient across `rect` in `shape`, its corners rounded by
+    /// `corner` px (M82/T82.2; [`Cmd::Gradient`]).
     ///
-    /// Provided as a **flat fill of the first stop**, not a no-op: a
-    /// renderer that cannot interpolate should still put something
-    /// approximately right on the screen, and a missing background is a
-    /// worse failure than an un-graded one.
-    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
-        let _ = angle;
-        self.rect(rect, stops.sample(0.0));
+    /// Provided as a **flat fill of the first stop**, rounded by the
+    /// same corner, not a no-op: a renderer that cannot interpolate
+    /// should still put something approximately right on the screen, and
+    /// a missing background is a worse failure than an un-graded one.
+    /// This is `docs/plan-iced-roadmap.md` §2.2's documented exception to
+    /// "a new method is required"; the three wrappers ([`Scaled`],
+    /// `Deferring`, `Recording`) override it.
+    fn gradient(&mut self, rect: Rect, stops: Stops, shape: GradShape, corner: f32) {
+        let _ = shape;
+        self.rounded_rect(rect, stops.sample(0.0), corner);
     }
 
     /// Draw a host-owned image into `rect`, multiplied by `tint`.
@@ -1086,9 +1238,9 @@ impl DisplayList {
     }
 
     /// A gradient, dropped when it has no area or no stops.
-    pub fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+    pub fn gradient(&mut self, rect: Rect, stops: Stops, shape: GradShape, corner: f32) {
         if has_area(rect) && stops.len > 0 {
-            self.cmds.push(Cmd::Gradient { rect, stops, angle });
+            self.cmds.push(Cmd::Gradient { rect, stops, kind: shape.kind(), geom: shape.geom(), corner });
         }
     }
 
@@ -1345,10 +1497,11 @@ impl Painter for Scaled<'_> {
         let p = |q: Point| Point { x: q.x * k, y: q.y * k };
         self.inner.line(p(a), p(b), width * k, color);
     }
-    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
+    fn gradient(&mut self, rect: Rect, stops: Stops, shape: GradShape, corner: f32) {
         let r = self.r(rect);
-        // The angle is not scaled: it is an angle.
-        self.inner.gradient(r, stops, angle);
+        // The shape is not scaled: it is relative to the rect (an angle,
+        // or fractions of it). Only the corner is a length (M82/T82.2).
+        self.inner.gradient(r, stops, shape, corner * self.scale);
     }
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         let r = self.r(rect);
@@ -1432,8 +1585,8 @@ impl Painter for DisplayList {
     fn line(&mut self, a: Point, b: Point, width: f32, color: Color) {
         DisplayList::line(self, a, b, width, color)
     }
-    fn gradient(&mut self, rect: Rect, stops: Stops, angle: f32) {
-        DisplayList::gradient(self, rect, stops, angle)
+    fn gradient(&mut self, rect: Rect, stops: Stops, shape: GradShape, corner: f32) {
+        DisplayList::gradient(self, rect, stops, shape, corner)
     }
     fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
         DisplayList::image(self, rect, id, tint)

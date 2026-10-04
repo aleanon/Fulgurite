@@ -38,6 +38,7 @@ fn main() {
     l.gradient(
         [20.0, 230.0, 220.0, 300.0],
         Stops::two(Color(255, 200, 0, 255), Color(200, 0, 120, 255)),
+        lumen_static::display::GradShape::Linear { angle: 0.0 },
         0.0,
     );
     l.text([200.0, 140.0, 320.0, 170.0], "Hamburgefonstiv", 18.0, Color(240, 240, 240, 255));

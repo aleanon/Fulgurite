@@ -33,7 +33,7 @@
 
 use core::fmt::Write;
 
-use lumen_static::display::{Cmd, Color, DisplayList, ImageId, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, DisplayList, GradAxis, GradKind, ImageId, Rect, Renderer, Stops};
 
 /// Renders a frame to SVG.
 pub struct Svg {
@@ -68,18 +68,39 @@ impl Svg {
         format!("rgba({},{},{},{:.3})", c.0, c.1, c.2, c.3 as f32 / 255.0)
     }
 
-    fn gradient_def(&mut self, stops: Stops, angle: f32) -> String {
+    /// A `<linearGradient>` or, since M82/T82.2, a `<radialGradient>`.
+    ///
+    /// A radial is written in **user space** (`cx`, `cy`, `r` in px, from
+    /// [`GradAxis`], the canvas's own formula): in object-bounding-box
+    /// units SVG scales `r` by the box's normalised diagonal, so a
+    /// non-square rect would draw an ellipse where the canvas draws a
+    /// circle reaching the farthest corner.
+    fn gradient_def(&mut self, rect: Rect, stops: Stops, kind: GradKind, geom: [f32; 3]) -> String {
         let id = format!("g{}", self.grads);
         self.grads += 1;
-        // A unit vector along the gradient, which is how SVG expresses
-        // direction — the canvas expresses the same thing as an angle.
-        let (dx, dy) = (angle.cos(), angle.sin());
-        let (x1, y1) = (0.5 - dx / 2.0, 0.5 - dy / 2.0);
-        let (x2, y2) = (0.5 + dx / 2.0, 0.5 + dy / 2.0);
-        let _ = write!(
-            self.defs,
-            r#"<linearGradient id="{id}" x1="{x1:.3}" y1="{y1:.3}" x2="{x2:.3}" y2="{y2:.3}">"#
-        );
+        let close = match kind {
+            GradKind::Linear => {
+                // A unit vector along the gradient, which is how SVG
+                // expresses direction — the canvas expresses the same
+                // thing as an angle.
+                let (dx, dy) = (geom[0].cos(), geom[0].sin());
+                let (x1, y1) = (0.5 - dx / 2.0, 0.5 - dy / 2.0);
+                let (x2, y2) = (0.5 + dx / 2.0, 0.5 + dy / 2.0);
+                let _ = write!(
+                    self.defs,
+                    r#"<linearGradient id="{id}" x1="{x1:.3}" y1="{y1:.3}" x2="{x2:.3}" y2="{y2:.3}">"#
+                );
+                "</linearGradient>"
+            }
+            GradKind::Radial => {
+                let [cx, cy, r, _] = GradAxis::new(rect, kind, geom).uv();
+                let _ = write!(
+                    self.defs,
+                    r#"<radialGradient id="{id}" gradientUnits="userSpaceOnUse" cx="{cx:.2}" cy="{cy:.2}" r="{r:.2}">"#
+                );
+                "</radialGradient>"
+            }
+        };
         for k in 0..(stops.len as usize).min(lumen_static::display::MAX_STOPS) {
             let _ = write!(
                 self.defs,
@@ -91,7 +112,7 @@ impl Svg {
                 Self::colour(stops.color[k])
             );
         }
-        self.defs.push_str("</linearGradient>");
+        self.defs.push_str(close);
         id
     }
 
@@ -205,11 +226,15 @@ impl Renderer for Svg {
                         Self::colour(*color)
                     );
                 }
-                Cmd::Gradient { rect, stops, angle } => {
-                    let id = self.gradient_def(*stops, *angle);
+                Cmd::Gradient { rect, stops, kind, geom, corner } => {
+                    let id = self.gradient_def(*rect, *stops, *kind, *geom);
+                    // The corner as `rx`, as a `RoundedRect` writes it, and
+                    // only when there is one, so a square gradient's
+                    // element is what it was before M82/T82.2.
+                    let rx = if *corner > 0.0 { format!(r#" rx="{corner:.2}""#) } else { String::new() };
                     let _ = write!(
                         body,
-                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="url(#{id})"/>"#,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}"{rx} fill="url(#{id})"/>"#,
                         rect[0],
                         rect[1],
                         rect[2] - rect[0],

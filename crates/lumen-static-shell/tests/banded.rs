@@ -31,7 +31,8 @@ fn scene(w: u32, h: u32) -> DisplayList {
     l.gradient(
         [0.0, 0.0, fw, fh],
         Stops::two(Color(240, 240, 255, 255), Color(200, 210, 255, 255)),
-        0.7,
+        lumen_static::display::GradShape::Linear { angle: 0.7 },
+        0.0,
     );
     // A shadow taller than any one band, so its rows are split.
     l.shadow([fw * 0.2, fh * 0.1, fw * 0.8, fh * 0.9], 14.0, 18.0);

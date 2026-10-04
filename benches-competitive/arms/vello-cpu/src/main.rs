@@ -80,7 +80,8 @@ fn lumen_scene(w: u32, h: u32, list: &mut DisplayList) {
     list.gradient(
         [0.0, 0.0, fw, 64.0],
         Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)),
-        1.57,
+        lumen_static::display::GradShape::Linear { angle: 1.57 },
+        0.0,
     );
     for (x, y) in cards(fw, fh) {
         let card = [x, y, x + 204.0, y + 74.0];

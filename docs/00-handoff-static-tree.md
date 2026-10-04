@@ -1238,6 +1238,14 @@ remains** — which is why §10 Step 1 is the kill criterion.
    `crates/lumen-static/tests/border.rs` reproduces that bug exactly by
    making it provided. It cost 16 B per node and +676 B of `.text`
    (`docs/results-embedded.md`).
+
+   **Radial and rounded gradients are built (M82/T82.2, 2026-10-04)**,
+   on this line's near side as the decision put them: `Cmd::Gradient`
+   carries a `GradKind`, a geometry relative to its rect and a corner,
+   inside the same 60 B `Cmd` (`Stops`' offsets became bytes in T82.1 to
+   pay for it), on the software canvas, the GPU and SVG. Conic gradients
+   and ellipses are not built. Numbers in
+   `docs/results-paint-vocabulary.md` T82.2.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

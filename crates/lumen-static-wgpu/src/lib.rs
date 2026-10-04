@@ -106,7 +106,8 @@ struct Quad {
     rect: [f32; 4],
     clip: [f32; 4],
     color: [f32; 4],
-    /// (corner radius, spread or half-width, unused, gradient index)
+    /// (corner radius, spread or half-width, unused, gradient index);
+    /// a gradient's corner since M82/T82.2.
     params: [f32; 4],
     uv: [f32; 4],
     kind: u32,
@@ -1196,23 +1197,25 @@ impl Gpu {
                         });
                     }
                 }
-                Cmd::Gradient { rect, stops, angle } => {
+                Cmd::Gradient { rect, stops, kind, geom, corner } => {
                     let Some(r) = clipped(*rect, clip) else { continue };
-                    // Axis and span computed here, once, exactly as
-                    // `fill_gradient` computes them — the shader gets
-                    // the answer rather than the trigonometry.
-                    let (ux, uy) = (angle.cos(), angle.sin());
-                    let half = ((rect[2] - rect[0]) * ux).abs() / 2.0
-                        + ((rect[3] - rect[1]) * uy).abs() / 2.0;
-                    let span = if half > 0.0 { half * 2.0 } else { 1.0 };
+                    // The axis comes from `GradAxis`, the software
+                    // canvas's own formula, resolved once here -- the
+                    // shader gets the answer rather than the
+                    // trigonometry: `(ux, uy, span, 0)` for linear,
+                    // `(cx, cy, radius, 1)` for radial (M82/T82.2).
+                    let uv = lumen_static::display::GradAxis::new(*rect, *kind, *geom).uv();
+                    // The corner in `params.x`, which this kind left
+                    // unused, clamped as `fill_gradient` clamps it.
+                    let rad = corner.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0).max(0.0);
                     let idx = grads.len() as f32;
                     grads.push(grad_of(*stops));
                     out.push(Quad {
                         rect: *rect,
                         clip: r,
                         color: [0.0; 4],
-                        params: [0.0, 0.0, 0.0, idx],
-                        uv: [ux, uy, span, 0.0],
+                        params: [rad, 0.0, 0.0, idx],
+                        uv,
                         kind: KIND_GRADIENT,
                         _pad: [0; 3],
                     });

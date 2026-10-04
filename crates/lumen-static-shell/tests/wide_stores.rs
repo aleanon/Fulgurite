@@ -111,6 +111,7 @@ fn a_rendered_frame_is_byte_identical_to_the_reference_paths() {
     list.gradient(
         [5.0, 72.0, 195.0, 92.0],
         lumen_static::display::Stops::two(Color(255, 200, 0, 255), Color(0, 120, 255, 255)),
+        lumen_static::display::GradShape::Linear { angle: 0.0 },
         0.0,
     );
 

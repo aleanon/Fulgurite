@@ -1012,16 +1012,30 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.line(a, b, width, color);
     }
 
-    fn gradient(&mut self, rect: Rect, stops: crate::display::Stops, angle: f32) {
+    /// Folds the shape's `kind` and `geom` and the `corner` (M82/T82.2):
+    /// a radial whose centre moves inside the same rect changes nothing
+    /// else, so leaving `geom` out would damage nothing and keep the old
+    /// pixels.
+    fn gradient(
+        &mut self,
+        rect: Rect,
+        stops: crate::display::Stops,
+        shape: crate::display::GradShape,
+        corner: f32,
+    ) {
         let mut h = h_rect(fold(0, 9), rect);
-        h = fold(h, angle.to_bits() as u64);
+        h = fold(h, shape.kind() as u64);
+        for v in shape.geom() {
+            h = fold(h, v.to_bits() as u64);
+        }
+        h = fold(h, corner.to_bits() as u64);
         h = fold(h, stops.len as u64);
         for k in 0..(stops.len as usize).min(crate::display::MAX_STOPS) {
             h = fold(h, stops.at[k] as u64);
             h = h_color(h, stops.color[k]);
         }
         self.ret.observe(h, rect);
-        self.inner.gradient(rect, stops, angle);
+        self.inner.gradient(rect, stops, shape, corner);
     }
 
     fn image(&mut self, rect: Rect, id: crate::display::ImageId, tint: Color) {

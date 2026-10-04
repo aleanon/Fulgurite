@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Building: T82.0 and T82.1 landed 2026-10-04
+> its own file. Building: T82.0, T82.1 and T82.2 landed 2026-10-04
 > (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
@@ -973,6 +973,50 @@ crosses.*
   conversion is written once; the plan's "`sample` converts" is that
   call. The injection (no `/ 255.0`) is in `offset`, which `sample`,
   `svg.rs` and wgpu's `grad_of` all read.
+- T82.2: **the GPU had only ever drawn the first gradient in a frame.**
+  `shader.wgsl`'s `Grad` ended in `_pad: vec3<u32>`, which aligns to 16,
+  so the WGSL struct was 112 B against the Rust `Grad`'s 96 and every
+  index past 0 read a zero length and drew nothing. No parity frame held
+  two gradients until this task's GPU gate, which draws the radial and
+  the rounded gradient in one list (the rounded one second, on purpose).
+  Fixed here as three `u32`s; with the old pad restored the gate's GPU
+  rounded gradient is the page, 4,708 px over 8.
+- T82.2: **the K82a mirror's injection cannot be seen by `Cmd`'s own
+  size.** With `GradKind` as `repr(u32)` the payload reads 60 B and the
+  mirror fails, but `size_of::<Cmd>()` still reads 60: rustc puts the
+  tag into the slack, the same effect Decisions records for `[u16; 4]`.
+  The mirror is now the variant's own fields (bound by a match on
+  `Cmd::Gradient`) over the real `Stops` and `GradKind`, not a layout
+  ahead of it.
+- T82.2: **`GradAxis`, one parameter formula, behind `std`.** The
+  decisions put `t` in four places (software, shader upload, SVG,
+  contrast); a struct resolved once per command and read by all of them
+  keeps them from drifting, and the GPU uploads its `uv()`. It needs
+  `cos`, `sin` and an exact square root, which `core` lacks and
+  `crate::num` does not supply, and no firmware painter interpolates, so
+  it is `cfg(feature = "std")`.
+- T82.2: **the contrast check samples a run's ends clamped into the
+  gradient's rect**, and a translucent sample leaves the run unmeasured
+  as `"translucent gradient"`. The centre walk found the gradient; the
+  ground past its edge is some other fill the walk did not reach, so
+  sampling the gradient there would measure the wrong ground. The
+  three-point sampling applies only when the centre's ground is a
+  gradient; an opaque fill is still measured at the centre alone, so no
+  existing contrast gate moved.
+- T82.2: **T82.1's wire test asserted `VERSION == 3`**; it now asserts
+  `VERSION > 2` (a `const` assert) and keeps its version-2 literal, and
+  the literal pin moved to T82.2's test (`== 4`, a version-3 literal from
+  the encoder at `dfb72c5`, regenerated there rather than edited). That
+  test also refuses an unknown kind byte.
+- T82.2: **a radial is written to SVG in user space.** In
+  object-bounding-box units SVG scales `r` by the box's normalised
+  diagonal, which draws an ellipse on a non-square rect where both
+  rasterisers draw a circle; `cx`, `cy` and `r` come from `GradAxis` in
+  px.
+- T82.2: the software corner multiplies every pixel by `sd_round_box`'s
+  coverage, not only the corner squares', which is the +8–13% the
+  `rounded-radial` arm prints; at `corner == 0` there is no coverage term,
+  and `gradient3.ppm` stays byte-identical.
 
 **What the review found (M82).**
 

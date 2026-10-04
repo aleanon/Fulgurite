@@ -68,21 +68,26 @@ fn an_empty_gradient_is_transparent_rather_than_black() {
 fn a_painter_without_gradients_falls_back_to_a_flat_fill() {
     // The provided body is a flat fill of the first stop, not a no-op:
     // a missing background is a worse failure than an un-graded one.
-    struct Flat(Vec<Color>);
+    // Since M82/T82.2 it is rounded by the gradient's corner, so a
+    // rounded card's fallback keeps its shape.
+    struct Flat(Vec<(Color, f32)>);
     impl Painter for Flat {
         fn rect(&mut self, _: [f32; 4], c: Color) {
-            self.0.push(c);
+            self.0.push((c, -1.0));
         }
         fn text_spaced(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: u8, _: Color) {}
-        fn rounded_rect(&mut self, _: [f32; 4], _: Color, _: f32) {}
+        fn rounded_rect(&mut self, _: [f32; 4], c: Color, radius: f32) {
+            self.0.push((c, radius));
+        }
         fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
         fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
         fn push_clip(&mut self, _: [f32; 4]) {}
         fn pop_clip(&mut self) {}
     }
     let mut f = Flat(Vec::new());
-    f.gradient([0.0, 0.0, 10.0, 10.0], Stops::two(RED, BLUE), 0.0);
-    assert_eq!(f.0, vec![RED], "the first stop, as a plain rect");
+    let radial = lumen_static::display::GradShape::Radial { center: [0.5, 0.5], radius: 1.0 };
+    f.gradient([0.0, 0.0, 10.0, 10.0], Stops::two(RED, BLUE), radial, 6.0);
+    assert_eq!(f.0, vec![(RED, 6.0)], "the first stop, as a rect rounded by the gradient's corner");
 }
 
 #[test]

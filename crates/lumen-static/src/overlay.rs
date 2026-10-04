@@ -258,9 +258,10 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
         &mut self,
         rect: crate::display::Rect,
         stops: crate::display::Stops,
-        angle: f32,
+        shape: crate::display::GradShape,
+        corner: f32,
     ) {
-        self.inner.gradient(rect, stops, angle);
+        self.inner.gradient(rect, stops, shape, corner);
     }
     fn image(
         &mut self,
