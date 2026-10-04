@@ -110,6 +110,11 @@ everyone's — including the embedded targets that cannot afford a shaper.
 `docs/text-render-adoption-decision.md` records a different stack being
 measured against this one and declined, with reasons.
 
+Since M81 the shell, which paints, reaches the shaper through its own
+`shaping` feature, off by default: a build that does not name it compiles
+no shaper, and a window turns it on by forwarding
+`lumen-static-winit/shaping` (`docs/plan-shaped-paint.md`).
+
 **It measures; it does not paint.** The shaper decides the box a run is
 laid out in and where its carets are, and the canvas then draws the
 original string with its own glyph lookup — so Arabic is measured joined

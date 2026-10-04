@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **29,586 B** (28.9 KB) | **pass**, at 36.1% of budget; re-measured at M80/T80.5 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **29,586 B** (28.9 KB) | **pass**, at 36.1% of budget; re-measured at M80/T80.5 and unchanged at M81/T81.1 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,276 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.5 |
@@ -819,6 +819,15 @@ clip and scroll fix (`docs/results-text.md` M80/T80.5). Not D6 growth (D6
 names `text_spaced` and `fills`); reported to the owner with the number.
 `Style`, `NodeState` and the embedded `Ui` are untouched.
 
+### `GlyphKey` costs the firmware nothing — M81/T81.1
+
+`just firmware-delta faeffe7 firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0` (K4's comparator, Δ 0 on all four as
+`docs/plan-shaped-paint.md` bounds it): **+0 B** `.text` and `.rodata`
+on every binary. The core gained `text::GlyphKey`, a plain 8 B struct no
+firmware names, and the shell, which the firmware does not link, wraps
+it in `GlyphId`.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the
@@ -855,15 +864,16 @@ T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
 (`Style.line_height` measured by `Label` and painted through
 `text_spaced`), T80.3 (`Style.overflow`, with the leaf tier reading it
 as `Wrap`, and `Label` measuring against its own width less its padding)
-and T80.5 (the `Node::caret_rect` slot; T80.4 moved nothing). M80a's
-column is T80.0–T80.3, as K80b bounds it.
+and T80.5 (the `Node::caret_rect` slot; T80.4 moved nothing), and
+re-measured by M81/T81.1 (the core's `GlyphKey`, which no firmware
+names: Δ 0 on all four). M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 29,586 | 36.1% | 52,334 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** |
-| `firmware_interactive` | **63,188** | **77.1%** | **18,732** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** |
-| `firmware_bind` | 33,046 | 40.3% | 48,874 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — |
-| `firmware_cascade` | 31,726 | 38.7% | 50,194 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 29,586 | 36.1% | 52,334 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 |
+| `firmware_interactive` | **63,188** | **77.1%** | **18,732** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 |
+| `firmware_bind` | 33,046 | 40.3% | 48,874 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — | +0 |
+| `firmware_cascade` | 31,726 | 38.7% | 50,194 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — | +0 |
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

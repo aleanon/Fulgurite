@@ -661,6 +661,26 @@ rather than as a display-list command: see the first decision.*
   instead of rounding, and the checksum names scale 1 first
   (`docs/results-text.md`, M81 baselines). The zero fractional count is
   also T81.8's "the `Basic` corpus has 0 phased glyphs" baseline.
+- T81.1: **the graph's positive control compares against `truetype`,
+  not the bare default.** `shaping = ["truetype", "dep:lumen-static-text"]`
+  implies `truetype`, so the shell's graph with `--features shaping`
+  against no features counts fontdue's eight packages too, and with the
+  planned injection (drop `dep:lumen-static-text`) still printed a
+  difference of 8. Against `--features truetype`, what every window
+  builds, the difference is 11 and the injection prints 0
+  (`scripts/release_window_shape.sh`).
+- T81.1: **`just abi-stamp` had no shell fields to refuse on.**
+  `fixtures/stamp-lib` stamped the core's fields alone
+  (`export_abi_stamp!()`), so no shell feature could reach it. It and
+  `fixtures/stamp-host` gain a `shell` feature (stamp and compare with
+  `session::abi_fields`, as a window library and its loader do) and a
+  `shaping` feature over it; the script builds the pair both ways.
+- T81.1: the round-trip gate cannot turn a `GlyphKey` back into a
+  `GlyphId` outside the shell (the constructor is crate-private, as D1 c
+  requires), so it checks each id's key against fields known from
+  outside the id (the size passed in, the face the weight picks, phase 0)
+  and that distinct ids and distinct keys agree in number; the id is made
+  from a key inside `place_run_into`, so the trip is both ways.
 
 **What the review found (M81).**
 

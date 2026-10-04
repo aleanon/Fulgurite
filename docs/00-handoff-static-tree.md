@@ -1050,6 +1050,12 @@ The years go to:
   (`docs/plan-text-correctness.md` §2.4, `docs/results-text.md` T45.3).
   Shaped paint **OPEN**: `lumen-static-text` shapes for measurement only,
   and the painter draws the unshaped string (§2.1 there; T45.4).
+  *M81/T81.1:* the crate edge is **DECIDED** and turned round
+  (`docs/plan-shaped-paint.md`, D1 a and c): the text crate depends on
+  the core alone, the shell reaches it behind its default-off `shaping`
+  feature (in the ABI stamp's feature list; a default window links no
+  shaper symbol), and the glyph identity the two share is the core's
+  `GlyphKey`, which the shell's `GlyphId` wraps.
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
   drag and drop. *Status (M54/T54.7):* multi-window, platform drag and
   drop and platform dialogs are **types shipped, never assembled** — no

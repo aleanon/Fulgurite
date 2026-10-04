@@ -1151,6 +1151,11 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         (cfg!(feature = "simd"), "simd"),
         (cfg!(feature = "threads"), "threads"),
         (cfg!(feature = "a11y"), "a11y"),
+        // M81/T81.1: from the task that adds the feature
+        // (docs/plan-iced-roadmap.md §2.3). Under `shaping` a stack can be
+        // Complex (T81.3), a discriminant a loader built without it cannot
+        // name, so the field refuses the pair (`just abi-stamp`).
+        (cfg!(feature = "shaping"), "shaping"),
     ] {
         if on {
             features.push(name);

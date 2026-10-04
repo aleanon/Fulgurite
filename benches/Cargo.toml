@@ -20,6 +20,9 @@ lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
 [features]
 # M50/T50.4: `--bin banded_pool` measures the threaded rasteriser.
 threads = ["lumen-static-shell/threads"]
+# M81/T81.1: the shell's default-off shaper, so K3's arms can be run with
+# it compiled in and `Basic` selected, and T81.3's `--shaping` rows built.
+shaping = ["lumen-static-shell/shaping"]
 # **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
 # It was unconditional, so no bench here could be built without the
 # widgets' observability compiled in — and `--bin grid` could not say what

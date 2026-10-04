@@ -2647,7 +2647,8 @@ out: &mut dyn lumen_static::Painter,
 /// drive observes — M42/T42.1, `process.features` in `app.diagnostics`.
 ///
 /// `agent` (the lint, and with `live-agent` the endpoint),
-/// `shadow-oracle` and `reload`. **Not the strategy** — it was, as the
+/// `shadow-oracle`, `reload`, and since M81/T81.1 `shaping` (whether the
+/// window can paint shaped text at all). **Not the strategy** — it was, as the
 /// `everything` feature, until M55/T55.4; it is the session's type
 /// parameter now, reported as `process.strategy`. A drive leg declares which of these it
 /// expects, and `scripts/live/launch.py` refuses a process that reports
@@ -2660,6 +2661,7 @@ pub fn process_features() -> Vec<&'static str> {
         (cfg!(feature = "agent"), "agent"),
         (cfg!(feature = "shadow-oracle"), "shadow-oracle"),
         (cfg!(feature = "reload"), "reload"),
+        (cfg!(feature = "shaping"), "shaping"),
     ] {
         if on {
             f.push(name);

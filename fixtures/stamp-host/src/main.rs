@@ -15,7 +15,11 @@ fn main() {
     let f: libloading::Symbol<unsafe extern "C" fn(*mut u8, usize) -> usize> =
         unsafe { lib.get(symbols::ABI_STAMP) }.expect("the library exports no stamp");
     let theirs = unsafe { lumen_static_reload::abi::read(*f) };
+    #[cfg(not(feature = "shell"))]
     let mine = lumen_static_reload::abi::stamp(&[]);
+    // M81/T81.1: with the shell's fields, as a window's loader compares.
+    #[cfg(feature = "shell")]
+    let mine = lumen_static_reload::abi::stamp(&lumen_static_shell::session::abi_fields());
     match (lumen_static_reload::abi::check(&mine, &theirs), want) {
         (Ok(()), "accept") => println!("accepted: {} fields agree", mine.lines().count()),
         (Err(m), "refuse") => {

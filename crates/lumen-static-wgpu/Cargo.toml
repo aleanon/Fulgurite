@@ -31,5 +31,11 @@ pollster = "0.4"
 # which matters, because scripts/check_no_unsafe.sh covers this crate.
 bytemuck = { version = "1", features = ["derive"] }
 
+[features]
+# M81/T81.1: the shell's default-off shaper, forwarded for this crate's
+# tests (T81.3's shaped parity region). The backend itself shapes through
+# `FontStack::place_run_into` either way.
+shaping = ["lumen-static-shell/shaping"]
+
 [dev-dependencies]
 lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }

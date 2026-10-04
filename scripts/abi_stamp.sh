@@ -22,6 +22,26 @@ cp target/release/libstamp_lib.so "$OUT/observe.so"
 ./target/release/stamp-host "$OUT/same.so" accept
 ./target/release/stamp-host "$OUT/observe.so" refuse "lumen-static features"
 
+# ---- M81/T81.1: a shell feature in the stamp -----------------------------
+#
+# docs/plan-iced-roadmap.md §2.3: every shell feature joins `abi_fields`
+# in the task that adds it, starting with `shaping`. A library built with
+# it under a loader built without is refused by the shell's feature field;
+# both built with it are accepted (and both without, the control).
+cargo build --release -q -p stamp-lib --features shell
+cp target/release/libstamp_lib.so "$OUT/shell.so"
+cargo build --release -q -p stamp-lib --features shaping
+cp target/release/libstamp_lib.so "$OUT/shaping.so"
+cargo build --release -q -p stamp-host --features shell
+cp target/release/stamp-host "$OUT/host-shell"
+cargo build --release -q -p stamp-host --features shaping
+cp target/release/stamp-host "$OUT/host-shaping"
+"$OUT/host-shell" "$OUT/shell.so" accept
+"$OUT/host-shell" "$OUT/shaping.so" refuse "lumen-static-shell features"
+"$OUT/host-shaping" "$OUT/shaping.so" accept
+# The plain loader again, so the M49 checks below run the host they expect.
+cargo build --release -q -p stamp-host
+
 # ---- M49: a copy of the workspace, edited -------------------------------
 #
 # `rsync -a` keeps modification times, so the copy's own target directory

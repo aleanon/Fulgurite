@@ -9,3 +9,11 @@ publish = false
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
 lumen-static-reload = { path = "../../crates/lumen-static-reload" }
 libloading = "0.8"
+# M81/T81.1: compare with the shell's fields too (`session::abi_fields`),
+# as a window's loader does; `shaping` builds the loader with the shell's
+# shaper, for the accepting half of the pair.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"], optional = true }
+
+[features]
+shell = ["dep:lumen-static-shell"]
+shaping = ["shell", "lumen-static-shell/shaping"]

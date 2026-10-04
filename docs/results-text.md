@@ -636,3 +636,31 @@ a no-op and left the gate green. The injection that breaks the mechanism
 is the rounding that makes `y` whole: `cap_shift` floors instead of
 rounding, and the checksum moves at every scale
 (`docs/plan-shaped-paint.md`, "What building found").
+
+## M81/T81.1 — the dependency turned, and `GlyphKey` (2026-10-04)
+
+`lumen-static-text` depends on the core alone; the shell is its
+dev-dependency (for `tests/paint_shaped.rs`), and the shell reaches the
+text crate behind its default-off `shaping` feature, forwarded by
+`lumen-static-winit`, `lumen-static-wgpu`, `benches` and the frame arm.
+`shaping` joins `abi_fields` and `process_features`. The core gains
+`text::GlyphKey`; the shell's `GlyphId` is a newtype over it. No
+behaviour changes: `BASIC_CHECKSUM` is unchanged (0x866444d1064ccda8).
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| `shell/tests/basic_placements.rs` sizes | `size_of` `GlyphKey`, `GlyphId` | **8**, **8** | 8, 8 | — (accept direction at HEAD) |
+| `shell/tests/basic_placements.rs` round trip | corpus ids read back as a `GlyphKey` field for field; distinct ids / keys | **3,300** ids (1,650 regular, 1,650 bold); 1,300 / 1,300 | all fields equal; equal counts | the conversion drops `face`: `GlyphKey.face is 0, expected 1`, first id `index: 55, face: 1` (`Taj`, 10 px, 700) |
+| `just release-window-shape` | `rustybuzz::`/`unicode_bidi::` symbols, default release `examples/minimal` | **0** | 0 | — (the symbol positive control is T81.3's; the pattern finds 1,082 in `paint_shaped`'s test binary) |
+| — graph | `cargo tree -p lumen-static-shell -e normal`, unique packages, `truetype` → `shaping` | 16 → **27** (+11) | > 0 | `shaping` without `dep:lumen-static-text`: 16 → 16, **0**, the script fails |
+| `just abi-stamp` | a `shaping` library under a loader without / both with | refused, naming `lumen-static-shell features` (`reload,truetype` against `reload,truetype,shaping`) / accepted, 20 fields | refuse / accept | `shaping` left out of `abi_fields`: the mismatched pair is **accepted** and the host panics "accepted a library that should have been refused" |
+| `just fonts`' new lines | `clippy -p lumen-static-shell --features shaping --all-targets`, `cargo doc` with it | clean | clean | an unused binding under `cfg(feature = "shaping")`: the shaping clippy line fails, the `truetype` line stays clean |
+| `just firmware-delta faeffe7`, all four bounded at 0 | `.text`/`.rodata` Δ | **+0 / +0** on all four | 0 | — |
+
+Crate counts by K2's method (`cargo tree -e normal --prefix none`, `(*)`
+stripped, deduplicated): the shell 8 default, 16 `truetype`, 27
+`shaping`; `lumen-static-winit` **96 → 103** with `shaping` (the text
+crate, rustybuzz and five unicode tables; ttf-parser is already there);
+the text crate 21 (27 while the shell was a normal dependency). The
+stripped showcase delta is K81e's, measured in T81.3 when the feature
+has code.

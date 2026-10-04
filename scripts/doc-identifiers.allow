@@ -135,7 +135,6 @@ MainContext                    # proposed by ?
 TRANSITION                     # proposed by ?
 TextSource                     # proposed by M80
 FaceSource                     # proposed by M81
-GlyphKey                       # proposed by M81
 GlyphRuns                      # proposed by M81
 ShapedGlyph                    # proposed by M81
 ShapedRun                      # proposed by M81

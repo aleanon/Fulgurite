@@ -33,7 +33,8 @@
 //! (`docs/plan-shaped-paint.md`, "What building found").
 #![cfg(feature = "truetype")]
 
-use lumen_static_shell::text::{FontStack, ShapeScratch};
+use lumen_static::text::GlyphKey;
+use lumen_static_shell::text::{FontStack, GlyphId, ShapeScratch};
 
 #[path = "fonts/pinned.rs"]
 mod pinned;
@@ -131,4 +132,68 @@ fn every_basic_placement_folds_to_the_recorded_checksum() {
         );
     }
     assert_eq!(total.0, BASIC_CHECKSUM, "the Basic placements' checksum moved");
+}
+
+/// **D1 (c): the core's `GlyphKey` is 8 B, and so is the shell's `GlyphId`
+/// that wraps it** — M81/T81.1. `GlyphCache` and the GPU atlas key on the
+/// id, so a wider id is a wider cache entry.
+#[test]
+fn glyph_key_and_glyph_id_stay_eight_bytes() {
+    let (key, id) = (core::mem::size_of::<GlyphKey>(), core::mem::size_of::<GlyphId>());
+    println!("size_of::<GlyphKey>() = {key} (bound 8), size_of::<GlyphId>() = {id} (bound 8)");
+    assert_eq!(key, 8, "GlyphKey is {key} B, not 8");
+    assert_eq!(id, 8, "GlyphId is {id} B, not 8");
+}
+
+/// **Every id the corpus places reads back as a `GlyphKey` field for
+/// field** — M81/T81.1. The expected fields come from outside the id: the
+/// size passed in, the face the weight picks on a stack whose bold face
+/// is present (0 for 400, 1 for 700), `GlyphId::index` for the index, and
+/// phase 0 (no phase before M81b). And the conversion is one to one over
+/// the corpus: as many distinct keys as distinct ids, each key naming one
+/// id. Injection: the conversion drops `face`; the gate names the field
+/// and the first id.
+#[test]
+fn every_corpus_glyph_id_round_trips_through_its_glyph_key() {
+    let bytes = pinned::bytes();
+    let font = FontStack::from_bytes(bytes, Some(bytes)).expect("the pinned face parses");
+    let mut scratch = ShapeScratch::new();
+    let mut by_key = std::collections::HashMap::<GlyphKey, GlyphId>::new();
+    let mut ids = std::collections::HashSet::<GlyphId>::new();
+    let (mut checked, mut faces) = (0usize, [0usize; 2]);
+    for &scale in &SCALES {
+        for &t in &STRINGS {
+            for &px in &SIZES {
+                for &w in &WEIGHTS {
+                    let px = px * scale;
+                    font.place_run_into(&mut scratch, t, px, w, 0, f32::INFINITY);
+                    let face = u8::from(w >= 700.0);
+                    for p in scratch.placed() {
+                        let k = GlyphKey::from(p.id);
+                        let want = GlyphKey { px_bits: px.to_bits(), index: p.id.index(), face, phase: 0 };
+                        for (field, got, exp) in [
+                            ("px_bits", k.px_bits, want.px_bits),
+                            ("index", k.index as u32, want.index as u32),
+                            ("face", k.face as u32, want.face as u32),
+                            ("phase", k.phase as u32, want.phase as u32),
+                        ] {
+                            assert_eq!(got, exp, "GlyphKey.{field} is {got}, expected {exp}, for the first id {:?} ({t:?} at {px} px, weight {w})", p.id);
+                        }
+                        if let Some(prev) = by_key.insert(k, p.id) {
+                            assert_eq!(prev, p.id, "one GlyphKey {k:?} names two ids, {prev:?} and {:?}", p.id);
+                        }
+                        ids.insert(p.id);
+                        faces[face as usize] += 1;
+                        checked += 1;
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "{checked} ids checked field for field (regular {}, bold {}); {} distinct ids, {} distinct keys",
+        faces[0], faces[1], ids.len(), by_key.len()
+    );
+    assert!(checked > 0 && faces[1] > 0, "setup: the corpus placed no glyph, or none from the bold face");
+    assert_eq!(ids.len(), by_key.len(), "distinct ids and distinct keys differ in number");
 }

@@ -18,6 +18,7 @@ use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 use fontdue::Font;
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
 use lumen_static::Size;
+use lumen_static::text::GlyphKey;
 
 /// A loaded font, shared by the measurer and the rasterizer so the two
 /// cannot disagree about advances.
@@ -185,7 +186,7 @@ impl Faces<'_> {
     }
 }
 
-/// A face's [`GlyphId::face`]: 0 regular, 1 bold, 2 + k fallback k.
+/// A face's id ([`GlyphKey::face`]): 0 regular, 1 bold, 2 + k fallback k.
 const REGULAR: u8 = 0;
 const BOLD: u8 = 1;
 
@@ -558,7 +559,7 @@ impl FontStack {
             // different face.
             let face = faces.get(g.font_index).1;
             out.push(Placed {
-                id: GlyphId { index: g.key.glyph_index, px_bits: px.to_bits(), face },
+                id: GlyphId::from_key(GlyphKey { px_bits: px.to_bits(), index: g.key.glyph_index, face, phase: 0 }),
                 x: g.x,
                 y: g.y + dy + shift,
                 w: g.width as u32,
@@ -602,15 +603,17 @@ impl FontStack {
     ///
     /// Deterministic in the id alone: fontdue's raster key is
     /// `(glyph index, px)` with no subpixel phase, so equal ids give
-    /// byte-identical bitmaps. That is what makes an atlas cache
+    /// byte-identical bitmaps. The key's `phase` is 0 on every id this
+    /// stack makes until M81b gives it a raster of its own. That is what makes an atlas cache
     /// correct rather than approximately correct.
     pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
-        let font = match id.face {
+        let GlyphKey { px_bits, index, face, .. } = id.0;
+        let font = match face {
             REGULAR => self.regular.as_ref(),
             BOLD => self.bold.get()?,
             k => self.fallback.get(k as usize - 2)?.get()?,
         };
-        let (m, cov) = font.rasterize_indexed(id.index, f32::from_bits(id.px_bits));
+        let (m, cov) = font.rasterize_indexed(index, f32::from_bits(px_bits));
         RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         Some((m.width as u32, m.height as u32, cov))
     }
@@ -1052,7 +1055,7 @@ impl GlyphCache {
     }
 }
 
-/// A hasher for [`GlyphId`]: three small integers, so a multiply-and-fold
+/// A hasher for [`GlyphId`]: four small integers, so a multiply-and-fold
 /// rather than SipHash, whose resistance to chosen keys buys nothing for
 /// ids the stack itself produced.
 #[derive(Clone, Copy, Default)]
@@ -1096,27 +1099,45 @@ impl std::hash::Hasher for GlyphHasher {
 /// whole contract. It carries no `fontdue` type, so a cache keyed on it
 /// — `lumen-static-wgpu`'s atlas — does not inherit this crate's font
 /// dependency in its own API.
+///
+/// **A newtype over the core's [`GlyphKey`]** since M81/T81.1
+/// (`docs/plan-shaped-paint.md`, D1 c): the shaper in `lumen-static-text`
+/// speaks `GlyphKey`, which this crate cannot hand it as its own type
+/// once it depends on that crate. The field is private, so an id is made
+/// only here, by the stack that rasterises it ([`FontStack::place_run`]),
+/// and the contract above stays this crate's: [`GlyphId::key`] reads one
+/// out, and nothing outside the shell turns a key back into an id. Still
+/// 8 B (the key's spare byte is its `phase`, 0 for every glyph until
+/// M81b), so `GlyphCache` and the GPU atlas keep their sizes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct GlyphId {
-    index: u16,
-    /// The size in **bits**, because a raster key must be comparable
-    /// and `f32` is not `Eq`. Two runs at the same size hash together;
-    /// two at sizes a hair apart do not, which is correct — they
-    /// rasterise differently.
-    px_bits: u32,
-    /// Which face: 0 regular, 1 bold, 2 + k the stack's fallback `k`
-    /// (M45/T45.3; a `bool` for bold before). A glyph index names a
-    /// glyph only within its face.
-    face: u8,
-}
+pub struct GlyphId(GlyphKey);
 
 impl GlyphId {
+    /// An id for `key`, which this stack's placement produced. Crate-only:
+    /// a key from elsewhere names a face of some other stack.
+    pub(crate) fn from_key(key: GlyphKey) -> Self {
+        GlyphId(key)
+    }
+
     /// The glyph's index in its face — for a test that compares what was
     /// painted with what a shaper produced (`docs/plan-text-correctness.md`
     /// T45.0 item 2). Equal indices in the same face and size are the
     /// same bitmap; the index alone does not say which face.
     pub fn index(&self) -> u16 {
-        self.index
+        self.0.index
+    }
+
+    /// The id as the core's [`GlyphKey`], field for field: its size bits,
+    /// glyph index, face (0 regular, 1 bold, 2 + k the stack's fallback
+    /// `k`; M45/T45.3) and phase.
+    pub fn key(&self) -> GlyphKey {
+        self.0
+    }
+}
+
+impl From<GlyphId> for GlyphKey {
+    fn from(id: GlyphId) -> GlyphKey {
+        id.key()
     }
 }
 

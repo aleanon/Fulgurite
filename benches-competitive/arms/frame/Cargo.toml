@@ -29,5 +29,9 @@ lumen-static-agent = { path = "../../../crates/lumen-static-agent", optional = t
 # same workload as the scalar one (M17, docs/results-simd.md). The
 # cross-arm rows stop before rasterising, so this cannot move them.
 simd = ["lumen-static-shell/simd"]
+# M81/T81.1: the shell's default-off shaper, forwarded so K3's frame rows
+# can be measured with it compiled in and `Basic` selected
+# (docs/plan-shaped-paint.md, K3 for this milestone).
+shaping = ["lumen-static-shell/shaping"]
 default = []
 observe = ["dep:lumen-static-agent", "lumen-static/observe", "lumen-static-widgets/observe"]

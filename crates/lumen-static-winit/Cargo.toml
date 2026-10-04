@@ -44,6 +44,12 @@ simd = ["lumen-static-shell/simd"]
 threads = ["lumen-static-shell/threads"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
+# Shaped paint (M81, docs/plan-shaped-paint.md D1 a): forwards the
+# shell's default-off `shaping`, which pulls `lumen-static-text`'s shaper.
+# Empty of code at M81/T81.1. Default-OFF: by K2's method (above, at
+# `clipboard`) it costs **+7 crates** (96 -> 103, 2026-10-04): the text crate,
+# rustybuzz and five unicode tables; ttf-parser is already in the graph.
+shaping = ["lumen-static-shell/shaping"]
 # Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
 # crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e
 # normal --prefix none`, `(*)` markers stripped, deduplicated --

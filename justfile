@@ -148,6 +148,11 @@ fonts:
     cargo test -q -p lumen-static-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
     cargo test -q -p lumen-static-text --test shaping
     cargo test -q -p embedded --test baked_face
+    # M81/T81.1 (docs/plan-iced-roadmap.md §3.1): the shell's default-off
+    # `shaping` linted and documented with the feature on, from the task
+    # that adds it -- the workspace lines build default features only.
+    cargo clippy -q -p lumen-static-shell --features shaping --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features shaping
 
 # Security advisories, offline, against deny.toml's accepted list: a NEW
 # advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.

@@ -22,6 +22,10 @@ wide = { version = "0.7", optional = true, default-features = false }
 # moved here from the window crate (`session::Live`). Behind `live-agent`.
 lumen-static-agent = { path = "../lumen-static-agent", optional = true }
 serde_json = { version = "1", optional = true }
+# M81/T81.1 (D1 a, docs/plan-shaped-paint.md): the shaper, behind
+# `shaping` below. The text crate names only `lumen-static` in its own
+# dependencies, so this edge forms no cycle.
+lumen-static-text = { path = "../lumen-static-text", optional = true }
 
 [features]
 default = []
@@ -59,6 +63,16 @@ live-agent = ["agent", "dep:lumen-static-agent", "dep:serde_json"]
 # nothing of the agent.
 a11y = ["lumen-static/a11y"]
 truetype = ["dep:fontdue"]
+# Shaped paint (M81, docs/plan-shaped-paint.md D1 a): the shell reaches
+# `lumen-static-text`'s shaper (rustybuzz, unicode-bidi) through this
+# feature. **Default-OFF**, and empty of code at M81/T81.1: it pulls the
+# crate and joins the ABI stamp's feature list (`session::abi_fields`)
+# and `process_features`, so the stamp refuses a library built with it
+# under a loader built without. Its cost by K2's method (`cargo tree -p
+# lumen-static-shell -e normal --prefix none`, `(*)` stripped,
+# deduplicated): **8 -> 27** packages over the default, 16 -> 27 over
+# `truetype` (2026-10-04, T81.1).
+shaping = ["truetype", "dep:lumen-static-text"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It
 # re-runs layout (measure memos, repeater binds) every frame, so it is a

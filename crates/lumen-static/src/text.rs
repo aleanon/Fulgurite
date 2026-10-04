@@ -503,3 +503,33 @@ impl TextRestore for &'static str {
         Box::leak(s.into_boxed_str())
     }
 }
+
+/// The identity of one glyph to rasterise — M81/T81.1
+/// (`docs/plan-shaped-paint.md`, D1 c; `docs/plan-iced-roadmap.md` §2.7).
+///
+/// The type a shaper (`lumen-static-text`) hands a rasteriser
+/// (`lumen-static-shell`), which neither crate could name in the other
+/// once the shell depends on the text crate: so it lives here, beside
+/// the core's other text vocabulary. The shell's `GlyphId` is a newtype
+/// over it, converts to one publicly and from one only inside the shell,
+/// so its contract (equal ids from one stack are identical bitmaps) is
+/// still the shell's to keep.
+///
+/// **8 B**, field order chosen so it packs with no padding
+/// (`crates/lumen-static-shell/tests/basic_placements.rs` asserts the
+/// size). No core store holds one and no widget names one, so a firmware
+/// links nothing for it (`docs/results-embedded.md`, M81/T81.1: Δ 0).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct GlyphKey {
+    /// The size in `f32` **bits**: a raster key must be comparable, and
+    /// `f32` is not `Eq`. Two sizes a hair apart rasterise differently and
+    /// key differently.
+    pub px_bits: u32,
+    /// The glyph's index in its face; it names a glyph only within it.
+    pub index: u16,
+    /// Which face of the stack: 0 regular, 1 bold, 2 + k fallback `k`.
+    pub face: u8,
+    /// The subpixel phase: 0 is unphased (every glyph today). M81b gives
+    /// it meaning (`docs/plan-shaped-paint.md`, the subpixel decision).
+    pub phase: u8,
+}

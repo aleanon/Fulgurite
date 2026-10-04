@@ -19,10 +19,25 @@ name = "lumen_static_text"
 # dozen crates, paid only by a manifest that names this. The core's own
 # graph is unchanged and `just thumb` still builds it with no std and
 # no allocator.
+#
+# Re-measured 2026-10-04 by K2's method (`cargo tree -p lumen-static-text
+# -e normal --prefix none`, `(*)` markers stripped, deduplicated;
+# docs/plan-iced-roadmap.md K2), after M81/T81.1 moved the shell to the
+# dev-dependencies below: **21** packages (27 with the shell still a
+# normal dependency), against the core's 7. The 2026-09-07 figures
+# counted differently and are kept as measured.
 [dependencies]
 lumen-static = { path = "../lumen-static" }
-lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
 # Shaping proper: cluster-correct segmentation, Arabic joining, Indic
 # reordering. `unicode-bidi` orders the runs; rustybuzz shapes each.
 rustybuzz = "0.20"
 unicode-bidi = "0.3"
+
+# M81/T81.1 (D1 a, docs/plan-shaped-paint.md): the shell is a DEV
+# dependency only. `src/` names `lumen_static` alone; the shell serves
+# `tests/paint_shaped.rs`, which paints with it. The edge runs the other
+# way now: the shell reaches this crate through its default-off `shaping`
+# feature. This edge enables `truetype` and not `shaping`, so no cycle
+# forms (T81.3 drops it when the pins move into the shell).
+[dev-dependencies]
+lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }

@@ -1628,6 +1628,7 @@ dependencies = [
  "lumen-static",
  "lumen-static-agent",
  "lumen-static-lss",
+ "lumen-static-text",
  "lumen-static-widgets",
  "serde",
  "serde_json",
@@ -2905,6 +2906,7 @@ dependencies = [
  "libloading",
  "lumen-static",
  "lumen-static-reload",
+ "lumen-static-shell",
 ]
 
 [[package]]
@@ -2913,6 +2915,7 @@ version = "0.1.0"
 dependencies = [
  "lumen-static",
  "lumen-static-reload",
+ "lumen-static-shell",
  "lumen-static-widgets",
 ]
 
