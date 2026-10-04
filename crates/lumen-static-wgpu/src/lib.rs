@@ -1699,7 +1699,9 @@ fn grad_of(s: Stops) -> Grad {
     for (k, c) in s.color.iter().enumerate() {
         color[k] = linear(*c);
     }
-    Grad { color, at: s.at, len: s.len as u32, _pad: [0; 3] }
+    // The shader reads fractions; `Stops` holds 1/255 steps (M82/T82.1).
+    let at = [s.offset(0), s.offset(1), s.offset(2), s.offset(3)];
+    Grad { color, at, len: s.len as u32, _pad: [0; 3] }
 }
 
 /// One glass material, out of line. Mirrors `Mat` in `shader.wgsl`.

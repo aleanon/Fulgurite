@@ -84,7 +84,10 @@ impl Svg {
             let _ = write!(
                 self.defs,
                 r#"<stop offset="{:.3}" stop-color="{}"/>"#,
-                stops.at[k],
+                // The offset, not the byte: `{:.3}` ignores precision on an
+                // integer, so `at[k]` here would write `offset="51"` for 0.2
+                // (M82/T82.1).
+                stops.offset(k),
                 Self::colour(stops.color[k])
             );
         }

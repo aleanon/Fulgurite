@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **30,226 B** (29.5 KB) | **pass**, at 36.9% of budget; re-measured at M81/T81.5 (2026-10-04; the four-binary table below, +860 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **30,242 B** (29.5 KB) | **pass**, at 36.9% of budget; re-measured at M82/T82.1 (2026-10-04; the four-binary table below, +16 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,316 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M81/T81.5, +40 B (panic locations of the `caret` module) |
@@ -947,15 +947,20 @@ there and not here, and re-measured by T81.8 itself: Δ 0 on all four
 (`just firmware-delta 3b3760d`). Re-measured by M82/T82.0 (pins and a
 results doc, no firmware source): Δ 0 on all four (`just firmware-delta
 b873ab0`), `firmware_interactive` at 18,836 B of headroom
-(`docs/results-paint-vocabulary.md` T82.0).
+(`docs/results-paint-vocabulary.md` T82.0). Rewritten by M82/T82.1
+(`Stops` offsets in 1/255 steps): **+16 B** on all four, `.rodata` +0,
+all of it in `Stops::sample` by a symbol diff (the byte-to-fraction
+conversion; the firmware reaches `sample` only through
+`Painter::gradient`'s provided flat fill), printed by `just
+firmware-delta 8301746 print`.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 30,226 | 36.9% | 51,694 | 13,316 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 |
-| `firmware_interactive` | **63,084** | **77.0%** | **18,836** | 21,846 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** |
-| `firmware_bind` | 33,686 | 41.1% | 48,234 | 13,920 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 |
-| `firmware_cascade` | 32,366 | 39.5% | 49,554 | 14,092 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 30,242 | 36.9% | 51,678 | 13,316 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 |
+| `firmware_interactive` | **63,100** | **77.0%** | **18,820** | 21,846 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** |
+| `firmware_bind` | 33,702 | 41.1% | 48,218 | 13,920 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 |
+| `firmware_cascade` | 32,382 | 39.5% | 49,538 | 14,092 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 |
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

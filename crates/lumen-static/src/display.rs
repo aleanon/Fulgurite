@@ -555,17 +555,29 @@ pub fn adapt_mix(luma: f32, adapt: u8) -> f32 {
 ///
 /// Four, because that is what a button, a card or a page backdrop
 /// needs, and because the array is inline: raising it costs every
-/// gradient command whether or not it uses the room.
+/// gradient command whether or not it uses the room -- 5 B a stop since
+/// M82/T82.1 (a 1/255 offset and a colour), so [`Stops`] is 21 B.
 pub const MAX_STOPS: usize = 4;
 
 /// The stops of a gradient, inline.
 ///
-/// `offset` is 0..=1 along the gradient's axis. Stops past `len` are
-/// ignored, so a two-stop gradient costs the same as a four-stop one in
-/// bytes and less in work.
+/// `at[k]` is stop `k`'s offset along the gradient's axis **in 1/255
+/// steps**: 0 is the start, 255 the end, and 51 is 0.2 exactly. Stops
+/// past `len` are ignored, so a two-stop gradient costs the same as a
+/// four-stop one in bytes and less in work.
+///
+/// **Why a byte and not an `f32`** (M82/T82.1,
+/// `docs/plan-paint-vocabulary.md` Decisions): `Gradient` is the payload
+/// that sets `Cmd`'s 60 B, and M82/T82.2 widens it with a kind, a
+/// geometry and a corner. Byte offsets take `Stops` from 36 B to 21 B
+/// (align 1), which is what pays for that. An offset that is a multiple
+/// of 1/255 samples exactly as the `f32` it replaces; any other moves by
+/// at most half a step, a channel delta of at most 1
+/// (`docs/results-paint-vocabulary.md` T82.1). Every consumer reads an
+/// offset as `at[k] as f32 / 255.0`, never the raw byte.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Stops {
-    pub at: [f32; MAX_STOPS],
+    pub at: [u8; MAX_STOPS],
     pub color: [Color; MAX_STOPS],
     pub len: u8,
 }
@@ -574,10 +586,15 @@ impl Stops {
     /// The common case: one colour to another.
     pub fn two(from: Color, to: Color) -> Stops {
         Stops {
-            at: [0.0, 1.0, 0.0, 0.0],
+            at: [0, 255, 0, 0],
             color: [from, to, from, from],
             len: 2,
         }
+    }
+
+    /// Stop `k`'s offset as a fraction of the axis, 0..=1.
+    pub fn offset(&self, k: usize) -> f32 {
+        self.at[k] as f32 / 255.0
     }
 
     /// The colour at `t` in 0..=1, linearly interpolated between the
@@ -588,13 +605,14 @@ impl Stops {
             return Color(0, 0, 0, 0);
         }
         let t = crate::num::clamp(t, 0.0, 1.0);
-        if t <= self.at[0] {
+        if t <= self.offset(0) {
             return self.color[0];
         }
         for k in 1..n {
-            if t <= self.at[k] {
-                let span = self.at[k] - self.at[k - 1];
-                let f = if span > 0.0 { (t - self.at[k - 1]) / span } else { 0.0 };
+            let (lo, hi) = (self.offset(k - 1), self.offset(k));
+            if t <= hi {
+                let span = hi - lo;
+                let f = if span > 0.0 { (t - lo) / span } else { 0.0 };
                 let (a, b) = (self.color[k - 1], self.color[k]);
                 let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * f) as u8;
                 return Color(l(a.0, b.0), l(a.1, b.1), l(a.2, b.2), l(a.3, b.3));
@@ -721,7 +739,7 @@ impl Cmd {
                 f(h, angle.to_bits() as u64);
                 f(h, stops.len as u64);
                 for k in 0..(stops.len as usize).min(MAX_STOPS) {
-                    f(h, stops.at[k].to_bits() as u64);
+                    f(h, stops.at[k] as u64);
                     let c = stops.color[k];
                     f(h, u32::from_be_bytes([c.0, c.1, c.2, c.3]) as u64);
                 }

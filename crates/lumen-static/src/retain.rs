@@ -1017,7 +1017,7 @@ impl<R: Retention> Painter for Recording<'_, R> {
         h = fold(h, angle.to_bits() as u64);
         h = fold(h, stops.len as u64);
         for k in 0..(stops.len as usize).min(crate::display::MAX_STOPS) {
-            h = fold(h, stops.at[k].to_bits() as u64);
+            h = fold(h, stops.at[k] as u64);
             h = h_color(h, stops.color[k]);
         }
         self.ret.observe(h, rect);

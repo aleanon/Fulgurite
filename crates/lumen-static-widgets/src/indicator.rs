@@ -373,7 +373,8 @@ impl Node for Skeleton {
         let k = lumen_static::num::floor((r[0] - c) / SHIMMER_PERIOD);
         let clear = Color(s.fg.0, s.fg.1, s.fg.2, 0);
         let stops = lumen_static::display::Stops {
-            at: [0.0, 0.5, 1.0, 1.0],
+            // 1/255 steps (M82/T82.1): 128 is the band's middle, 0.502.
+            at: [0, 128, 255, 255],
             color: [clear, s.fg, clear, clear],
             len: 3,
         };

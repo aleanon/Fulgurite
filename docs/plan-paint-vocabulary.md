@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Building: T82.0 landed 2026-10-04
+> its own file. Building: T82.0 and T82.1 landed 2026-10-04
 > (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
@@ -956,6 +956,23 @@ crosses.*
 - **K2 for `vector-text`.** 0 new crates, and the stripped showcase's
   delta against 3 MB (B9). Above that, the feature stays default-off,
   as it is designed to, and the size is recorded.
+
+**What building found (M82).**
+
+- T82.1: **the payload mirror had to mirror T82.2's variant, not
+  today's.** T82.0's `GradientPayload` mirrored the variant as it was
+  (`rect`, `stops`, `angle`: 56 B). T82.1's byte offsets take that
+  variant to 44 B, so "keep it at 56" could not hold, and the planned
+  injection (`at: [u16; 4]`) reads 48 on it and stays green: the
+  "goes to 60" arithmetic is T82.2's layout. So since T82.1 the mirror
+  is the layout Decisions commits to (`rect`, `stops`, a `u8` kind,
+  `[f32; 3]`, a corner) over the real `Stops`: 56 B green, 60 B under
+  the injection, and today's variant (44) printed beside it. T82.2
+  replaces the `u8` with `GradKind`.
+- T82.1: offsets are read through a new `Stops::offset(k)`, so the
+  conversion is written once; the plan's "`sample` converts" is that
+  call. The injection (no `/ 255.0`) is in `offset`, which `sample`,
+  `svg.rs` and wgpu's `grad_of` all read.
 
 **What the review found (M82).**
 

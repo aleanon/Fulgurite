@@ -34,3 +34,28 @@ task that changes it turns them red by name.
 | `Gradient` payload | `lumen-static/tests/glass_cmd.rs` `the_gradient_payload_fits` | **56 B** of 56 (`Stops` 36 B), `Cmd` 60 B | `Stops` gains a 4-byte field: **60 B** (`Stops` 40, `Cmd` 64), fails by name | kept at 56 by T82.1, T82.2 |
 | `Deferring`'s stream | `lumen-static/tests/overlay.rs` `deferring_forwards_every_command` | **6** commands in, 6 out (unchanged since M80/T80.1) | `Deferring::gradient` drops its command: 6 in, **5** out, first difference at index 2 | T82.5 (6 → 7) |
 | firmware | `just firmware-delta b873ab0` | Δ **0** on all four; `firmware_interactive` **63,084 B**, headroom **18,836 B** to 81,920 | (T80.0's) | — |
+
+## T82.1 — `Stops` offsets in 1/255 (2026-10-04)
+
+`Stops::at` is `[u8; MAX_STOPS]`; every consumer reads `Stops::offset`
+(`at[k] as f32 / 255.0`). Wire `VERSION` 2 → 3.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| size, `tests/vector.rs` | `Stops` **21 B** | = 21 | — (see the mirror) |
+| K82a mirror, `tests/glass_cmd.rs` | T82.2's layout **56 B**, today's variant 44 B, `Cmd` 60 B | ≤ 56 | `at: [u16; 4]`: **60 B** (`Stops` 26), fails naming `Gradient`; today's variant would read 48 and stay green |
+| sampling, `tests/vector.rs`, 1,001 `t` against the `f32` sampler | offsets 0, 51/255, 1: max channel delta **0** (0 differ); `Stops::two`: **0** | 0 | `offset` without `/ 255.0`: delta **254**, 1,000 of 1,001 differ |
+| — not representable | 0.5 as 128: max delta **1**, 564 of 1,001 differ | ≤ 1 | — |
+| golden, `shell/tests/golden.rs` `gradient3.ppm` (3 stops, interior at 0.2, recorded at `8301746` with `f32` offsets) | max channel delta **0**, byte-identical | 0 | `offset` without `/ 255.0`: delta **239**, 6,656 of 9,600 pixels inside `[8, 8, 112, 72]` |
+| SVG, `shell/tests/svg.rs` | offsets `0.000`, **`0.200`**, `1.000` | `0.200` | the raw byte formatted: `0`, **`51`**, `255` |
+| wire, `wire.rs` tests | 3-stop round trip equal (52 B); `VERSION` **3**; the version-2 literal (a rect, no gradient) decodes: **false** | `VERSION == 3`; `None` | `VERSION` left at 2: the literal decodes **true**, the literal assertion fails |
+| firmware, `just firmware-delta 8301746 print` | **+16 B** `.text` on all four, `.rodata` +0; `firmware_interactive` 63,100 B, headroom 18,820 B | printed (expected ≈ 0) | — |
+
+The +16 B is `Stops::sample` alone (symbol diff): the firmware reaches it
+through `Painter::gradient`'s provided flat fill, `stops.sample(0.0)`.
+
+Silent consumers of `at` found by grep (a format string or an `as`
+cast that would have compiled with a byte): `svg.rs`'s `{:.3}` only.
+Every other consumer failed to compile and was changed to `offset`
+(wgpu's `grad_of`) or to fold the byte (`Cmd::hash_into`,
+`Recording::gradient`, `wire.rs`).

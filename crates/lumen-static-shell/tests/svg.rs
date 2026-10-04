@@ -165,3 +165,23 @@ fn rendering_twice_does_not_accumulate() {
     s.render(&l, 100, 50);
     assert_eq!(s.finish().len(), first.len(), "a second frame is the same size");
 }
+
+/// M82/T82.1: **a stop's offset is written as a fraction, not its
+/// byte.** `Stops::at` is in 1/255 steps; `{:.3}` ignores precision on an
+/// integer, so writing the raw byte compiles and emits `offset="51"`.
+#[test]
+fn a_stop_offset_is_written_as_a_fraction() {
+    let stops = Stops {
+        at: [0, 51, 255, 0],
+        color: [RED, Color(0, 255, 0, 255), Color(0, 0, 255, 255), RED],
+        len: 3,
+    };
+    let out = render(|l| l.gradient([0.0, 0.0, 10.0, 10.0], stops, 0.0));
+    let offsets: Vec<&str> = out.match_indices("offset=\"").map(|(i, m)| {
+        let rest = &out[i + m.len()..];
+        &rest[..rest.find('"').unwrap()]
+    }).collect();
+    println!("stop offsets written: {offsets:?} (want the middle one 0.200)");
+    assert_eq!(offsets.len(), 3, "setup: three stops must be written");
+    assert_eq!(offsets[1], "0.200", "the middle stop at 51/255 was not written as 0.200");
+}

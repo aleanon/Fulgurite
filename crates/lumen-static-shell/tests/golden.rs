@@ -140,3 +140,36 @@ fn a_first_run_records_rather_than_passing() {
 
     let _ = std::fs::remove_file(d.join(format!("{name}.ppm")));
 }
+
+/// M82/T82.1: **a three-stop gradient keeps its pixels when `Stops`'
+/// offsets become 1/255 steps.** The interior stop sits at 0.2, which is
+/// 51/255 and exact in both encodings, so the golden -- recorded at the
+/// parent commit with `f32` offsets -- must stay byte-identical. No other
+/// golden holds a gradient, so without this one nothing could change.
+#[test]
+fn a_three_stop_gradient_keeps_its_golden() {
+    let d = dir();
+    let mut c = Canvas::new(W, H);
+    let mut list = DisplayList::new();
+    list.rect([0.0, 0.0, W as f32, H as f32], Color(255, 255, 255, 255));
+    let stops = lumen_static::display::Stops {
+        at: [0, 51, 255, 0],
+        color: [Color(10, 20, 200, 255), Color(250, 240, 30, 255), Color(200, 30, 40, 255), Color(0, 0, 0, 0)],
+        len: 3,
+    };
+    list.gradient([8.0, 8.0, 112.0, 72.0], stops, 0.0);
+    let grads = list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Gradient { .. })).count();
+    assert_eq!(grads, 1, "setup: the frame must hold the gradient it pins");
+    c.render(&list, W, H);
+
+    let want = std::fs::read(d.join("gradient3.ppm")).ok();
+    let got = c.to_ppm();
+    if let Some(want) = &want {
+        let max = want.iter().zip(&got).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
+        println!("gradient3: max channel delta {max} against the golden (bound 0), {} B", got.len());
+    }
+    let v = compare(&d, "gradient3", &c).expect("io");
+    assert!(v.is_match(), "the three-stop gradient moved: {v}");
+    let _ = std::fs::remove_file(d.join("gradient3.actual.ppm"));
+    let _ = std::fs::remove_file(d.join("gradient3.diff.ppm"));
+}

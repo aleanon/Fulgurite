@@ -34,7 +34,12 @@ use crate::desc::Point;
 /// 2 since M80/T80.1: `Cmd::Text` carries `line_height`, one byte after
 /// its weight. A version-1 buffer has no such byte, so it is refused
 /// rather than read one byte out of step.
-pub const VERSION: u8 = 2;
+///
+/// 3 since M82/T82.1: a gradient stop's offset is one byte in 1/255
+/// steps, not an `f32` ([`Stops`]). A version-2 gradient is 12 B longer,
+/// and a version-2 buffer with no gradient at all has the same layout, so
+/// only this byte refuses it.
+pub const VERSION: u8 = 3;
 
 /// Append `list`'s encoding to `out`.
 pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
@@ -99,7 +104,7 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.rect(rect);
                 w.u8(stops.len);
                 for i in 0..MAX_STOPS {
-                    w.f32(stops.at[i]);
+                    w.u8(stops.at[i]);
                     w.color(stops.color[i]);
                 }
                 w.f32(angle);
@@ -189,9 +194,9 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
                 if len as usize > MAX_STOPS {
                     return None;
                 }
-                let mut stops = Stops { at: [0.0; MAX_STOPS], color: [Color::TRANSPARENT; MAX_STOPS], len };
+                let mut stops = Stops { at: [0; MAX_STOPS], color: [Color::TRANSPARENT; MAX_STOPS], len };
                 for i in 0..MAX_STOPS {
-                    stops.at[i] = r.f32()?;
+                    stops.at[i] = r.u8()?;
                     stops.color[i] = r.color()?;
                 }
                 Cmd::Gradient { rect, stops, angle: r.f32()? }
@@ -318,7 +323,7 @@ mod tests {
         l.cmds.push(Cmd::StrokedRect { rect: [1.0; 4], color: Color::BLACK, radius: 2.0, width: 1.5 });
         l.cmds.push(Cmd::Shadow { rect: [2.0; 4], color: Color::BLACK, radius: 4.0, spread: 8.0 });
         l.cmds.push(Cmd::Line { a: Point { x: 1.0, y: 2.0 }, b: Point { x: 3.0, y: 4.0 }, width: 1.0, color: Color::BLACK });
-        let mut stops = Stops { at: [0.0, 0.5, 1.0, 0.0], color: [Color(1, 1, 1, 1); MAX_STOPS], len: 3 };
+        let mut stops = Stops { at: [0, 128, 255, 0], color: [Color(1, 1, 1, 1); MAX_STOPS], len: 3 };
         stops.color[2] = Color(200, 100, 50, 255);
         l.cmds.push(Cmd::Gradient { rect: [3.0; 4], stops, angle: 90.0 });
         l.cmds.push(Cmd::Image { rect: [4.0; 4], id: ImageId(77), tint: Color::BLACK });
@@ -370,6 +375,46 @@ mod tests {
         old[0] = 1;
         println!("a version-{} buffer decodes: {}", old[0], decode(&old).is_some());
         assert!(decode(&old).is_none(), "a buffer of version {} decoded under {VERSION}", old[0]);
+    }
+
+    /// M82/T82.1: a three-stop gradient round-trips with its byte
+    /// offsets, and a buffer from the version-2 encoder is refused.
+    ///
+    /// The refusal fixture is a **literal**, written by the encoder before
+    /// T82.1 (version 2): a rect and no gradient, so its layout is the
+    /// same under version 3 and only the version byte can refuse it. A
+    /// relative `VERSION + 1`, or an old gradient buffer (12 B longer, so
+    /// the trailing-bytes check refuses it whatever the version says),
+    /// could not see an unbumped `VERSION`.
+    #[test]
+    fn byte_offsets_round_trip_and_a_version_2_buffer_is_refused() {
+        let mut l = DisplayList::new();
+        let stops = Stops {
+            at: [0, 51, 255, 0],
+            color: [Color(1, 2, 3, 255), Color(4, 5, 6, 255), Color(7, 8, 9, 255), Color::TRANSPARENT],
+            len: 3,
+        };
+        l.gradient([0.0, 0.0, 40.0, 20.0], stops, 0.0);
+        assert_eq!(l.cmds.len(), 1, "the fixture must hold the gradient it round-trips");
+        let mut b = Vec::new();
+        encode(&l, &mut b);
+        let d = decode(&b).expect("decodes");
+        println!("3-stop gradient: {} B encoded at version {VERSION}, round trip equal: {}", b.len(), d.cmds == l.cmds);
+        assert_eq!(d.cmds, l.cmds, "the gradient did not survive the trip");
+
+        // `encode` at b873ab0 (version 2) of one rect [1, 2, 30, 40] in
+        // Color(10, 20, 30, 255), no bounds.
+        const V2_RECT: [u8; 31] = [
+            2, 0, 1, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 240, 65, 0, 0, 32, 66, 10, 20, 30, 255, 0, 0, 0, 0,
+        ];
+        let mut same = V2_RECT;
+        same[0] = VERSION;
+        assert!(decode(&same).is_some(), "setup: the fixture's body must decode under this layout");
+        let old = decode(&V2_RECT);
+        println!("a version-{} buffer decodes: {}", V2_RECT[0], old.is_some());
+        println!("wire::VERSION = {VERSION} (want 3)");
+        assert_eq!(VERSION, 3, "Stops' offsets changed meaning (M82/T82.1); VERSION must be 3");
+        assert!(old.is_none(), "a version-2 buffer decoded under version {VERSION}");
     }
 
     #[test]
