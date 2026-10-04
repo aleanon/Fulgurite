@@ -41,6 +41,9 @@ pub struct Canvas {
     /// Private: it is scratch, and a caller that resized it would be
     /// resizing something `glass_within` re-fits on every use anyway.
     glass: GlassScratch,
+    /// The path rasteriser's buffers, kept across frames like `glass`'s
+    /// (M82/T82.5, [`PathScratch`]).
+    paths: PathScratch,
     /// A real face, when one is available. Without it, text falls back
     /// to one filled block per glyph — enough to prove the pipeline,
     /// which is what the headless oracle needs, and not enough to read.
@@ -198,6 +201,8 @@ struct Surface<'a> {
     /// The blur's buffers, owned by the `Canvas` (or by a worker's own
     /// band) and lent here for the frame.
     glass: &'a mut GlassScratch,
+    /// The path rasteriser's buffers, lent the same way (M82/T82.5).
+    paths: &'a mut PathScratch,
     /// The frame's shaped runs and the glyph cache, shared by every band
     /// — read-only, because the frame thread filled both before any band
     /// started (`TextState::prepare`, M50/T50.3).
@@ -1124,6 +1129,54 @@ impl Surface<'_> {
         }
     }
 
+    /// Fill and then stroke a path whose ink is `ink`, writing only inside
+    /// `area` (its clipped part) — M82/T82.5, through [`rasterize_path`].
+    ///
+    /// **The mask's x origin is the ink's left edge on the surface, never
+    /// the damage's.** Coverage is a running sum along each row, so a
+    /// mask that started at a damage edge would add the same areas in a
+    /// different order and could round a pixel differently from the full
+    /// frame: a partial redraw must be byte-identical to a full one. Rows
+    /// are independent (`rasterize_path`'s rustdoc), so the rows are
+    /// limited to the area and the band.
+    fn path_within(
+        &mut self,
+        els: &[lumen_static::display::PathEl],
+        ink: [f32; 4],
+        area: [f32; 4],
+        fill: Color,
+        stroke: Color,
+        width: f32,
+    ) {
+        let x0 = (ink[0].floor() as i64).max(0);
+        let x1 = (ink[2].ceil() as i64).min(self.width as i64);
+        let ax0 = (area[0].floor() as i64).max(x0);
+        let ax1 = (area[2].ceil() as i64).min(x1);
+        let y0 = (area[1].floor() as i64).max(self.y0);
+        let y1 = (area[3].ceil() as i64).min(self.y_hi());
+        if ax0 >= ax1 || y0 >= y1 {
+            return;
+        }
+        let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
+        for (paint, cover) in [(fill, PathCoverage::Fill), (stroke, PathCoverage::Stroke(width))] {
+            if paint.3 == 0 || matches!(cover, PathCoverage::Stroke(v) if v.is_nan() || v <= 0.0) {
+                continue;
+            }
+            let mut scratch = core::mem::take(self.paths);
+            let mask = rasterize_path(els, cover, [x0 as i32, y0 as i32], w, h, &mut scratch);
+            for y in y0..y1 {
+                let row = (y - y0) as usize * w;
+                for x in ax0..ax1 {
+                    let cov = mask[row + (x - x0) as usize];
+                    if cov > 0 {
+                        self.blend_cov(x, y, paint, cov);
+                    }
+                }
+            }
+            *self.paths = scratch;
+        }
+    }
+
     /// Blit an image into `dst`, limited to `area`.
     ///
     /// Nearest-neighbour: this is a software canvas whose whole point is
@@ -1383,6 +1436,15 @@ impl Surface<'_> {
                     }
                     self.blit_image(*rect, r, iw, ih, px, *tint);
                 }
+                Cmd::Path { rect, els, fill, stroke, width } => {
+                    let Some(r) = clipped(*rect, clip.as_slice()) else { continue };
+                    // A range outside the store draws nothing: a list from
+                    // `DisplayList::path` cannot hold one, and `wire::decode`
+                    // refuses one, but a renderer does not trust either.
+                    let (at, n) = (els.0 as usize, els.1 as usize);
+                    let Some(els) = list.paths.get(at..at + n) else { continue };
+                    self.path_within(els, *rect, r, *fill, *stroke, *width);
+                }
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => {
                     // Never pop the damage scope: it is not part of the
@@ -1412,6 +1474,7 @@ impl Canvas {
             height,
             pixels: vec![255; (width * height * 4) as usize],
             glass: GlassScratch::default(),
+            paths: PathScratch::default(),
             #[cfg(feature = "truetype")]
             font: None,
             #[cfg(feature = "truetype")]
@@ -1681,6 +1744,7 @@ impl Canvas {
             y0: 0,
             rows: self.height as i64,
             glass: &mut self.glass,
+            paths: &mut self.paths,
             #[cfg(feature = "truetype")]
             text: &self.text,
         }
@@ -1865,12 +1929,14 @@ impl Canvas {
                         // — bounded by the worker count, where it used to be
                         // three `Vec`s per panel per band (M26/T26.13).
                         let mut scratch = GlassScratch::default();
+                        let mut paths = PathScratch::default();
                         let mut band = Surface {
                             px: chunk,
                             width,
                             y0,
                             rows: nrows,
                             glass: &mut scratch,
+                            paths: &mut paths,
                             #[cfg(feature = "truetype")]
                             text,
                         };
@@ -2549,4 +2615,383 @@ fn clipped(rect: [f32; 4], stack: &[[f32; 4]]) -> Option<[f32; 4]> {
 /// the bounds at every call, and total where `f32::clamp` panics.
 fn clamp01(x: f32) -> f32 {
     lumen_static::num::clamp(x, 0.0, 1.0)
+}
+
+/// What [`rasterize_path`] covers: the path's non-zero fill, or its
+/// stroke at a width in device px — M82/T82.5.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PathCoverage {
+    Fill,
+    Stroke(f32),
+}
+
+/// The flattening tolerance, in device px: no flattened segment strays
+/// further than this from its curve (`docs/plan-paint-vocabulary.md`,
+/// Decisions). The elements reach [`rasterize_path`] after
+/// `lumen_static::Scaled` and the path's own transform, so this is
+/// physical whatever the scale.
+pub const FLATTEN_TOLERANCE: f32 = 0.1;
+
+/// The most segments one curve flattens to. Wang's bound asks for about
+/// 12 per quarter of a 40 px circle; this is for a curve whose control
+/// points are thousands of px apart, which should not cost unbounded
+/// work.
+const MAX_CURVE_SEGMENTS: usize = 256;
+
+/// A round join or cap is a polygon of this many sides, inscribed in the
+/// stroke's half-width.
+const JOIN_SIDES: usize = 16;
+
+/// [`rasterize_path`]'s buffers, kept between calls so a steady frame
+/// allocates nothing (the `alloc_gate.rs` rule): the accumulation rows,
+/// the flattened points, the subpaths, and the coverage it answers.
+#[derive(Default)]
+pub struct PathScratch {
+    acc: Vec<f32>,
+    pts: Vec<Point>,
+    /// `(start, end, closed)` ranges into `pts`, one per subpath.
+    subs: Vec<(u32, u32, bool)>,
+    mask: Vec<u8>,
+}
+
+/// Rasterise a path's coverage into a `w × h` mask whose pixel `(i, j)`
+/// is the device pixel `(origin[0] + i, origin[1] + j)` — M82/T82.5.
+///
+/// **Signed-area accumulation**: every edge adds the area it sweeps to
+/// the cells it crosses, a running sum along each row turns that into
+/// winding, and the coverage is `min(|sum|, 1)` — non-zero winding,
+/// analytic rather than sampled, and no `unsafe`. The software canvas
+/// draws [`lumen_static::Cmd::Path`] through it, and the GPU backend is
+/// meant to rasterise its path masks through the same function
+/// (`docs/plan-paint-vocabulary.md`, T82.6), so the two can only differ
+/// in how the mask is blended.
+///
+/// Curves are flattened at [`FLATTEN_TOLERANCE`] by Wang's bound. A
+/// stroke is the non-zero union of one quad per flattened segment and a
+/// `JOIN_SIDES`-gon (16) of the half-width at every vertex — round joins
+/// and caps, drawn by the same accumulation; every polygon is emitted
+/// with the same orientation so an overlap clamps instead of cancelling.
+/// Miter joins, dashes and even-odd are not built.
+///
+/// **A row's coverage does not depend on which rows the mask holds**:
+/// each row's crossing is computed from its edge's endpoints, never
+/// stepped from the previous row, so a band of a frame rasterises
+/// exactly the bytes the whole frame would (`tests/banded.rs`). An edge
+/// left of the mask counts as a vertical edge at its left column, and
+/// one right of it is dropped, so columns are exact too — but the canvas
+/// still takes its x origin from the surface, not the damage, so a
+/// partial redraw sums in the same order as a full one.
+pub fn rasterize_path<'s>(
+    els: &[lumen_static::display::PathEl],
+    cover: PathCoverage,
+    origin: [i32; 2],
+    w: usize,
+    h: usize,
+    scratch: &'s mut PathScratch,
+) -> &'s [u8] {
+    let PathScratch { acc, pts, subs, mask } = scratch;
+    let stride = w + 2;
+    acc.clear();
+    acc.resize(stride * h, 0.0);
+    mask.clear();
+    mask.resize(w * h, 0);
+    if w == 0 || h == 0 {
+        return mask;
+    }
+    flatten(els, pts, subs);
+    let o = Point { x: origin[0] as f32, y: 0.0 };
+    let mut acc = Acc { a: acc, stride, w: w as f32, y0: origin[1] as f32, h };
+    match cover {
+        PathCoverage::Fill => {
+            for &(s, e, _) in subs.iter() {
+                let p = &pts[s as usize..e as usize];
+                for k in 0..p.len() {
+                    // Every subpath closes for a fill.
+                    let (a, b) = (p[k], p[(k + 1) % p.len()]);
+                    acc.line(sub(a, o), sub(b, o));
+                }
+            }
+        }
+        PathCoverage::Stroke(width) => {
+            let hw = width / 2.0;
+            if !hw.is_finite() || hw <= 0.0 {
+                return mask;
+            }
+            for &(s, e, closed) in subs.iter() {
+                let p = &pts[s as usize..e as usize];
+                let n = p.len();
+                let segs = if closed && n > 2 { n } else { n.saturating_sub(1) };
+                for k in 0..segs {
+                    let (a, b) = (sub(p[k], o), sub(p[(k + 1) % n], o));
+                    let (dx, dy) = (b.x - a.x, b.y - a.y);
+                    let len = (dx * dx + dy * dy).sqrt();
+                    if len > 0.0 {
+                        let (nx, ny) = (-dy / len * hw, dx / len * hw);
+                        acc.polygon(&[
+                            Point { x: a.x + nx, y: a.y + ny },
+                            Point { x: b.x + nx, y: b.y + ny },
+                            Point { x: b.x - nx, y: b.y - ny },
+                            Point { x: a.x - nx, y: a.y - ny },
+                        ]);
+                    }
+                }
+                // A join at every vertex and a cap at each open end: the
+                // same disc. A closed path's last point is its first again
+                // only when it said so with a `Line`, which costs one more
+                // disc and changes no pixel.
+                for q in p {
+                    let c = sub(*q, o);
+                    let mut ring = [Point::default(); JOIN_SIDES];
+                    for (k, v) in ring.iter_mut().enumerate() {
+                        let t = k as f32 * core::f32::consts::TAU / JOIN_SIDES as f32;
+                        *v = Point { x: c.x + hw * t.cos(), y: c.y + hw * t.sin() };
+                    }
+                    acc.polygon(&ring);
+                }
+            }
+        }
+    }
+    let a = acc.a;
+    for row in 0..h {
+        let mut s = 0.0f32;
+        for x in 0..w {
+            s += a[row * stride + x];
+            mask[row * w + x] = (s.abs().min(1.0) * 255.0 + 0.5) as u8;
+        }
+    }
+    mask
+}
+
+/// `p` in the mask's columns: x moved by the origin, **y kept absolute**.
+/// A row's crossing is then computed from the same floats whichever row
+/// the mask starts at — `y - y0` would round differently for each band's
+/// `y0`, and a banded frame would differ from a whole one in the last bit
+/// of an edge pixel (`tests/banded.rs`, M82/T82.5's first run).
+#[inline]
+fn sub(p: Point, o: Point) -> Point {
+    Point { x: p.x - o.x, y: p.y }
+}
+
+/// Flatten `els` into polylines: `pts` holds every subpath's points back
+/// to back, `subs` each one's range and whether it said `Close`. A
+/// drawing element with no current point starts a subpath at its end
+/// point, and a non-finite point ends the path there.
+fn flatten(els: &[lumen_static::display::PathEl], pts: &mut Vec<Point>, subs: &mut Vec<(u32, u32, bool)>) {
+    use lumen_static::display::PathEl;
+    pts.clear();
+    subs.clear();
+    let mut start: Option<usize> = None;
+    let finish = |pts: &mut Vec<Point>, subs: &mut Vec<(u32, u32, bool)>, start: &mut Option<usize>, closed: bool| {
+        if let Some(s) = start.take() {
+            if pts.len() - s >= 2 {
+                subs.push((s as u32, pts.len() as u32, closed));
+            } else {
+                pts.truncate(s);
+            }
+        }
+    };
+    for e in els {
+        let (n, ps) = e.points();
+        if ps[..n].iter().any(|p| !(p.x.is_finite() && p.y.is_finite())) {
+            break;
+        }
+        match *e {
+            PathEl::Move(p) => {
+                finish(pts, subs, &mut start, false);
+                start = Some(pts.len());
+                pts.push(p);
+            }
+            PathEl::Close => {
+                // The current point returns to the subpath's start, where
+                // a following element without a `Move` continues.
+                let back = start.map(|s| pts[s]);
+                finish(pts, subs, &mut start, true);
+                if let Some(p) = back {
+                    start = Some(pts.len());
+                    pts.push(p);
+                }
+            }
+            _ => {
+                if start.is_none() {
+                    start = Some(pts.len());
+                    pts.push(ps[n - 1]);
+                    continue;
+                }
+                let p0 = *pts.last().expect("a started subpath has a point");
+                match *e {
+                    PathEl::Line(p) => pts.push(p),
+                    PathEl::Quad(c, p) => {
+                        let m = len(p0.x - 2.0 * c.x + p.x, p0.y - 2.0 * c.y + p.y);
+                        let k = segments(0.25 * m);
+                        for i in 1..=k {
+                            let t = i as f32 / k as f32;
+                            let u = 1.0 - t;
+                            pts.push(Point {
+                                x: u * u * p0.x + 2.0 * u * t * c.x + t * t * p.x,
+                                y: u * u * p0.y + 2.0 * u * t * c.y + t * t * p.y,
+                            });
+                        }
+                    }
+                    PathEl::Cubic(c1, c2, p) => {
+                        let m = len(p0.x - 2.0 * c1.x + c2.x, p0.y - 2.0 * c1.y + c2.y)
+                            .max(len(c1.x - 2.0 * c2.x + p.x, c1.y - 2.0 * c2.y + p.y));
+                        let k = segments(0.75 * m);
+                        for i in 1..=k {
+                            let t = i as f32 / k as f32;
+                            let u = 1.0 - t;
+                            let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+                            pts.push(Point {
+                                x: a * p0.x + b * c1.x + c * c2.x + d * p.x,
+                                y: a * p0.y + b * c1.y + c * c2.y + d * p.y,
+                            });
+                        }
+                    }
+                    _ => unreachable!("Move and Close are handled above"),
+                }
+            }
+        }
+    }
+    finish(pts, subs, &mut start, false);
+}
+
+#[inline]
+fn len(x: f32, y: f32) -> f32 {
+    (x * x + y * y).sqrt()
+}
+
+/// Wang's bound: a degree-`n` Bézier whose largest second difference is
+/// `m` stays within the tolerance of its `k`-segment chord when
+/// `k ≥ sqrt(n(n−1)/8 · m / tol)`; the caller passes `n(n−1)/8 · m`.
+fn segments(scaled_m: f32) -> usize {
+    let k = (scaled_m / FLATTEN_TOLERANCE).sqrt().ceil();
+    if k.is_finite() {
+        (k as usize).clamp(1, MAX_CURVE_SEGMENTS)
+    } else {
+        MAX_CURVE_SEGMENTS
+    }
+}
+
+/// The accumulation rows of one [`rasterize_path`] call: x in mask
+/// columns, y absolute, rows `y0..y0 + h`; `stride` is `w + 2` so a
+/// crossing at the right edge has two cells to land in.
+struct Acc<'a> {
+    a: &'a mut [f32],
+    stride: usize,
+    w: f32,
+    /// The first row's absolute y, a whole number.
+    y0: f32,
+    h: usize,
+}
+
+impl Acc<'_> {
+    /// A closed polygon, emitted with positive orientation whatever order
+    /// its points came in, so the stroke's pieces add instead of cancel.
+    fn polygon(&mut self, p: &[Point]) {
+        let n = p.len();
+        let mut area = 0.0;
+        for k in 0..n {
+            let (a, b) = (p[k], p[(k + 1) % n]);
+            area += a.x * b.y - b.x * a.y;
+        }
+        for k in 0..n {
+            let (a, b) = if area >= 0.0 { (p[k], p[(k + 1) % n]) } else { (p[(k + 1) % n], p[k]) };
+            self.line(a, b);
+        }
+    }
+
+    /// One edge: split where it leaves `0..=w` in x, the part on the left
+    /// moved onto column 0 (it still winds every pixel to its right) and
+    /// the part on the right dropped (it winds nothing in the mask).
+    fn line(&mut self, a: Point, b: Point) {
+        if a.y == b.y {
+            return;
+        }
+        let w = self.w;
+        let at = |x: f32| {
+            let t = (x - a.x) / (b.x - a.x);
+            Point { x, y: a.y + (b.y - a.y) * t }
+        };
+        // Up to three pieces, in order along the edge.
+        let mut cuts = [a, a, a, b];
+        let mut n = 1;
+        let (lo, hi) = if a.x <= b.x { (0.0, w) } else { (w, 0.0) };
+        for x in [lo, hi] {
+            if (a.x < x) != (b.x < x) && a.x != x && b.x != x {
+                cuts[n] = at(x);
+                n += 1;
+            }
+        }
+        cuts[n] = b;
+        for k in 0..n {
+            let (p, q) = (cuts[k], cuts[k + 1]);
+            let mid = (p.x + q.x) / 2.0;
+            if mid > w {
+                continue;
+            }
+            let cx = |v: Point| Point { x: v.x.clamp(0.0, w), y: v.y };
+            self.cells(cx(p), cx(q));
+        }
+    }
+
+    /// The cells one in-range edge crosses, row by row (font-rs's
+    /// accumulation step, with each row's crossing taken from the edge's
+    /// endpoints rather than stepped from the row above).
+    fn cells(&mut self, p0: Point, p1: Point) {
+        if p0.y == p1.y {
+            return;
+        }
+        let (dir, a, b) = if p0.y < p1.y { (1.0, p0, p1) } else { (-1.0, p1, p0) };
+        let dxdy = (b.x - a.x) / (b.y - a.y);
+        let y_lo = a.y.max(self.y0);
+        let y_hi = b.y.min(self.y0 + self.h as f32);
+        if y_lo >= y_hi {
+            return;
+        }
+        let first = (y_lo - self.y0).floor() as usize;
+        let end = ((y_hi - self.y0).ceil() as usize).min(self.h);
+        for row in first..end {
+            // The row's edges in absolute y: whole numbers, exact in f32.
+            let top = self.y0 + row as f32;
+            let ya = top.max(a.y);
+            let yb = (top + 1.0).min(b.y);
+            let dy = yb - ya;
+            if dy <= 0.0 {
+                continue;
+            }
+            let xa = a.x + (ya - a.y) * dxdy;
+            let xb = a.x + (yb - a.y) * dxdy;
+            let d = dy * dir;
+            let line = &mut self.a[row * self.stride..(row + 1) * self.stride];
+            let (x0, x1) = if xa < xb { (xa, xb) } else { (xb, xa) };
+            let x0f = x0.floor();
+            let x0i = x0f as usize;
+            let x1c = x1.ceil();
+            let x1i = x1c as usize;
+            if x1i <= x0i + 1 {
+                // Inside one cell: its share left of the crossing's middle.
+                let xm = 0.5 * (xa + xb) - x0f;
+                line[x0i] += d - d * xm;
+                line[x0i + 1] += d * xm;
+            } else {
+                let s = 1.0 / (x1 - x0);
+                let x0r = x0 - x0f;
+                let a0 = 0.5 * s * (1.0 - x0r) * (1.0 - x0r);
+                let x1r = x1 - x1c + 1.0;
+                let am = 0.5 * s * x1r * x1r;
+                line[x0i] += d * a0;
+                if x1i == x0i + 2 {
+                    line[x0i + 1] += d * (1.0 - a0 - am);
+                } else {
+                    let a1 = s * (1.5 - x0r);
+                    line[x0i + 1] += d * (a1 - a0);
+                    for c in &mut line[x0i + 2..x1i - 1] {
+                        *c += d * s;
+                    }
+                    let a2 = a1 + (x1i - x0i - 3) as f32 * s;
+                    line[x1i - 1] += d * (1.0 - a2 - am);
+                }
+                line[x1i] += d * am;
+            }
+        }
+    }
 }

@@ -304,6 +304,20 @@ impl Painter for Checksum {
     fn pop_clip(&mut self) {
         self.f32s(6, &[]);
     }
+    /// The translation, the paint and the element count — M82/T82.5.
+    /// Required, so the firmware's vtable carries a slot for it (D3
+    /// accepts the growth); no firmware widget paints a path, so this folds
+    /// what reached paint rather than rasterising it.
+    ///
+    /// **One call to the out-of-line `r`, shaped like `shadow`'s**, the
+    /// colours as their bits: the first version folded every field with
+    /// inlined `fold`s and linked **956 B** for a method nothing in the
+    /// firmware calls; a ten-value `f32s` linked 964 B, unrolled
+    /// (`docs/results-embedded.md` M82/T82.5).
+    fn path(&mut self, els: &[lumen_static::display::PathEl], xf: lumen_static::display::Affine, paint: lumen_static::display::PathPaint) {
+        let bits = |c: Color| f32::from_bits(u32::from_be_bytes([c.0, c.1, c.2, c.3]));
+        self.r(8, [xf[4], xf[5], paint.width, els.len() as f32], &[bits(paint.fill), bits(paint.stroke)]);
+    }
 }
 
 // ---- one frame, over caller-owned storage ------------------------------

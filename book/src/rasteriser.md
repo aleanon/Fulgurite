@@ -7,14 +7,26 @@ frame time goes — rasterisation is.
 
 ## The command vocabulary
 
-Nine commands: `Rect`, `RoundedRect`, `Text`, `Shadow`, `Line`,
-`Gradient`, `Image`, `PushClip`, `PopClip`.
+Twelve commands: `Rect`, `RoundedRect`, `StrokedRect`, `Text`, `Shadow`,
+`Line`, `Gradient`, `Image`, `Glass`, `Path`, `PushClip`, `PopClip`.
 
-Deliberately small. Every command is something an embedded target can
+Deliberately small. Every box command is something an embedded target can
 implement without an allocator, and everything richer is composed from
-them. A `Painter` implementation must write four of them; the rest have
-provided bodies that degrade — which is the trap [Writing your own
-widget](./custom-widget.md) is mostly about.
+them. A `Painter` implementation must write the methods that have no
+lossy fallback — a fill, a text run, a border, a clip, a path — and the
+rest have provided bodies that degrade, which is the trap [Writing your
+own widget](./custom-widget.md) is mostly about.
+
+`Path` (M82/T82.5) is the one command that is not a box. Its elements
+live in the display list's own store, as a text run's bytes do, already
+through the path's transform — which is an argument of the one call, not
+a stack every other command would have to respect. The canvas draws it
+with `rasterize_path`: each edge adds the area it sweeps to the cells it
+crosses, a running sum along each row turns that into winding, and the
+coverage is the sum's magnitude, clamped — non-zero fill, analytic rather
+than sampled. A stroke is the same fill of one quad per flattened segment
+and a disc at every vertex, so its joins and caps are round. What it
+costs per megapixel is `docs/results-paint-vocabulary.md` T82.5.
 
 ## Band-parallel rasterisation
 

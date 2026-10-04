@@ -199,7 +199,8 @@ pub enum Cmd {
     /// no allocator, and it is most of what "vector drawing" is asked
     /// for in a user interface: rules, separators, borders, underlines,
     /// focus rings, a chart's axes. Arbitrary paths are the expensive
-    /// tenth and are gated separately.
+    /// tenth, and are [`Cmd::Path`] (M82/T82.5), whose elements live in
+    /// the list.
     Line { a: Point, b: Point, width: f32, color: Color },
     /// A linear or radial gradient across `rect`, its corners rounded by
     /// `corner` px — T15.3, widened by M82/T82.2.
@@ -253,6 +254,26 @@ pub enum Cmd {
     Glass { rect: Rect, radius: f32, material: Material },
     PushClip { rect: Rect },
     PopClip,
+    /// An arbitrary vector path, filled and/or stroked — M82/T82.5
+    /// (`docs/plan-paint-vocabulary.md`, Decisions).
+    ///
+    /// **The elements live in the list, as `Text`'s bytes do**: `els` is
+    /// `(offset, len)` into [`DisplayList::paths`], already through the
+    /// path's transform (and [`Scaled`]'s scale), so a renderer reads
+    /// device coordinates and never sees an [`Affine`]. `rect` is the ink:
+    /// the transformed control-point box grown by `width / 2`, which
+    /// contains every flattened curve (a Bézier stays in its hull) and
+    /// every round join and cap.
+    ///
+    /// `fill` is drawn non-zero, then `stroke` over it at `width` with
+    /// round joins and caps; either may be transparent. Miter joins,
+    /// dashes and even-odd are not built. 16 + 8 + 4 + 4 + 4 = 36 B, well
+    /// under the 56 B payload that sets `Cmd`'s size.
+    ///
+    /// [`Cmd::hash_into`] folds `els.1` and **never the offset** — the
+    /// M27/T27.3 rule `Text` follows — and [`DisplayList::hash_from`]
+    /// folds the elements themselves.
+    Path { rect: Rect, els: (u32, u32), fill: Color, stroke: Color, width: f32 },
 }
 
 /// The region a [`Cmd::Glass`] with this blur **reads**, given the rect
@@ -765,6 +786,138 @@ impl GradAxis {
     }
 }
 
+/// One element of a path — M82/T82.5 ([`Painter::path`], [`Cmd::Path`]).
+///
+/// SVG's and every 2D API's vocabulary: a subpath starts at a `Move`,
+/// continues through straight `Line`s and quadratic or cubic Béziers
+/// (control points first, the end point last), and a `Close` returns it
+/// to its start. A fill closes every subpath whether it says `Close` or
+/// not; a stroke draws the closing segment only when it does.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PathEl {
+    Move(Point),
+    Line(Point),
+    Quad(Point, Point),
+    Cubic(Point, Point, Point),
+    Close,
+}
+
+impl PathEl {
+    /// This element with every point through `xf`.
+    pub fn map(self, xf: &Affine) -> PathEl {
+        let m = |p: Point| affine_apply(xf, p);
+        match self {
+            PathEl::Move(p) => PathEl::Move(m(p)),
+            PathEl::Line(p) => PathEl::Line(m(p)),
+            PathEl::Quad(a, p) => PathEl::Quad(m(a), m(p)),
+            PathEl::Cubic(a, b, p) => PathEl::Cubic(m(a), m(b), m(p)),
+            PathEl::Close => PathEl::Close,
+        }
+    }
+
+    /// The element's points, control points included, in order: zero for
+    /// `Close`, up to three for `Cubic`. The count is the first value.
+    pub fn points(&self) -> (usize, [Point; 3]) {
+        let z = Point::default();
+        match *self {
+            PathEl::Move(p) | PathEl::Line(p) => (1, [p, z, z]),
+            PathEl::Quad(a, p) => (2, [a, p, z]),
+            PathEl::Cubic(a, b, p) => (3, [a, b, p]),
+            PathEl::Close => (0, [z; 3]),
+        }
+    }
+
+    /// The element's tag: its wire byte and the first thing its hash
+    /// folds (`wire.rs`).
+    pub const fn tag(&self) -> u8 {
+        match self {
+            PathEl::Move(_) => 0,
+            PathEl::Line(_) => 1,
+            PathEl::Quad(..) => 2,
+            PathEl::Cubic(..) => 3,
+            PathEl::Close => 4,
+        }
+    }
+}
+
+/// A 2D affine transform, `[a, b, c, d, e, f]` as in SVG's
+/// `matrix(a b c d e f)`: a point goes to `(a·x + c·y + e, b·x + d·y + f)`
+/// ([`affine_apply`]) — M82/T82.5.
+///
+/// **A per-path argument, not a transform stack**
+/// (`docs/plan-paint-vocabulary.md`, Decisions): only [`Cmd::Path`] can
+/// be transformed, so no other command needs a rule for a rotated
+/// context, and neither `Deferring`'s phase 2 nor [`Scaled`] has a scope
+/// to balance. Hit testing stays axis-aligned on the node's box.
+pub type Affine = [f32; 6];
+
+/// The transform that moves nothing.
+pub const AFFINE_IDENTITY: Affine = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// `p` through `xf` (see [`Affine`]).
+#[inline]
+pub fn affine_apply(xf: &Affine, p: Point) -> Point {
+    Point { x: xf[0] * p.x + xf[2] * p.y + xf[4], y: xf[1] * p.x + xf[3] * p.y + xf[5] }
+}
+
+/// How a [`Painter::path`] is painted — M82/T82.5.
+///
+/// `fill` is non-zero winding; `stroke` is drawn over it, `width` px wide
+/// with round joins and caps. A transparent colour skips that half, and
+/// a path with both transparent (or a stroke of no width and no fill)
+/// records nothing.
+///
+/// **`width` is in the painter's units and is not transformed by the
+/// path's [`Affine`]**: a path built in a unit frame and scaled up by its
+/// transform keeps the stroke it asked for. [`Scaled`] does scale it,
+/// because that is logical px becoming physical.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PathPaint {
+    pub fill: Color,
+    pub stroke: Color,
+    pub width: f32,
+}
+
+/// The box of every point of `els` through `xf`, control points
+/// included, **not** grown by any stroke: `None` when there is no point,
+/// or one is not finite. [`DisplayList::path`] and `Recording::path` both
+/// call it, so the list's ink and retention's cannot disagree about where
+/// a path is.
+pub fn path_bounds(els: &[PathEl], xf: &Affine) -> Option<Rect> {
+    let mut r = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+    let mut any = false;
+    for e in els {
+        let (n, ps) = e.points();
+        for p in &ps[..n] {
+            let q = affine_apply(xf, *p);
+            if !(q.x.is_finite() && q.y.is_finite()) {
+                return None;
+            }
+            r = [r[0].min(q.x), r[1].min(q.y), r[2].max(q.x), r[3].max(q.y)];
+            any = true;
+        }
+    }
+    any.then_some(r)
+}
+
+/// A content hash of a path's elements — M82/T82.5: each element's tag
+/// and every coordinate's bits, seeded with the count. What
+/// [`DisplayList::hash_from`] folds for a [`Cmd::Path`] (whose own
+/// [`Cmd::hash_into`] sees only the count) and what `Recording::path`
+/// folds, so retention and the journal agree about when two paths are the
+/// same.
+pub fn hash_path(els: &[PathEl]) -> u64 {
+    let mut h = fold(0, els.len() as u64);
+    for e in els {
+        h = fold(h, e.tag() as u64);
+        let (n, ps) = e.points();
+        for p in &ps[..n] {
+            h = fold(h, ((p.x.to_bits() as u64) << 32) | p.y.to_bits() as u64);
+        }
+    }
+    h
+}
+
 /// A host-owned image.
 ///
 /// Opaque on purpose: the core never looks inside one, so a host may
@@ -937,6 +1090,22 @@ impl Cmd {
                 }
             }
             Cmd::PopClip => f(h, 4),
+            Cmd::Path { rect, els, fill, stroke, width } => {
+                f(h, 12);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                // **The count, never the offset** (M82/T82.5), for
+                // `Text`'s reason above: `els.0` indexes the list's shared
+                // element store, so a path painted earlier that gained an
+                // element would shift every later path's offset and report
+                // it changed. The elements are folded by
+                // [`DisplayList::hash_from`].
+                f(h, els.1 as u64);
+                f(h, u32::from_be_bytes([fill.0, fill.1, fill.2, fill.3]) as u64);
+                f(h, u32::from_be_bytes([stroke.0, stroke.1, stroke.2, stroke.3]) as u64);
+                f(h, width.to_bits() as u64);
+            }
         }
     }
 }
@@ -1087,6 +1256,20 @@ pub trait Painter {
     /// decision D6 (`docs/plan-iced-roadmap.md`).
     fn fills(&self) -> &[crate::style::Fill];
 
+    /// An arbitrary path, its points through `xf`, filled and stroked as
+    /// `paint` says — M82/T82.5 ([`Cmd::Path`], [`PathEl`], [`Affine`]).
+    ///
+    /// **Required**, for [`Painter::stroked_rect`]'s reason: a wrapper
+    /// that inherited a body would drop every path painted through it,
+    /// `Deferring`'s phase 2 included, and there is no lossy fallback a
+    /// leaf could draw instead. A wrapper forwards — [`Scaled`] after
+    /// pre-multiplying `xf` by its scale and scaling `width` — and
+    /// `Recording` hashes `xf`, the elements and the paint and inks the
+    /// transformed box. The transform is this argument and nothing else:
+    /// there is no transform stack. Accepted firmware growth by owner
+    /// decision D3 (`docs/plan-iced-roadmap.md`).
+    fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint);
+
     /// A run at the default weight. Provided, so an implementation only
     /// has to write the weighted form.
     fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
@@ -1134,8 +1317,14 @@ pub trait Painter {
 }
 
 /// One frame's drawing commands, in paint order.
+///
+/// **`Clone`, so a copy carries every store** (M82/T82.5, adopting
+/// M83/T83.3's design): winit's `hot::Barred` copies a session's list,
+/// and a copy built field by field — or with `..Default::default()` —
+/// would compile and leave [`DisplayList::paths`] empty while each
+/// [`Cmd::Path`] still indexed into it.
 #[cfg(feature = "alloc")]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct DisplayList {
     pub cmds: Vec<Cmd>,
     /// Text bytes for this frame; `Cmd::Text` holds ranges into it.
@@ -1157,6 +1346,11 @@ pub struct DisplayList {
     /// palette, not of one frame. Empty by default, so a bare list paints
     /// no fill and every existing test's command stream is unchanged.
     pub fills: Vec<crate::style::Fill>,
+    /// Path elements for this frame, already through each path's
+    /// transform; `Cmd::Path` holds `(offset, len)` ranges into it, as
+    /// `Cmd::Text` does into `text` — M82/T82.5. Cleared with the frame,
+    /// so its allocation is reused like `text`'s.
+    pub paths: Vec<PathEl>,
 }
 
 #[cfg(feature = "alloc")]
@@ -1170,6 +1364,42 @@ impl DisplayList {
     pub fn clear(&mut self) {
         self.cmds.clear();
         self.text.clear();
+        self.paths.clear();
+    }
+
+    /// Record a path (M82/T82.5, [`Cmd::Path`]): `xf` is applied as the
+    /// elements are copied into [`DisplayList::paths`], and the command's
+    /// rect is [`path_bounds`] grown by `width / 2`.
+    ///
+    /// Dropped when nothing would draw — no element with a point, a
+    /// non-finite one, both paints transparent (a stroke of no width
+    /// counts as transparent), or an ink box with no area — for
+    /// [`DisplayList::rect`]'s reason.
+    pub fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint) {
+        let stroked = paint.stroke.3 != 0 && paint.width > 0.0;
+        if paint.fill.3 == 0 && !stroked {
+            return;
+        }
+        let Some(b) = path_bounds(els, &xf) else { return };
+        let w = if paint.width > 0.0 { paint.width / 2.0 } else { 0.0 };
+        let rect = [b[0] - w, b[1] - w, b[2] + w, b[3] + w];
+        if !has_area(rect) {
+            return;
+        }
+        let start = self.paths.len() as u32;
+        self.paths.extend(els.iter().map(|e| e.map(&xf)));
+        self.cmds.push(Cmd::Path {
+            rect,
+            els: (start, els.len() as u32),
+            fill: paint.fill,
+            stroke: paint.stroke,
+            width: paint.width,
+        });
+    }
+
+    /// The elements a `Cmd::Path` refers to.
+    pub fn els_of(&self, range: (u32, u32)) -> &[PathEl] {
+        &self.paths[range.0 as usize..(range.0 + range.1) as usize]
     }
 
     /// Record a filled rect. A rect with no area is dropped: it cannot
@@ -1312,13 +1542,18 @@ impl DisplayList {
     }
 
     /// Hash of `cmds[from..]` — how the journal takes a node's content
-    /// signature without building a list per node.
+    /// signature without building a list per node. A text run's bytes and
+    /// a path's elements (M82/T82.5) are folded here, because only the
+    /// list holds them; their commands fold a length, never an offset.
     pub fn hash_from(&self, from: usize) -> u64 {
         let mut h = 0u64;
         for c in &self.cmds[from.min(self.cmds.len())..] {
             c.hash_into(&mut h);
-            if let Cmd::Text { text, .. } = c {
-                h = fold(h, hash_bytes(self.str_of(*text).as_bytes()));
+            match c {
+                Cmd::Text { text, .. } => h = fold(h, hash_bytes(self.str_of(*text).as_bytes())),
+                // The elements, which `hash_into` cannot reach (M82/T82.5).
+                Cmd::Path { els, .. } => h = fold(h, hash_path(self.els_of(*els))),
+                _ => {}
             }
         }
         h
@@ -1598,6 +1833,15 @@ impl Painter for Scaled<'_> {
     fn fills(&self) -> &[crate::style::Fill] {
         self.inner.fills()
     }
+    /// `xf` is **pre-multiplied** by the scale — the scale applied after
+    /// the path's own transform — and `width` scales with it (M82/T82.5).
+    /// Forwarding `xf` unscaled would draw every path at its logical size
+    /// on a 2x display (`lumen-static-shell/tests/path_damage.rs`).
+    fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint) {
+        let k = self.scale;
+        let xf = [xf[0] * k, xf[1] * k, xf[2] * k, xf[3] * k, xf[4] * k, xf[5] * k];
+        self.inner.path(els, xf, PathPaint { width: paint.width * k, ..paint });
+    }
 }
 
 /// Collecting into a list is *one* implementation of [`Painter`], not
@@ -1642,5 +1886,8 @@ impl Painter for DisplayList {
     }
     fn fills(&self) -> &[crate::style::Fill] {
         &self.fills
+    }
+    fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint) {
+        DisplayList::path(self, els, xf, paint)
     }
 }

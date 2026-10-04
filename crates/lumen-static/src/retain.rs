@@ -1107,4 +1107,35 @@ impl<R: Retention> Painter for Recording<'_, R> {
     fn fills(&self) -> &[crate::style::Fill] {
         self.inner.fills()
     }
+
+    /// Hashes `xf`, **the elements themselves** and the paint, and inks
+    /// the transformed control-point box grown by `width / 2 + 1`
+    /// (M82/T82.5): the box contains every flattened curve and round
+    /// join, and the pixel is the antialiased edge's. Hashing only the
+    /// element count would let a path that changed shape but not length
+    /// report no damage (`lumen-static-shell/tests/path_damage.rs`).
+    fn path(
+        &mut self,
+        els: &[crate::display::PathEl],
+        xf: crate::display::Affine,
+        paint: crate::display::PathPaint,
+    ) {
+        let mut h = fold(0, 12);
+        for v in xf {
+            h = fold(h, v.to_bits() as u64);
+        }
+        h = fold(h, crate::display::hash_path(els));
+        h = h_color(h, paint.fill);
+        h = h_color(h, paint.stroke);
+        h = fold(h, paint.width.to_bits() as u64);
+        let ink = match crate::display::path_bounds(els, &xf) {
+            Some(b) => {
+                let w = if paint.width > 0.0 { paint.width / 2.0 } else { 0.0 } + 1.0;
+                [b[0] - w, b[1] - w, b[2] + w, b[3] + w]
+            }
+            None => [0.0; 4],
+        };
+        self.ret.observe(h, ink);
+        self.inner.path(els, xf, paint);
+    }
 }

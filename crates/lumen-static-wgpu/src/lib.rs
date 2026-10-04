@@ -1269,6 +1269,12 @@ impl Gpu {
                         }
                     }
                 }
+                // **Not drawn on this backend yet** (M82/T82.5): T82.6
+                // rasterises path masks through the software canvas's
+                // `rasterize_path` into the glyph atlas. Until then the
+                // arm is empty on purpose, and `tests/parity.rs`'s path pin
+                // asserts a path leaves the GPU frame the page.
+                Cmd::Path { .. } => {}
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => {
                     // Never pop the damage scope; an unbalanced list

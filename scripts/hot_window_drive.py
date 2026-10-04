@@ -8,7 +8,10 @@ Over the agent, against fixtures/hot-window's copy:
   4. wait on app.reloads.
   5. the label shows the NEW format and the OLD count.
   -. a build that fails: the window keeps running the last good build,
-     shows a bar, and the fix-back clears it without a swap.
+     shows a bar, and the fix-back clears it without a swap. While the bar
+     is up, `#star` -- a paint box that fills a path -- keeps its
+     ui.regionHash (M82/T82.5): the bar is drawn over a copy of the
+     session's list, and a copy without the list's path store loses it.
   6. introduce a panic: M36's screen through app.failure, at the line.
   7. fix it: the next swap clears the screen, and the count survived.
   8. focus the field: app.imeArea is non-null and inside its physical box,
@@ -253,6 +256,15 @@ assert v == "clicks: 2", f"step 5: the label must show the new format and the ol
 
 # ---- a build that fails ----------------------------------------------
 before_bar = foot_pixel()
+# M82/T82.5: the star's region, painted by a path, before the bar.
+star_rect = call("ui.resolve", {"selector": "#star"})["bounds"]
+shot = call("ui.screenshot")
+k = shot.get("scale", 1.0)
+mid = png_pixel(shot["image_base64"], int((star_rect[0] + star_rect[2]) / 2 * k), int((star_rect[1] + star_rect[3]) / 2 * k))
+assert all(abs(mid[i] - (0xC2, 0x41, 0x0C)[i]) < 24 for i in range(3)), \
+    f"setup: #star's centre must be the path's colour, not {mid}"
+star_before = live_hash(star_rect)
+assert star_before["pixels"] > 0, f"setup: #star's region hashed no pixels: {star_rect}" 
 edit("handler", 'let step: i64 = "one";')
 # Stop on the error OR on any swap: a failed build that swaps clears the
 # error it should have kept, and waiting only for the error would turn
@@ -268,6 +280,12 @@ assert v == "clicks: 3", f"the last good build still answers input: `{v}`"
 bar = foot_pixel()
 assert is_bar(bar) and not is_bar(before_bar), f"the bar must be on screen: {bar} (before {before_bar})"
 print(f"hot-window-drive: a failed build kept the running library; bar {bar}, label `{v}`")
+star_under = live_hash(star_rect)
+print(f"hot-window-drive: #star {star_rect} under the bar: hash {star_under['hash']} over {star_under['pixels']} px "
+      f"(before the failed build {star_before['hash']})")
+assert star_under["hash"] == star_before["hash"], \
+    "the path's region changed under the error bar: the bar's copy of the list lost its paths"
+
 edit("handler", "let step = 1;")
 r, _ = wait(lambda r: r["error"] is None and not r["building"], "the fix-back to clear the error")
 assert r["reloads"] == 2, f"fixing back to the running source swapped anyway: {r['reloads']}"

@@ -36,7 +36,7 @@ fn it_produces_a_document_with_the_right_viewport() {
 /// a new variant does not compile in [`kind`] until it has an index, and
 /// once it has one [`the_whole_command_vocabulary_renders`] refuses to
 /// pass until [`one_of_each`] draws it.
-const KINDS: usize = 11;
+const KINDS: usize = 12;
 
 /// A stable index per command kind, from an **exhaustive** match with no
 /// wildcard arm — M51/T51.6. "The whole vocabulary" is made true by the
@@ -56,6 +56,7 @@ fn kind(c: &Cmd) -> (usize, &'static str) {
         Cmd::Glass { .. } => (8, "Glass"),
         Cmd::PushClip { .. } => (9, "PushClip"),
         Cmd::PopClip => (10, "PopClip"),
+        Cmd::Path { .. } => (11, "Path"),
     }
 }
 
@@ -82,6 +83,13 @@ fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
         (vec![Cmd::Glass { rect: r, radius: 4.0, material: Material::FROSTED }], 0, r#"data-blur="12.00""#),
         (vec![clip], 0, r#"<g clip-path="url(#c0)">"#),
         (vec![clip, Cmd::PopClip, Cmd::Rect { rect: r, color: RED }], 1, r#"</g><rect"#),
+        // M82/T82.5: its two elements are the `Move` and `Line` the test
+        // puts in the list's store.
+        (
+            vec![Cmd::Path { rect: r, els: (0, 2), fill: RED, stroke: Color(0, 0, 0, 0), width: 0.0 }],
+            0,
+            r#"<path d="M0.00 0.00 L9.00 9.00" fill="rgba(255,0,0,1.000)" fill-rule="nonzero" stroke="none""#,
+        ),
     ]
 }
 
@@ -102,6 +110,10 @@ fn the_whole_command_vocabulary_renders() {
         covered[k] = true;
         let mut l = DisplayList::new();
         l.text.push_str("hi");
+        l.paths.extend([
+            lumen_static::display::PathEl::Move(Point { x: 0.0, y: 0.0 }),
+            lumen_static::display::PathEl::Line(Point { x: 9.0, y: 9.0 }),
+        ]);
         l.cmds.extend(cmds.iter().copied());
         let mut s = Svg::new();
         s.render(&l, 100, 50);

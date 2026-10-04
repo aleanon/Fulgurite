@@ -33,7 +33,7 @@
 
 use core::fmt::Write;
 
-use lumen_static::display::{Cmd, Color, DisplayList, GradAxis, GradKind, ImageId, Rect, Renderer, Stops};
+use lumen_static::display::{Cmd, Color, DisplayList, GradAxis, GradKind, ImageId, PathEl, Rect, Renderer, Stops};
 
 /// Renders a frame to SVG.
 pub struct Svg {
@@ -280,6 +280,38 @@ impl Renderer for Svg {
                         radius,
                         Self::colour(Color(tint.0, tint.1, tint.2, a)),
                         blur
+                    );
+                }
+                Cmd::Path { els, fill, stroke, width, .. } => {
+                    // The elements are already through the path's
+                    // transform (`DisplayList::path`), so `d` is in user
+                    // space with no transform attribute (M82/T82.5).
+                    // Round joins and caps, non-zero: what both
+                    // rasterisers draw.
+                    let (at, n) = (els.0 as usize, els.1 as usize);
+                    let Some(els) = list.paths.get(at..at + n) else { continue };
+                    let mut d = String::new();
+                    for e in els {
+                        let (k, ps) = e.points();
+                        let op = match e {
+                            PathEl::Move(_) => "M",
+                            PathEl::Line(_) => "L",
+                            PathEl::Quad(..) => "Q",
+                            PathEl::Cubic(..) => "C",
+                            PathEl::Close => "Z",
+                        };
+                        d.push_str(op);
+                        for p in &ps[..k] {
+                            let _ = write!(d, "{:.2} {:.2} ", p.x, p.y);
+                        }
+                    }
+                    let paint = |c: Color| if c.3 == 0 { "none".to_string() } else { Self::colour(c) };
+                    let _ = write!(
+                        body,
+                        r#"<path d="{}" fill="{}" fill-rule="nonzero" stroke="{}" stroke-width="{width:.2}" stroke-linejoin="round" stroke-linecap="round"/>"#,
+                        d.trim_end(),
+                        paint(*fill),
+                        paint(*stroke)
                     );
                 }
                 Cmd::PushClip { rect } => {

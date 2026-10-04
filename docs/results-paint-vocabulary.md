@@ -219,3 +219,88 @@ each) are in neither D3's list nor D6's, which accepts the `fills`
 getter. They are recorded as part of the accepted `fills` feature, by
 the coordinator at M82a's close, unless the owner says otherwise
 (`docs/results-embedded.md` M82/T82.3).
+
+## T82.5 — `Painter::path` and `Cmd::Path`, on the software canvas (2026-10-05)
+
+`Painter::path(els, xf, paint)` is required; `PathEl` (move, line,
+quadratic, cubic, close), `Affine` (`[a, b, c, d, e, f]`, per path, no
+stack) and `PathPaint` (fill, stroke, width). `DisplayList::path` applies
+`xf` as it copies the elements into `DisplayList::paths` and pushes
+`Cmd::Path { rect, els, fill, stroke, width }` (36 B), whose `rect` is the
+transformed control-point box grown by `width / 2`. `Cmd::hash_into` folds
+the element count, never the offset; `DisplayList::hash_from` and
+`Recording::path` fold the elements (`hash_path`). The software canvas
+draws it with `rasterize_path` (signed-area accumulation, non-zero, curves
+flattened at `FLATTEN_TOLERANCE` = 0.1 px, a stroke as quads and round
+16-gons); the GPU arm is empty and pinned until T82.6; SVG writes
+`<path d=…>`; the wire gives it tag **11** with `VERSION` still **4** (its
+elements follow the text only when there are any); `contrast.rs` measures
+a path as non-text ink in `Report::shapes`. `DisplayList` derives `Clone`,
+and winit's `hot::Barred` copies the session's list with it. Gates:
+`lumen-static-shell/tests/path_coverage.rs` and `path_damage.rs` unless
+named.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| coverage, a star of lines (10-vertex outline), 32 × 32 supersampled non-zero reference, edge pixels only | **451** edge px; mean \|err\| **0.29**/255, max **1.12**/255; interior 2,552 px all 255, exterior 12,473 px all 0 | ≥ 200 px; ≤ 1/255; ≤ 8/255; exact | coverage rounded to 0 or 1: mean **49.7**/255, max 127.5/255 |
+| coverage, a circle of four cubics (the reference is the true circle) | **320** edge px; mean **10.30**/255, max **26.48**/255; interior 4,559 / exterior 10,865 exact | ≥ 200; ≤ 17.0/255 (`2/3 · tol · 255`); ≤ 36.1/255 (`√2 · tol · 255`) | rounded: mean **50.7**/255, max 146.2/255 |
+| round join, a 90° turn stroked 16 px, the pixel on the outer bisector `w / 4` out (3.54 px from the vertex, outside both quads, inside the disc) | coverage **1.000**; the segment's own interior 1.000 | > 0.5 | the join discs omitted: **0.000** |
+| no phantom damage: A, a text run, B; A gains an element (same bounds) | damage **1,936** px² in 1 region = A's ink; B's offset 5 → 6, its `hash_from` signature unchanged; A reshaped at the same count: **2,200** px² (old ∪ new ink); unchanged: **0** | = A's ink; unchanged; = the union; 0 | `hash_into` folds `els.0`: B's signature moves (`0ee6a5e6…` → `3d121f46…`); `Recording::path` hashes only the count: the reshaped A damages **0** |
+| transform: a wedge rotated 30° and moved, `Recording(Scaled(list))` | Recording's ink = the hand-rotated box grown by `w / 2 + 1` at scale 1 and 2; the list's rect = `k ×` the box grown by `k · w / 2` (scale 2: `[118.0, 58.0, 260.56, 162.78]`, width 4); the rotated tip pixel inked at (122, 73) and (245, 146) | equal (1e-3); the path's colour | `Scaled::path` forwards `xf` unscaled: the scale-2 list rect is the scale-1 box, red by name |
+| `Deferring`'s stream, `lumen-static/tests/overlay.rs` (a path with a non-identity `xf` added) | **7** in, 7 out; the element stores equal | equal | `Deferring::path` empty: **7 in, 6 out** |
+| banded, `tests/banded.rs` (a filled and stroked circle-and-star across the surface) and `scripts/check_banded.sh` (`just threads`) | **10** scenes byte-identical to the single-band render; every case asserts `bands_for` ≥ 2 | identical | the mask's rows taken relative to the band's `y0`: the threaded render differs |
+| wire, `wire.rs` tests | every command round-trips (12, now with a path); a path of all five element kinds round-trips (112 B), its store equal; the buffer without its element section is refused; an empty list encodes exactly as version 4 did | equal; `None`; the v4 bytes | the decoder drops the elements: both round trips fail to decode (the range check refuses the command) |
+| contrast, `shell/tests/contrast_ground.rs` | a path at **2.01**:1 is below 3 (1 shape); at **4.54**:1 it is not; text over the path's box unmeasured as `"path"` | < 3; ≥ 3 | the walk skips `Path`: no shape measured, the text judged against the page |
+| GPU pin, `lumen-static-wgpu/tests/parity.rs` (`just gpu`, RTX 4070) | software inks **6,400** px, the GPU **0**; `KINDS` 11 → **12**, the `Path` row compared in "tests/parity.rs: path pin, until T82.6" | 0 | the arm pushes a quad: the GPU inks 6,400 px, red by name |
+| SVG, `shell/tests/svg.rs` | `<path d="M0.00 0.00 L9.00 9.00" fill="rgba(255,0,0,1.000)" fill-rule="nonzero" stroke="none" …>`; 12 kinds drawn | the element | — (the vocabulary test's own) |
+| clip, `shell/tests/clip_test.rs` | `Path` inside a `PushClip`: **0** px outside (ink inside 3,200 px; unclipped 14,796 px outside) | 0 | — (the clip test's own) |
+| live, `scripts/widget_drive.sh PaintBox` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | "the star path is filled inside its own outline": **4,182** px of its colour inside its outline of 4,346 px² (**96.2%**), 0 outside the box; at scale 2 **17,049** of 17,383 (**98.1%**); D5 parity 0 of 67,584 bytes differ | ≥ 90%; 0 | the canvas skips `Cmd::Path` (Boundaries leg): **0** px (0.0%), FAIL by name |
+| error bar, `just hot-window-drive`'s failed-build step (`fixtures/hot-window`'s `#star`) | `#star` `[0, 0, 320, 48]` under the bar: `ui.regionHash` **f74fce21295f6269** over 15,360 px, the same as before the failed build; setup: the box's centre is the path's colour; the hot, static and everything legs all PASS | equal | `Barred` rebuilds the list by literal with `..Default::default()` instead of `src.clone()` (hot leg): **71c2a6b3e0395325**, red by name ("the bar's copy of the list lost its paths") |
+| firmware, `just firmware-delta a77cc52` | `firmware` **+64 B**, the other three **+68 B**, `.rodata` +4 (the vtable slot), all of it `Checksum::path` (66 B); `firmware_interactive` 63,472 B, headroom **18,448 B** | ≤ 1,000 B on `firmware_interactive` (K4, K82b's per-task half); K82b floor 1,024 | — |
+
+`benches --bin vocabulary` (one command over 1024 × 1024, software
+canvas, 31 renders, under `just bench-lock`; load1 5.4 from a concurrent
+`just ci` in another work tree, under the lock's bound of 8):
+
+| arm | min ns/Mpx | median ns/Mpx |
+|---|---:|---:|
+| `linear` | 10,327,315 | 10,450,316 |
+| `radial` | 10,352,179 | 10,417,833 |
+| `rounded-radial` | 11,767,335 | 11,822,668 |
+| `star-fill` (a 960 px star of lines, filled) | 1,296,102 | 1,324,094 |
+| `circle-stroke` (a 960 px circle of cubics, stroked 8 px) | 1,155,034 | 1,176,834 |
+
+A filled star covering a third of the canvas costs about an eighth of a
+full-canvas gradient: the accumulation touches every pixel of the ink's
+rows once to sum them, and the gradient samples its stops at every pixel.
+Each path arm asserts one `Path` and elements in the store before timing.
+
+**K82c** — the K3 arms with no path in the tree, `a77cc52` against this tree,
+eight interleaved invocations a side under `just bench-lock`, run five
+times. **Read literally it fired in four of the five**, each time by one
+or two rows, and three of the departures are on the *fast* side:
+
+| run | load1 (before) | rows outside the base's eight-run spread |
+|---|---:|---|
+| 1 | 5.08 (a concurrent `just ci`) | `+render (damage)` **77.15** µs, base 77.50–78.00 (faster) |
+| 2 | 5.75 (the same) | `+paint` **40.90** µs, base 41.00–41.60 (faster) |
+| 3 | 1.37 (the same, in its live phase) | `textarea` **5.53** ms, base 5.32–5.51; `cascade_deep` **15,962** ns, base 15,799–15,922 (slower) |
+| 4 | 1.18 (the same) | none |
+| 5 | 0.15 (quiet, `just ci` finished) | `+render (damage)` **72.85** µs, base 72.90–82.10 (faster) |
+
+Run 5, the only one on a quiet machine, had every other row inside:
+idle 59.25 in 58.80–103.10, `ALL rows: +paint` 1,228.60 in
+1,220.50–1,284.90, `layout` 19.20 in 19.10–21.00, `+paint` 38.85 in
+38.60–43.30, `textarea` 5.21 in 5.03–6.09, `cascade_deep` 15,060.58 in
+14,881.99–15,670.77. T82.5 touches no code the textarea and cascade arms
+run, and the frame arms paint no path; the paint rows' departures are
+the work tree being faster. K82c's responses (`ops::fill` out of line,
+then the fill restricted) answer a cost and do not apply to a speed-up.
+Recorded as fired, on the fast side, and sent to the coordinator
+before T82.5 was committed (the brief's stop rule). **Ruled not a
+firing (coordinator, 2026-10-05):** K82c guards the *cost* of an
+unused feature, and every response it names answers a cost; a median
+below the parent's minimum on arms that paint no path is not one. The
+two slower rows were on arms T82.5 does not run (`textarea`,
+`cascade_deep`), and runs 4 and 5 held on a quiet machine. K82c stays
+two-sided as a measurement and is read one-sided as a stop.

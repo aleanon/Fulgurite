@@ -99,6 +99,14 @@ PAINTBOX = ("PaintBox", "#d_paintbox_a", [
         static=True,
         injection="stop calling the callback, or stop clipping it",
     ),
+    Action(
+        name="the star path is filled inside its own outline",
+        needs="the callback fills a star with Painter::path (M82/T82.5)",
+        do=lambda c: c.hover(),
+        expect=lambda c: _star_filled(c),
+        static=True,
+        injection="the software canvas skips Cmd::Path",
+    ),
 ])
 
 
@@ -146,6 +154,79 @@ def _ink_inside(c):
         f"box's edges by 3 px, and only the clip keeps that half in "
         f"(18 px outside with the clip removed, M57/B9)",
     )
+
+
+# The star `examples/showcase/src/catalog.rs` fills (`STAR_*`): its centre
+# at this fraction of the box's width (vertically centred), its outer
+# radius a fraction of the box's shorter side, its inner one a fraction of
+# that, and its colour. The two files move together.
+STAR_X, STAR_RADIUS, STAR_INNER = 0.78, 0.38, 0.4
+STAR_INK = (0xC2, 0x41, 0x0C)
+
+
+def _star_filled(c):
+    """The star's colour inside the star's analytic outline, and outside
+    the box.
+
+    **Against the outline's area, not a pixel count of the outline**: a
+    path that stopped filling would still leave the antialiased edge's
+    pixels, and a rasteriser that filled its box would match every pixel
+    a count of the outline asked about. The area is the shoelace of the
+    ten vertices in physical pixels; an edge pixel is part ink and does not
+    match the colour, so the share sits a little under 100%.
+    """
+    import math
+
+    shot = c.c.rpc("ui.screenshot")
+    png = base64_decode(shot["image_base64"])
+    w, h, px = _decode(png)
+    sc = shot.get("scale", 1.0)
+    b = [v * sc for v in c.box()]
+    bw, bh = b[2] - b[0], b[3] - b[1]
+    cx, cy = b[0] + STAR_X * bw, b[1] + 0.5 * bh
+    r = STAR_RADIUS * min(bw, bh)
+    poly = []
+    for i in range(10):
+        rr = r if i % 2 == 0 else r * STAR_INNER
+        a = -math.pi / 2 + i * math.pi / 5
+        poly.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    area = abs(sum(poly[i][0] * poly[(i + 1) % 10][1] - poly[(i + 1) % 10][0] * poly[i][1] for i in range(10))) / 2
+
+    def inside(x, y):
+        wn = 0
+        for i in range(10):
+            (ax, ay), (qx, qy) = poly[i], poly[(i + 1) % 10]
+            if (ay <= y) != (qy <= y):
+                t = (y - ay) / (qy - ay)
+                if x < ax + t * (qx - ax):
+                    wn += 1 if qy > ay else -1
+        return wn != 0
+
+    def star(p):
+        return all(abs(p[k] - STAR_INK[k]) < 24 for k in range(3))
+
+    hit = outside = 0
+    for y in range(max(0, int(b[1]) - 6), min(h, int(b[3]) + 6)):
+        for x in range(max(0, int(b[0]) - 6), min(w, int(b[2]) + 6)):
+            p = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
+            if not star(p):
+                continue
+            if x + 1 <= b[0] or x >= b[2] or y + 1 <= b[1] or y >= b[3]:
+                outside += 1
+            elif inside(x + 0.5, y + 0.5):
+                hit += 1
+    share = hit / area if area else 0.0
+    return (
+        share >= 0.90 and outside == 0,
+        f"{hit} px of the star's colour inside its outline of {area:.0f} px² "
+        f"({share:.1%}, bound 90%), {outside} outside the box (bound 0), scale {sc}",
+    )
+
+
+def base64_decode(s):
+    import base64
+
+    return base64.b64decode(s)
 
 
 def _decode(png: bytes):

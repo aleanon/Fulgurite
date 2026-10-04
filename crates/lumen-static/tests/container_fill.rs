@@ -63,6 +63,9 @@ impl Painter for Counting {
     fn pop_clip(&mut self) {
         self.list.pop_clip();
     }
+    fn path(&mut self, els: &[lumen_static::display::PathEl], xf: lumen_static::display::Affine, paint: lumen_static::display::PathPaint) {
+        self.list.path(els, xf, paint);
+    }
 }
 
 #[derive(StaticTree, Default)]

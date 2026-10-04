@@ -24,7 +24,7 @@ const GROUND: Color = Color(250, 250, 250, 255);
 /// A scene using every command that writes pixels, laid out so ink
 /// crosses band boundaries at whatever N the splitter picks: a tall
 /// shadow, a diagonal line, a gradient spanning the surface, rounded
-/// rects at several heights, and text.
+/// rects at several heights, a path (M82/T82.5), and text.
 fn scene(w: u32, h: u32) -> DisplayList {
     let (fw, fh) = (w as f32, h as f32);
     let mut l = DisplayList::new();
@@ -45,6 +45,30 @@ fn scene(w: u32, h: u32) -> DisplayList {
         Color(220, 60, 60, 255),
     );
     l.rect([4.0, fh * 0.5 - 3.0, fw - 4.0, fh * 0.5 + 3.0], Color(0, 160, 120, 200));
+    // M82/T82.5: a filled and stroked path spanning most of the surface,
+    // so its edges cross every band boundary and each band rasterises a
+    // slice of one mask. A circle of cubics and a star of lines, so both
+    // the flattened and the straight edges are split.
+    use lumen_static::display::{PathEl, PathPaint, AFFINE_IDENTITY};
+    let p = |x: f32, y: f32| Point { x, y };
+    let (cx, cy, r) = (fw * 0.5 + 0.3, fh * 0.5 + 0.7, fh * 0.42);
+    let k = 0.552_284_8 * r;
+    let mut els = vec![
+        PathEl::Move(p(cx + r, cy)),
+        PathEl::Cubic(p(cx + r, cy + k), p(cx + k, cy + r), p(cx, cy + r)),
+        PathEl::Cubic(p(cx - k, cy + r), p(cx - r, cy + k), p(cx - r, cy)),
+        PathEl::Cubic(p(cx - r, cy - k), p(cx - k, cy - r), p(cx, cy - r)),
+        PathEl::Cubic(p(cx + k, cy - r), p(cx + r, cy - k), p(cx + r, cy)),
+        PathEl::Close,
+    ];
+    for i in 0..10 {
+        let rr = if i % 2 == 0 { r * 0.9 } else { r * 0.35 };
+        let a = -core::f32::consts::FRAC_PI_2 + i as f32 * core::f32::consts::PI / 5.0;
+        let q = p(cx + rr * a.cos(), cy + rr * a.sin());
+        els.push(if i == 0 { PathEl::Move(q) } else { PathEl::Line(q) });
+    }
+    els.push(PathEl::Close);
+    l.path(&els, AFFINE_IDENTITY, PathPaint { fill: Color(120, 40, 160, 160), stroke: Color(20, 20, 20, 255), width: 5.0 });
     // A clip scope with content escaping it, and text inside.
     l.push_clip([fw * 0.25, fh * 0.3, fw * 0.75, fh * 0.7]);
     l.text([fw * 0.1, fh * 0.45, fw * 0.9, fh * 0.55], "banded render", 18.0, Color(255, 255, 255, 255));

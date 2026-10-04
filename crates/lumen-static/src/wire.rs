@@ -6,7 +6,8 @@
 //! a `Cmd` copied as memory from one would be read as garbage by the
 //! other the first time either side's compiler chose differently. This
 //! encoding is explicit instead: a version byte, then per command a tag
-//! and each field little-endian, then the text. Decoding checks every
+//! and each field little-endian, then the text, then (when there are any)
+//! the path elements. Decoding checks every
 //! length and every text range, so a truncated or foreign buffer answers
 //! `None` rather than a list that points outside its own text.
 //!
@@ -25,7 +26,7 @@
 
 use alloc::vec::Vec;
 
-use crate::display::{Cmd, Color, DisplayList, GradKind, ImageId, Material, Rect, Stops, MAX_STOPS};
+use crate::display::{Cmd, Color, DisplayList, GradKind, ImageId, Material, PathEl, Rect, Stops, MAX_STOPS};
 use crate::desc::Point;
 
 /// The encoding's version. Bumped when a field changes meaning or a
@@ -46,6 +47,11 @@ use crate::desc::Point;
 /// gradient has the same layout, so again only this byte refuses it --
 /// without it a version-3 buffer whose length happened to fit would
 /// decode into wrong geometry rather than `None`.
+///
+/// Still 4 after M82/T82.5's `Cmd::Path`: tag 11 is appended, and its
+/// elements follow the text **only when the list has any**, so a list with
+/// no path encodes exactly as version 4 did and a reader from before tag
+/// 11 refuses one with a path by its tag.
 pub const VERSION: u8 = 4;
 
 /// Append `list`'s encoding to `out`.
@@ -149,10 +155,35 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.rect(rect);
             }
             Cmd::PopClip => w.u8(10),
+            Cmd::Path { rect, els, fill, stroke, width } => {
+                w.u8(11);
+                w.rect(rect);
+                w.u32(els.0);
+                w.u32(els.1);
+                w.color(fill);
+                w.color(stroke);
+                w.f32(width);
+            }
         }
     }
     w.u32(list.text.len() as u32);
     w.0.extend_from_slice(list.text.as_bytes());
+    // The path elements after the text (M82/T82.5), and **only when there
+    // are any**: a list with no path encodes exactly as it did at version
+    // 4, so tag 11 is an appended tag and `VERSION` does not move. A
+    // reader from before it refuses a list that has one by its unknown
+    // tag, before it reaches this section.
+    if !list.paths.is_empty() {
+        w.u32(list.paths.len() as u32);
+        for e in &list.paths {
+            w.u8(e.tag());
+            let (n, ps) = e.points();
+            for p in &ps[..n] {
+                w.f32(p.x);
+                w.f32(p.y);
+            }
+        }
+    }
 }
 
 /// Decode what [`encode`] wrote, into `list` (cleared first, so its
@@ -162,6 +193,7 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
 pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
     list.cmds.clear();
     list.text.clear();
+    list.paths.clear();
     let mut r = R(bytes);
     if r.u8()? != VERSION {
         return None;
@@ -240,6 +272,13 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
             },
             9 => Cmd::PushClip { rect: r.rect()? },
             10 => Cmd::PopClip,
+            11 => Cmd::Path {
+                rect: r.rect()?,
+                els: (r.u32()?, r.u32()?),
+                fill: r.color()?,
+                stroke: r.color()?,
+                width: r.f32()?,
+            },
             _ => return None,
         };
         list.cmds.push(c);
@@ -247,6 +286,26 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
     let tn = r.u32()? as usize;
     let tb = r.take(tn)?;
     list.text.push_str(core::str::from_utf8(tb).ok()?);
+    // The path elements, present only when the encoder had any.
+    if !r.0.is_empty() {
+        let pn = r.u32()? as usize;
+        // At least one byte an element, as for the command count.
+        if pn > r.0.len() {
+            return None;
+        }
+        list.paths.reserve(pn);
+        for _ in 0..pn {
+            let e = match r.u8()? {
+                0 => PathEl::Move(r.point()?),
+                1 => PathEl::Line(r.point()?),
+                2 => PathEl::Quad(r.point()?, r.point()?),
+                3 => PathEl::Cubic(r.point()?, r.point()?, r.point()?),
+                4 => PathEl::Close,
+                _ => return None,
+            };
+            list.paths.push(e);
+        }
+    }
     if !r.0.is_empty() {
         return None;
     }
@@ -256,6 +315,13 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
         if let Cmd::Text { text: (at, len), .. } = *c {
             let (a, b) = (at as usize, at as usize + len as usize);
             if b > list.text.len() || !list.text.is_char_boundary(a) || !list.text.is_char_boundary(b) {
+                return None;
+            }
+        }
+        // And a path's range must name elements that are there:
+        // `DisplayList::els_of` slices with it.
+        if let Cmd::Path { els: (at, len), .. } = *c {
+            if at as usize + len as usize > list.paths.len() {
                 return None;
             }
         }
@@ -321,6 +387,9 @@ impl<'a> R<'a> {
     fn rect(&mut self) -> Option<Rect> {
         Some([self.f32()?, self.f32()?, self.f32()?, self.f32()?])
     }
+    fn point(&mut self) -> Option<Point> {
+        Some(Point { x: self.f32()?, y: self.f32()? })
+    }
     fn color(&mut self) -> Option<Color> {
         let b = self.take(4)?;
         Some(Color(b[0], b[1], b[2], b[3]))
@@ -350,7 +419,24 @@ mod tests {
         l.cmds.push(Cmd::Glass { rect: [5.0; 4], radius: 12.0, material: m });
         l.cmds.push(Cmd::PushClip { rect: [6.0; 4] });
         l.cmds.push(Cmd::PopClip);
+        l.path(&path_fixture(), [1.0, 0.0, 0.0, 1.0, 0.5, 0.25], crate::display::PathPaint {
+            fill: Color(1, 2, 3, 255),
+            stroke: Color(4, 5, 6, 255),
+            width: 1.5,
+        });
         l
+    }
+
+    /// One of every element kind.
+    fn path_fixture() -> [PathEl; 5] {
+        let p = |x: f32, y: f32| Point { x, y };
+        [
+            PathEl::Move(p(1.0, 2.0)),
+            PathEl::Line(p(30.0, 2.0)),
+            PathEl::Quad(p(40.0, 10.0), p(30.0, 20.0)),
+            PathEl::Cubic(p(20.0, 30.0), p(10.0, 25.0), p(1.0, 20.0)),
+            PathEl::Close,
+        ]
     }
 
     #[test]
@@ -358,14 +444,53 @@ mod tests {
         let l = every_command();
         // Every tag, so a variant added to `Cmd` without a tag here is a
         // compile error in `encode` and a count mismatch here.
-        assert_eq!(l.cmds.len(), 11);
+        assert_eq!(l.cmds.len(), 12);
         let mut b = Vec::new();
         encode(&l, &mut b);
         let d = decode(&b).expect("decodes");
         assert_eq!(d.cmds, l.cmds);
         assert_eq!(d.text, l.text);
         assert_eq!(d.bounds, l.bounds);
+        assert_eq!(d.paths, l.paths);
         assert_eq!(d.hash_from(0), l.hash_from(0));
+    }
+
+    /// M82/T82.5: a path round-trips with its elements, and tag 11 is an
+    /// **appended** tag: a list with no path encodes exactly as it did at
+    /// version 4 (the T82.2 literal below still decodes), so `VERSION`
+    /// stays 4.
+    #[test]
+    fn a_path_round_trips_with_its_elements() {
+        let mut l = DisplayList::new();
+        l.path(&path_fixture(), [0.5, 0.25, -0.25, 0.5, 3.0, 4.0], crate::display::PathPaint {
+            fill: Color(9, 8, 7, 255),
+            stroke: Color::TRANSPARENT,
+            width: 0.0,
+        });
+        assert!(matches!(l.cmds[..], [Cmd::Path { els: (0, 5), .. }]), "setup: one path of five elements");
+        let mut b = Vec::new();
+        encode(&l, &mut b);
+        let d = decode(&b).expect("decodes");
+        println!(
+            "path: {} B encoded at version {VERSION}; {} elements back of {}; round trip equal: {}",
+            b.len(),
+            d.paths.len(),
+            l.paths.len(),
+            d.cmds == l.cmds && d.paths == l.paths
+        );
+        assert_eq!(d.paths, l.paths, "the path's elements did not survive the trip");
+        assert_eq!(d.cmds, l.cmds);
+        // A path whose range names elements that are not there is refused:
+        // the same buffer with its element section cut off. The section is
+        // the count and five elements: a tag each, and 1 + 1 + 2 + 3 + 0
+        // points of 8 B.
+        let at = b.len() - (4 + 5 + 8 * 7);
+        assert_eq!(u32::from_le_bytes(b[at..at + 4].try_into().unwrap()), 5, "setup: the element count is where the layout says");
+        assert!(decode(&b[..at]).is_none(), "a path whose elements are missing decoded");
+        // An appended tag: a list with no path is the version-4 layout.
+        let mut empty = Vec::new();
+        encode(&DisplayList::new(), &mut empty);
+        assert_eq!(empty, [VERSION, 0, 0, 0, 0, 0, 0, 0, 0, 0], "a list with no path must encode as version 4 did");
     }
 
     /// M80/T80.1: the line pitch survives the trip, and a buffer of the

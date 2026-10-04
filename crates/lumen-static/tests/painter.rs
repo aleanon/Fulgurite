@@ -43,6 +43,9 @@ impl Painter for Echo {
     fn pop_clip(&mut self) {
         self.calls.push("pop".into());
     }
+    fn path(&mut self, els: &[lumen_static::display::PathEl], xf: lumen_static::display::Affine, paint: lumen_static::display::PathPaint) {
+        self.calls.push(format!("path {els:?} {xf:?} {paint:?}"));
+    }
 }
 
 fn draw(p: &mut dyn Painter) {

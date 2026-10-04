@@ -44,10 +44,14 @@ error that says so (`docs/plan-lss.md` §4).
 typographic axis is weight, so Markdown has no italic and says why. A
 span is a word: it never wraps inside itself.
 
-**Arbitrary vector paths.** Lines and gradients shipped; general paths
-and SVG rendering did not. The drawing vocabulary is the `Cmd` enum in
-`crates/lumen-static/src/display.rs`, and is meant to stay small enough
-for an embedded target to implement.
+**Most of vector drawing.** Paths shipped in M82/T82.5: `Painter::path`
+fills and strokes moves, lines and quadratic and cubic Béziers under a
+per-path transform, with round joins and caps, on the software canvas
+(the GPU backend draws them from M82/T82.6). What did not ship is the
+rest of SVG: miter joins, dashes, even-odd fill, `clip-path`, a transform
+for any command but a path, and SVG import. The drawing vocabulary is the
+`Cmd` enum in `crates/lumen-static/src/display.rs`, and its box commands
+stay small enough for an embedded target to implement.
 
 **A layer tree in the GPU backend.** There is a persistent target texture
 that damage is scissored into, but no per-subtree texture and no

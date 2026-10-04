@@ -67,6 +67,7 @@ fn cmds(list: &DisplayList) -> Vec<(&'static str, [f32; 4])> {
             Cmd::PushClip { rect } => ("push", *rect),
             Cmd::Glass { rect, .. } => ("glass", *rect),
             Cmd::PopClip => ("pop", [0.0; 4]),
+            Cmd::Path { rect, .. } => ("path", *rect),
         })
         .collect()
 }
@@ -488,6 +489,19 @@ fn deferring_forwards_every_command() {
         // M80/T80.1: the required text body, with a line pitch a wrong
         // forward (through `inner.text_weighted`) would drop.
         p.text_spaced([0.0, 0.0, 40.0, 30.0], "two\nlines", 12.0, 400.0, 24, Color(4, 5, 6, 255));
+        // M82/T82.5: a required method, with a transform that is not the
+        // identity, so a forward that dropped the path or rebuilt `xf`
+        // changes the stream.
+        use lumen_static::display::{PathEl, PathPaint};
+        p.path(
+            &[
+                PathEl::Move(Point { x: 1.0, y: 1.0 }),
+                PathEl::Quad(Point { x: 5.0, y: 0.0 }, Point { x: 9.0, y: 9.0 }),
+                PathEl::Close,
+            ],
+            [0.5, 0.25, -0.25, 0.5, 3.0, 4.0],
+            PathPaint { fill: Color(7, 7, 7, 255), stroke: Color(8, 8, 8, 255), width: 2.0 },
+        );
     }
 
     let mut direct = DisplayList::new();
@@ -502,8 +516,8 @@ fn deferring_forwards_every_command() {
 
     // Assert the setup happened before comparing: two empty lists are
     // equal, and that is the vacuous shape `AGENT.md` names.
-    println!("deferring: {} commands in, {} out (want 6)", direct.cmds.len(), wrapped.cmds.len());
-    assert_eq!(direct.cmds.len(), 6, "the unwrapped painter dropped something itself");
+    println!("deferring: {} commands in, {} out (want 7)", direct.cmds.len(), wrapped.cmds.len());
+    assert_eq!(direct.cmds.len(), 7, "the unwrapped painter dropped something itself");
     // The first command that differs, named, so a forward that keeps the
     // count and drops a field (the line pitch through `text_weighted`)
     // says which command it changed.
@@ -516,6 +530,9 @@ fn deferring_forwards_every_command() {
         first.map(|i| direct.cmds[i]),
         first.map(|i| wrapped.cmds[i]),
     );
+    // The path's elements live beside the commands (M82/T82.5): equal
+    // commands over different elements would be a different picture.
+    assert_eq!(direct.paths, wrapped.paths, "Deferring changed the path elements");
 
     // `clip_bounds` is invisible to the comparison above -- a
     // `DisplayList` has no surface and answers `None` either way, so
@@ -551,6 +568,7 @@ fn deferring_forwards_every_command() {
         }
         fn push_clip(&mut self, _: lumen_static::display::Rect) {}
         fn pop_clip(&mut self) {}
+        fn path(&mut self, _: &[lumen_static::display::PathEl], _: lumen_static::display::Affine, _: lumen_static::display::PathPaint) {}
         fn clip_bounds(&self) -> Option<lumen_static::display::Rect> {
             self.0
         }

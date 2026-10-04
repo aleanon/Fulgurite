@@ -138,8 +138,6 @@ TRACKED                        # proposed by M81
 MaskKey                        # proposed by M82
 PAINTBOX                       # proposed by M82
 PATH_TILE                      # proposed by M82
-PathEl                         # proposed by M82
-PathPaint                      # proposed by M82
 PathSink                       # proposed by M82
 PopTransform                   # proposed by M82
 PushTransform                  # proposed by M82

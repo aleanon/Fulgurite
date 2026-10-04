@@ -20,6 +20,13 @@
 //! some other fill, which the centre walk did not reach. A gradient with
 //! a translucent sample is still unmeasured, as `"translucent gradient"`.
 //!
+//! **A path is non-text ink** (M82/T82.5). Text over a [`Cmd::Path`]'s
+//! ink is unmeasured, as `"path"`: a path is not one colour across its
+//! box. The path itself is measured as a *shape*: its fill (its stroke,
+//! when the fill is transparent) against the ground under its box's
+//! centre, found by the same walk, into `Report::shapes`. WCAG 1.4.11
+//! asks 3:1 of non-text ink (`NON_TEXT_RATIO`), not text's 4.5.
+//!
 //! **What it cannot measure it counts, never skips.** A run whose ground
 //! is translucent, an image or glass is `unmeasured`, with the reason; a
 //! run whose centre is clipped away is `clipped` (nobody sees it). A
@@ -69,6 +76,23 @@ pub struct Run {
     pub ratio: f32,
 }
 
+/// WCAG 1.4.11's minimum for non-text ink — what a [`Shape`] is held
+/// to, against text's 4.5.
+pub const NON_TEXT_RATIO: f32 = 3.0;
+
+/// One path, measured as non-text ink — M82/T82.5.
+#[derive(Clone, Debug)]
+pub struct Shape {
+    /// Index of the `Cmd::Path` in the list.
+    pub index: usize,
+    pub rect: Rect,
+    /// The path's fill (or, with a transparent fill, its stroke) as
+    /// painted: composited over `ground`.
+    pub fg: Color,
+    pub ground: Color,
+    pub ratio: f32,
+}
+
 /// Everything [`text_contrast`] found in one list.
 #[derive(Clone, Debug, Default)]
 pub struct Report {
@@ -77,6 +101,11 @@ pub struct Report {
     pub unmeasured: Vec<(usize, String, &'static str)>,
     /// Runs whose centre lies outside the clip in force: never seen.
     pub clipped: usize,
+    /// Every path whose ground could be named, measured as non-text ink
+    /// (M82/T82.5; the module's doc).
+    pub shapes: Vec<Shape>,
+    /// `(index, why)` for a path whose ground could not be named.
+    pub unmeasured_shapes: Vec<(usize, &'static str)>,
 }
 
 impl Report {
@@ -88,6 +117,11 @@ impl Report {
     /// Measured runs below `bound`.
     pub fn below(&self, bound: f32) -> impl Iterator<Item = &Run> {
         self.measured.iter().filter(move |r| r.ratio < bound)
+    }
+
+    /// Measured paths below `bound` ([`NON_TEXT_RATIO`] for WCAG 1.4.11).
+    pub fn shapes_below(&self, bound: f32) -> impl Iterator<Item = &Shape> {
+        self.shapes.iter().filter(move |s| s.ratio < bound)
     }
 }
 
@@ -151,6 +185,9 @@ fn ground_at(c: &Cmd, x: f32, y: f32) -> Ground {
         Cmd::Image { rect, .. } if holds(rect, x, y) => Ground::Unknown("image"),
         Cmd::Glass { rect, .. } if holds(rect, x, y) => Ground::Unknown("glass"),
         Cmd::Shadow { rect, .. } if holds(rect, x, y) => Ground::Unknown("shadow"),
+        // Not one colour across its box (M82/T82.5); the path is measured
+        // itself, as a shape.
+        Cmd::Path { rect, .. } if holds(rect, x, y) => Ground::Unknown("path"),
         _ => Ground::Miss,
     }
 }
@@ -180,8 +217,42 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
     }
     let visible = |k: usize, x: f32, y: f32| at[k].is_none_or(|r| holds(&r, x, y));
 
+    // The topmost ground painted before command `k` at `(x, y)`, a
+    // gradient sampled at `x`, `x0` and `x1`; the page when nothing is.
+    let ground_under = |k: usize, x: f32, y: f32, x0: f32, x1: f32| {
+        for j in (0..k).rev() {
+            if !visible(j, x, y) {
+                continue;
+            }
+            match ground_at(&list.cmds[j], x, y) {
+                Ground::Miss => continue,
+                Ground::Sampled(_) => return gradient_ground(&list.cmds[j], x, y, x0, x1),
+                g => return g,
+            }
+        }
+        Ground::Opaque(page)
+    };
+
     let mut report = Report::default();
     for (k, c) in list.cmds.iter().enumerate() {
+        // A path is non-text ink: its paint against the ground under its
+        // box's centre (M82/T82.5).
+        if let Cmd::Path { rect, fill, stroke, .. } = c {
+            let paint = if fill.3 != 0 { *fill } else { *stroke };
+            let (x, y) = ((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0);
+            if paint.3 == 0 || !visible(k, x, y) {
+                continue;
+            }
+            match ground_under(k, x, y, x, x) {
+                Ground::Opaque(g) | Ground::Sampled([g, ..]) => {
+                    let fg = over(paint, g);
+                    report.shapes.push(Shape { index: k, rect: *rect, fg, ground: g, ratio: ratio(fg, g) });
+                }
+                Ground::Unknown(why) => report.unmeasured_shapes.push((k, why)),
+                Ground::Miss => unreachable!(),
+            }
+            continue;
+        }
         let Cmd::Text { rect, text, color, .. } = c else { continue };
         let s = list.str_of(*text);
         if s.trim().is_empty() || color.3 == 0 {
@@ -192,23 +263,7 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
             report.clipped += 1;
             continue;
         }
-        let mut ground = Ground::Opaque(page);
-        for j in (0..k).rev() {
-            if !visible(j, x, y) {
-                continue;
-            }
-            match ground_at(&list.cmds[j], x, y) {
-                Ground::Miss => continue,
-                Ground::Sampled(_) => {
-                    ground = gradient_ground(&list.cmds[j], x, y, rect[0], rect[2]);
-                    break;
-                }
-                g => {
-                    ground = g;
-                    break;
-                }
-            }
-        }
+        let ground = ground_under(k, x, y, rect[0], rect[2]);
         match ground {
             Ground::Opaque(g) => {
                 let fg = over(*color, g);

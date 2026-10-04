@@ -36,6 +36,7 @@ impl Painter for Null {
     fn stroked_rect(&mut self, _: Rect, _: Color, _: f32, _: f32) {}
     fn push_clip(&mut self, _: Rect) {}
     fn pop_clip(&mut self) {}
+    fn path(&mut self, _: &[lumen_static::display::PathEl], _: lumen_static::display::Affine, _: lumen_static::display::PathPaint) {}
 }
 
 /// Paint one frame of `rects` and return its damage.

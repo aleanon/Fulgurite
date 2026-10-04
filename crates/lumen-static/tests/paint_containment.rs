@@ -64,6 +64,8 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             | Cmd::Text { rect, .. }
             | Cmd::Image { rect, .. }
             | Cmd::Glass { rect, .. }
+            // M82/T82.5: a path's rect is its ink, stroke included.
+            | Cmd::Path { rect, .. }
             | Cmd::Gradient { rect, .. } => {
                 let mut r = *rect;
                 // A shadow's ink reaches `spread` past its rect.

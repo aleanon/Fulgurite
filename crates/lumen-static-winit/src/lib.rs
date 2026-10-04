@@ -1823,7 +1823,14 @@ pub mod hot {
             metrics: &mut Option<FontMetrics>,
         ) -> Barred {
             let src = session.list();
-            let mut list = DisplayList { cmds: src.cmds.clone(), text: src.text.clone(), bounds: src.bounds, fills: src.fills.clone() };
+            // **A clone, never a field-by-field literal** (M82/T82.5,
+            // adopting M83/T83.3's design): a literal written before a
+            // store existed — `paths`, or the next one — compiles with
+            // `..Default::default()` and leaves that store empty while the
+            // commands still index into it, and the loader has no
+            // `catch_unwind`. `just hot-window-drive`'s failed-build step
+            // holds a path region's `ui.regionHash` under the bar.
+            let mut list = src.clone();
             // The bar's own damage is the whole surface: the session's
             // damage was computed without it.
             let _ = session.take_damage_for_age(1);

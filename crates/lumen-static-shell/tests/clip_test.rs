@@ -134,6 +134,27 @@ fn render_cmds(cmds: &[lumen_static::Cmd], w: u32, h: u32) -> Canvas {
                 }
                 list.cmds.push(*c);
             }
+            // M82/T82.5: the range is backed by a rectangle inset by half
+            // the stroke, so the path's ink is its rect.
+            Cmd::Path { rect, els: (start, len), width, .. } => {
+                use lumen_static::display::PathEl;
+                let h = width / 2.0;
+                let p = |x: f32, y: f32| lumen_static::Point { x, y };
+                while list.paths.len() < start as usize {
+                    list.paths.push(PathEl::Close);
+                }
+                let ring = [
+                    PathEl::Move(p(rect[0] + h, rect[1] + h)),
+                    PathEl::Line(p(rect[2] - h, rect[1] + h)),
+                    PathEl::Line(p(rect[2] - h, rect[3] - h)),
+                    PathEl::Line(p(rect[0] + h, rect[3] - h)),
+                    PathEl::Close,
+                ];
+                for k in 0..len as usize {
+                    list.paths.push(ring.get(k).copied().unwrap_or(PathEl::Close));
+                }
+                list.cmds.push(*c);
+            }
             Cmd::Shadow { .. }
             | Cmd::Image { .. }
             | Cmd::Line { .. }
@@ -272,6 +293,13 @@ fn every_command() -> Vec<(&'static str, lumen_static::Cmd, f32, bool)> {
         ("Image", Cmd::Image { rect: big, id: ImageId(1), tint: Color(255, 255, 255, 255) }, area(big), false),
         ("Glass FROSTED", Cmd::Glass { rect: big, radius: 12.0, material: Material::FROSTED }, area(big), true),
         ("Glass LIQUID", Cmd::Glass { rect: big, radius: 12.0, material: Material::LIQUID }, area(big), true),
+        (
+            // M82/T82.5: filled and stroked, so both masks are clipped.
+            "Path",
+            Cmd::Path { rect: big, els: (0, 5), fill: ink, stroke: Color(30, 30, 200, 255), width: 8.0 },
+            area(big),
+            false,
+        ),
     ]
 }
 

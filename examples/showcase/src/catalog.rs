@@ -132,7 +132,9 @@ const DOC: &str = "# Markdown\n\nHeadings, **bold**, `code` and bullets \
 are the subset a user interface actually renders.\n\n- a label\n- an \
 identifier\n- a list";
 
-/// The `PaintBox` demo's callback: a `fn`, which is the whole point.
+/// The `PaintBox` demo's callback: a `fn`, which is the whole point. A
+/// sparkline of lines and dots, then (M82/T82.5) a star and an arc drawn
+/// as paths over it.
 fn sparkline(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
     let (w, h) = (r[2] - r[0], r[3] - r[1]);
     let pts = [0.25f32, 0.55, 0.35, 0.8, 0.6, 0.95, 0.45, 0.7];
@@ -150,7 +152,54 @@ fn sparkline(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
         let (x, y) = (r[0] + step * k as f32, r[3] - h * p);
         out.rounded_rect([x - 3.0, y - 3.0, x + 3.0, y + 3.0], ink, 3.0);
     }
+    paths(out, r);
 }
+
+/// M82/T82.5: a filled star and a stroked arc, each built once in a unit
+/// frame and placed by its transform — `Painter::path`'s `xf` scales and
+/// moves the points, and the stroke's width stays in px.
+///
+/// `scripts/drive/widgets/rich.py`'s star check recomputes the star
+/// from these numbers (`STAR_*`), so the two must move together.
+fn paths(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
+    use lumen_static::display::{PathEl, PathPaint};
+    use lumen_static::Point;
+    let (w, h) = (r[2] - r[0], r[3] - r[1]);
+    let none = lumen_static::Color(0, 0, 0, 0);
+    // A quarter circle of radius 1, as one cubic.
+    let k = 0.552_284_8;
+    let arc = [
+        PathEl::Move(Point { x: 1.0, y: 0.0 }),
+        PathEl::Cubic(Point { x: 1.0, y: k }, Point { x: k, y: 1.0 }, Point { x: 0.0, y: 1.0 }),
+    ];
+    let ar = 0.3 * w.min(h);
+    out.path(
+        &arc,
+        [ar, 0.0, 0.0, -ar, r[0] + 0.12 * w, r[1] + 0.85 * h],
+        PathPaint { fill: none, stroke: lumen_static::Color(0x05, 0x96, 0x69, 0xff), width: 3.0 },
+    );
+    let mut star = [PathEl::Close; 11];
+    for (i, e) in star.iter_mut().take(10).enumerate() {
+        let rr = if i % 2 == 0 { 1.0 } else { STAR_INNER };
+        let a = -core::f32::consts::FRAC_PI_2 + i as f32 * core::f32::consts::PI / 5.0;
+        let p = Point { x: rr * a.cos(), y: rr * a.sin() };
+        *e = if i == 0 { PathEl::Move(p) } else { PathEl::Line(p) };
+    }
+    let sr = STAR_RADIUS * w.min(h);
+    out.path(
+        &star,
+        [sr, 0.0, 0.0, sr, r[0] + STAR_X * w, r[1] + 0.5 * h],
+        PathPaint { fill: STAR_INK, stroke: none, width: 0.0 },
+    );
+}
+
+/// The star's centre (a fraction of the box's width; it is centred
+/// vertically), its outer radius (a fraction of the box's shorter side),
+/// its inner radius (a fraction of the outer) and its colour.
+const STAR_X: f32 = 0.78;
+const STAR_RADIUS: f32 = 0.38;
+const STAR_INNER: f32 = 0.4;
+const STAR_INK: lumen_static::Color = lumen_static::Color(0xc2, 0x41, 0x0c, 0xff);
 
 /// What M27/T27.11's file picker lists.
 const FILES: [&str; 7] = [

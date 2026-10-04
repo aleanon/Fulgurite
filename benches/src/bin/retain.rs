@@ -28,6 +28,9 @@ fn copy_list(dst: &mut DisplayList, src: &DisplayList) {
     dst.cmds.extend_from_slice(&src.cmds);
     dst.text.clear();
     dst.text.push_str(&src.text);
+    // M82/T82.5: a path's elements live in the list too.
+    dst.paths.clear();
+    dst.paths.extend_from_slice(&src.paths);
 }
 
 fn ink(c: &Cmd) -> [f32; 4] {
@@ -42,6 +45,7 @@ fn ink(c: &Cmd) -> [f32; 4] {
         | Cmd::Image { rect, .. }
         | Cmd::Gradient { rect, .. }
         | Cmd::Glass { rect, .. }
+        | Cmd::Path { rect, .. }
         | Cmd::PushClip { rect } => *rect,
         Cmd::Line { a, b, .. } => [a.x, a.y, b.x, b.y],
         Cmd::PopClip => [0.0; 4],
@@ -224,6 +228,7 @@ fn run(n: usize) {
             fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
             fn push_clip(&mut self, _: [f32; 4]) {}
             fn pop_clip(&mut self) {}
+            fn path(&mut self, _: &[lumen_static::display::PathEl], _: lumen_static::display::Affine, _: lumen_static::display::PathPaint) {}
         }
         let mut ret: Streaming<4096> = Streaming::default();
         bench("streaming: NO list + Streaming<4096>", 20_000, || {

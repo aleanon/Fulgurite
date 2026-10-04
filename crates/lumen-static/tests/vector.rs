@@ -87,6 +87,7 @@ fn a_painter_without_gradients_falls_back_to_a_flat_fill() {
         fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
         fn push_clip(&mut self, _: [f32; 4]) {}
         fn pop_clip(&mut self) {}
+        fn path(&mut self, _: &[lumen_static::display::PathEl], _: lumen_static::display::Affine, _: lumen_static::display::PathPaint) {}
     }
     let mut f = Flat(Vec::new());
     let radial = lumen_static::display::GradShape::Radial { center: [0.5, 0.5], radius: 1.0 };

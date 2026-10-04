@@ -44,7 +44,7 @@ const PAGE: Color = Color(250, 250, 250, 255);
 /// a new variant does not compile in [`kind`] until it has an index, and
 /// once it has one [`the_frame_uses_every_command`] refuses to pass until
 /// [`frame`] draws it or [`kind`] names the file that does.
-const KINDS: usize = 11;
+const KINDS: usize = 12;
 
 /// A stable index per command kind, from an **exhaustive** match with no
 /// wildcard arm — M51/T51.1, as `lumen-static-shell/tests/svg.rs` does
@@ -66,6 +66,9 @@ fn kind(c: &Cmd) -> (usize, &'static str, Option<&'static str>) {
         Cmd::Glass { .. } => (8, "Glass", Some("tests/glass_parity.rs")),
         Cmd::PushClip { .. } => (9, "PushClip", None),
         Cmd::PopClip => (10, "PopClip", None),
+        // M82/T82.5: the GPU arm is empty until T82.6, which draws paths in
+        // this frame and sets this field to `None`.
+        Cmd::Path { .. } => (11, "Path", Some("tests/parity.rs: path pin, until T82.6")),
     }
 }
 
@@ -286,6 +289,7 @@ fn the_frame_uses_every_command() {
         Cmd::Glass { rect: r, radius: 0.0, material: lumen_static::display::Material::LIQUID },
         Cmd::PushClip { rect: r },
         Cmd::PopClip,
+        Cmd::Path { rect: r, els: (0, 0), fill: PAGE, stroke: PAGE, width: 1.0 },
     ];
     let mut named = [false; KINDS];
     let mut missing = Vec::new();
@@ -953,4 +957,38 @@ fn images_agree_across_the_backends() {
         assert!(gi > area / 2 && ci > area / 2, "image {name} is not drawn: inked {ci}/{gi} of {area}");
         assert_eq!(over, 0, "image {name}: {over} px differ by more than 8 inside the placement");
     }
+}
+
+/// **M82/T82.5's pin: the GPU backend draws no path yet**, and T82.6
+/// inverts this (`docs/plan-paint-vocabulary.md`). A filled square is
+/// rendered on both backends; the software canvas inks it (the setup: the
+/// scene puts a path where the GPU must not draw) and the GPU frame stays
+/// the page, pixel for pixel. Printed beside each other so the inversion
+/// reads as a number.
+#[test]
+fn path_pin_the_gpu_draws_no_path_until_t82_6() {
+    use lumen_static::display::{PathEl, PathPaint, AFFINE_IDENTITY};
+    let p = |x: f32, y: f32| Point { x, y };
+    let els = [
+        PathEl::Move(p(40.0, 40.0)),
+        PathEl::Line(p(120.0, 40.0)),
+        PathEl::Line(p(120.0, 120.0)),
+        PathEl::Line(p(40.0, 120.0)),
+        PathEl::Close,
+    ];
+    let mut l = DisplayList::new();
+    l.path(&els, AFFINE_IDENTITY, PathPaint { fill: Color(200, 40, 40, 255), stroke: Color(0, 0, 0, 0), width: 0.0 });
+    assert!(matches!(l.cmds[..], [Cmd::Path { .. }]), "setup: the list must hold exactly one path");
+    let inked = |px: &[u8]| px.chunks_exact(4).filter(|q| q[0] != PAGE.0 || q[1] != PAGE.1 || q[2] != PAGE.2).count();
+    let mut c = canvas();
+    c.clear(PAGE);
+    c.render(&l, W, H);
+    let soft = inked(&c.pixels);
+    assert!(soft > 0, "setup: the software canvas must draw the path (inked {soft})");
+    let Some(mut g) = gpu() else { return };
+    g.clear(PAGE);
+    g.render(&l, W, H);
+    let gpu = inked(&g.read_rgba());
+    println!("path pin: software inks {soft} px, the GPU {gpu} px (pinned at 0 until T82.6)");
+    assert_eq!(gpu, 0, "the GPU drew a path: T82.6 has landed, so invert this pin");
 }

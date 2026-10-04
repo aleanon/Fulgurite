@@ -4,7 +4,8 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M82a (T82.0–T82.4) built 2026-10-04 and closes on
 > `just ci-verify` of its T82.4 commit (S5), cited in AGENT.md; M82b
-> (T82.5–T82.9) building (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
+> (T82.5–T82.9) building: T82.5 landed 2026-10-05
+> (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1076,6 +1077,59 @@ crosses.*
   (`docs/results-paint-vocabulary.md`, "M82a's kill rules, at its
   close"). Every M82a kill rule held; K82a held with no byte to spare
   (56 of 56), as designed.
+
+- T82.5: **the circle's coverage bounds were not the 0.1 px flattening.**
+  The plan wrote mean ≤ 3/255 and max ≤ 26/255 and called them that
+  tolerance's consequence; a chord at sagitta `s` sits on average `2s/3`
+  inside its arc, so 0.1 px gives a mean near 17/255, and a pixel the chord
+  crosses diagonally reaches `√2 · 0.1`, 36/255. 3/255 is a tolerance of
+  about 0.02 px. The tolerance is the decision (it is what T82.6's masks
+  inherit), so the gate's bounds are now computed from
+  `FLATTEN_TOLERANCE` in the test: measured 10.3 and 26.5 against 17.0 and
+  36.1. The rounding injection reads about 50/255, not "about 64".
+- T82.5: **the star is a ten-vertex outline, not a pentagram.** Signed-area
+  accumulation is exact where a pixel's winding is 0 or 1; where it holds
+  winding 2 the clamp counts that area twice. A pentagram's inner vertices
+  are exactly such pixels (about 0.3 over at a vertex), so "max ≤ 8/255"
+  on lines holds only for a non-self-intersecting star, which is what a UI
+  draws. The stroke has the same over-count on the edge pixels where its
+  quads and discs overlap; the join gate asks a pixel inside the disc.
+- T82.5: **a banded frame differed from a whole one** on the first build:
+  the mask subtracted its origin from every y, and `y - y0` rounds
+  differently for each band's `y0`, so 8 of `tests/banded.rs`' 10
+  checksums moved under `threads`. y stays absolute now (only x is moved
+  into the mask's columns), and the canvas takes the mask's x origin from
+  the ink on the surface, never from the damage, so a partial redraw sums
+  each row in the same order as a full one.
+- T82.5: **the wire elements are written only when the list has any**, so
+  "tag 11 is appended and bumps nothing" stays true: a list with no path
+  is byte-for-byte the version-4 encoding, and a path's range is checked
+  against the decoded store.
+- T82.5: **`Checksum::path` linked 956 B** at first, for a method no
+  firmware widget calls: every field folded through inlined per-byte
+  `fold`s (a ten-value `f32s` was 964 B, unrolled). One call to the
+  out-of-line `r`, shaped like `shadow`'s, is 66 B
+  (`docs/results-embedded.md` M82/T82.5).
+- T82.5: a stroke's `width` is not transformed by `xf` (only `Scaled`
+  scales it), so a path built in a unit frame and placed by its transform
+  keeps the stroke it asked for; the showcase's star and arc are built that
+  way. `contrast.rs` measures a path's fill, or its stroke when the fill is
+  transparent, and keeps `Report::unmeasured_shapes` beside `shapes`.
+- T82.5: `fixtures/hot-window` gained `#star` (a paint box filling a path,
+  first in the column) and grew from 160 to 400 px tall: the error bar is
+  up to ten lines, 216 px at scale 1, and at 160 px it covered every region
+  the error-bar gate could compare.
+- T82.5: the `CullTo` case is not built: M85/T85.8 has not landed.
+- T82.5: **K82c fired as written, on the fast side.** On a quiet machine
+  the work tree's `+render (damage)` median sat 0.05 µs under the parent's
+  eight-run minimum, and two of four runs taken beside a concurrent
+  `just ci` left the spread the same way (`+render`, `+paint`); one left it
+  slower on two arms T82.5 does not touch (`textarea`, `cascade_deep`).
+  K82c says "unused features must not cost the frame" and "fires when any
+  row leaves its spread", and K3 reads two-sided; its responses answer a
+  cost. The coordinator ruled it not a firing (2026-10-05): a faster
+  median is not a cost, and the slower rows were on arms T82.5 does not
+  run (`docs/results-paint-vocabulary.md` T82.5).
 
 **What the review found (M82).**
 

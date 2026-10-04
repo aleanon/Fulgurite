@@ -1209,6 +1209,8 @@ remains** — which is why §10 Step 1 is the kill criterion.
    including blur, refraction and specular. CSS's *vector* half — rotation
    and skew, `clip-path`, dashes and joins, SVG — is a Bézier pipeline, is
    not in `Cmd`, and plugs in at the `Renderer` seam if it is ever wanted.
+   **SUPERSEDED in part 2026-10-04 (M82/T82.5)**: one out-of-line
+   `Cmd::Path`, for the nodes that ask (below).
    The measurement behind the line is `docs/results-vello.md`; the first
    feature built on the near side of it is `docs/plan-glass.md` (M19),
    extended by `docs/plan-liquid.md` (M22) — which adds Fresnel, an inner
@@ -1263,6 +1265,24 @@ remains** — which is why §10 Step 1 is the kill criterion.
    A fill paints under the background, so hover and press shading (which
    act on the background) do not show on a fill alone; that is recorded,
    not fixed.
+
+   **The vector half is SUPERSEDED in part — `Cmd::Path`, M82/T82.5,
+   2026-10-04.** The measured reason behind "not in `Cmd`" was that box
+   styling must not become paths (`docs/results-vello.md`: 2.3–2.9× on one
+   thread because "neither becomes a path"), and it stands: no box command
+   changed. What is new is a different claim: one out-of-line command for
+   the nodes that ask for a path. `Painter::path(els, xf, paint)` is
+   required (owner decision D3 accepts it as firmware growth); its
+   elements (`PathEl`: move, line, quadratic, cubic, close) live in the
+   display list's own store as a text run's bytes do, already through the
+   path's `Affine`, which is a **per-path argument, not a transform
+   stack** — so no other command needs a rule for a rotated context and
+   hit testing stays axis-aligned. Filled non-zero and stroked with round
+   joins and caps by signed-area accumulation on the software canvas
+   (`rasterize_path`); the GPU draws nothing for it until M82/T82.6.
+   `clip-path`, dashes, miter joins, even-odd, skew of other commands and
+   SVG import stay out. **Reopen** a transform stack when a second command
+   kind needs one. Numbers in `docs/results-paint-vocabulary.md` T82.5.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

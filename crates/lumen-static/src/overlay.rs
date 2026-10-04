@@ -283,6 +283,17 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn fills(&self) -> &[crate::style::Fill] {
         self.inner.fills()
     }
+    /// Forwarded, so a deferred node's paths paint in phase 2 — M82/T82.5.
+    /// The transform is the path's own argument, so there is no scope to
+    /// balance across the phases.
+    fn path(
+        &mut self,
+        els: &[crate::display::PathEl],
+        xf: crate::display::Affine,
+        paint: crate::display::PathPaint,
+    ) {
+        self.inner.path(els, xf, paint);
+    }
     fn glass(
         &mut self,
         rect: crate::display::Rect,

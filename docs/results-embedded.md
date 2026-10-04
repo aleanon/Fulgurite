@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **30,534 B** (29.8 KB) | **pass**, at 37.3% of budget; re-measured at M82/T82.3 (2026-10-04; the four-binary table below, +156 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **30,598 B** (29.9 KB) | **pass**, at 37.4% of budget; re-measured at M82/T82.5 (2026-10-05; the four-binary table below, +64 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,336 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M82/T82.3, +20 B (the wider `Style` in the fixture's defaults) |
-| Total (`size -A`) | ≤ 512 KB flash | **44,087 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.3 (it read 43,911 B at T82.2's head, which had not rewritten it) |
+| `.rodata` | — | 13,340 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M82/T82.5, +4 B (`Painter::path`'s vtable slot) |
+| Total (`size -A`) | ≤ 512 KB flash | **44,155 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.5 (44,087 B at T82.3) |
 | RAM, 100 nodes | ≤ 24 KB | **16.4 KB** state + style | **pass**; measured at M82/T82.3 (2026-10-04), below — `Style` 84 B, `NodeState` 84 B |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -989,15 +989,27 @@ and `ops::fill` at every border site): **+156 B** on `firmware`, **+288 B**
 on `firmware_interactive`, **+220 B** on the other two, `.rodata` +20–32;
 the attribution is its own section below. Printed by `just firmware-delta
 22ce8f8` (K4's default, `firmware_interactive=1000`), with
-`firmware_interactive` at 18,516 B of headroom.
+`firmware_interactive` at 18,516 B of headroom. Re-measured by M82/T82.4
+(M82a's close, docs only): Δ 0 on all four (`just firmware-delta 975b9cb
+firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0`).
+Rewritten by M82/T82.5 (`Painter::path`, a required method, so the
+firmware's `Checksum` implements it): **+64 B** on `firmware`, **+68 B** on
+the other three, `.rodata` **+4** (the vtable slot), all of it
+`Checksum::path` (66 B) by a symbol diff. D3 accepts paths as firmware
+growth. Its first version linked **956 B**, every field folded through
+inlined per-byte `fold`s, and a ten-value `f32s` 964 B, unrolled; one call
+to the out-of-line `r`, shaped like `shadow`'s, is the 66. Printed by
+`just firmware-delta a77cc52` (K4's default, `firmware_interactive=1000`),
+with `firmware_interactive` at **18,448 B** of headroom (K82b's floor
+1,024).
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 30,534 | 37.3% | 51,386 | 13,336 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 |
-| `firmware_interactive` | **63,404** | **77.4%** | **18,516** | 21,878 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** |
-| `firmware_bind` | 33,938 | 41.4% | 47,982 | 13,940 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 |
-| `firmware_cascade` | 32,618 | 39.8% | 49,302 | 14,124 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 30,598 | 37.4% | 51,322 | 13,340 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 |
+| `firmware_interactive` | **63,472** | **77.5%** | **18,448** | 21,882 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** |
+| `firmware_bind` | 34,006 | 41.5% | 47,914 | 13,944 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 |
+| `firmware_cascade` | 32,686 | 39.9% | 49,234 | 14,128 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the
