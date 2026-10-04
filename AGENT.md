@@ -656,6 +656,17 @@ found" section rather than silently replacing itself.
 - **M80–M90 — `docs/plan-iced-roadmap.md`** and its eleven milestone
   plans: what iced's roadmap to 1.0 has that this framework does not,
   on branch `iced-roadmap`. **Queued 2026-10-04; T80.0 starts it.**
+  - **Closed so far:** **M80a DONE**, `just ci-verify 1cd123e` green
+    (28 steps, 0 failed, 0 skipped; the first run's `selftest-build`
+    red was a `zerocopy` miscompile in the selftest copy that did not
+    reproduce, the known machine instability). **M80b and M81a DONE**,
+    `just ci-verify 123e138` green (28 steps, 0 failed, 0 skipped).
+    M80b's first run, at `d4859b4`, failed the full-catalogue live
+    drive: T80.5's IME check demanded an area from `PickList`'s
+    read-only trigger, which no single-widget drive had met; fixed in
+    `123e138` (a read-only field publishes `readOnly`, and the check
+    runs both ways). K81a fired at T81.3 (Complex 2.17x / 3.63x Basic)
+    and its written response holds it (0.97x / 0.99x).
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
