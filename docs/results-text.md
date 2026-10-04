@@ -611,3 +611,28 @@ Firmware, `just firmware-delta cf1f623` (K4's default, bound 1,000 B on
 +16 / +44 / +16 / +16 — the `Node` vtable slot and its shared default on
 every binary, and `TextInput`'s `caret_rect`, clip and scroll on the
 interactive one. `docs/results-embedded.md` T80.5 has the table.
+
+## M81 baselines — T81.0, at `d4859b4` (2026-10-04)
+
+Recorded before M81 (`docs/plan-shaped-paint.md`) changes anything, so
+every later M81 task compares against a number taken on the same machine
+from the same tree. Two pins land with them; both compile today and hold
+today's behaviour.
+
+| what | gate or command | at `d4859b4` | bound / later use |
+|---|---|---|---|
+| Hebrew paint order | `lumen-static-text/tests/paint_shaped.rs` `hebrew_paints_right_to_left` (`should_panic`) | `שלום` painted as glyphs `[1344, 1331, 1324, 1332]` at x **1, 24, 44, 53** (logical order, rising); every letter has a cmap glyph (setup) | x strictly falling; T81.3 drops the `should_panic` |
+| — accept direction | the same assertion fed `ComplexText::shaped_glyphs`' x per glyph | x **48.14, 29.95, 21.23, 0** — falling; the harness reports "did not panic" | — |
+| every `Basic` placement | `lumen-static-shell/tests/basic_placements.rs` | `BASIC_CHECKSUM` **0x866444d1064ccda8**; 6,600 glyphs (2,200 per scale at 1, 1.25, 2), 240 narrowed runs wrapped per scale, **0** glyphs at a fractional x or y | equal, with `shaping` compiled in (T81.3) and phases built (T81.8) |
+| — injection | `cap_shift` floors instead of rounding | checksum 0x550bf3328192bd02; scale 1 named first (0xe46a0473ae03abd5 against 0x5ed8be5616d27ffd) | — |
+| firmware, paint-only | `just firmware-size` | `.text` **29,586 B**, `.rodata` 13,276 B, `.bss` 4 B | K4: 81,920 B |
+| the four firmwares | `just firmware` | `.text` / `.rodata`: `firmware` **29,586** / 13,276; `firmware_interactive` **63,188** / 21,806; `firmware_bind` **33,046** / 13,880; `firmware_cascade` **31,726** / 14,052 | T81.1 Δ 0 on all four; T81.2 ≤ 64 B each |
+| face heap, pinned face (759,720 B file) | `lumen-static-shell/tests/font_heap.rs` | one parsed face **19,011,952 B**; a stack with a bold face built 19,771,672 B; peak through a regular frame 22,045,057 B; one bold run grew the heap 18,251,760 B | K81c (T81.3): a `Complex` stack ≤ `Basic` + file size + 64 KiB |
+
+**Every `Basic` glyph sits on whole pixels** (the fractional count above):
+fontdue lays glyphs out at whole pixels and `cap_shift` rounds its shift, so the
+plan's first injection, flooring one glyph's `y` in `place_run_into`, was
+a no-op and left the gate green. The injection that breaks the mechanism
+is the rounding that makes `y` whole: `cap_shift` floors instead of
+rounding, and the checksum moves at every scale
+(`docs/plan-shaped-paint.md`, "What building found").

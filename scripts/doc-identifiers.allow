@@ -134,7 +134,6 @@ LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?
 TRANSITION                     # proposed by ?
 TextSource                     # proposed by M80
-BASIC_CHECKSUM                 # proposed by M81
 FaceSource                     # proposed by M81
 GlyphKey                       # proposed by M81
 GlyphRuns                      # proposed by M81

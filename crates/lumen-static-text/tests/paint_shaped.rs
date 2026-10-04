@@ -12,6 +12,9 @@
 //! **It is expected to fail** (M45/T45.4, `docs/plan-text-correctness.md`
 //! §2.1 B): the claim is T15.8's, T15.8 is now "measurement only", and
 //! the second test states the limitation as it stands.
+//!
+//! `hebrew_paints_right_to_left` (M81/T81.0) pins the same gap for a
+//! script with no joining, where only the order is wrong.
 
 use lumen_static::display::{Color, DisplayList, Renderer};
 use lumen_static::TextMeasure;
@@ -89,4 +92,37 @@ fn painted_arabic_is_its_isolated_letters_in_logical_order() {
     let painted: Vec<u16> = placed.iter().map(|p| p.id.index()).collect();
     println!("painted {painted:?}, isolated (logical order) {isolated:?}");
     assert_eq!(painted, isolated, "the painter no longer draws the isolated letters: shaped paint has landed, so T15.8 and this crate's docs must say so");
+}
+
+/// **The Hebrew pin** — M81/T81.0 (`docs/plan-shaped-paint.md`). Expected
+/// to fail: the painter, [`FontStack::place_run`], lays a run out in
+/// logical order whatever its direction, so `שלום`'s first letter is
+/// painted leftmost. When the painter draws right to left (T81.3, under
+/// a stack in its Complex mode) this stops panicking, the harness reports it red,
+/// and the pin moves into the shell's tests without its `should_panic`.
+///
+/// Its accept direction was shown in T81.0's commit: fed
+/// `ComplexText::shaped_glyphs`' x for each painted glyph in place of
+/// `place_run`'s, the assertion holds and the harness reports "did not
+/// panic".
+#[test]
+#[should_panic(expected = "the painter drew Hebrew in logical order")]
+fn hebrew_paints_right_to_left() {
+    const HEBREW: &str = "\u{5e9}\u{5dc}\u{5d5}\u{5dd}";
+    let bytes = pinned::bytes();
+    let face = rustybuzz::Face::from_slice(bytes, 0).expect("the pinned face parses");
+    let cmap: Vec<u16> = HEBREW.chars().map(|c| face.glyph_index(c).map_or(0, |g| g.0)).collect();
+    println!("setup: cmap ids per letter (logical order) {cmap:?}");
+    assert!(cmap.iter().all(|&g| g != 0), "setup: the pinned face lacks a Hebrew letter: {cmap:?}");
+
+    let font = FontStack::from_bytes(bytes, None).expect("the pinned face parses");
+    let (placed, _) = font.place_run(HEBREW, PX, 400.0, f32::INFINITY);
+    let ids: Vec<u16> = placed.iter().map(|p| p.id.index()).collect();
+    let xs: Vec<f32> = placed.iter().map(|p| p.x).collect();
+    for (id, x) in ids.iter().zip(&xs) {
+        println!("painted (logical order): glyph {id} at x {x}");
+    }
+    assert_eq!(ids.len(), cmap.len(), "setup: the painter placed {} glyphs for {} letters", ids.len(), cmap.len());
+    let falling = xs.windows(2).all(|w| w[1] < w[0]);
+    assert!(falling, "the painter drew Hebrew in logical order: x {xs:?} for glyphs {ids:?}, not strictly decreasing");
 }

@@ -649,6 +649,19 @@ rather than as a display-list command: see the first decision.*
   row `cascade_deep (whole table)`. **When it fires:** the branch in `place_run_into`
   moves behind a `FontStack` method chosen once per stack.
 
+**What building found (M81).**
+
+- T81.0: **flooring a glyph's `y` cannot move a `Basic` placement.**
+  Every glyph the corpus places sits at a whole-pixel x and y (0 of
+  6,600 fractional, printed by `basic_placements.rs`): fontdue lays
+  glyphs out on whole pixels and `cap_shift` rounds the shift added to
+  them. The planned injection ("floor instead of round one glyph's `y`
+  in `place_run_into`") therefore left the checksum equal. The
+  injection used is the rounding the plan meant: `cap_shift` floors
+  instead of rounding, and the checksum names scale 1 first
+  (`docs/results-text.md`, M81 baselines). The zero fractional count is
+  also T81.8's "the `Basic` corpus has 0 phased glyphs" baseline.
+
 **What the review found (M81).**
 
 - C4 → adopted: `Session::shaping` is required, the compiler is the
