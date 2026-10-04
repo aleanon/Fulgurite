@@ -846,6 +846,9 @@ pub mod hot {
         fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
             self.m().compose(c)
         }
+        fn caret_rect(&mut self) -> Option<[f32; 4]> {
+            self.m().caret_rect()
+        }
         fn set_scale(&mut self, scale: f32) {
             self.m().set_scale(scale)
         }

@@ -431,6 +431,100 @@ def _overlaps(a, b) -> bool:
     return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
 
 
+#: The roles of a node that composes text, so an input method places its
+#: candidate window at the node's caret (M80/T80.5).
+IME_ROLES = {"TextInput", "MultilineTextInput", "SpinButton"}
+
+
+def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
+    """**The IME area is the painted caret** — M80/T80.5.
+
+    When the action leaves a text-entry node of this widget's subtree
+    focused, the window must have passed an IME cursor area
+    (`app.imeArea`, physical px) whose centre column is within 1 physical
+    px of the caret column **found in `ui.screenshot`'s pixels** — never
+    `caret_rect` compared with itself. `None` when no such node is
+    focused, so the check runs after every focusing action and only then.
+
+    The caret column is the column with the longest unbroken run of ink
+    inside the field's padded box (and the caret's pixel into its right
+    padding), ink being a pixel more than 40% of the way from the box's
+    commonest colour (its ground) to the pixel farthest from it, and the
+    column's neighbours at least 80% as tall joining it: the caret is one run a line tall, a glyph's stroke
+    is shorter, a `TextArea`'s stacked lines leave gaps, and a selection
+    tint (the text colour at alpha 64, a quarter of the way) is not ink.
+    """
+    node = next((n for n in c.tree()["nodes"] if n.get("focused")), None)
+    if node is None:
+        return None
+    i = node["id"] - 1
+    if not (first <= i < end) or node.get("role") not in IME_ROLES:
+        return None
+    area = c.rpc("app.imeArea").get("area")
+    if area is None:
+        raise Failed(f"node {i} ({node.get('role')}) is focused and app.imeArea is null: "
+                     f"the window placed no IME area (injection: Win never calls set_ime_cursor_area)")
+    try:
+        import base64, io
+        from PIL import Image
+    except ImportError:
+        raise Failed("the IME check needs PIL to read ui.screenshot (pip install pillow)")
+    shot = c.rpc("ui.screenshot")
+    k = shot.get("scale", 1.0)
+    img = Image.open(io.BytesIO(base64.b64decode(shot["image_base64"]))).convert("RGB")
+    st = c.rpc("ui.getAppliedStyles", selector=str(i))
+    pad = st["padding"]
+    b = node["bounds"]
+    # The padded box, plus the caret's one pixel into the right padding,
+    # where a full field's end caret is drawn (`TextInput::place`).
+    x0, x1 = int((b[0] + pad[0]) * k), int((b[2] - pad[2] + 1) * k + 0.999)
+    y0, y1 = int((b[1] + 2) * k), int((b[3] - 2) * k + 0.999)
+    x1, y1 = min(x1, img.width), min(y1, img.height)
+    px = img.load()
+    from collections import Counter
+    # The ground and the farthest colour from the whole box, not the
+    # search window: an empty field's padded box is the caret's width,
+    # and its commonest colour would be the caret's.
+    bx0, bx1 = int(b[0] * k), min(int(b[2] * k + 0.999), img.width)
+    box_px = [px[x, y] for x in range(bx0, bx1) for y in range(y0, y1)]
+    ground = Counter(box_px).most_common(1)[0][0]
+    dist = lambda p: sum(abs(a - g) for a, g in zip(p, ground))
+    far = max(dist(p) for p in box_px)
+    ink = lambda x, y: dist(px[x, y]) > 0.4 * far
+    runs = []
+    for x in range(x0, x1):
+        best = cur = 0
+        for y in range(y0, y1):
+            cur = cur + 1 if ink(x, y) else 0
+            best = max(best, cur)
+        runs.append(best)
+    top = max(runs) if runs else 0
+    line = area[3] - area[1]
+    if top < 0.7 * line:
+        raise Failed(f"node {i}: no caret column found in the screenshot (longest ink run {top} px "
+                     f"against a {line:.1f} px line) -- is the caret painted?")
+    peak = runs.index(top)
+    lo = hi = peak
+    # Neighbours at least 80% as tall: the two columns a fractional x
+    # spreads the caret over, and not a glyph's stem beside it (about 63%
+    # of a line), which pulled the centre 1.28 px on a triple-clicked
+    # line's end caret.
+    while lo > 0 and runs[lo - 1] * 5 >= top * 4:
+        lo -= 1
+    while hi + 1 < len(runs) and runs[hi + 1] * 5 >= top * 4:
+        hi += 1
+    w = sum(runs[lo:hi + 1])
+    painted = sum((x0 + j + 0.5) * runs[j] for j in range(lo, hi + 1)) / max(w, 1)
+    centre = (area[0] + area[2]) / 2
+    d = abs(centre - painted)
+    msg = (f"ime: app.imeArea x {area[0]:.2f}..{area[2]:.2f} (centre {centre:.2f}), painted caret "
+           f"column {painted:.2f}, |d| {d:.2f} physical px (bound 1.00), scale {k}")
+    if d > 1.0:
+        raise Failed(f"node {i}: {msg} (injections: Win passes the logical rect; a widget leaves "
+                     f"out its scroll)")
+    return msg
+
+
 def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
                strategy: str, root: str | None = None) -> list[str]:
     """Drive every action and return the log. Raises `Failed` on the first
@@ -536,6 +630,15 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         out.append(f"    {a.name}: {measured}")
         if not ok:
             raise Failed(f"{widget}/{a.name}: {measured} (injection: {a.injection})")
+
+        # (2-ime) a focused text field's IME area is its painted caret
+        # (M80/T80.5).
+        try:
+            ime = _ime_check(c, first, end)
+        except Failed as e:
+            raise Failed(f"{widget}/{a.name}: {e}")
+        if ime is not None:
+            out.append(f"      {ime}")
 
         # (2a) D6: the damaged frame equals a full repaint of the same
         # state. Enabled for the scale-2 pass, where fractional logical

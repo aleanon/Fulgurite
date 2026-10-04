@@ -355,15 +355,39 @@ pub trait Node {
     /// widget that owns the index — so a composite whose editable part is
     /// a node of its own (`SearchField`, `Combobox`, `RichTextEditor`)
     /// needs nothing. **A wrapper that shares its child's index must
-    /// forward this**, as it forwards `compose` and `selection`: the
-    /// provided `None` is right for a leaf and wrong for a wrapper, which
-    /// would silently turn every paste into it back into typing
-    /// (`NumberInput`'s shape, R10-F13 and R10-F15).
+    /// forward this**, as it forwards `compose`, `selection` and
+    /// [`Node::caret_rect`]: the provided `None` is right for a leaf and
+    /// wrong for a wrapper, which would silently turn every paste into it
+    /// back into typing (`NumberInput`'s shape, R10-F13 and R10-F15).
     ///
     /// **The answer is also the mark**, as for `compose`: `Some(n)` with
     /// `n > 0` marks this node's subtree.
     fn paste(&mut self, text: &str) -> Option<usize> {
         let _ = text;
+        None
+    }
+
+    /// Where this node's caret is, in **logical** window coordinates
+    /// (`[x0, y0, x1, y1]`) — M80/T80.5 (`docs/plan-text-fit.md`). What an
+    /// input method's candidate window is placed beside:
+    /// `Host::caret_rect` asks the focused index and scales the answer to
+    /// physical pixels, and the window passes it to the platform.
+    ///
+    /// `None` from a node with no caret: anything that does not edit
+    /// text, and an editor that is read-only (it paints no caret). The
+    /// rect is the one `paint` draws the caret in, **scroll offset
+    /// included**: a full field's caret is where it shows, not where it
+    /// would be in the unscrolled run.
+    ///
+    /// Asked at the focused index, so the rule is [`Node::paste`]'s: a
+    /// composite whose editable part is a node of its own (`SearchField`,
+    /// `Combobox`, `RichTextEditor`) needs nothing, and **a wrapper that
+    /// shares its child's index must forward this** (`NumberInput` does).
+    /// The provided `None` on such a wrapper would put every candidate
+    /// window at the window's origin while composition itself still
+    /// worked.
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<crate::display::Rect> {
+        let _ = (st, i);
         None
     }
 

@@ -372,6 +372,15 @@ impl Node for NumberInput {
         Some(self.field.paste(&digits))
     }
 
+    /// **Forwarded** — M80/T80.5. This node shares its index with its
+    /// field, so the host asks *it* where the caret is; the provided
+    /// `None` would put an input method's candidate window at the
+    /// window's origin while the composition itself, forwarded above,
+    /// still worked.
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<lumen_static::display::Rect> {
+        self.field.caret_rect(st, i)
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

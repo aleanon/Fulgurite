@@ -4,6 +4,7 @@
 //! The drive edits the lines marked `// EDIT ...` in a copy of this
 //! file: the bound label's format (`EDIT format`), and a line in the
 //! click handler that becomes a type error or a panic (`EDIT handler`).
+//! `#field` is focused after the swaps, for the IME area (M80/T80.5).
 
 use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -19,6 +20,11 @@ pub struct Ui {
     pub inc: Button<Tally>,
     #[widget_id("value")]
     pub value: Label<String>,
+    /// A field to focus after a swap: the window must place its IME area
+    /// from the new build's session (M80/T80.5), whose `caret_rect` is
+    /// reached through the reload crate's forward.
+    #[widget_id("field")]
+    pub field: TextInput<String>,
 }
 
 /// What a handler may touch (M33), and what a reload keeps.

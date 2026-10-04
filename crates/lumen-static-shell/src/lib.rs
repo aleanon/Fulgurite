@@ -2353,6 +2353,27 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.app.tree().node(i).selection()
     }
 
+    /// The focused node's caret, in **physical** pixels (`[x0, y0, x1,
+    /// y1]`) — M80/T80.5 (`docs/plan-text-fit.md`). What a window passes
+    /// to `set_ime_cursor_area`, so an input method's candidate window
+    /// opens beside the caret rather than at the window's origin.
+    ///
+    /// [`lumen_static::Node::caret_rect`] answers in logical pixels; this
+    /// scales by [`Host::scale`] (M40), because the platform call takes
+    /// the surface's pixels. `None` when nothing is focused, or the
+    /// focused node has no caret.
+    ///
+    /// **Application code**: the answer comes from a widget. A window's
+    /// session asks it guarded (`Session::caret_rect`).
+    pub fn caret_rect(&self) -> Option<lumen_static::display::Rect> {
+        let i = self.input.focus? as usize;
+        let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
+        (i < table.len()).then_some(())?;
+        let r = self.app.tree().node(i).caret_rect(&self.states, i)?;
+        let k = self.scale;
+        Some([r[0] * k, r[1] * k, r[2] * k, r[3] * k])
+    }
+
     /// Paste `text` into the focused node **as one edit** — M45/T45.7.
     ///
     /// The focused node's [`lumen_static::Node::paste`] takes

@@ -22,12 +22,15 @@ fn main() {
     h.pump();
     h.pump();
     h.app.armed = site;
-    let i = lumen_static::style::index_of_wid(<panic_app::Ui as lumen_static::Widget>::SUB_TABLE, "go").unwrap();
+    let i = lumen_static::style::index_of_wid(<panic_app::Ui as lumen_static::Widget>::SUB_TABLE, panic_app::target(site))
+        .unwrap();
     let s = h.states[i];
     h.click(s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
     for _ in 0..3 {
         h.tick(16.0);
         h.pump();
+        // What a window asks after each frame (M80/T80.5): site 8.
+        let _ = h.caret_rect();
     }
     println!("no panic");
 }

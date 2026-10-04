@@ -642,6 +642,12 @@ window's origin. It needs the caret rect in physical pixels, which the
 host can produce but does not expose; the composition itself works
 without it.
 
+**Done by M80/T80.5 (2026-10-04):** `Node::caret_rect` answers the
+focused editor's caret, `Host::caret_rect` exposes it in physical pixels,
+and the window passes it to `set_ime_cursor_area` after each frame in which
+it changed (`app.imeArea` reports what it passed). Gated against the
+painted caret, live and headless (`docs/results-text.md` M80/T80.5).
+
 **Amended 2026-09-25, M41/T41.1: the routing is gated now, and it was
 wrong under `Boundaries`.** The tests above call the widgets' inherent
 `compose`; nothing called `Host::compose`, the path the window uses, so

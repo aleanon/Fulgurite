@@ -639,6 +639,11 @@ struct Win {
     /// Frames presented, and redraws that presented nothing because
     /// nothing changed — `app.presents` (M53/T53.4).
     presents: (u64, u64),
+    /// The IME cursor area last passed to `set_ime_cursor_area`, in
+    /// physical pixels — M80/T80.5. Kept so an unchanged caret is not
+    /// passed again, and answered as `app.imeArea`; `None` before any
+    /// caret, and while a panic is shown.
+    ime_area: Option<[f32; 4]>,
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -704,6 +709,7 @@ impl Win {
             own_redraw: false,
             must_present: false,
             presents: (0, 0),
+            ime_area: None,
             #[cfg(feature = "hot")]
             hot: None,
             journal: false,
@@ -784,6 +790,36 @@ impl Win {
         if let Some(w) = &self.window {
             self.own_redraw = true;
             w.request_redraw();
+        }
+    }
+
+    /// **The candidate window goes beside the caret** — M80/T80.5
+    /// (`docs/plan-text-fit.md`). After each frame, the focused node's
+    /// caret in physical pixels (`Session::caret_rect`, guarded) is passed
+    /// to `set_ime_cursor_area` if it changed, and kept for
+    /// `app.imeArea`. Called after the window's own frames and after an
+    /// agent request, which pumps a frame of its own, so a drive that
+    /// focuses a field over the agent reads the area that frame placed.
+    ///
+    /// Nothing focused, or a node with no caret, passes nothing: winit has
+    /// no call that clears an area, and the platform keeps the last one
+    /// until a field takes focus again. A caret that panicked raised M36's
+    /// screen inside the session; this asks for the frame that draws it.
+    fn place_ime(&mut self, window: &Window) {
+        let area = self.session.caret_rect();
+        if self.session.failed() {
+            self.ime_area = None;
+            self.ask_redraw();
+            return;
+        }
+        if area != self.ime_area {
+            if let Some(r) = area {
+                window.set_ime_cursor_area(
+                    winit::dpi::PhysicalPosition::new(r[0] as f64, r[1] as f64),
+                    winit::dpi::PhysicalSize::new((r[2] - r[0]).max(1.0) as f64, (r[3] - r[1]).max(1.0) as f64),
+                );
+            }
+            self.ime_area = area;
         }
     }
 
@@ -915,8 +951,10 @@ impl Win {
             window.request_redraw();
         }
         if self.session.failed() {
+            self.ime_area = None;
             return;
         }
+        self.place_ime(&window);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
         // §2.1). A constant one compares equal every time.
@@ -1196,6 +1234,18 @@ impl Win {
             }));
             return;
         }
+        // **`app.imeArea` is the window's** — M80/T80.5: the IME cursor
+        // area this window last passed to `set_ime_cursor_area`, in
+        // physical pixels (`[x0, y0, x1, y1]`), or `null`. The call is made
+        // outside the session the agent talks to, so only the window can
+        // say what reached the platform. Answered without a frame.
+        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.imeArea") {
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "result": {"area": self.ime_area},
+            }));
+            return;
+        }
         // **`app.copy` is the window's** — M80/T80.4. A drive's Ctrl+C
         // reaches the session as an `input.key`, and only a real
         // `KeyboardInput` goes through `clipboard_shortcut`, so a drive
@@ -1235,6 +1285,16 @@ impl Win {
                 "error": {"code": -32603, "message": format!("the session answered malformed JSON: {e}")}
             })
         });
+        // The request may have pumped a frame (an input does): place the
+        // IME area it left before the reply goes, so the drive's next
+        // `app.imeArea` reads it (M80/T80.5).
+        if let Some(window) = self.window.clone() {
+            if self.session.failed() {
+                self.ime_area = None;
+            } else {
+                self.place_ime(&window);
+            }
+        }
         let _ = rpc.reply.send(resp);
         self.ask_redraw();
     }

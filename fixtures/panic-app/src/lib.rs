@@ -1,7 +1,9 @@
 //! **An application that panics where you ask it to** — M36/T36.0
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! Seven sites, each a place a frame runs application code. Each panic
+//! Eight sites, each a place a frame runs application code — the eighth,
+//! a focused field's `caret_rect`, is asked after the frame, by the
+//! window placing its IME area (M80/T80.5). Each panic
 //! line carries a `// SITE n` marker, and [`site_line`] finds it by
 //! scanning this file's own source — so a test compares a report's line
 //! with the real one and nobody copies a number. (The first version
@@ -18,7 +20,7 @@ use lumen_static::{Constraints, NodeState, Painter};
 use lumen_static_widgets::prelude::*;
 
 /// Where each site's panic is raised.
-pub const SITES: [(u8, &str); 7] = [
+pub const SITES: [(u8, &str); 8] = [
     (1, "a click handler"),
     (2, "an applied message"),
     (3, "update (a binding's source)"),
@@ -26,7 +28,18 @@ pub const SITES: [(u8, &str); 7] = [
     (5, "a widget's paint"),
     (6, "App::tick"),
     (7, "the framework, called wrongly by a handler"),
+    (8, "a focused field's caret_rect (the IME area)"),
 ];
+
+/// The node a site's session presses: `#fuse` for site 8, whose panic
+/// needs the field focused, and `#go` for every other.
+pub fn target(site: u8) -> &'static str {
+    if site == 8 {
+        "fuse"
+    } else {
+        "go"
+    }
+}
 
 /// A leaf that panics in `layout` or `paint` when armed — the fixture's
 /// own widget, because no shipped widget can be made to.
@@ -76,6 +89,58 @@ impl<S> Handlers<S> for Bomb {
     }
 }
 
+/// A focusable leaf whose `caret_rect` panics once when armed — site 8
+/// (M80/T80.5). The window asks the focused node's caret after every
+/// frame (`Session::caret_rect`), outside the frame's own guard, so this
+/// is the site that proves that call is guarded too.
+///
+/// The arm is a `Cell` because `caret_rect` takes `&self`: it disarms
+/// itself as it fires, so a retry finds the field focused and answering,
+/// and an `update` that ran in between cannot disarm it first.
+#[derive(Default)]
+pub struct Fuse {
+    pub arm: core::cell::Cell<bool>,
+}
+
+impl Widget for Fuse {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = false;
+    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
+    const KIND: &'static str = "fuse";
+    fn type_defaults() -> Style {
+        Style::default()
+    }
+    const SEEDS: &'static [Seed] = &[Seed::new(
+        Self::KIND,
+        Self::type_defaults,
+        lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]),
+    )];
+}
+
+impl Node for Fuse {
+    fn layout(&mut self, _cx: &mut LayoutCx, limits: Constraints, style: &[Style], st: &mut [NodeState], i: usize) -> Size {
+        lumen_static::ops::record_painted(st, i, limits, Size { w: 60.0, h: 20.0 }, &style[i])
+    }
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        out.rect(lumen_static::ops::rect_of(&st[i]), st[i].bg);
+    }
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<lumen_static::display::Rect> {
+        if self.arm.replace(false) {
+            panic!("site 8: a focused field's caret_rect"); // SITE 8
+        }
+        let s = st.get(i)?;
+        Some([s.pos.x + 4.0, s.pos.y + 2.0, s.pos.x + 5.0, s.pos.y + s.size.h - 2.0])
+    }
+    lumen_static::leaf_common!(Fuse, 0);
+}
+
+impl<S> Handlers<S> for Fuse {
+    fn handler(&self, _sel: NodeSel) -> Option<fn(&mut S, &EventCtx)> {
+        None
+    }
+}
+
 /// One button per site, so an agent can arm a site by clicking.
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 4.0)]
@@ -94,6 +159,8 @@ pub struct Arms {
     pub a6: Button<Fx>,
     #[widget_id("arm7")]
     pub a7: Button<Fx>,
+    #[widget_id("arm8")]
+    pub a8: Button<Fx>,
 }
 
 /// A 120 ms timer and its count — M47/T47.1's panic-path step: a retry
@@ -117,6 +184,8 @@ pub struct Ui {
     pub go: Button<Fx>,
     #[widget_id("bomb")]
     pub bomb: Bomb,
+    #[widget_id("fuse")]
+    pub fuse: Fuse,
     pub clock: Clock,
 }
 
@@ -149,6 +218,10 @@ pub struct Fx {
     pub ticks: u32,
 }
 
+/// The trigger for `bad_job`: a job's panic, which is the spawner's and
+/// not a site.
+pub const JOB_PANIC: u8 = 10;
+
 /// The timer's descriptor kind and key, and so the message it lands as.
 pub const TICK: u8 = 9;
 
@@ -164,7 +237,8 @@ fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
     let _ = tx.send(d.payload as u8);
 }
 
-/// A job that panics — trigger 8. M28's spawner catches it as
+/// A job that panics — trigger 10 (8 until M80/T80.5 gave that number to
+/// a site). M28's spawner catches it as
 /// `Failure::Panicked`; the frame guard must not report it (M36/T36.1).
 fn bad_job(_: Descriptor, _: &lumen_static::inbox::Sender<u8>) {
     panic!("a job's panic, which the spawner owns");
@@ -179,7 +253,7 @@ fn on_go(s: &mut Fx, _: &EventCtx) {
     if s.armed == 2 {
         s.outbox.push(Descriptor::new(1, 2));
     }
-    if s.armed == 8 {
+    if s.armed == JOB_PANIC {
         s.outbox.push(Descriptor::new(8, 0));
     }
     if s.armed == 7 {
@@ -235,6 +309,11 @@ impl App for Fx {
         if matches!(self.armed, 3..=5) {
             self.fire();
         }
+        // Site 8: arm the field, which disarms itself when it fires.
+        if self.armed == 8 {
+            self.ui.fuse.arm.set(true);
+            self.fire();
+        }
         let text = format!("{shown}");
         let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
         let b = lumen_static::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
@@ -249,7 +328,7 @@ pub fn build() -> Fx {
     f.ui.go.label = "go";
     f.ui.go.on_click = on_go;
     type Arm<'a> = (&'a mut Button<Fx>, &'static str, fn(&mut Fx, &EventCtx));
-    let arms: [Arm<'_>; 7] = [
+    let arms: [Arm<'_>; 8] = [
         (&mut f.ui.arms.a1, "1", |s, _| s.armed = 1),
         (&mut f.ui.arms.a2, "2", |s, _| s.armed = 2),
         (&mut f.ui.arms.a3, "3", |s, _| s.armed = 3),
@@ -257,6 +336,7 @@ pub fn build() -> Fx {
         (&mut f.ui.arms.a5, "5", |s, _| s.armed = 5),
         (&mut f.ui.arms.a6, "6", |s, _| s.armed = 6),
         (&mut f.ui.arms.a7, "7", |s, _| s.armed = 7),
+        (&mut f.ui.arms.a8, "8", |s, _| s.armed = 8),
     ];
     for (b, label, h) in arms {
         b.label = label;

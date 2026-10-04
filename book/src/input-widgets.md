@@ -113,6 +113,9 @@ stylesheet sets it once and every focusable widget gets one, including
 custom widgets that implement nothing.
 
 Selection, IME composition and clipboard are `TextInput`'s and
-`TextArea`'s. If you write your own text-bearing widget you inherit none
-of it, which is the honest reason [What it costs](./costs.md) says the
+`TextArea`'s, and so is telling an input method where to open its
+candidate window: each answers `Node::caret_rect` with the caret it
+paints, and the window passes that on after every frame (M80/T80.5;
+`docs/results-text.md` has the gate). If you write your own text-bearing
+widget you inherit none of it, which is the honest reason [What it costs](./costs.md) says the
 years in a GUI project go to text.

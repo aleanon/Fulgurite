@@ -1,7 +1,7 @@
 //! **Capture and host recovery, headless** — M36/T36.1
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! For each of the seven sites: the guarded entry catches the panic; the
+//! For each of the eight sites: the guarded entry catches the panic; the
 //! report's location is the site's marker line (site 7: inside the
 //! framework, with the *application* frame at the fixture's calling
 //! line); the retried frame is full damage and byte-identical to a host
@@ -12,7 +12,7 @@
 use lumen_static::retain::Damage;
 use lumen_static::spawn::Immediate;
 use lumen_static_shell::Host;
-use panic_app::{build, site_line, Fx, Ui, SITES};
+use panic_app::{build, site_line, target, Fx, Ui, SITES};
 
 fn host() -> Host<Fx> {
     let mut h: Host<Fx> = Host::new(build(), 300, 200);
@@ -23,15 +23,17 @@ fn host() -> Host<Fx> {
     h
 }
 
-fn go(h: &Host<Fx>) -> (f32, f32) {
-    let i = lumen_static::style::index_of_wid(<Ui as lumen_static::Widget>::SUB_TABLE, "go").unwrap();
+fn centre(h: &Host<Fx>, wid: &str) -> (f32, f32) {
+    let i = lumen_static::style::index_of_wid(<Ui as lumen_static::Widget>::SUB_TABLE, wid).unwrap();
     let s = h.states[i];
     (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
 }
 
-/// What every site's session does: click, then tick and pump, guarded.
-fn session(h: &mut Host<Fx>) {
-    let (x, y) = go(h);
+/// What every site's session does: click the site's target, then tick
+/// and pump, guarded, and ask the focused caret as a window does after a
+/// frame (`Session::caret_rect`, M80/T80.5), guarded too.
+fn session(h: &mut Host<Fx>, site: u8) {
+    let (x, y) = centre(h, target(site));
     h.click(x, y);
     for _ in 0..3 {
         if h.guard(|h| {
@@ -42,6 +44,9 @@ fn session(h: &mut Host<Fx>) {
         {
             return;
         }
+        if h.guard(|h| h.caret_rect()).is_none() {
+            return;
+        }
     }
 }
 
@@ -50,7 +55,7 @@ fn every_site_is_caught_reported_and_recovered_from() {
     for (site, what) in SITES {
         let mut a = host();
         a.app.armed = site;
-        session(&mut a);
+        session(&mut a, site);
         let r = a.failure().cloned().unwrap_or_else(|| panic!("site {site} ({what}) was not caught"));
         let (file, line, _) = r.location.clone().expect("a location");
         println!("site {site} ({what}): {file}:{line}  app frame {:?}  note {:?}", r.app_frame, r.note);
@@ -86,7 +91,7 @@ fn every_site_is_caught_reported_and_recovered_from() {
         let damage = a.take_damage_for_age(1);
         assert!(matches!(damage, Damage::All), "site {site}: the retried frame is not full damage: {damage:?}");
         let mut b = host();
-        session(&mut b);
+        session(&mut b, site);
         // The same pointer move for both: the recovered host released
         // its hover (as it must), the never-armed one still has the
         // pointer over the button. After a panic the next move restores
@@ -104,7 +109,7 @@ fn every_site_is_caught_reported_and_recovered_from() {
 fn events_queued_behind_the_trigger_are_dropped() {
     let mut h = host();
     h.app.armed = 1;
-    let (x, y) = go(&h);
+    let (x, y) = centre(&h, "go");
     h.click(x, y);
     h.click(x, y);
     assert!(h.guard(|h| h.pump()).is_none(), "setup: the first click did not panic");
@@ -118,12 +123,12 @@ fn events_queued_behind_the_trigger_are_dropped() {
 #[test]
 fn a_jobs_panic_is_the_spawners_and_is_not_reported() {
     let mut h = host();
-    h.app.armed = 8;
-    session(&mut h);
+    h.app.armed = panic_app::JOB_PANIC;
+    session(&mut h, panic_app::JOB_PANIC);
     assert!(h.failure().is_none(), "a job's panic, caught by the spawner, was reported as the frame's");
     // And its hook record is not left for the next real panic to inherit.
     h.app.armed = 1;
-    session(&mut h);
+    session(&mut h, 1);
     let r = h.failure().expect("site 1 was not caught");
     assert_eq!(r.location.as_ref().map(|l| l.1), Some(site_line(1)), "a stale record was reported: {r:?}");
 }

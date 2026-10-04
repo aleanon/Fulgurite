@@ -26,7 +26,7 @@ fn a_replaced_hook_says_so_instead_of_reporting_a_stale_panic() {
     let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
 
     // A job's panic, caught by the spawner, under the recording hook.
-    h.app.armed = 8;
+    h.app.armed = panic_app::JOB_PANIC;
     h.click(x, y);
     assert!(h.guard(|h| h.pump()).is_some() && h.guard(|h| h.pump()).is_some(), "setup: the job's panic escaped");
 

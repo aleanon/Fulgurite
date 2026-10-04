@@ -966,6 +966,65 @@ in the accept direction in the same session.*
   was a multiple of the step; one more entry moved it off. It scrolls up
   for a row materialized above the viewport now.
 
+- T80.5: **`Local::caret_rect` is guarded by the host's guard, not by
+  `caught`, and `Session::caret_rect` takes `&mut self`.** Decisions said
+  `self.caught(None, ..)` "exactly as `copy` does", and that a panicking
+  `caret_rect` "answers `None` and raises M36's screen". `caught` cannot do
+  the second: it is a `&self` `catch_unwind` that answers its fallback and
+  records nothing (`session.rs`), so a panicking caret would have been a
+  silent `None` and the panic-app site could never report through
+  `app.failure`. `guarded` runs `Host::guard`, which records the report and
+  answers `None` without asking while a screen is up (so `app.imeArea` is
+  `null` there with no check of its own). The window holds the session
+  `&mut` already. The panic-drive injection is unchanged (the call outside
+  the guard), and kills the window at site 8. M84's `Local::images`
+  cites this decision's `caught` wording for the same claim
+  (`docs/plan-images-in-motion.md`, second review A3), and has the same
+  gap; it is that milestone's to settle, so it is reported, not edited
+  here.
+- T80.5: **a full `TextInput` painted no caret at its end.** The view kept
+  the caret's *left edge* inside the padded box and the clip ended at that
+  box, so a caret at the end of a full field was drawn one pixel wide
+  wholly outside the clip. `shell/tests/ime_area.rs` found it on its first
+  run: the scrolled case's "caret column" was a 12 px glyph stem (bound 70%
+  of an 18.6 px line), and at scale 2 a shaper's unrounded end pen (580.14
+  against a 580 width) still cut 0.78 px off it after the first fix. Fixed
+  in `TextInput`: the clip runs `CARET_W` into the right padding, `place`
+  reserves only what the padding cannot hold, and the scroll's end is the
+  further of the run's width and the caret's x. Reserving the caret's
+  width outright was tried first and broke `text_input_b15`'s end caret (a
+  field sized to its text scrolled a pixel), which is why the clip moved
+  instead.
+- T80.5: **a read-only field took an input method's text, and a paste.**
+  M57/B20 made a pick list's trigger read-only so it "declines text and
+  deletion", and `TextInput::compose` and `TextInput::paste` never checked
+  the flag: the catalogue gate's first run reported `textinput
+  #chooser-trigger: composed and answered None`. Both refuse now. A menu's
+  trigger (a menu has none, M57/B23, and lays its out with no box) still
+  composes; the gate counts it as boxless and does not judge it, since
+  nothing presses it or shows its caret.
+- T80.5: **the live check is the harness's, after every action that
+  leaves a text field focused**, not new inventory actions:
+  `scripts/drive/harness.py`'s `_ime_check` runs for any focused node of
+  the widget's subtree whose role is `TextInput`, `MultilineTextInput` or
+  `SpinButton`, so `expected.json` does not change. Two of its own details
+  were wrong on the first live run and are fixed in it: an empty field's
+  padded box is the caret's width, so its commonest colour was the caret's
+  (the ground is now read from the whole box), and a glyph stem beside a
+  triple-clicked line's end caret pulled the centre 1.28 px (neighbours
+  must be 80% as tall to join, in the headless gate too). `run.py` takes a
+  comma list, so the four fields run in one window per leg.
+- T80.5: **the window places the IME area after an agent request too.**
+  An `input.*` request pumps a frame of its own and the window's redraw
+  comes after the reply, so a drive's `app.imeArea` raced it. The area is
+  placed before the reply is sent.
+- T80.5: **panic-app's job-panic trigger moved from 8 to 10**
+  (`panic_app::JOB_PANIC`), so site 8 is the numbered site the drive arms
+  and the arm button's handler cannot spawn the spawner's panic instead.
+  Site 8 is a focusable fixture leaf, `Fuse`, whose `caret_rect` panics
+  once; its arm is a `Cell`, because `caret_rect` takes `&self` and an
+  `update` between the arm and the focus would otherwise disarm it.
+
 **What the review found (M80).**
 
 - C2 → adopted: the inventory is in Decisions; M80 takes both of

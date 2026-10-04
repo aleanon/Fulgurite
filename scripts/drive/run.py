@@ -124,8 +124,11 @@ def main() -> int:
         for b in bad:
             print(f"widget-drive: {b}", file=sys.stderr)
         return 1
+    # A comma-separated list drives several inventories in one window
+    # (M80/T80.5: the four text fields' IME check, one process per leg).
+    wanted = {n.strip().lower() for n in only.split(",")} if only else set()
     if only:
-        entries = [e for e in entries if e[0].lower() == only.lower()]
+        entries = [e for e in entries if e[0].lower() in wanted]
         if not entries:
             print(f"widget-drive: no inventory named {only!r}", file=sys.stderr)
             return 2
@@ -203,7 +206,7 @@ def main() -> int:
     catalog = Path(HERE.parent.parent / "examples/showcase/src/catalog.rs").read_text()
     names = [n.split('"')[2] for n in catalog.split('entry!("')[1:]]
     if only:
-        names = [n for n in names if n.lower() == only.lower()]
+        names = [n for n in names if n.lower() in wanted]
     kfail = kdone = 0
     for w in names:
         try:

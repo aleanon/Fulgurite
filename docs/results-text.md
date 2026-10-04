@@ -570,3 +570,44 @@ firmware_bind=0 firmware_cascade=0`: **+0 B** `.text` and `.rodata` on all
 four binaries — `Selectable` is `alloc`-tier and the paint split compiles
 to the same leaf code. With `paint_run` marked `#[inline(never)]`: +28 /
 +332 / +40 / +28 B `.text` (+16 `.rodata` each), failing all four by name.
+
+## M80/T80.5 — `caret_rect` and the IME area (2026-10-04)
+
+`Node::caret_rect(&self, st, i)` (provided `None`) answers the caret `paint`
+draws, in logical px, scroll included: `TextInput` and `TextArea` override
+it, `NumberInput` forwards it (it shares its field's index), and a
+read-only field answers `None`. `Host::caret_rect()` asks the focused index
+and scales to physical px. `Session::caret_rect()` is required (the
+compiler is the `Hot` forward's gate) and `Local`'s body runs through the
+host's guard. The window passes the rect to `set_ime_cursor_area` after
+each frame in which it changed (its own frames and an agent request's),
+keeps it, and answers `app.imeArea` (`{area}`). Pinned face at 16 px:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| painted caret, `shell/tests/ime_area.rs` (`TextInput` empty, mid-text, filled past its width; `TextArea` line 3; `NumberInput`; scale 1 and 2) | \|`Host::caret_rect()` centre − the caret column's centre found in the software canvas\| | worst **0.36 px** over 10 cases (0.00 on seven) | ≤ 1 physical px | `TextInput::caret_rect` leaves out its scroll: the scrolled case **356.14 / 671.28 px**; `Host` returns the logical rect: every scale-2 case off, worst **232.50 px** |
+| | setup: the press focused the field; the caret column found (rows); `TextArea`'s caret line | all 10; 18–19 px of an 18.6 px line (37 of 37.2 at 2); line 3 | focused; ≥ 70% of a line; 3 | — |
+| every composing node, `widgets/tests/caret_rect.rs` (the catalogue) | composed with a box / failed | **6** of 7 composed (35 focusable; the menu's boxless trigger counted, not judged) / **0** | ≥ 5 / 0 | `NumberInput` does not forward: **1** failed, `numberinput #NumberInput: composed and answered None` |
+| live, `widget_drive.sh TextInput,TextArea,NumberInput,SearchField`, four legs | \|`app.imeArea` centre − the caret column in `ui.screenshot`\| after every action leaving a field focused | **96** checks (24 a leg), worst **0.50 px**; the oracle 1,842 frames compared, none diverged | ≤ 1 physical px | the window never calls `set_ime_cursor_area` (Boundaries): `app.imeArea` **null** on the first focusing action; it passes the logical rect (scale 2): **556.04 px** |
+| across a swap, `just hot-window-drive` | after four swaps, `#field` focused: `app.imeArea` against the field's physical box | `[8, 84, 9, 105.8]` inside `[0, 78, 16, 111.8]` | inside | `Hot::caret_rect` returns `None`: **null**, step 8 fails |
+| panic guard, `just panic-drive`, both legs | sites caught / panics logged; `app.imeArea` while each screen is up | **8 / 9** (site 8, a focused field's `caret_rect`, at `lib.rs:130`); null at every site | 8 / 9; null | `Local::caret_rect` unguarded: sites 1–7 pass, the window **dies at site 8** (exit 101, 8 panics logged of 9) |
+
+**Two defects the gates found first.** A full `TextInput`'s end caret was
+painted nowhere: the view kept the caret's left edge in the padded box and
+the clip ended there, so the one-pixel caret lay wholly outside it (the
+scrolled case found a 12 px glyph stem instead of a 19 px caret, and at
+scale 2 a shaper's unrounded end pen, 580.14 against a 580 width, cut
+0.78 px off it). The clip now runs `CARET_W` into the right padding, `place`
+reserves only what that padding cannot hold, and the scroll's end is the
+further of the run's width and the caret's x. And a read-only field
+(a pick list's trigger) took an input method's preedit and a paste into its
+shown option, against M57/B20's rule; it refuses both now. The catalogue
+gate's first run named it: `textinput #chooser-trigger: composed and
+answered None`.
+
+Firmware, `just firmware-delta cf1f623` (K4's default, bound 1,000 B on
+`firmware_interactive`): `.text` **+60 / +116 / +56 / +60 B** (`firmware`,
+`firmware_interactive`, `firmware_bind`, `firmware_cascade`), `.rodata`
++16 / +44 / +16 / +16 — the `Node` vtable slot and its shared default on
+every binary, and `TextInput`'s `caret_rect`, clip and scroll on the
+interactive one. `docs/results-embedded.md` T80.5 has the table.

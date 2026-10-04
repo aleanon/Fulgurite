@@ -158,6 +158,19 @@ pub trait Session: FrameSource {
     fn paste(&mut self, text: &str) -> usize;
     /// An input-method step. Whether anything changed.
     fn compose(&mut self, c: Composition<'_>) -> bool;
+    /// **Where the focused node's caret is**, in physical pixels
+    /// (`Host::caret_rect`) — M80/T80.5: what the window passes to
+    /// `set_ime_cursor_area` after a frame. `None` without focus, from a
+    /// node with no caret, while a panic is shown, and when asking
+    /// panicked.
+    ///
+    /// **Guarded, and `&mut`**: the answer is a widget's
+    /// `Node::caret_rect`, application code, so a panic in it raises M36's
+    /// screen through the host's guard instead of unwinding across the
+    /// seam. The `&self` catch `copy` and `title` use answers a fallback
+    /// and records nothing, so a panicking caret would have been a silent
+    /// `None` (`docs/plan-text-fit.md`, "What building found", T80.5).
+    fn caret_rect(&mut self) -> Option<[f32; 4]>;
     fn set_scale(&mut self, scale: f32);
     fn scale(&self) -> f32;
     fn to_logical(&self, x: f32, y: f32) -> (f32, f32);
@@ -582,6 +595,13 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
     fn compose(&mut self, c: Composition<'_>) -> bool {
         // Guarded: composition runs the focused widget's editing code.
         self.guarded(|h, _| h.compose(c)).unwrap_or(true)
+    }
+
+    fn caret_rect(&mut self) -> Option<[f32; 4]> {
+        // Guarded (M80/T80.5): a widget's `caret_rect` is application
+        // code. A failed host answers `None` without asking, so no IME
+        // area is passed while M36's screen is up.
+        self.guarded(|h, _| h.caret_rect()).flatten()
     }
 
     fn set_scale(&mut self, scale: f32) {

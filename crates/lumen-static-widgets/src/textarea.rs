@@ -925,6 +925,17 @@ impl<S: TextBuffer> Node for TextArea<S> {
         Some(TextArea::paste(self, text))
     }
 
+    /// The caret `paint` draws: its line's row at the pitch, **less the
+    /// vertical scroll**, one line tall (M80/T80.5).
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<lumen_static::display::Rect> {
+        let s = st.get(i)?;
+        let (pl, pt, _, _) = s.pad;
+        let (cx, cy) = self.caret_at();
+        let x = s.pos.x + pl + cx;
+        let top = s.pos.y + pt + cy - self.scroll;
+        Some([x, top, x + 1.0, top + self.line_h])
+    }
+
     fn node(&self, _i: usize) -> &dyn Node {
         self
     }

@@ -11,6 +11,8 @@ Over the agent, against fixtures/hot-window's copy:
      shows a bar, and the fix-back clears it without a swap.
   6. introduce a panic: M36's screen through app.failure, at the line.
   7. fix it: the next swap clears the screen, and the count survived.
+  8. focus the field: app.imeArea is non-null and inside its physical box,
+     answered by the swapped-in build through `Hot`'s forward (M80/T80.5).
 Prints reload latency (edit -> swapped) and resident memory per reload.
 Usage: hot_window_drive.py PORT SRC PID
 """
@@ -193,6 +195,25 @@ v = value()
 assert v == "clicks: 3", f"step 7: the kept count must survive the panic and the swap: `{v}`"
 click()
 assert value() == "clicks: 4"
+
+# ---- 8. the IME area, from the swapped-in build (M80/T80.5) -------------
+# `Session::caret_rect` reaches the library's session through the reload
+# crate's `Hot` forward: the compiler refuses a `Hot` with no forward, so
+# the runtime question is whether the forward answers. Focus the field;
+# the window must have passed an area inside the field's physical box.
+r = rpc("input.click", {"selector": "#field"})
+assert "error" not in r and r["result"]["handled"], f"step 8: the press on #field did not land: {r!r}"
+focused = call("ui.getAppliedStyles", {"selector": "#field"})["state"]["focused"]
+assert focused, "step 8: #field is not focused after the press"
+fb = call("ui.resolve", {"selector": "#field"})
+k = call("ui.screenshot").get("scale", 1.0)
+box = [v * k for v in fb["bounds"]]
+area = call("app.imeArea")["area"]
+print(f"hot-window-drive: after {reloads()['reloads']} swaps, #field focused: app.imeArea {area}, "
+      f"field's physical box {[round(v, 1) for v in box]} (scale {k})")
+assert area is not None, "step 8: app.imeArea is null after focusing a field in the swapped-in build"
+inside = box[0] - 1 <= area[0] and area[2] <= box[2] + 1 and box[1] - 1 <= area[1] and area[3] <= box[3] + 1
+assert inside, f"step 8: the IME area {area} is outside the field's physical box {box}"
 rss1 = rss_kb()
 print(f"hot-window-drive: latency edit->swap {lat1:.2f}s, {lat2:.2f}s, {lat3:.2f}s; "
       f"RSS {rss0} -> {rss1} kB over 3 reloads ({(rss1 - rss0) / 3:.0f} kB/reload)")

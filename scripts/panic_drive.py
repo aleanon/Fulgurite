@@ -1,10 +1,13 @@
 """M36/T36.3 (docs/plan-panic-recovery.md): the panic screen, live.
 
-For each of panic-app's seven sites, over the agent endpoint:
-  1. arm the site (and press #go where the site needs a click);
+For each of panic-app's eight sites, over the agent endpoint:
+  1. arm the site (and press #go where the site needs a click, or focus
+     #fuse for site 8, whose panic is the window asking the focused
+     field's caret for its IME area -- M80/T80.5);
   2. wait for app.failure, and assert its file and line are the site's;
   3. check a screenshot pixel is the panic screen's page, not the app's;
-  4. assert input.* is refused while the screen is up;
+  4. assert input.* is refused, and app.imeArea is null, while the screen
+     is up;
   5. app.retry, and assert the application answers again: no failure,
      the tree readable, the app's own page back on screen.
 Usage: panic_drive.py PORT STRATEGY
@@ -75,10 +78,22 @@ assert first.get("supported") is True, f"panic-drive: recovery is not compiled i
 assert first["failure"] is None, f"panic-drive: a failure before anything was armed: {first!r}"
 app_page = corner()
 
-for site in range(1, 8):
+# Site 8's setup, before it is armed: the window places an IME area for
+# the focused field at all, so "null while the screen is up" below is the
+# screen's doing and not a window that never places one (M80/T80.5).
+call("input.click", {"selector": "#fuse"})
+ime = call("app.imeArea")["area"]
+assert ime is not None, f"panic-drive [{strategy}]: setup: focusing #fuse placed no IME area"
+print(f"  ..  site 8 setup: #fuse focused, app.imeArea {ime}")
+
+for site in range(1, 9):
     call("input.click", {"selector": f"#arm{site}"})
     if site in (1, 2, 7):
         r = rpc("input.click", {"selector": "#go"})
+    if site == 8:
+        # A press on the field: the frame focuses it and the window asks
+        # its caret after the frame. The press itself must land.
+        r = rpc("input.click", {"selector": "#fuse"})
     deadline, fail = time.time() + 5, None
     while time.time() < deadline:
         fail = call("app.failure")["failure"]
@@ -106,6 +121,8 @@ for site in range(1, 8):
     assert px == PANIC_PAGE, f"site {site}: the corner is {px}, not the panic screen's {PANIC_PAGE}"
     refused = rpc("input.click", {"selector": "#go"})
     assert "error" in refused, f"site {site}: input was accepted while the screen was up: {refused!r}"
+    ime = call("app.imeArea")["area"]
+    assert ime is None, f"site {site}: app.imeArea is {ime} while the panic screen is up"
     assert call("app.retry")["retried"] is True
     time.sleep(0.2)
     after = call("app.failure")["failure"]
@@ -176,4 +193,4 @@ assert added <= 2, (f"panic-drive [{strategy}]: the retry's first frame fired {a
                     f"(bound 2): it was handed the time the panic screen was up")
 call("input.click", {"selector": "#timer"})
 print(f"  ok  retry: the timer resumed from dt 0 ({added} extra, bound 2)")
-print(f"panic-drive [{strategy}]: all seven sites caught, shown and recovered")
+print(f"panic-drive [{strategy}]: all eight sites caught, shown and recovered")

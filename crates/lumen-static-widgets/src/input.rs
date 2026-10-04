@@ -155,8 +155,10 @@ pub struct TextInput<S: TextBuffer = lumen_static::text::DefaultTextStorage> {
     /// For a control that displays a value it owns elsewhere: a pick list's
     /// trigger was an editable field, so typing into one appended to the
     /// shown option ("Applexy") while the selection did not move
-    /// (`docs/widget-audit.md`, PickList). Read-only, it declines text and
-    /// deletion, which then reach its owner, and draws no caret.
+    /// (`docs/widget-audit.md`, PickList). Read-only, it declines text,
+    /// deletion, a paste and an input method's composition (the last two
+    /// since M80/T80.5), draws no caret and reports none
+    /// (`Node::caret_rect`).
     pub read_only: bool,
     /// Shown, dimmed, while the field is empty — M57/B15. The text colour
     /// at [`PLACEHOLDER_ALPHA`], so it follows the palette and stays above
@@ -297,6 +299,13 @@ impl<S: TextBuffer> TextInput<S> {
     /// not from what was offered, so a refused preedit leaves no range
     /// pointing past the end.
     pub fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {
+        // **Read-only edits nothing, composed text included** (M57/B20's
+        // rule, which this did not follow): a pick list's trigger took an
+        // input method's preedit into its shown option, and answered no
+        // caret for it. Found by `tests/caret_rect.rs` (M80/T80.5).
+        if self.read_only {
+            return false;
+        }
         // Whatever was provisional goes first, in every arm: a preedit
         // replaces it, a commit supersedes it, a cancel drops it.
         let had = self.preedit.take();
@@ -333,6 +342,10 @@ impl<S: TextBuffer> TextInput<S> {
     /// caret exactly as typing would. Returns the characters kept: 0 when
     /// the storage refused, since a bounded storage takes all or nothing.
     pub fn paste(&mut self, text: &str) -> usize {
+        // Read-only keeps nothing, for `compose`'s reason (M80/T80.5).
+        if self.read_only {
+            return 0;
+        }
         let kept = crate::edit::printable(text, false);
         let n = kept.chars().count();
         if n > 0 && self.insert(&kept) {
@@ -480,6 +493,29 @@ impl<S: TextBuffer> TextInput<S> {
         self.shaped_key = None;
     }
 
+    /// The text line's box inside the field, in logical px: across, the
+    /// padded box; down, one line.
+    ///
+    /// **The line, centred; the padding is horizontal room, not a
+    /// vertical clip.** The text used to start at the top padding and be
+    /// clipped to the padded box, so a field squeezed shorter than
+    /// padding + line cut its own text: a `SearchField`'s pill gives its
+    /// field 22 px, the field kept 6 + 6 of it, and a 20 px line showed a
+    /// 10 px slice of its tops with the field's own fill below. The line
+    /// sits in the middle of the padded box when it fits there, and of
+    /// the whole box when it does not. `paint` draws the run and the
+    /// caret in it, and `caret_rect` reports the caret from it
+    /// (M80/T80.5).
+    #[inline]
+    fn line_box(&self, s: &NodeState) -> [f32; 4] {
+        let r = rect_of(s);
+        let (pl, pt, pr, pb) = s.pad;
+        let line = if self.shaped_size.1 > 0.0 { self.shaped_size.1 } else { (r[3] - r[1] - pt - pb).max(0.0) };
+        let (bh, ih) = (r[3] - r[1], r[3] - r[1] - pt - pb);
+        let top = if ih >= line { r[1] + pt + (ih - line) / 2.0 } else { r[1] + (bh - line) / 2.0 };
+        [r[0] + pl, top, r[2] - pr, top + line]
+    }
+
     /// X of the caret within the run, from the shaped clusters.
     ///
     /// Falls back to the run's end when the measurer reported no
@@ -529,6 +565,11 @@ impl<S: TextBuffer> TextInput<S> {
 /// run is shaped unbounded (B7), so no width it is offered changes it.
 const SINGLE_LINE: Constraints =
     Constraints { min_w: 0.0, max_w: f32::INFINITY, min_h: 0.0, max_h: f32::INFINITY };
+
+/// The caret's width in logical px: `paint` draws it and lets its clip
+/// run this far into the right padding, `caret_rect` reports it, and
+/// `place` reserves what the padding cannot hold (M80/T80.5).
+pub(crate) const CARET_W: f32 = 1.0;
 
 /// The selection highlight when a field sets none: the foreground colour
 /// at low alpha.
@@ -701,18 +742,35 @@ impl<S: TextBuffer> Node for TextInput<S> {
     /// view jumped on every click of a full field (reported from the live
     /// window) — the `Repeat` defect of M27/T27.10 in a text field, with
     /// the same answer: layout derives, `place` decides.
+    ///
+    /// **The caret's own width is shown** — M80/T80.5. The view kept the
+    /// caret's *left edge* in the padded box and the clip ended there, so
+    /// a caret at the end of a full field was drawn one pixel wide wholly
+    /// outside the clip: a full field showed no caret at all. Found by
+    /// `shell/tests/ime_area.rs`, whose reference is the painted caret
+    /// column. `paint` now lets the clip run `CARET_W` into the right
+    /// padding, and only what that padding cannot hold (`spill`, zero for
+    /// any padding of a pixel or more) is reserved here, so a field sized
+    /// to its text does not scroll when its caret reaches the end.
     fn place(&mut self, at: Point, _style: &[Style], st: &mut [NodeState], i: usize) {
         st[i].pos = at;
         let (pl, _, pr, _) = st[i].pad;
         let inner_w = (st[i].size.w - pl - pr).max(0.0);
+        let spill = (CARET_W - pr).max(0.0);
+        let room = (inner_w - spill).max(0.0);
         let cx_pos = self.caret_x();
-        if cx_pos - self.scroll > inner_w {
-            self.scroll = cx_pos - inner_w;
+        if cx_pos - self.scroll > room {
+            self.scroll = cx_pos - room;
         }
         if cx_pos < self.scroll {
             self.scroll = cx_pos;
         }
-        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (self.shaped_size.0 - inner_w).max(0.0));
+        // The run's end is the further of its measured width and the
+        // caret's x: a shaper's last cluster boundary is the unrounded pen
+        // (580.14 against a 580 width for the gate's long run), and a
+        // clamp at the width alone cut that fraction of the caret off.
+        let end = self.shaped_size.0.max(cx_pos);
+        self.scroll = lumen_static::num::clamp(self.scroll, 0.0, (end + spill - inner_w).max(0.0));
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
@@ -721,24 +779,14 @@ impl<S: TextBuffer> Node for TextInput<S> {
         out.rounded_rect(r, s.bg, s.radius);
         lumen_static::ops::border(st, i, out);
 
-        let (pl, pt, pr, pb) = s.pad;
-        // **The line, centred; the padding is horizontal room, not a
-        // vertical clip.** The text used to start at the top padding and
-        // be clipped to the padded box, so a field squeezed shorter than
-        // padding + line cut its own text: a `SearchField`'s pill gives
-        // its field 22 px, the field kept 6 + 6 of it, and a 20 px line
-        // showed a 10 px slice of its tops with the field's own fill
-        // below. The line sits in the middle of the padded box when it
-        // fits there, and of the whole box when it does not.
-        let line = if self.shaped_size.1 > 0.0 { self.shaped_size.1 } else { (r[3] - r[1] - pt - pb).max(0.0) };
-        let (bh, ih) = (r[3] - r[1], r[3] - r[1] - pt - pb);
-        let top = if ih >= line { r[1] + pt + (ih - line) / 2.0 } else { r[1] + (bh - line) / 2.0 };
-        let inner = [r[0] + pl, top, r[2] - pr, top + line];
+        let inner = self.line_box(s);
         // The text may be wider than the field; the clip is what keeps
         // it inside, exactly as a scroller's content is kept inside
         // (A1's scoped containment, one widget down). Across, the
-        // padding; down, the box — a glyph is never cut by padding.
-        out.push_clip([inner[0], r[1], inner[2], r[3]]);
+        // padding, plus the caret's width into the right padding so a
+        // caret at the end of a full field shows (M80/T80.5, `place`);
+        // down, the box — a glyph is never cut by padding.
+        out.push_clip([inner[0], r[1], (inner[2] + CARET_W).min(r[2]), r[3]]);
         let x = inner[0] - self.scroll;
         // B4 decided the selection is an ordinary rect, and it is
         // painted *before* the run so the text sits on top of it —
@@ -786,7 +834,7 @@ impl<S: TextBuffer> Node for TextInput<S> {
         }
         if s.focused && !self.read_only {
             let cx_pos = inner[0] - self.scroll + self.caret_x();
-            out.rect([cx_pos, inner[1], cx_pos + 1.0, inner[3]], self.caret_color.unwrap_or(s.fg));
+            out.rect([cx_pos, inner[1], cx_pos + CARET_W, inner[3]], self.caret_color.unwrap_or(s.fg));
         }
         out.pop_clip();
     }
@@ -921,6 +969,19 @@ impl<S: TextBuffer> Node for TextInput<S> {
 
     fn paste(&mut self, text: &str) -> Option<usize> {
         Some(TextInput::paste(self, text))
+    }
+
+    /// The caret `paint` draws, **less the scroll**: a full field shows
+    /// the end of its run, and the candidate window goes where the caret
+    /// is on screen (M80/T80.5). `None` when read-only, which paints no
+    /// caret.
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<lumen_static::display::Rect> {
+        if self.read_only {
+            return None;
+        }
+        let inner = self.line_box(st.get(i)?);
+        let x = inner[0] - self.scroll + self.caret_x();
+        Some([x, inner[1], x + CARET_W, inner[3]])
     }
 
     fn node(&self, _i: usize) -> &dyn Node {

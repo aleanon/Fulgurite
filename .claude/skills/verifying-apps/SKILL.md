@@ -107,7 +107,10 @@ presented, and redraws that presented nothing because nothing changed —
 M53/T53.4; answered without drawing a frame), and `app.copy` (the
 focused node's selection onto the system clipboard and read back,
 `{copied, clipboard, set, error}` — what a real Ctrl+C does, which a
-drive's `input.key` cannot reach; M80/T80.4). `input.compose` takes `{text, commit}` or
+drive's `input.key` cannot reach; M80/T80.4), and `app.imeArea`
+(`{area}`: the IME cursor area the window last passed to
+`set_ime_cursor_area`, physical `[x0, y0, x1, y1]`, or `null` with no
+caret focused and while a panic is shown; M80/T80.5). `input.compose` takes `{text, commit}` or
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and

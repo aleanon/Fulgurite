@@ -44,7 +44,11 @@ that presented nothing because nothing changed (M53/T53.4), and asking
 does not draw a frame; `app.copy` copies the focused node's selection to
 the system clipboard and reads it back, replying `{copied, clipboard}`
 (M80/T80.4) — a drive's `input.key` Ctrl+C reaches the session, not the
-window's clipboard shortcut, so this is how a drive copies. The list above, the skill's and the code are held to
+window's clipboard shortcut, so this is how a drive copies;
+`app.imeArea` answers the IME cursor area the window last passed to the
+platform after a frame, in physical pixels, or `null` (M80/T80.5) — the
+focused field's caret, which is where an input method opens its
+candidate window. The list above, the skill's and the code are held to
 one another by `scripts/check_agent_methods.sh`.
 
 **A synthesised input reports what arrived.** Everything above goes
