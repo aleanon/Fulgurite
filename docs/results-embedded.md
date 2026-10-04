@@ -880,6 +880,16 @@ generic over its closures, so `TextInput`'s selection and its composing
 underline each had a copy. Taking the callback as `&mut dyn FnMut` and
 the line ends as a slice leaves one copy for all three widgets.
 
+### The end wins a click's tie — M81/T81.6
+
+`just firmware-delta 46072b7` (K4's default): **+0 / −708 / +0 / +0 B**
+`.text`, `.rodata` +0. Only `firmware_interactive` dispatches a press, so
+only it links `TextInput::offset_at`, which inlines into
+`TextInput::on_event`: a symbol diff of the two builds puts all −708 B in
+`on_event`, and no other symbol moves. A shrink for an added comparison
+is an inlining decision, not a saving the change earns; recorded as
+measured. The paint-only headline above is unchanged.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the

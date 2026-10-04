@@ -165,15 +165,14 @@ def main() -> int:
           f"{', full-repaint check on' if os.environ.get('LUMEN_DRIVE_FULLCHECK') == '1' else ''}")
 
     # M57/D5: first, on the fresh window, the agent must not change what
-    # is drawn. Full runs only: a filtered run's window has already been
-    # driven by whatever ran before in the same process.
-    if not only:
-        from parity import run_parity  # noqa: E402
-        from harness import _pick  # noqa: E402
-        lines, pfail = run_parity(c, _pick, strategy)
-        for line in lines:
-            print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
-        failures += pfail
+    # is drawn. A filtered run compares the entries it names (M81/T81.6):
+    # each leg launches its own window, so nothing has driven it yet.
+    from parity import run_parity  # noqa: E402
+    from harness import _pick  # noqa: E402
+    lines, pfail = run_parity(c, _pick, strategy, wanted or None)
+    for line in lines:
+        print(line, file=sys.stderr if line.startswith("  FAIL") else sys.stdout)
+    failures += pfail
     for widget, sel, acts, *root in entries:
         actions += len(acts)
         try:

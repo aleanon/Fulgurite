@@ -49,6 +49,8 @@ ROLES = {
     "Toast": "Status",
     "Tooltip": "Group",
     "TextInput": "TextInput",
+    # M81/T81.6: the same field, seeded right to left.
+    "TextInput RTL": "TextInput",
     "TextArea": "MultilineTextInput",
     # A label takes no input; its demo's switch restyles it (M80/T80.2).
     "Label": "Label",

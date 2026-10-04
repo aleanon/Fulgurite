@@ -790,7 +790,11 @@ fn profile_popup() {
 /// ends up looking at the wrong 240 px and concluding a widget is
 /// broken — or worse, that it is fine.
 fn demo_shot(path: &str, entry: usize) {
-    let (pixels, [x0, y0, x1, y1]) = demo_frame(&program(entry, false), |_| {});
+    let p = program(entry, false);
+    // The stack's own mode, printed for M57's D5 parity, which checks it
+    // equals the live leg's (M81/T81.6): `none` without a system face.
+    let mode = stack_of(&p).map_or("none".to_owned(), |f| format!("{:?}", f.shaping()));
+    let (pixels, [x0, y0, x1, y1]) = demo_frame(&p, |_| {});
     let (cw, chh) = (x1.saturating_sub(x0).max(1), y1.saturating_sub(y0).max(1));
     let mut out = format!("P6\n{cw} {chh}\n255\n").into_bytes();
     for y in y0..y1 {
@@ -800,7 +804,7 @@ fn demo_shot(path: &str, entry: usize) {
         }
     }
     std::fs::write(path, out).expect("write");
-    println!("{path}: {} — {cw}x{chh} at ({x0},{y0})", CATALOG[entry].name);
+    println!("{path}: {} — {cw}x{chh} at ({x0},{y0}), shaping {mode}", CATALOG[entry].name);
 }
 
 /// [`demo_shot`]'s frame: the whole canvas, and the crop `[x0, y0, x1,
@@ -1156,6 +1160,29 @@ fn btn() -> lumen_static::style::Patch {
         .padding(Edges { left: 18.0, right: 18.0, top: 10.0, bottom: 10.0 })
 }
 
+/// The one-line fields' look: `#d_textinput_a` and, since M81/T81.6,
+/// `#d_textinput_rtl`.
+fn field() -> lumen_static::style::Patch {
+    use lumen_static::style::{Edges, Patch, Role};
+    Patch::new()
+        .width(Length::Fixed(260.0))
+        .height(Length::Fixed(38.0))
+        // Lumen's field is a pale fill with a hairline border.
+        // **Both halves, since M27/T27.1.** Until then `Style`
+        // had no border and `Cmd` no stroked rect, so the ground
+        // was the only thing separating a field from the page —
+        // recorded as a gap in `docs/plan-widgets-gallery.md`
+        // §3c, where our field was put beside Lumen's and read
+        // as text on the page.
+        .background_role(Role::Raised)
+        .color_role(Role::Text)
+        .border_width(1)
+        .border_color_role(Role::Muted)
+        .radius(8.0)
+        .font_size(15.0)
+        .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 })
+}
+
 fn stylesheet() -> Vec<StyleRule> {
     stylesheet_with(chrome())
 }
@@ -1347,26 +1374,9 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
             btn().background_role(Role::Accent).color_role(Role::OnAccent),
         ),
         // The field: a ground, a rounded edge, room for a caret.
-        StyleRule::new(
-            Selector::Id("d_textinput_a"),
-            Patch::new()
-                .width(Length::Fixed(260.0))
-                .height(Length::Fixed(38.0))
-                // Lumen's field is a pale fill with a hairline border.
-                // **Both halves, since M27/T27.1.** Until then `Style`
-                // had no border and `Cmd` no stroked rect, so the ground
-                // was the only thing separating a field from the page —
-                // recorded as a gap in `docs/plan-widgets-gallery.md`
-                // §3c, where our field was put beside Lumen's and read
-                // as text on the page.
-                .background_role(Role::Raised)
-                .color_role(Role::Text)
-                .border_width(1)
-                .border_color_role(Role::Muted)
-                .radius(8.0)
-                .font_size(15.0)
-                .padding(Edges { left: 12.0, right: 12.0, top: 9.0, bottom: 9.0 }),
-        ),
+        StyleRule::new(Selector::Id("d_textinput_a"), field()),
+        // The right-to-left field (M81/T81.6), the same ground.
+        StyleRule::new(Selector::Id("d_textinput_rtl"), field()),
         // The multi-line field, the same ground as the text fields below,
         // three lines tall (M45/T45.7). `Raised`, as theirs is since
         // M57/A8: `Control` put its text at 3.84:1 in the dark palette.
@@ -3431,18 +3441,17 @@ mod snap_cost {
 
 
 /// **`--demo` renders with the program's `Shaping`** — M81/T81.4
-/// (`docs/plan-shaped-paint.md`, second review C1). The showcase has no
-/// right-to-left entry until T81.6, so the `TextInput` demo is given a
-/// Hebrew value through [`demo_frame`]'s hook — the same function
-/// `demo_shot` draws with — and the `Complex` program's frame must differ
-/// from the `Basic` one's. The accept direction: the entry as shipped is
-/// Latin, which needs no shaping, and the two modes draw it byte for byte.
+/// (`docs/plan-shaped-paint.md`, second review C1). Since T81.6 the
+/// catalogue has a right-to-left entry, `TextInput RTL`, seeded with
+/// [`catalog::TEXTINPUT_RTL`]: the `Complex` program's frame of it must
+/// differ from the `Basic` one's. (Until then the `TextInput` demo was
+/// given a Hebrew value through [`demo_frame`]'s hook.) The accept
+/// direction: the Latin `TextInput` entry needs no shaping, and the two
+/// modes draw it byte for byte.
 #[cfg(all(test, feature = "shaping"))]
 mod shaping_shot {
     use super::*;
     use lumen_static_shell::text::{FontStack, Shaping};
-
-    const HEBREW: &str = "שלום עולם";
 
     fn differing(a: &(Vec<u8>, [usize; 4]), b: &(Vec<u8>, [usize; 4])) -> usize {
         assert_eq!(a.1, b.1, "the two crops differ, so the frames were not of one layout");
@@ -3464,31 +3473,23 @@ mod shaping_shot {
             println!("no system face -- skipped");
             return;
         }
-        let entry = CATALOG.iter().position(|e| e.name == "TextInput").expect("a TextInput entry");
-        let hebrew = |h: &mut lumen_static_shell::Host<Show>| {
-            if let Demo::TextInput(d) = &mut h.app.ui.main.stage.row.demo {
-                d.a.set_str(HEBREW);
-            }
-            h.invalidate_all();
-        };
-        // As `demo_frame` does it: seeded by the first pump, then the hook,
-        // then the frame's pump.
+        let rtl = CATALOG.iter().position(|e| e.name == "TextInput RTL").expect("a TextInput RTL entry");
+        let latin = CATALOG.iter().position(|e| e.name == "TextInput").expect("a TextInput entry");
         let seeded = {
-            let mut h: lumen_static_shell::Host<Show> = program(entry, false).host();
+            let mut h: lumen_static_shell::Host<Show> = program(rtl, false).host();
             h.pump();
-            hebrew(&mut h);
             h.pump();
-            matches!(&h.app.ui.main.stage.row.demo, Demo::TextInput(d) if d.a.as_str() == HEBREW)
+            matches!(&h.app.ui.main.stage.row.demo, Demo::TextInputRtl(d) if d.a.as_str() == catalog::TEXTINPUT_RTL)
         };
-        assert!(seeded, "setup: the TextInput demo does not hold {HEBREW:?}");
-        let complex = program(entry, false).shaping(Shaping::Complex);
-        let basic = program(entry, false).shaping(Shaping::Basic);
-        println!("program shaping: {:?} and {:?}; built-in default {SHAPING:?}", complex.shaping, basic.shaping);
-        let he = differing(&demo_frame(&complex, hebrew), &demo_frame(&basic, hebrew));
-        let latin = differing(&demo_frame(&complex, |_| {}), &demo_frame(&basic, |_| {}));
-        println!("--demo {entry} (TextInput): Hebrew value, Complex vs Basic {he} px differ (bound > 0); \
-                  shipped Latin value {latin} px differ (bound 0)");
+        assert!(seeded, "setup: the TextInput RTL demo does not hold {:?}", catalog::TEXTINPUT_RTL);
+        let frame = |k: usize, mode: Shaping| demo_frame(&program(k, false).shaping(mode), |_| {});
+        println!("program shaping: {:?} and {:?}; built-in default {SHAPING:?}",
+                 program(rtl, false).shaping(Shaping::Complex).shaping, program(rtl, false).shaping(Shaping::Basic).shaping);
+        let he = differing(&frame(rtl, Shaping::Complex), &frame(rtl, Shaping::Basic));
+        let la = differing(&frame(latin, Shaping::Complex), &frame(latin, Shaping::Basic));
+        println!("--demo {rtl} (TextInput RTL): Complex vs Basic {he} px differ (bound > 0); \
+                  --demo {latin} (TextInput, Latin): {la} px differ (bound 0)");
         assert!(he > 0, "the Complex program's --demo frame equals the Basic one: demo_frame ignores the program's Shaping");
-        assert_eq!(latin, 0, "a Latin frame moved under Complex, which must lay out plain Latin as Basic does");
+        assert_eq!(la, 0, "a Latin frame moved under Complex, which must lay out plain Latin as Basic does");
     }
 }

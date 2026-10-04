@@ -9,13 +9,14 @@
   "The M56 merge made NumberInput's letter refusal static: its landing had been read off the click inside `do`, never off the letters.",
   "M80/T80.2 added Label: its demo's switch sets a 1.5x line height through the program's style_by, and a second press restores it.",
   "M80/T80.3 added Label's ellipsis switch: one press cuts the paragraph to one line (the whole text still published), a second wraps it again.",
-  "M80/T80.4 added Selectable: a drag across the first line, then app.copy (copied and clipboard equal); a double click copies one word. A press outside clears it (both isolates)."
+  "M80/T80.4 added Selectable: a drag across the first line, then app.copy (copied and clipboard equal); a double click copies one word. A press outside clears it (both isolates).",
+  "M81/T81.6 added TextInput RTL (`שלום world 123`, driven by the +shaping legs): a click at the visual left end, then a character, appends at the logical end; a press above it types nowhere (the isolate)."
  ],
  "counts": {
-  "entries": 45,
-  "actions": 145,
-  "landed_checked": 118,
-  "isolated": 61
+  "entries": 46,
+  "actions": 146,
+  "landed_checked": 119,
+  "isolated": 62
  },
  "entries": {
   "Selectable": [
@@ -190,6 +191,9 @@
    "a double click selects the word under it",
    "a triple click selects the whole value",
    "fill replaces the whole value"
+  ],
+  "TextInput RTL": [
+   "a click at the visual left end then a character appends at the logical end"
   ],
   "TextArea": [
    "a click focuses the area",

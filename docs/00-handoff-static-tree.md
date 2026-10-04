@@ -1062,10 +1062,18 @@ The years go to:
   direction change is two insertion points with one byte (the ending
   run's trailing edge, then the next leading edge), an offset is placed
   by the last cluster with its byte, a click takes the nearest leading
-  edge, and a selection is tinted one rect per visually contiguous span
+  edge (the text's end winning a tie, M81/T81.6), and a selection is
+  tinted one rect per visually contiguous span
   (`TextInput`, `TextArea`, `Selectable`; `docs/results-text.md`
   M81/T81.5). Visual caret movement stays **deferred** (Left/Right are
   logical), as does bidi word order in `RichText`.
+  *M81/T81.6:* M81a is assembled live: the showcase's `shaping` build
+  and its `TextInput RTL` entry are driven under both strategies
+  (`scripts/widget_drive.sh`'s `+shaping` legs, `docs/results-text.md`
+  M81/T81.6). **Deferred:** a right-to-left paragraph is laid out from
+  its box's left (x 0), not aligned to its right; and `AppBar`'s title
+  cut keeps its `…` at the right whatever the direction, owed to the
+  next task that touches `AppBar`.
   *M81/T81.1:* the crate edge is **DECIDED** and turned round
   (`docs/plan-shaped-paint.md`, D1 a and c): the text crate depends on
   the core alone, the shell reaches it behind its default-off `shaping`

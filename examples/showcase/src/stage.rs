@@ -647,6 +647,16 @@ pub struct DTextInput {
     pub a: TextInput<String>,
 }
 
+/// M81/T81.6: a one-line field seeded right to left (`TEXTINPUT_RTL`), so
+/// a `shaping` build's live drive and `--demo` have a run the shaper lays
+/// out — no other catalogue string needs it.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 12.0)]
+pub struct DTextInputRtl {
+    #[widget_id("d_textinput_rtl")]
+    pub a: TextInput<String>,
+}
+
 /// M45/T45.7: the multi-line field, on the stage so the drive harness
 /// can paste into it (`scripts/drive/widgets/text_and_slider.py`).
 #[derive(StaticTree, Default)]
@@ -764,6 +774,7 @@ demos! {
     Radio(DRadio),
     Slider(DSlider),
     TextInput(DTextInput),
+    TextInputRtl(DTextInputRtl),
     TextArea(DTextArea),
     Progress(DProgressBar),
     Spinner(DSpinner),
@@ -816,6 +827,6 @@ impl Default for Demo {
 
 /// How many demos the stage has. Asserted against the catalogue.
 // The branch's 52 (M56/M57), main's TextArea and ScrollView (M44,
-// M45), and M80/T80.4's Selectable; main's second `Select` is not among them — the sidebar replaced
+// M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
-pub const DEMOS: usize = 55;
+pub const DEMOS: usize = 56;

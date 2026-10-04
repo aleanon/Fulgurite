@@ -791,3 +791,60 @@ input asserted handled:
 | `crates/lumen-static-text/tests/shaper.rs` mixed line | pairs (byte, trailing edge, leading edge) in `abc שלום def` | (4, **33.84**, 69.25), (12, **33.84**, 33.84) | bytes 4 and 12; both trailing edges equal, between the space's leading edge (28.76) and the word's (69.25) | no closing point pushed: **[]** |
 | firmware | `.text` Δ against `3f5c7e3`, four binaries | **+860 / +844 / +860 / +860 B** | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.5 |
 
+
+## M81/T81.6 — the live drive, both strategies, and the close of M81a (2026-10-04)
+
+The showcase's `shaping` feature (T81.4) lays the whole catalogue out in
+`Shaping::Complex`, and a second `TextInput` entry, `TextInput RTL`
+(`#d_textinput_rtl`), is seeded `שלום world 123`: a right-to-left
+paragraph whose last run is left to right, so its logical end is at the
+visual left. `scripts/widget_drive.sh` gains two legs, `Everything+shaping`
+and `Boundaries+shaping`, each declaring `shaping` to `launch.py`. Run as
+`scripts/widget_drive.sh "TextInput,TextInput RTL"` (single-widget drives:
+the full catalogue opens a window per leg on the reader's desktop), all
+six legs green.
+
+Building it found that the action could not pass: the end and `w`'s
+leading edge are both at x 0, and the first in source order won (byte 9).
+**The text's end now wins a tie** in `TextInput::offset_at` and
+`TextArea::offset_at` (`docs/plan-shaped-paint.md`, "What building found").
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| `TEXTINPUT_RTL`, live, `Everything+shaping` and `Boundaries+shaping` | where a press 4 px inside the field's left edge, then `!`, puts the character; press handled; the box's pixels | byte **18** of 18 (`שלום world 123!`), handled true, 9,880 px changed, damage 1.00× | 18; true; changed | the tie rule dropped (live, `Boundaries+shaping`): byte **9**, `שלום !world 123`. The plan's injection, trailing edges, left it green (byte 18): the plan's "What building found" says why |
+| — the four `Basic` legs (accept direction) | the same | byte **0** (`!שלום world 123`): `Basic` lays the string out in logical order left to right | 0 | — |
+| — isolate, all six legs | a press 6 px above the field, then `!` | value unchanged, press handled false | unchanged | — |
+| `bidi_caret.rs` (`just fonts`), headless | the offset a press at −3, 0, +1 px from the run's left lands on, `TextInput` and `TextArea`, `Everything` and `Boundaries<256>` | **18** in all 12 cases | 18 | the tie rule dropped in `TextInput::offset_at`: **9** in its 6 cases; in `TextArea::offset_at`: **9** in its 6 |
+| M57's D5 parity, filtered to the two entries, both `+shaping` legs | bytes differing between the live demo (agent attached) and `--demo`; `--demo`'s stack mode against the leg's | **0** of 20,440 px each, `TextInput` and `TextInput RTL`; `--demo` **Complex**, leg **Complex** (and Basic/Basic in the four other legs) | 0; equal | `stack_of` builds `FontStack::system()` without the mode: `--demo` prints **Basic** against a `Complex` leg, parity fails by name |
+| `showcase` `shaping_shot` (T81.4's gate, now on the shipped entry) | pixels differing, `Complex` against `Basic` `--demo` frames | `TextInput RTL` **868**; `TextInput` (Latin) **0** | > 0; 0 | — (T81.4's) |
+| keyboard and a11y passes, all six legs | Tab reaches `#d_textinput_rtl`; typing edits it; silent leaves | 1 Tab; `…123` → `…123x`; 0 | — | — |
+| firmware | `.text` Δ against `46072b7`, four binaries | **+0 / −708 / +0 / +0 B**, `.rodata` +0; the −708 is all in `TextInput::on_event` (where `offset_at` inlines), from a symbol diff | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.6 |
+
+### M81a's kill rules, at its close
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K81a — `Complex` on Latin | 1.5× `Basic` | 2.17× / 3.63× as first built; **0.97× / 0.99×** with the response (T81.3, above) | **fired**; response built, `Complex` opt-in |
+| K81c — kept face bytes | file + 64 KiB = 825,256 B | **803,992 B** (T81.3) | holds |
+| K81e — the feature's price | 3 MB stripped showcase | **+748,960 B** (T81.3) | holds |
+| K2 — crates | — | shell 8 / 16 / **28**, winit 96 / **104** (T81.3) | recorded |
+| K4 — firmware per task | 1,000 B on `firmware_interactive` | worst **+844 B** (T81.5); T81.6 −708 | holds |
+| K3 — the frame arms, `shaping` on and `Basic` selected, against `d4859b4` | each median inside the base's eight-run spread | see below | **holds**, all seven rows |
+
+**K3**, measured at T81.6: `d4859b4` (before M81) without the feature
+against this tree with `shaping` compiled in and `Basic` selected, eight
+invocations a side interleaved base/head, `R=1` for the frame arm, all
+under one `just bench-lock` (quiet: load1 1.46 before, 1.20 after, bound
+8):
+
+| arm / row | base spread (median) | head median (spread) | verdict |
+|---|---|---|---|
+| frame `idle (floor)` | 51.8–60.3 µs (54.5) | **54.3** (54.1–61.1) | inside |
+| frame `ALL rows: +paint` | 1,277.6–1,289.6 µs (1,281.3) | **1,281.3** (1,276.5–1,304.8) | inside |
+| frame `layout` | 18.6–21.3 µs (18.7) | **19.6** (19.0–20.9) | inside |
+| frame `+paint` | 35.7–43.6 µs (35.95) | **37.9** (36.8–42.1) | inside |
+| frame `+render (damage)` | 70.7–84.2 µs (71.15) | **72.6** (70.6–80.5) | inside |
+| `--bin textarea -- 100`, `keystroke + layout, 100 KB` | 5.135–5.388 ms (5.21) | **5.33** (5.269–5.594) | inside |
+| `--bin cascade`, `cascade_deep (whole table)` | 15,311–16,277 ns (15,950) | **15,678** (14,868–15,713) | inside |
+
+K81b and K81d are M81b's (T81.7–T81.8).

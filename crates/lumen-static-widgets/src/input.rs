@@ -553,6 +553,13 @@ impl<S: TextBuffer> TextInput<S> {
     /// Byte offset nearest an x within the run — a click's landing spot:
     /// **the nearest leading edge** (M81/T81.5), a direction change's
     /// trailing edge and the text's end included, each a cluster.
+    ///
+    /// **The text's end wins a tie** (M81/T81.6). In a right-to-left
+    /// paragraph whose last run is left to right (`שלום world 123`) the
+    /// end sits at x 0, where the first Latin letter's leading edge is
+    /// too: one place, two offsets. A click there — or in the padding
+    /// beyond it — is a click past the line's end, as it is past a
+    /// left-to-right line's right end, so it lands at the end.
     fn offset_at(&self, x: f32) -> usize {
         let cl = self.clusters.as_slice();
         let len = self.text.as_ref().len();
@@ -569,7 +576,7 @@ impl<S: TextBuffer> TextInput<S> {
         };
         for c in cl {
             let d = (c.x - x).abs();
-            if d < best.0 {
+            if d < best.0 || (d == best.0 && c.byte as usize == len) {
                 best = (d, c.byte as usize);
             }
         }

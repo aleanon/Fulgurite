@@ -134,7 +134,6 @@ MainContext                    # proposed by ?
 TRANSITION                     # proposed by ?
 TextSource                     # proposed by M80
 GlyphRuns                      # proposed by M81
-TEXTINPUT_RTL                  # proposed by M81
 TRACKED                        # proposed by M81
 BACKGROUND_FILL                # proposed by M82
 GradKind                       # proposed by M82

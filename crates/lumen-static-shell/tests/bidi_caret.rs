@@ -21,6 +21,10 @@
 //! - **click**: a press at the visual left end of the first line of a
 //!   right-to-left `TextArea` puts the caret at that line's logical end
 //!   (before its `\n`); a press at its right end, at its start.
+//! - **the end wins a tie** (M81/T81.6): `שלום world 123`, the showcase's
+//!   `#d_textinput_rtl`, ends at x 0, where `w`'s leading edge also is; a
+//!   press there, or in the padding beyond it, lands at the text's end in a
+//!   `TextInput` and a `TextArea`.
 //! - **caret_rect**: at scale 2, `Host::caret_rect` is within 1 physical
 //!   px of the painted caret column, at a direction change, at a
 //!   right-to-left paragraph's end, and in a `TextArea`.
@@ -365,6 +369,49 @@ fn a_click_at_the_left_end_of_a_right_to_left_line_lands_at_its_logical_end() {
     let mut bad = click_both::<Everything>(&font);
     bad.extend(click_both::<Boundaries<256>>(&font));
     assert!(bad.is_empty(), "the click did not land at the line's logical end: {bad:?}");
+}
+
+// --- the end wins a tie (M81/T81.6) -----------------------------------------
+
+/// The showcase's `#d_textinput_rtl` value: a right-to-left paragraph whose
+/// last run is left to right, so its end (x 0) and `w`'s leading edge (x 0)
+/// are one place with two offsets.
+const SEEDED: &str = "\u{5e9}\u{5dc}\u{5d5}\u{5dd} world 123";
+
+/// Press `dx` px from the run's left edge of `wid` (seeded with
+/// [`SEEDED`]); answer the caret and whether the press was handled.
+fn press_left<I: Invalidation>(font: &FontStack, wid: &str, dx: f32) -> (usize, bool) {
+    let (mut h, mut m) = host::<I>(font, SEEDED, SEEDED, "x", 1.0);
+    let s = h.states[index(wid)];
+    h.click(s.pos.x + s.pad.0 + dx, s.pos.y + s.pad.1 + m.line_height(PX) * 0.5);
+    let took = h.pump_with(&mut m);
+    assert_eq!(h.input.focus, Some(index(wid) as u32), "setup: the press did not focus #{wid}");
+    let caret = if wid == "input" { h.app.ui.input.caret() } else { h.app.ui.area.caret() };
+    (caret, took)
+}
+
+#[test]
+fn a_click_left_of_a_right_to_left_paragraph_ending_left_to_right_lands_at_its_end() {
+    let font = stack();
+    let end = SEEDED.len();
+    let mut bad = Vec::new();
+    for (strategy, run) in [
+        ("Everything", press_left::<Everything> as fn(&FontStack, &str, f32) -> (usize, bool)),
+        ("Boundaries<256>", press_left::<Boundaries<256>>),
+    ] {
+        for wid in ["input", "area"] {
+            // In the padding, on the run's left edge, and 1 px inside it.
+            for dx in [-3.0, 0.0, 1.0] {
+                let (at, took) = run(&font, wid, dx);
+                println!("{strategy}: #{wid} press {dx:+} px from the run's left -> offset {at} (want {end}, the end; `w` is 9); handled {took}");
+                assert!(took, "setup: {strategy}: the press on #{wid} was not handled");
+                if at != end {
+                    bad.push(format!("{strategy} #{wid} {dx:+}: {at}"));
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "a press at the visual left end did not land at the logical end ({end}): {bad:?}");
 }
 
 // --- caret_rect -------------------------------------------------------------

@@ -181,6 +181,72 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
 ])
 
 
+# --- TextInput, right to left (M81/T81.6) ----------------------------
+# `שלום world 123`: a right-to-left paragraph whose last run (Latin and
+# digits) is left to right, so its logical end is the visual LEFT end --
+# where `w`'s leading edge also is. A click there is past the line's end
+# and must land at the end (`TextInput::offset_at`: the end wins a tie).
+# That is the `+shaping` legs of `scripts/widget_drive.sh`, whose process
+# lays text out `Complex`. Every other leg's is `Basic`, which lays the
+# same string out in logical order left to right (M81/T81.0's pin), so its
+# left end is the logical *start*, and the character goes there: the
+# expectation follows the mode the process reports (`parity.leg_shaping`,
+# from the launcher's `LUMEN_LIVE_FEATURES`), never a label set here.
+RTL = "#d_textinput_rtl"
+
+
+def _left_end_click(c, ch, sel=RTL, dy=0.0):
+    """Press 4 px inside the field's left edge (its padding, left of the
+    run), then type `ch`."""
+    c.__dict__["_v0"] = c.value(sel)
+    b = c.box(sel)
+    r = c.c.rpc("input.click", x=b[0] + 4.0, y=(b[1] + b[3]) / 2 + dy)
+    c.__dict__["_handled"] = r.get("handled")
+    c.c.type(ch)
+
+
+def _appended(c, ch):
+    from parity import leg_shaping
+    mode = leg_shaping()
+    v0, v = c._v0, c.value(RTL)
+    at = v.find(ch)
+    want, wb, where = ((v0 + ch, len(v0.encode()), "the logical end") if mode == "Complex"
+                       else (ch + v0, 0, "the start: Basic lays the run out left to right"))
+    return (v == want and c.__dict__.get("_handled") is True,
+            f"[{mode}] value {v0!r} -> {v!r}, expected {want!r} (the character at byte "
+            f"{len(v[:at].encode()) if at >= 0 else None}, want {wb} ({where})); "
+            f"press handled {c.__dict__.get('_handled')}")
+
+
+def _left_end_click_outside(c, ch="!"):
+    """The same press, 6 px above the field: it focuses nothing, so the
+    character goes nowhere."""
+    c.__dict__["_v0"] = c.value(RTL)
+    b = c.box(RTL)
+    r = c.c.rpc("input.click", x=b[0] + 4.0, y=b[1] - 6.0)
+    c.__dict__["_handled"] = r.get("handled")
+    c.c.type(ch)
+
+
+TEXTINPUT_RTL = ("TextInput RTL", RTL, [
+    Action(
+        visible=True,
+        name="a click at the visual left end then a character appends at the logical end",
+        needs="the field seeded `שלום world 123`, on the stage (laid out right to left in a "
+              "shaping build, in logical order left to right in any other)",
+        do=lambda c: _left_end_click(c, "!"),
+        expect=lambda c: _appended(c, "!"),
+        isolate=_left_end_click_outside,
+        # The plan's injection (offset_at measuring trailing edges) leaves
+        # this green: the direction change before the end pushes a second
+        # byte-18 point whose successor is at x 0 (docs/plan-shaped-paint.md,
+        # T81.6). What it rests on is the tie rule.
+        injection="drop the end's tie rule in TextInput::offset_at (`w`'s leading edge, "
+                  "byte 9, wins at x 0: '!' lands before 'world')",
+    ),
+])
+
+
 # --- TextArea -------------------------------------------------------
 # M45/T45.7: the inventory M42 listed as owed to M45 for its paste
 # (docs/plan-drive-identity.md §4). A paste is one edit that keeps its
@@ -620,4 +686,4 @@ SELECTABLE = ("Selectable", SEL, [
     ),
 ])
 
-ALL = [TEXTINPUT, TEXTAREA, SLIDER, LABEL, SELECTABLE]
+ALL = [TEXTINPUT, TEXTINPUT_RTL, TEXTAREA, SLIDER, LABEL, SELECTABLE]

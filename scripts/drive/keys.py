@@ -44,6 +44,8 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "Radio": ("#d_radio_a > #labelled-control", [KeyAction("Down moves the choice", ["Down"])]),
     "Slider": ("#d_slider_a", [KeyAction("Right steps the value", ["Right"])]),
     "TextInput": ("#d_textinput_a", [KeyAction("typing edits it", ["text:x"])]),
+    # M81/T81.6: the right-to-left field; typing edits it as it does the first.
+    "TextInput RTL": ("#d_textinput_rtl", [KeyAction("typing edits it", ["text:x"])]),
     # M80/T80.2: the Label demo's switch, which sets the paragraph's line height.
     "Label": ("#d_label_spacing > #labelled-control", [KeyAction("Space sets the line height", ["Space"])]),
     # M80/T80.4: Tab reaches the text itself. The demo opens with all of it

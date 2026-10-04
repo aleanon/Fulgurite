@@ -68,5 +68,13 @@ run_one Boundaries+oracle  agent,shadow-oracle  shadow-oracle
 # for the strategy it must report, as the oracle's is.
 WINIT_X11_SCALE_FACTOR=2 LUMEN_DRIVE_FULLCHECK=1 \
 run_one Boundaries+scale2  agent                ""
+# M81/T81.6: the catalogue laid out `Shaping::Complex` (the showcase's
+# `shaping` feature), under both strategies -- every entry's Latin through
+# the shaped path's measure and paint, and `TextInput RTL` right to left.
+# Each leg declares `shaping`, so a build without it is refused by
+# launch.py rather than driven as if shaped; M57's D5 parity checks that
+# `--demo` laid the same entries out in the same mode.
+run_one Everything+shaping agent,everything,shaping shaping
+run_one Boundaries+shaping agent,shaping            shaping
 
 exit "$status"

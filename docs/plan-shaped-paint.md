@@ -878,6 +878,51 @@ rather than as a display-list command: see the first decision.*
   it tied the first letter's leading edge and won. `Selectable`'s line
   ends go to the left of a right-to-left line's last letter.
 
+- T81.6: **the seeded string's logical end and its first Latin letter
+  are one place.** `שלום world 123` is a right-to-left paragraph whose
+  last run is left to right, so its end (the trailing insertion point,
+  x 0, T81.2) and `w`'s leading edge (x 0) coincide, and `offset_at`'s
+  nearest-leading-edge rule (T81.5) took whichever came first in source
+  order: `w`, byte 9. The gate's action could not pass on the shipped
+  code. **The text's end now wins a tie** in `TextInput::offset_at` and
+  `TextArea::offset_at` (a click there, or in the padding beyond it, is
+  a click past the line's end, as past a left-to-right line's right
+  end); `tests/bidi_caret.rs` gains the headless gate, both widgets, both
+  strategies, three press positions (injection: the tie rule removed in
+  either widget, offset 9 in all six of its cases). T81.5's
+  `TextArea::offset_at` rustdoc ("the last line has the text's end") was
+  false for such a line until this.
+- T81.6: **the entry's inventory needs a name of its own, so it has a
+  `roles.py` row.** The runner keys inventories by the catalogue entry
+  it picks from the sidebar (`TextInput RTL`), and refuses one with no
+  role row; §3.2's list for T81.6 named `keys.py` and `expected.json`
+  only. The row says `TextInput`.
+- T81.6: **the inventory runs in every leg, so its expectation follows
+  the process's mode.** The four `Basic` legs drive the same catalogue;
+  `Basic` lays the string out in logical order left to right (T81.0's
+  pin), so its left end is the logical *start* and the character goes
+  there. The expectation reads the mode from the launcher's
+  feature list (`scripts/drive/parity.py`'s `leg_shaping`), never a label the script
+  sets.
+- T81.6: **D5 parity ran on full runs only**, because a filtered run's
+  window "had already been driven"; since M42/T42.2 every leg launches
+  its own window, so it is as fresh as a full run's. A filtered run now
+  compares the entries it names, which is what lets the two `+shaping`
+  legs' parity be checked by a single-widget drive. Each entry's line
+  prints the differing bytes (from `ui.screenshot`, bound 0) and
+  `--demo`'s stack mode, which must equal the leg's.
+- T81.6: **the planned live injection could not fire.** With `offset_at`
+  measuring each cluster at its trailing edge, the action stayed green
+  (`!` at byte 18): the direction change before the end is a pushed
+  byte-18 point at x 79.68 whose successor, the paragraph's end, is at
+  x 0, so a trailing-edge measure still finds the end at the left, and
+  the tie rule hands it the press. The injection that breaks what the
+  action rests on is the tie rule removed: live, Boundaries+shaping, `!`
+  at byte 9, before `world`.
+- T81.6: T81.4's `--demo` gate (`shaping_shot`) takes the shipped
+  `TextInput RTL` entry instead of a Hebrew value pushed through
+  `demo_frame`'s hook.
+
 **What the review found (M81).**
 
 - C4 → adopted: `Session::shaping` is required, the compiler is the

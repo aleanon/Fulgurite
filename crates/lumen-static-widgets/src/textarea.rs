@@ -578,16 +578,20 @@ impl<S: TextBuffer> TextArea<S> {
     /// logical end: a line a `\n` ends has that separator there (no
     /// width, at the paragraph's level), the last line has the text's
     /// end. A soft-wrapped line has no insertion point at its far end,
-    /// and lands on its last letter.
+    /// and lands on its last letter. **The text's end wins a tie**
+    /// (M81/T81.6), as in `TextInput`: on a right-to-left last line that
+    /// ends in a left-to-right run, the end and that run's first leading
+    /// edge are both at x 0.
     fn offset_at(&self, x: f32, y: f32) -> usize {
         let line = if self.line_h > 0.0 { (y / self.line_h).max(0.0) as u16 } else { 0 };
         let cl = self.clusters.as_slice();
-        let mut best = (f32::INFINITY, self.text.as_ref().len());
+        let len = self.text.as_ref().len();
+        let mut best = (f32::INFINITY, len);
         for c in cl {
             // Prefer the right line; fall back to any if it is empty.
             let dl = (c.line as i32 - line as i32).abs() as f32 * 1e4;
             let d = dl + (c.x - x).abs();
-            if d < best.0 {
+            if d < best.0 || (d == best.0 && c.byte as usize == len) {
                 best = (d, c.byte as usize);
             }
         }

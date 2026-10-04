@@ -307,6 +307,9 @@ pub const LABEL_PROSE: &str = "The quick brown fox jumps over the lazy dog, \
 pub const SELECTABLE_PROSE: &str = "Drag across these words to select them, then copy. \
     A double click takes one word, a triple click the whole paragraph.";
 
+/// The right-to-left field's seed (M81/T81.6): `שלום world 123`.
+pub const TEXTINPUT_RTL: &str = "\u{5e9}\u{5dc}\u{5d5}\u{5dd} world 123";
+
 /// The `Label` demo's switch: 1.5× line height, applied by the program's
 /// `style_by` (M80/T80.2).
 fn flip_spacing(s: &mut Store, _: &EventCtx) {
@@ -435,6 +438,13 @@ pub static CATALOG: &[Entry] = &[
     entry!("Input", "TextInput", "One line, editable. Click it and type.",
         false,
         |s| on(s, Demo::TextInput(DTextInput { a: { let mut t = TextInput::<String>::default(); t.set_str("type here"); t } })),
+        none),
+    // M81/T81.6: the field right to left. Hebrew first, so the paragraph
+    // is right to left; then Latin and digits, which run left to right
+    // inside it -- so its logical end is at the visual left.
+    entry!("Input", "TextInput RTL", "Right to left: Hebrew, then Latin and digits. Click its left end and type.",
+        false,
+        |s| on(s, Demo::TextInputRtl(DTextInputRtl { a: { let mut t = TextInput::<String>::default(); t.set_str(TEXTINPUT_RTL); t } })),
         none),
     entry!("Input", "TextArea", "Several lines, editable. Enter breaks a line; a paste keeps its lines.",
         false,
