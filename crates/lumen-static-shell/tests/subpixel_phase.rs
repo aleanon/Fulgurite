@@ -1,6 +1,7 @@
-//! M81/T81.7 — the phase probe: can fontdue 0.9.4's **public** API give a
-//! glyph drawn a third of a pixel to the right? (`docs/plan-shaped-paint.md`,
-//! "Subpixel pens (M81b) are thirds", K81d.)
+//! M81/T81.7 and T81.8 — subpixel pens: can fontdue 0.9.4's **public** API
+//! give a glyph drawn a third of a pixel to the right, and does the shipped
+//! paint draw one? (`docs/plan-shaped-paint.md`, "Subpixel pens (M81b) are
+//! thirds", K81d.)
 //!
 //! fontdue has no public pen offset: metrics_raw's offset is private and
 //! always 0.0. Its public `rasterize_indexed_subpixel` draws the outline at
@@ -10,30 +11,41 @@
 //! fraction of the glyph's left bearing, `fract(bounds.xmin)`) **unscaled**,
 //! so the 3× outline sits `offset_x` sub-columns, not `3·offset_x`, from its
 //! column 0: `2/3·offset_x` px left of where the 1× bitmap has it. The
-//! derivation below shifts by `round(2·offset_x) + k` sub-columns, which
-//! corrects that to within half a sub-column, 1/6 px.
+//! derivation shifts by `round(2·offset_x) + k` sub-columns, which corrects
+//! that to within half a sub-column, 1/6 px.
 //!
-//! [`derive`] is test-local; T81.8 moves it into `FontStack::rasterize` and
-//! points this probe at the shipped function. K81d reads this test's output:
-//! its bound is the absolute, relative and coverage checks below, for every
-//! probed glyph. The relative check measures each shift against [`reference`],
-//! not against `k/3`: an area-coverage centroid is not linear in a sub-pixel
-//! shift, and `l` at 16 px moves 0.426 px for a third under fontdue's own
-//! rasteriser (`docs/plan-shaped-paint.md`, "What building found", T81.7;
-//! the numbers are `docs/results-text.md` M81/T81.7's).
+//! Since T81.8 the derivation is the shipped `FontStack::rasterize` for a
+//! phase ≥ 1, and [`derive`] reaches it the way paint does: a shaped run's
+//! placement through `text::pen_of`. K81d reads this test's output: its
+//! bound is the absolute, relative and coverage checks below, for every
+//! probed glyph. The relative check measures each shift against
+//! [`reference`], not against `k/3`: an area-coverage centroid is not linear
+//! in a sub-pixel shift, and `l` at 16 px moves 0.426 px for a third under
+//! fontdue's own rasteriser (`docs/plan-shaped-paint.md`, "What building
+//! found", T81.7; the numbers are `docs/results-text.md` M81/T81.7's and
+//! M81/T81.8's).
 //!
-//! Two more tests, `shaping` only. One asks where phases occur at all,
-//! which K81b's arm in T81.8 needs: since K81a's response, a run with
-//! nothing to shape takes fontdue's whole-pixel path under `Complex`, so
-//! only runs the shaper lays out have fractional pens. The other pins a
-//! defect T81.8's pens must fix: a shaped glyph's bearing fraction is drawn
-//! twice.
-#![cfg(feature = "truetype")]
+//! The other tests: where phases occur at all (only where the shaper runs,
+//! since K81a's response); T81.8's canvas gates, phases keying the glyph
+//! cache and moving the ink, by run origin and by shaped advances; and the
+//! flipped T81.7 pin, a shaped glyph's bearing fraction drawn once.
+#![cfg(all(feature = "truetype", feature = "shaping"))]
 
 #[path = "fonts/pinned.rs"]
 mod pinned;
 
 use fontdue::{Font, FontSettings};
+use lumen_static::display::{Color, DisplayList, Renderer};
+use lumen_static_shell::software::Canvas;
+use lumen_static_shell::text::{pen_of, FontStack, Shaping};
+
+/// The shaper counters (`text_counters`) are process-wide and libtest runs
+/// a file's tests on threads, so each test here holds this while it shapes.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// The plan's probe set: a stem, a bowl, a wide diagonal, and a Hebrew
 /// letter (`ע`, ayin), at a small, a body and a large size.
@@ -93,28 +105,37 @@ fn offset_x(font: &Font, index: u16, px: f32) -> f32 {
     xmin - xmin.floor()
 }
 
-/// The glyph moved `k/3` px right (`k` in 0..3), from the 3× raster: shift
-/// by `round(2·offset_x) + k` sub-columns, then sum each pixel's three.
-/// Column 0 stays at the 1× bitmap's, two columns wider for the shift.
-fn derive(font: &Font, index: u16, px: f32, k: i32) -> Bitmap {
-    let (m, sub) = font.rasterize_indexed_subpixel(index, px);
-    let ox = offset_x(font, index, px);
-    let shift = (2.0 * ox).round() as i32 + k;
-    let (sw, w) = (m.width * 3, m.width + 2);
-    let mut cov = vec![0.0f32; w * m.height];
-    for y in 0..m.height {
-        for p in 0..w {
-            let mut s = 0.0;
-            for j in 0..3 {
-                let src = (3 * p + j) as i32 - shift;
-                if (0..sw as i32).contains(&src) {
-                    s += sub[y * sw + src as usize] as f32 / 255.0;
-                }
-            }
-            cov[y * w + p] = s / 3.0;
-        }
+/// The glyph moved `k/3` px right (`k` in 0..3), **from the shipped
+/// raster**: a `Complex` stack places the glyph alone (a Latin one forced
+/// through the shaper by a zero-width joiner), [`pen_of`] puts it at
+/// `k/3` past the placement, and `FontStack::rasterize` draws the phase it
+/// chose. Column 0 is the 1× bitmap's (`floor(bounds.xmin)` from a whole
+/// pen, taken from fontdue's metrics rather than from the placement, whose
+/// column is what `a_shaped_glyph_draws_its_bearing_fraction_once`
+/// checks), so the centroids compare in one frame.
+fn derive(stack: &FontStack, font: &Font, ch: char, px: f32, k: i32) -> Bitmap {
+    let (placed, _) = stack.place_run(&forced(ch), px, 400.0, f32::INFINITY);
+    assert_eq!(placed.len(), 1, "setup: {ch:?} at {px} px placed {} glyphs", placed.len());
+    let p = placed[0];
+    let index = font.lookup_glyph_index(ch);
+    let xmin = font.metrics_indexed(index, px).bounds.xmin.floor();
+    let pen = pen_of(xmin + k as f32 / 3.0, &p);
+    assert_eq!(pen.id.key().phase, 1 + k as u8, "setup: {ch:?} at {px} px + {k}/3 took phase {}", pen.id.key().phase);
+    assert_eq!(pen.x, xmin, "setup: {ch:?} at {px} px + {k}/3 moved to column {}", pen.x);
+    let (w, h, cov) = stack.rasterize(pen.id).expect("the stack rasterises its own id");
+    assert_eq!(w, pen.w, "pen_of's width {} is not the bitmap's {w}", pen.w);
+    Bitmap { xmin: pen.x as i32, w: w as usize, h: h as usize, cov: cov.iter().map(|&c| c as f32 / 255.0).collect() }
+}
+
+/// `ch` as a run the shaper lays out: Hebrew as it is, anything else with a
+/// zero-width joiner after it (inks nothing, takes no width), since a run
+/// with nothing to shape takes fontdue's whole-pixel path (K81a's response).
+fn forced(ch: char) -> String {
+    if ch.is_ascii() {
+        format!("{ch}\u{200d}")
+    } else {
+        ch.to_string()
     }
-    Bitmap { xmin: m.xmin, w, h: m.height, cov }
 }
 
 /// The relative check's reference: the same outline moved `k/3` px, drawn
@@ -138,7 +159,9 @@ fn reference(font: &Font, index: u16, px: f32, k: i32) -> (f32, f32) {
 
 #[test]
 fn thirds_from_the_subpixel_raster_are_honest_phases() {
+    let _serial = serial();
     let font = Font::from_bytes(pinned::bytes(), FontSettings::default()).expect("the pinned face parses");
+    let stack = complex(pinned::bytes());
     let mut failures = Vec::new();
     let mut max_ox = (0.0f32, ' ', 0.0f32);
     let (mut worst_abs, mut worst_rel, mut worst_cov, mut worst_ref, mut worst_third) = (0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32);
@@ -154,7 +177,7 @@ fn thirds_from_the_subpixel_raster_are_honest_phases() {
                 max_ox = (ox, ch, px);
             }
             let one = one_x(&font, index, px);
-            let phases: Vec<Bitmap> = (0..3).map(|k| derive(&font, index, px, k)).collect();
+            let phases: Vec<Bitmap> = (0..3).map(|k| derive(&stack, &font, ch, px, k)).collect();
             let refs: Vec<(f32, f32)> = (0..3).map(|k| reference(&font, index, px, k)).collect();
             let (c1x, c_one) = (phases[0].centroid(), one.centroid());
             let abs = (c1x - c_one).abs();
@@ -217,9 +240,9 @@ fn thirds_from_the_subpixel_raster_are_honest_phases() {
 /// (`text::needs_shaping` false) out by fontdue's whole-pixel path, so the
 /// grid's Latin and digits have **no** fractional pen and a K81b arm on them
 /// counts nothing. Runs the shaper lays out land on every third.
-#[cfg(feature = "shaping")]
 #[test]
 fn phases_occur_only_where_the_shaper_runs() {
+    let _serial = serial();
     use lumen_static::text::GlyphKey;
     use lumen_static_shell::text::text_counters;
 
@@ -247,10 +270,10 @@ fn phases_occur_only_where_the_shaper_runs() {
                 for p in &placed {
                     let key: GlyphKey = p.id.into();
                     let xmin = font.metrics_indexed(key.index, px).bounds.xmin;
-                    // The pen: a shaped placement is `pen + xmin`
-                    // (`shaped_ink`), a fontdue one `floor(pen + xmin)` on
-                    // a whole pen.
-                    let pen = if via > 0 { p.x - xmin } else { p.x - xmin.floor() };
+                    // The pen: since T81.8 a shaped placement is
+                    // `pen + floor(xmin)` (`shaped_ink`), as a fontdue one
+                    // is `floor(pen + xmin)` on a whole pen.
+                    let pen = p.x - xmin.floor();
                     let f = pen - pen.floor();
                     glyphs += 1;
                     if f > 1e-3 && f < 1.0 - 1e-3 {
@@ -280,75 +303,196 @@ fn phases_occur_only_where_the_shaper_runs() {
     assert!(seen >= 2, "shaped runs land on {seen} third(s) {sth:?}: no phase for K81b to count");
 }
 
-/// **Pinned, for T81.8 to flip: a shaped glyph's ink lands `round(offset_x)`
-/// px right of a `Basic` one's.** `shaped_ink` places a bitmap at
-/// `pen + bounds.xmin` and the canvas rounds that, but fontdue's bitmap
-/// already carries `fract(bounds.xmin)` inside its column 0 (which is why
-/// fontdue's own layout *floors* `pen + xmin`). So the bearing's fraction
-/// is counted twice: a glyph whose `offset_x` is 0.5 or more draws one
-/// pixel right. T81.3's gates compared ink *rows* with `Basic`'s, never
-/// columns. A single glyph at the start of a run has a whole pen (0) on
-/// both paths, so the two renders differ only by this.
+/// **A shaped glyph's bearing fraction is drawn once** — T81.7's pin,
+/// which asserted it drawn twice, flipped and renamed by T81.8.
+/// `shaped_ink` placed a bitmap at `pen + bounds.xmin` and the canvas
+/// rounded that, but fontdue's bitmap already carries `fract(bounds.xmin)`
+/// inside its column 0 (which is why fontdue's own layout *floors*
+/// `pen + xmin`), so a glyph whose `offset_x` is 0.5 or more drew one pixel
+/// right. It is placed at `pen + floor(bounds.xmin)` now, and the phase is
+/// the pen's fraction alone.
 ///
-/// T81.8's pens must take the bearing's fraction out of the placement
-/// (`docs/plan-shaped-paint.md`, "What building found", T81.7) — the
-/// derivation above assumes column 0 at `floor(bounds.xmin)` — and this
-/// bound becomes `|Δ| ≤ 1/6 + 0.05` px.
-#[cfg(feature = "shaping")]
+/// **A column check**, because T81.3's gates compared ink *rows* with
+/// `Basic`'s, never columns, and that is how this shipped. Per glyph alone
+/// at the start of a run (a whole pen on both paths):
+///
+/// - the `Complex` render's ink centroid against the shipped phase-1
+///   bitmap's centroid placed at `10 + floor(bounds.xmin)`, computed from
+///   fontdue's metrics, not from the placement: **0.000** (bound 0.01);
+/// - against the `Basic` render's: the derivation's own residual, ≤ 1/6 +
+///   0.05 px (K81d's absolute bound).
 #[test]
-fn a_shaped_glyph_draws_its_bearing_fraction_twice() {
-    use lumen_static::display::{Color, DisplayList, Renderer};
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::FontStack;
-
+fn a_shaped_glyph_draws_its_bearing_fraction_once() {
+    let _serial = serial();
     let bytes = pinned::bytes();
     let font = Font::from_bytes(bytes, FontSettings::default()).expect("the pinned face parses");
     let basic = FontStack::from_static(bytes, None).expect("the pinned face builds a stack");
     let complex = complex(bytes);
-    let ink_cx = |stack: &FontStack, text: &str, px: f32| {
-        let mut list = DisplayList::new();
-        list.text_weighted([10.0, 10.0, 190.0, 90.0], text, px, 400.0, Color(255, 255, 255, 255));
-        let mut c = Canvas::with_font(200, 100, stack.clone());
-        c.clear(Color(0, 0, 0, 255));
-        c.render(&list, 200, 100);
+    let before = lumen_static_shell::text::text_counters().complex;
+    let (mut cases, mut wrong, mut worst_exact, mut worst_basic) = (0u32, Vec::new(), 0.0f32, 0.0f32);
+    for &ch in &GLYPHS {
+        let index = font.lookup_glyph_index(ch);
+        for &px in &SIZES {
+            let ox = offset_x(&font, index, px);
+            let shaped = ink_cx(&complex, &forced(ch), [10.0, 10.0], px);
+            let plain = ink_cx(&basic, &ch.to_string(), [10.0, 10.0], px);
+            // Where the bearing says column 0 goes: from fontdue, and the
+            // phase-1 bitmap from the shipped raster.
+            let mut bitmap = derive(&complex, &font, ch, px, 0);
+            bitmap.xmin += 10;
+            let exact = shaped - bitmap.centroid();
+            let d = shaped - plain;
+            println!(
+                "{ch:?} {px:>4} px: offset_x {ox:.3}; Complex − phase-1 bitmap at 10 + floor(xmin) {exact:+.3} px (bound 0.01); \
+                 Complex − Basic {d:+.3} px (bound {ABS_BOUND:.3})"
+            );
+            cases += 1;
+            worst_exact = worst_exact.max(exact.abs());
+            worst_basic = worst_basic.max(d.abs());
+            if exact.abs() > 0.01 {
+                wrong.push(format!("{ch:?} at {px} px (offset_x {ox:.3}): {exact:+.3} px from where its bearing puts it"));
+            }
+            if d.abs() > ABS_BOUND {
+                wrong.push(format!("{ch:?} at {px} px (offset_x {ox:.3}): {d:+.3} px from Basic's ink"));
+            }
+        }
+    }
+    let shaped = lumen_static_shell::text::text_counters().complex - before;
+    println!(
+        "{cases} cases, {shaped} runs through the shaper (setup ≥ {cases}); worst |Complex − bitmap| {worst_exact:.3} px \
+         (bound 0.01), worst |Complex − Basic| {worst_basic:.3} px (bound {ABS_BOUND:.3})"
+    );
+    assert!(shaped >= u64::from(cases), "setup: only {shaped} of {cases} Complex renders went through the shaper");
+    assert!(wrong.is_empty(), "a shaped glyph's column is not its bearing's in {} check(s):\n{}", wrong.len(), wrong.join("\n"));
+}
+
+/// The ink's horizontal centroid of `text` drawn at `at` on a fresh
+/// 200×100 canvas, white on black, in canvas pixels.
+fn ink_cx(stack: &FontStack, text: &str, at: [f32; 2], px: f32) -> f32 {
+    let mut list = DisplayList::new();
+    list.text_weighted([at[0], at[1], at[0] + 180.0, at[1] + 80.0], text, px, 400.0, Color(255, 255, 255, 255));
+    let mut c = Canvas::with_font(200, 100, stack.clone());
+    c.clear(Color(0, 0, 0, 255));
+    c.render(&list, 200, 100);
+    let (mut m, mut t) = (0.0f64, 0.0f64);
+    for y in 0..c.height {
+        for x in 0..c.width {
+            let v = c.pixels[((y * c.width + x) * 4) as usize] as f64;
+            m += (x as f64 + 0.5) * v;
+            t += v;
+        }
+    }
+    assert!(t > 0.0, "setup: {text:?} at {px} px drew no ink");
+    (m / t) as f32
+}
+
+/// **T81.8's first gate: one canvas, `l` at x 10, 10⅓ and 10⅔.** Three
+/// runs on one `Complex` canvas, each on its own band of rows, the run
+/// origin carrying the fraction (`pen_of(rect_x + p.x)` honours it on a raw
+/// `Canvas`). Exactly three cache entries, one per phase; each band's ink
+/// centroid shifted from the first by the [`reference`]'s shift ± 0.05 px
+/// (not `k/3`: an area centroid is not linear in a shift; T81.7); and
+/// K81d's absolute check on the phase-1 bitmap through the shipped raster.
+#[test]
+fn one_canvas_draws_three_phases_of_one_glyph() {
+    let _serial = serial();
+    let bytes = pinned::bytes();
+    let font = Font::from_bytes(bytes, FontSettings::default()).expect("the pinned face parses");
+    let stack = complex(bytes);
+    let px = 16.0;
+    let index = font.lookup_glyph_index('l');
+    let mut list = DisplayList::new();
+    for k in 0..3 {
+        let x = 10.0 + k as f32 / 3.0;
+        let y = 10.0 + 30.0 * k as f32;
+        list.text_weighted([x, y, x + 100.0, y + 30.0], &forced('l'), px, 400.0, Color(255, 255, 255, 255));
+    }
+    let mut c = Canvas::with_font(200, 100, stack.clone());
+    c.clear(Color(0, 0, 0, 255));
+    let before = lumen_static_shell::text::text_counters().complex;
+    c.render(&list, 200, 100);
+    let shaped = lumen_static_shell::text::text_counters().complex - before;
+    let stats = c.glyph_cache_stats();
+    let band = |k: u32| {
         let (mut m, mut t) = (0.0f64, 0.0f64);
-        for y in 0..c.height {
+        for y in 30 * k..30 * (k + 1) {
             for x in 0..c.width {
                 let v = c.pixels[((y * c.width + x) * 4) as usize] as f64;
                 m += (x as f64 + 0.5) * v;
                 t += v;
             }
         }
-        assert!(t > 0.0, "setup: {text:?} at {px} px drew no ink");
+        assert!(t > 0.0, "setup: band {k} drew no ink");
         (m / t) as f32
     };
-    let before = lumen_static_shell::text::text_counters().complex;
-    let (mut cases, mut wrong, mut worst) = (0u32, Vec::new(), 0.0f32);
-    for &ch in &GLYPHS {
-        let index = font.lookup_glyph_index(ch);
-        // Hebrew reaches the shaper as it is; Latin needs a zero-width
-        // joiner (inks nothing, takes no width).
-        let forced = if ch.is_ascii() { format!("{ch}\u{200d}") } else { ch.to_string() };
-        for &px in &SIZES {
-            let ox = offset_x(&font, index, px);
-            let d = ink_cx(&complex, &forced, px) - ink_cx(&basic, &ch.to_string(), px);
-            let want = ox.round();
-            println!("{ch:?} {px:>4} px: offset_x {ox:.3}, Complex − Basic ink centroid {d:+.3} px (pinned: round(offset_x) = {want})");
-            cases += 1;
-            worst = worst.max(d.abs());
-            if (d - want).abs() > 0.05 {
-                wrong.push(format!("{ch:?} at {px} px: {d:+.3}, round(offset_x) {want}"));
-            }
+    let cx: Vec<f32> = (0..3).map(band).collect();
+    let refs: Vec<(f32, f32)> = (0..3).map(|k| reference(&font, index, px, k)).collect();
+    let one = one_x(&font, index, px);
+    let phase1 = derive(&stack, &font, 'l', px, 0);
+    let abs = (phase1.centroid() - one.centroid()).abs();
+    println!(
+        "'l' at {px} px, x 10, 10⅓, 10⅔: {shaped} runs through the shaper (setup 3); cache misses {} (bound == 3), \
+         hits {}, resets {}",
+        stats.misses, stats.hits, stats.resets
+    );
+    let mut failures = Vec::new();
+    for k in 1..3 {
+        let got = cx[k] - cx[0];
+        let want = refs[k].0 - refs[0].0;
+        println!("phase {}: centroid shift {got:+.3} px, the reference's {want:+.3} (bound ± {REL_TOL})", k + 1);
+        if (got - want).abs() > REL_TOL {
+            failures.push(format!("phase {}: shift {got:+.3}, reference {want:+.3}", k + 1));
         }
     }
-    let shaped = lumen_static_shell::text::text_counters().complex - before;
-    println!("{cases} cases, {shaped} runs through the shaper (setup ≥ {cases}); worst |Δ| {worst:.3} px");
-    assert!(shaped >= u64::from(cases), "setup: only {shaped} of {cases} Complex renders went through the shaper");
-    assert!(wrong.is_empty(), "pin: the shaped offset is no longer round(offset_x) in {} case(s):\n{}", wrong.len(), wrong.join("\n"));
+    println!("phase 1 through FontStack::rasterize against the 1× bitmap: |abs| {abs:.3} px (bound {ABS_BOUND:.3})");
+    assert_eq!(shaped, 3, "setup: {shaped} of 3 runs went through the shaper");
+    assert_eq!(stats.misses, 3, "one glyph at three thirds is {} cache entries, not 3", stats.misses);
+    assert!(abs <= ABS_BOUND, "K81d absolute, shipped: phase 1 is {abs:.3} px from the 1× bitmap");
+    assert!(failures.is_empty(), "the thirds do not move the ink: {}", failures.join("; "));
 }
 
-#[cfg(feature = "shaping")]
-fn complex(bytes: &'static [u8]) -> lumen_static_shell::text::FontStack {
-    use lumen_static_shell::text::{FontStack, Shaping};
+/// **T81.8's second case: fractions the production way.** A whole-pixel
+/// run origin and a run whose *shaped advances* are fractional: `llll` at
+/// 13 px, forced through the shaper by a zero-width joiner (without it the
+/// run takes fontdue's whole-pixel path and counts one phase; T81.7). The
+/// placements land on at least two phases, and a fresh canvas misses once
+/// per distinct (glyph, phase). Setup: the `Complex` corpus of
+/// `phases_occur_only_where_the_shaper_runs` has glyphs on a fractional pen
+/// (counted there, and here for this run).
+#[test]
+fn shaped_advances_land_on_more_than_one_phase() {
+    let _serial = serial();
+    use std::collections::HashSet;
+    let bytes = pinned::bytes();
+    let stack = complex(bytes);
+    let (px, text, origin) = (13.0, "llll\u{200d}", 10.0);
+    let (placed, _) = stack.place_run(text, px, 400.0, f32::INFINITY);
+    let fractional = placed.iter().filter(|p| p.x.fract().abs() > 1e-3).count();
+    let pens: Vec<_> = placed.iter().map(|p| pen_of(origin + p.x, p)).collect();
+    let phases: HashSet<u8> = pens.iter().map(|p| p.id.key().phase).collect();
+    let glyphs: HashSet<u16> = pens.iter().map(|p| p.id.key().index).collect();
+    let keys: HashSet<(u16, u8)> = pens.iter().map(|p| (p.id.key().index, p.id.key().phase)).collect();
+    let mut list = DisplayList::new();
+    list.text_weighted([origin, 10.0, origin + 150.0, 40.0], text, px, 400.0, Color(255, 255, 255, 255));
+    let mut c = Canvas::with_font(200, 60, stack);
+    c.clear(Color(0, 0, 0, 255));
+    c.render(&list, 200, 60);
+    let misses = c.glyph_cache_stats().misses;
+    println!(
+        "{text:?} at {px} px from x {origin}: {} glyphs, {fractional} on a fractional pen (setup > 0); phases {phases:?} \
+         ({} distinct, bound ≥ 2); misses {misses} (bound == {} phases × {} glyphs = {})",
+        placed.len(),
+        phases.len(),
+        phases.len(),
+        glyphs.len(),
+        keys.len()
+    );
+    assert!(fractional > 0, "setup: no glyph of {text:?} at {px} px is on a fractional pen");
+    assert!(phases.len() >= 2, "{text:?} at {px} px landed on {} phase(s): {phases:?}", phases.len());
+    assert_eq!(keys.len(), phases.len() * glyphs.len(), "setup: the run is one glyph at several phases");
+    assert_eq!(misses, keys.len() as u64, "a fresh canvas missed {misses} times for {} (glyph, phase) keys", keys.len());
+}
+
+fn complex(bytes: &'static [u8]) -> FontStack {
     FontStack::from_static(bytes, None).expect("the pinned face builds a stack").with_shaping(Shaping::Complex)
 }

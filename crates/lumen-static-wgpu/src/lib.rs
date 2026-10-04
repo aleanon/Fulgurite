@@ -1301,17 +1301,19 @@ impl Gpu {
         font.place_run_into(shape, text, size, weight, line_height, rect[2] - rect[0]);
         let col = linear(color);
         for &g in shape.placed() {
-            // Rounded to whole pixels, like `draw_run` — a glyph bitmap
-            // has no subpixel phase, so placing it at a fraction would
-            // resample what the rasteriser already decided.
-            let (gx, gy) = ((rect[0] + g.x).round(), (rect[1] + g.y).round());
-            let dst = [gx, gy, gx + g.w as f32, gy + g.h as f32];
+            // On whole pixels, like `draw_run`, and through the same shell
+            // function (`text::pen_of`, M81/T81.8): a shaped glyph's
+            // fraction becomes a phase in its id, a bitmap of its own,
+            // rather than a resample of the one the rasteriser decided.
+            let pen = lumen_static_shell::text::pen_of(rect[0] + g.x, &g);
+            let (gx, gy) = (pen.x, (rect[1] + g.y).round());
+            let dst = [gx, gy, gx + pen.w as f32, gy + g.h as f32];
             let Some(r) = clipped(dst, clip) else { continue };
-            let uv = match self.glyph_atlas.get(&g.id) {
+            let uv = match self.glyph_atlas.get(&pen.id) {
                 Some(slot) => slot.uv(self.glyph_atlas.size()),
                 None => {
-                    let Some((w, h, cov)) = font.rasterize(g.id) else { continue };
-                    let Some(slot) = self.glyph_atlas.insert(g.id, w, h) else {
+                    let Some((w, h, cov)) = font.rasterize(pen.id) else { continue };
+                    let Some(slot) = self.glyph_atlas.insert(pen.id, w, h) else {
                         return Err(Overflow::Glyph);
                     };
                     write_texture(&self.queue, &self.glyph_tex, slot, &cov, 1);

@@ -601,6 +601,12 @@ fn a_line_pitch_reaches_both_backends() {
 /// stack it was given (a GPU-only break; G9's "logical order" injection
 /// could not fire, since glyph positions are absolute); the region's
 /// differing pixels exceed its bound.
+///
+/// **Phased since M81/T81.8**: both backends draw a shaped glyph at the
+/// column and third `text::pen_of` decides, and the region's glyphs land on
+/// more than one third (counted from the same placements, printed; setup
+/// ≥ 2). Injection (T81.8's commit): the wgpu site rounds instead of
+/// calling `pen_of`; the region's differing pixels print over the bound.
 #[cfg(feature = "shaping")]
 #[test]
 fn a_shaped_run_agrees_across_the_backends() {
@@ -608,7 +614,7 @@ fn a_shaped_run_agrees_across_the_backends() {
     let Some(mut g) = gpu() else { return };
     let font = FontStack::system().expect("a system face").with_shaping(Shaping::Complex);
     g.set_font(font.clone());
-    let mut c = Canvas::with_font(W, H, font);
+    let mut c = Canvas::with_font(W, H, font.clone());
     let mut l = DisplayList::new();
     l.text([10.0, 20.0, 230.0, 44.0], "\u{5e9}\u{5dc}\u{5d5}\u{5dd} world 123", 16.0, Color(0, 0, 0, 255));
     let before = text_counters();
@@ -629,16 +635,36 @@ fn a_shaped_run_agrees_across_the_backends() {
     let (over, worst) = region_over(&c.pixels, &gp, W, bbox, 8);
     let text = REGIONS.iter().position(|r| r.name == "text").expect("a text region");
     let (shaped, bidi) = (after.complex - before.complex, after.bidi - before.bidi);
+    let (placed, _) = font.place_run(l.str_of(text_range(&l)), 16.0, 400.0, 220.0);
+    let mut phases = [0usize; 4];
+    for p in &placed {
+        phases[lumen_static_shell::text::pen_of(10.0 + p.x, p).id.key().phase as usize] += 1;
+    }
+    let thirds = phases[1..].iter().filter(|&&n| n > 0).count();
     println!(
         "shaped region: {over} px over 8 (bound {}, the text region's), worst {worst}; inked px cpu {ink_cpu}, \
-         gpu {ink_gpu}; {shaped} runs through the shaper, {bidi} ordered by unicode_bidi (setup > 0)",
+         gpu {ink_gpu}; {shaped} runs through the shaper, {bidi} ordered by unicode_bidi (setup > 0); \
+         glyphs per phase 0/1/2/3 {phases:?}, {thirds} thirds (setup ≥ 2)",
         bound(text)
     );
+    assert!(thirds >= 2, "setup: the shaped region's glyphs land on {thirds} third(s) {phases:?}: nothing phased to compare");
     assert!(ink_cpu > 0 && ink_gpu > 0, "setup: the region has no ink (cpu {ink_cpu}, gpu {ink_gpu})");
     // At least the software canvas shaped it; a GPU that did not is the
     // defect, and the bound below names it.
     assert!(bidi >= 1, "setup: the run was never shaped ({bidi} bidi runs)");
     assert!(over <= bound(text), "the backends disagree on a shaped run: {over} px over 8");
+}
+
+/// The string range of the list's first `Cmd::Text`.
+#[cfg(feature = "shaping")]
+fn text_range(l: &DisplayList) -> (u32, u32) {
+    l.cmds
+        .iter()
+        .find_map(|c| match c {
+            Cmd::Text { text, .. } => Some(*text),
+            _ => None,
+        })
+        .expect("the list holds a text run")
 }
 
 /// M51/T51.0 (R9-F1): a glyph set larger than one frame's atlas.

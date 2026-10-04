@@ -168,11 +168,15 @@ impl TextState {
                     );
                     let start = self.placed.len();
                     for p in self.shape.placed() {
-                        let (gx, gy) = ((rect[0] + p.x).round(), (rect[1] + p.y).round());
+                        // The column and the phase from one shell function
+                        // (`text::pen_of`, M81/T81.8), as the bands and the
+                        // GPU decide them.
+                        let pen = crate::text::pen_of(rect[0] + p.x, p);
+                        let gy = (rect[1] + p.y).round();
                         // Only a glyph that meets the clip is rasterised
                         // (R8-F3's out-of-clip half, T50.2).
-                        if clipped([gx, gy, gx + p.w as f32, gy + p.h as f32], clip.as_slice()).is_some() {
-                            self.cache.fill(font, p.id);
+                        if clipped([pen.x, gy, pen.x + pen.w as f32, gy + p.h as f32], clip.as_slice()).is_some() {
+                            self.cache.fill(font, pen.id);
                         }
                         self.placed.push(*p);
                     }
@@ -252,15 +256,15 @@ impl Surface<'_> {
             return;
         }
         for p in &text.placed[a as usize..b as usize] {
-            let gx = (rect[0] + p.x).round();
-            let gy = (rect[1] + p.y).round();
-            let Some(r) = clipped([gx, gy, gx + p.w as f32, gy + p.h as f32], clip) else {
+            let pen = crate::text::pen_of(rect[0] + p.x, p);
+            let (gx, gy) = (pen.x, (rect[1] + p.y).round());
+            let Some(r) = clipped([gx, gy, gx + pen.w as f32, gy + p.h as f32], clip) else {
                 continue;
             };
-            match text.cache.get(p.id) {
+            match text.cache.get(pen.id) {
                 Some((cov, w, h)) => self.blit_glyph(cov, w, h, gx, gy, r, color),
                 None => {
-                    if let Some((w, h, cov)) = font.rasterize(p.id) {
+                    if let Some((w, h, cov)) = font.rasterize(pen.id) {
                         self.blit_glyph(&cov, w as usize, h as usize, gx, gy, r, color);
                     }
                 }

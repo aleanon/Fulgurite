@@ -904,3 +904,59 @@ found", T81.7).
 no `ab_glyph`. K81b cannot be measured on the grid's Latin cells, which
 have no fractional pen; T81.8 measures it on a grid whose edited runs need
 the shaper (`docs/plan-shaped-paint.md`, "What building found", T81.7).
+
+## M81/T81.8 — phase in the key, the pens, and the close of M81b (2026-10-04)
+
+`FontStack::rasterize` draws `GlyphKey::phase` 1 + *k* as the glyph moved
+*k*/3 px, by T81.7's derivation (now shipped, and the probe calls it);
+phase 0 stays fontdue's 1× bitmap. A shaped run's placements leave
+`place_run_into` at `pen + floor(bounds.xmin)` and marked phaseable, and
+both backends draw every glyph through one shell function, `text::pen_of`,
+which rounds a phase-0 placement as before and gives a phaseable one its
+column `floor(x)` and third `round(3·fract(x))`. The bearing fraction is
+counted once (T81.7's pin, flipped). Gates in
+`crates/lumen-static-shell/tests/subpixel_phase.rs` (`just fonts`) unless
+named:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| the probe through the shipped raster (K81d) | \|phase 1 − 1×\|; \|derived shift − reference\|; \|coverage − 1\|, worst over T81.7's twelve cases | **0.155 px**; **0.019 px**; **0.0027** (setup: max `offset_x` 0.883, reference vs 1× 0.0013) | 0.217; 0.05; 0.01 | 2/3·`offset_x` correction dropped in `FontStack::rasterize`: **0.605 px**, nine cases named (every `offset_x` ≥ 0.375) |
+| one canvas, `l` at 16 px at x 10, 10⅓, 10⅔ | cache misses; centroid shift from x 10 against the reference's; phase 1 via the shipped raster against 1× | **3**; **+0.422 / +0.426**, **+0.768 / +0.768**; **0.004 px** (3 runs through the shaper) | == 3; ± 0.05; ≤ 0.217 | `GlyphId` equality ignores `phase`: misses **1**, shifts **+0.000**; correction dropped: abs **0.236** |
+| the production way: `llll` + ZWJ at 13 px, whole origin | glyphs on a fractional pen; distinct phases; misses on a fresh canvas | **3 of 4**; **3** (1, 2, 3); **3** = 3 phases × 1 glyph | > 0; ≥ 2; == phases × glyphs | `GlyphId` equality ignores `phase`: misses **1** for 3 keys |
+| a shaped glyph's bearing fraction drawn once (T81.7's pin, flipped) | single glyph, `Complex` ink centroid against the shipped phase-1 bitmap at 10 + `floor(xmin)` (from fontdue's metrics), and against `Basic`'s ink | **0.000 px** in all 12; **0.155 px** worst (the derivation's residual, the probe's abs column) | ≤ 0.01; ≤ 0.217 | `shaped_ink` back at `pen + xmin`: **+1.000** (`o`, 16 px), 9 cases named — `pen_of` then counts the fraction a third time, as T81.7 predicted |
+| `glyph_placement.rs`, a shaped run's first column (new) | `Complex` against `Basic`'s first inked column, `1\u{200d}H` at 16–64 px | equal at all five (setup: `1`'s `offset_x` 0.758 at 16 px) | equal | the same injection: **13 / 12** at 16 px and **16 / 15** at 48 px |
+| `basic_placements.rs` | `BASIC_CHECKSUM`; glyphs `pen_of` phases, `Basic` stack and `Complex` stack | **0x866444d1064ccda8**; **0 of 6,600** each | equal; 0 | `pen_of` phases a phase-0 placement: **6,600** phased, both arms fail |
+| `alloc_gate.rs` `mod complex` | allocations per frame after warm-up | **0 / 0 / 0 / 960** — T81.3's values | unchanged | — |
+| `scale_memo.rs`, a `Complex` session dragged to 2× (T81.4's gate, re-bounded) | `שלום עולם` at 14 px: 1× box against the 2× measure over 2; the box after the drag | **65** against **64.5** (66 before: the doubled bearing fraction widened the ink); **64.5x19.5** = the measure | part by > 0.25; within 0.01 px (was 0.5, which 0.5 px of staleness passed) | `set_scale` stops reaching the measurer: **65x20**, "kept a stale box" |
+| `lumen-static-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8; glyphs per phase 0/1/2/3 | **0** (worst 1), ink 362 both; **[0, 5, 3, 4]**, 3 thirds (RTX 4070) | 2; ≥ 2 thirds | the wgpu site rounds instead of `pen_of`: **568** px over, GPU ink 292 |
+| live: `scripts/widget_drive.sh "TextInput,TextInput RTL"`, six legs | actions; M57's D5 parity in the two `+shaping` legs | 8 of 8 each leg; **0** bytes of 20,440 per entry, `--demo` Complex = leg Complex | 0 failed; 0 | — (a phase is not separately observable live; D5 covers phased glyphs) |
+| firmware | `.text` Δ against `3b3760d`, four binaries | **+0 / +0 / +0 / +0 B**, `.rodata` +0 | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.8 |
+
+### K81b — phases on the glyph cache
+
+`just grid --shaping complex --content shaped` (system face, 1400×900):
+`--content shaped` puts `סכום ` before every sheet cell and, through the
+binding's format, before the formula bar's value, so every edited run is
+shaped. Twenty edits after three warm frames; the edit values change
+length every edit (`edit_value`). The keys are counted by the bench
+(`K81bKeys`), phased in thirds by its own arithmetic.
+
+| arm | warm screen: keys / glyphs / phased | warm misses | 20 edits: misses / new keys | worst edit | resets | verdict |
+|---|---|---:|---|---|---:|---|
+| `--content shaped` | **74 / 32 / 50** (setup: keys > glyphs; 906 runs painted) | 74 | **2 / 2** (edits 2 and 4, one each) | 1 miss over 1 key | **0** | holds (≤ 3× per edit) |
+| `--content latin` (accept direction) | 28 / 28 / **0** | 28 | 0 / 0 | — | 0 | 0 phased keys, as required |
+| `just grid` (Basic, latin) | 28 / 28 / 0 | 28 | 0 / 0 | — | 0 | unchanged |
+| injection: `pen_of` quantises to twelve phases, the counter still thirds | 74 / 32 / 50 | 128 | **20 / 2** | 5 misses over 0 keys (edits 5 and 11) | 0 | **fires**, five edits named |
+
+The first build of this arm wrote `1000 + k`, as the truetype pass always
+had, and the injection stayed green at 3 misses over 1 key: this face's
+digits share one advance, so twenty four-digit values put every glyph on
+the same pens (`docs/plan-shaped-paint.md`, "What building found", T81.8).
+
+### M81b's kill rules, at its close
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K81d — no honest phase | absolute ≤ 0.217 px, relative ± 0.05 against the reference, coverage 1% | **0.156 / 0.018 / 0.0009** (T81.7, test-local); **0.155 / 0.019 / 0.0027** through the shipped raster (T81.8) | holds; no `ab_glyph`, no deferral |
+| K81b — phases thrash the glyph cache | resets 0; misses per edit ≤ 3× new (glyph, phase) keys | **0** resets; **2 misses over 2 keys** in twenty edits, worst edit 1 over 1 | holds; phases ship on |
+| K4 — firmware per task | 1,000 B on `firmware_interactive` | T81.7 +0, T81.8 **+0** | holds |

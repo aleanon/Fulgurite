@@ -510,8 +510,14 @@ bench:
 # its `fn main`** — until this existed they had been shown to fail once,
 # by hand, and nothing re-ran them
 # (`docs/results-damage-precision.md`).
-grid:
-    cargo run --release -p benches --bin grid
+# Arguments reach the binary: `just grid --shaping complex --content shaped`
+# is K81b's arm (M81/T81.8; `--content latin` its accept direction), and a
+# `complex` run builds with the benches `shaping` feature.
+grid *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case " {{args}} " in *" complex "*) features="--features shaping";; *) features="";; esac
+    cargo run --release -p benches $features --bin grid -- {{args}}
 
 # Step 1 firewall regression experiment (its own generated workspace).
 firewall:

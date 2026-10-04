@@ -674,8 +674,10 @@ impl FontStack {
     /// instead of fontdue: bidi order, joining, marks, UAX #14 breaks at
     /// the painter's width. Each glyph sits on fontdue's ceil'd ascent and
     /// line size, with the same cap shift, and is re-placed at the pitch
-    /// by the rule below; its `x` keeps the shaper's fraction, which the
-    /// backends round. Placements come out in visual order. A run with
+    /// by the rule below; its `x` is the pen plus the floored bearing and
+    /// keeps the pen's fraction, and its id is marked phaseable, so the
+    /// backends' [`pen_of`] draws it at the nearest third of a pixel
+    /// (M81/T81.8). Placements come out in visual order. A run with
     /// nothing to shape takes the fontdue path whatever the mode
     /// (`tests/basic_placements.rs` holds it to `BASIC_CHECKSUM`).
     ///
@@ -765,17 +767,57 @@ impl FontStack {
     /// nothing" for one that came from somewhere else — the same rule
     /// [`lumen_static::ImageSource`] follows for a missing asset.
     ///
-    /// Deterministic in the id alone: fontdue's raster key is
-    /// `(glyph index, px)` with no subpixel phase, so equal ids give
-    /// byte-identical bitmaps. The key's `phase` is 0 on every id this
-    /// stack makes until M81b gives it a raster of its own. That is what makes an atlas cache
-    /// correct rather than approximately correct.
+    /// Deterministic in the id alone, so equal ids give byte-identical
+    /// bitmaps. That is what makes an atlas cache correct rather than
+    /// approximately correct. **The phase rule** (M81/T81.8,
+    /// `docs/plan-shaped-paint.md`, "Subpixel pens (M81b) are thirds"):
+    ///
+    /// - `phase` 0 is fontdue's own 1× bitmap — every `Basic` glyph, and
+    ///   every glyph of a `Complex` run with nothing to shape, so no
+    ///   golden can move.
+    /// - `phase` 1 + *k*, *k* in 0..3, is the glyph moved *k*/3 px right,
+    ///   **derived** from fontdue's public `rasterize_indexed_subpixel`:
+    ///   its 3× raster is shifted `round(2·offset_x) + k` sub-columns and
+    ///   each pixel sums its three. fontdue draws that raster with the 1×
+    ///   bearing fraction `offset_x` (`fract(bounds.xmin)`) unscaled, so
+    ///   the outline sits `2/3·offset_x` px left of the 1× bitmap's; the
+    ///   integer correction leaves at most half a sub-column, 1/6 px
+    ///   (K81d; `docs/results-text.md` M81/T81.7 and M81/T81.8). Column 0
+    ///   is the 1× bitmap's (`floor(bounds.xmin)` from the pen), and the
+    ///   bitmap is **two columns wider** for the shift, which is the width
+    ///   [`pen_of`] reports. Every glyph a shaped run places takes this
+    ///   path, at every third, so one run never mixes two rasterisers.
     pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
-        let GlyphKey { px_bits, index, face, .. } = id.0;
+        let GlyphKey { px_bits, index, face, phase } = id.0;
         let font = self.font_of(face)?;
-        let (m, cov) = font.rasterize_indexed(index, f32::from_bits(px_bits));
+        let px = f32::from_bits(px_bits);
         RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        Some((m.width as u32, m.height as u32, cov))
+        if phase == 0 {
+            let (m, cov) = font.rasterize_indexed(index, px);
+            return Some((m.width as u32, m.height as u32, cov));
+        }
+        let (m, sub) = font.rasterize_indexed_subpixel(index, px);
+        if m.width == 0 || m.height == 0 {
+            return Some((0, 0, Vec::new()));
+        }
+        let ox = m.bounds.xmin - m.bounds.xmin.floor();
+        let shift = (2.0 * ox).round() as i32 + i32::from(phase - 1);
+        let (sw, w) = (m.width * 3, m.width + 2);
+        let mut cov = vec![0u8; w * m.height];
+        for y in 0..m.height {
+            let row = &sub[y * sw..(y + 1) * sw];
+            for (p, out) in cov[y * w..(y + 1) * w].iter_mut().enumerate() {
+                let mut s = 0u32;
+                for j in 0..3 {
+                    let src = (3 * p + j) as i32 - shift;
+                    if (0..sw as i32).contains(&src) {
+                        s += u32::from(row[src as usize]);
+                    }
+                }
+                *out = ((s + 1) / 3) as u8;
+            }
+        }
+        Some((w as u32, m.height as u32, cov))
     }
 
     /// The size of a run, **without rasterising it**.
@@ -965,10 +1007,17 @@ impl FontStack {
             return None;
         }
         // fontdue's own placement of a bitmap against its baseline
-        // (`Layout::append`): the bounds' xmin, and the top floored.
+        // (`Layout::append`): the top floored, and column 0 at the pen
+        // plus the bounds' **floored** xmin. The bitmap already holds
+        // `fract(xmin)` inside its column 0 — which is why fontdue's layout
+        // floors `pen + xmin` — so placing it at `pen + xmin` counted that
+        // fraction twice and drew a glyph whose `offset_x` is 0.5 or more
+        // one pixel right (M81/T81.7's pin, flipped in T81.8:
+        // `tests/subpixel_phase.rs`). The pen's own fraction stays in `x`,
+        // for `pen_of` to turn into a phase.
         let baseline = g.line as f32 * nls + ascent;
         let top = baseline + (g.y - m.bounds.height - m.bounds.ymin).floor();
-        Some((g.x + m.bounds.xmin, top, m.width as u32, m.height as u32))
+        Some((g.x + m.bounds.xmin.floor(), top, m.width as u32, m.height as u32))
     }
 
     /// A shaped run's box, by `extent_by`'s rule: per line the larger of
@@ -1020,7 +1069,9 @@ impl FontStack {
             let Some((x, top, w, h)) = self.shaped_ink(g, px, ascent, nls) else { continue };
             let d = dy(g.line);
             ink = ink.max(top + d + h as f32);
-            out.push(Placed { id: GlyphId::from_key(g.key), x, y: top + d + shift, w, h });
+            // Marked phaseable (`phase` 1); the round site decides the
+            // third from where the glyph lands (`pen_of`).
+            out.push(Placed { id: GlyphId::from_key(GlyphKey { phase: 1, ..g.key }), x, y: top + d + shift, w, h });
         }
         PLACED.fetch_add(out.len() as u64, core::sync::atomic::Ordering::Relaxed);
         if line_height == 0 {
@@ -1402,8 +1453,11 @@ pub struct CacheStats {
 /// The software canvas's coverage cache — M50/T50.2, R8-F1.
 ///
 /// Keyed on [`GlyphId`], whose contract is that equal ids are
-/// byte-identical bitmaps (no subpixel phase), so a hit is exact rather
-/// than approximate. One arena of coverage bytes and an index, both sized
+/// byte-identical bitmaps, so a hit is exact rather than approximate. The
+/// id carries its subpixel phase (M81/T81.8): a shaped glyph is up to three
+/// entries, one per third it lands on ([`pen_of`]), and a `Basic` glyph one,
+/// at phase 0. K81b bounds what that costs a real screen
+/// (`docs/results-text.md` M81/T81.8). One arena of coverage bytes and an index, both sized
 /// **once**, on first use: a lookup that hits never allocates, and a
 /// miss allocates only inside fontdue.
 ///
@@ -1533,8 +1587,14 @@ impl std::hash::Hasher for GlyphHasher {
 /// only here, by the stack that rasterises it ([`FontStack::place_run`]),
 /// and the contract above stays this crate's: [`GlyphId::key`] reads one
 /// out, and nothing outside the shell turns a key back into an id. Still
-/// 8 B (the key's spare byte is its `phase`, 0 for every glyph until
-/// M81b), so `GlyphCache` and the GPU atlas keep their sizes.
+/// 8 B, so `GlyphCache` and the GPU atlas keep their sizes.
+///
+/// **The phase is part of the identity** (M81/T81.8): a `Basic` glyph's
+/// is 0, fontdue's 1× bitmap; a glyph a shaped run places leaves
+/// `place_run_into` marked 1 and is given its third, 1 + *k*, by
+/// [`pen_of`] where it is drawn. Equality includes the phase, so the
+/// three thirds are three bitmaps, which is what keeps a cache hit exact
+/// ([`FontStack::rasterize`] has the rule).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct GlyphId(GlyphKey);
 
@@ -1577,6 +1637,47 @@ pub struct Placed {
     pub y: f32,
     pub w: u32,
     pub h: u32,
+}
+
+/// Where a placed glyph is drawn: its whole-pixel column, the id to
+/// rasterise, and the bitmap's width — [`pen_of`]'s answer.
+#[derive(Clone, Copy, Debug)]
+pub struct Pen {
+    /// The column the bitmap's column 0 lands on, whole.
+    pub x: f32,
+    /// The id with its phase decided: what a cache keys on and
+    /// [`FontStack::rasterize`] draws.
+    pub id: GlyphId,
+    /// The bitmap's width: the placement's for phase 0, two more for a
+    /// derived phase.
+    pub w: u32,
+}
+
+/// **The one round site** — M81/T81.8 (`docs/plan-shaped-paint.md`,
+/// "Subpixel pens (M81b) are thirds"). `x` is the run's rect x plus the
+/// placement's, in the renderer's pixels. Both backends call this where
+/// they used to round, so they cannot disagree about a glyph's column or
+/// its phase.
+///
+// ANCHOR: pen_rule
+/// A placement with phase 0 (every `Basic` glyph, and a `Complex` run with
+/// nothing to shape) is drawn at `x.round()`, exactly as before. A
+/// phaseable one (a shaped run's, marked by `place_run_into`) is drawn at
+/// `floor(x)` with phase 1 + *k*, *k* = round(3·fract(x)), and a fraction
+/// within a sixth of the next pixel goes there at *k* = 0. The placement
+/// already holds the bearing's floored part only, so the fraction here is
+/// the pen's alone: the bitmap's column 0 holds `fract(xmin)` and the
+/// derivation the third (`FontStack::rasterize`), each counted once.
+// ANCHOR_END: pen_rule
+pub fn pen_of(x: f32, p: &Placed) -> Pen {
+    let key = p.id.key();
+    if key.phase == 0 {
+        return Pen { x: x.round(), id: p.id, w: p.w };
+    }
+    let floor = x.floor();
+    let k = ((x - floor) * 3.0).round() as u8;
+    let (x, k) = if k >= 3 { (floor + 1.0, 0) } else { (floor, k) };
+    Pen { x, id: GlyphId(GlyphKey { phase: 1 + k, ..key }), w: p.w + 2 }
 }
 
 /// [`TextMeasure`] backed by a real face — what `layout` asks.

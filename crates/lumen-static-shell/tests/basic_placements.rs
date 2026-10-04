@@ -34,6 +34,14 @@
 //! `GlyphId::index` at T81.0, and its field order is T81.1's to change);
 //! the size is the one passed in and folded per run.
 //!
+//! **No `Basic` glyph is phased** — M81/T81.8. Each placement also goes
+//! through the round site both backends use, `text::pen_of`, and the
+//! phase it chooses is counted: 0 over the corpus, on a `Basic` stack and
+//! on a `Complex` one (whose runs here have nothing to shape), so every
+//! `Basic` glyph keeps fontdue's 1× bitmap and no golden moves. Injection
+//! (T81.8's commit): `pen_of` phases a phase-0 placement too; the count
+//! prints the whole corpus.
+//!
 //! **Its injection is `cap_shift` flooring instead of rounding**, which
 //! moves the checksum at every scale. Flooring a glyph's own `y` would
 //! not: every `Basic` glyph sits on whole pixels (the fractional count
@@ -42,7 +50,7 @@
 #![cfg(feature = "truetype")]
 
 use lumen_static::text::GlyphKey;
-use lumen_static_shell::text::{FontStack, GlyphId, ShapeScratch};
+use lumen_static_shell::text::{pen_of, FontStack, GlyphId, ShapeScratch};
 
 #[path = "fonts/pinned.rs"]
 mod pinned;
@@ -73,13 +81,16 @@ impl Fnv {
     }
 }
 
-/// One scale's fold, the number of glyphs it placed, and how many of
-/// its narrowed runs came back taller than the free one (wrapped).
-fn fold_scale(font: &FontStack, scratch: &mut ShapeScratch, scale: f32) -> (u64, usize, usize, usize) {
+/// One scale's fold, the number of glyphs it placed, how many of its
+/// narrowed runs came back taller than the free one (wrapped), how many
+/// placements sit at a fractional x or y, and how many `pen_of` phases
+/// (from a whole run origin, as a frame's is).
+fn fold_scale(font: &FontStack, scratch: &mut ShapeScratch, scale: f32) -> (u64, usize, usize, usize, usize) {
     let mut h = Fnv::new();
     let mut glyphs = 0;
     let mut wrapped = 0;
     let mut fractional = 0;
+    let mut phased = 0;
     for &t in &STRINGS {
         for &px in &SIZES {
             for &w in &WEIGHTS {
@@ -99,13 +110,14 @@ fn fold_scale(font: &FontStack, scratch: &mut ShapeScratch, scale: f32) -> (u64,
                         h.u64(p.w as u64);
                         h.u64(p.h as u64);
                         fractional += usize::from(p.x.fract() != 0.0 || p.y.fract() != 0.0);
+                        phased += usize::from(pen_of(10.0 + p.x, p).id.key().phase != 0);
                     }
                     glyphs += scratch.placed().len();
                 }
             }
         }
     }
-    (h.0, glyphs, wrapped, fractional)
+    (h.0, glyphs, wrapped, fractional, phased)
 }
 
 #[test]
@@ -117,20 +129,27 @@ fn every_basic_placement_folds_to_the_recorded_checksum() {
     let mut glyphs = 0;
     let mut wrapped = 0;
     let mut by_scale = [0u64; 3];
+    let mut phased = 0;
     for (i, &k) in SCALES.iter().enumerate() {
-        let (sum, n, wr, fr) = fold_scale(&font, &mut scratch, k);
+        let (sum, n, wr, fr, ph) = fold_scale(&font, &mut scratch, k);
         println!(
             "scale {k}: checksum {sum:#018x}, {n} glyphs placed, {wr} narrowed runs wrapped, \
-             {fr} at a fractional x or y (recorded {:#018x})",
+             {fr} at a fractional x or y, {ph} phased by pen_of (recorded {:#018x})",
             BASIC_BY_SCALE[i]
         );
+        phased += ph;
         wrapped += wr;
         by_scale[i] = sum;
         total.u64(sum);
         glyphs += n;
     }
-    println!("all scales: checksum {:#018x}, {glyphs} glyphs placed (recorded {BASIC_CHECKSUM:#018x})", total.0);
+    println!(
+        "all scales: checksum {:#018x}, {glyphs} glyphs placed (recorded {BASIC_CHECKSUM:#018x}); \
+         {phased} phased (bound 0)",
+        total.0
+    );
     assert!(glyphs > 0, "setup: the corpus placed no glyph");
+    assert_eq!(phased, 0, "pen_of gave {phased} Basic glyphs a phase: they would leave fontdue's 1x bitmap");
     assert!(wrapped > 0, "setup: no narrowed run wrapped, so no wrapped line is folded");
     for (i, &k) in SCALES.iter().enumerate() {
         assert_eq!(
@@ -227,8 +246,12 @@ fn a_complex_stack_places_runs_with_nothing_to_shape_as_basic_does() {
     let mut total = Fnv::new();
     let mut glyphs = 0;
     for (i, &k) in SCALES.iter().enumerate() {
-        let (sum, n, _, _) = fold_scale(&complex, &mut scratch, k);
-        println!("Complex stack, scale {k}: checksum {sum:#018x} (recorded {:#018x}), {n} glyphs", BASIC_BY_SCALE[i]);
+        let (sum, n, _, _, ph) = fold_scale(&complex, &mut scratch, k);
+        println!(
+            "Complex stack, scale {k}: checksum {sum:#018x} (recorded {:#018x}), {n} glyphs, {ph} phased (bound 0)",
+            BASIC_BY_SCALE[i]
+        );
+        assert_eq!(ph, 0, "a run with nothing to shape was phased on a Complex stack at scale {k}");
         assert_eq!(sum, BASIC_BY_SCALE[i], "a Complex stack placed a run with nothing to shape off Basic's placement at scale {k}");
         total.u64(sum);
         glyphs += n;

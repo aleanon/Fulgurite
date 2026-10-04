@@ -90,6 +90,20 @@ retention, `svg.rs` (whose `<text>` a viewer shapes itself) and the
 contrast walk are unchanged — at the price of shaping per paint, which
 the canvas's per-frame run shaping (M50/T50.3) already paid.
 
+**Subpixel pens — DECIDED (M81/T81.7–T81.8).** A shaped glyph is drawn at
+the nearest third of a pixel; a `Basic` glyph keeps fontdue's 1× bitmap,
+so no golden moves. fontdue exposes no pen offset, so the thirds are
+derived from its public `rasterize_indexed_subpixel` inside
+`FontStack::rasterize`, keyed by `GlyphKey::phase`, and both renderers
+take the column and the phase from one shell function, `text::pen_of`.
+The derivation was probed first and holds within K81d's bound, so no
+second rasteriser (`ab_glyph`) entered; the thirds did not thrash the
+glyph cache on a grid whose edited runs are shaped (K81b). The numbers
+are `docs/results-text.md` M81/T81.7 and M81/T81.8. Building it fixed a
+defect M81a had shipped: a shaped glyph's bearing fraction was counted
+twice, one pixel right whenever it was 0.5 or more
+(`docs/plan-shaped-paint.md`, "What building found").
+
 ## The embedded face (M13/T13.7, 2026-09-05)
 
 "The `no_std` profile stays reachable" turned out to have a hole in it,

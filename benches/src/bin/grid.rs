@@ -57,7 +57,7 @@
 //! Run: `just grid`, or `cargo run --release -p benches --bin grid`
 
 use std::hint::black_box;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use lumen_static_widgets::ops::{Button, Label};
@@ -195,9 +195,31 @@ pub struct Ui {
 pub struct Grid {
     #[tree]
     ui: Ui,
-    /// The formula bar's source: one value, one bound label.
-    #[bind(ui.top.formula, "= {}")]
+    /// The formula bar's source: one value, one bound label. The prefix is
+    /// empty except inside K81b's shaped pass ([`prefix`]).
+    #[bind(ui.top.formula, "{1}= {0}", prefix())]
     cell: i64,
+}
+
+/// **K81b's content switch** — M81/T81.8 (`docs/plan-shaped-paint.md`,
+/// "What building found", T81.7). Since K81a's response a `Complex` stack
+/// lays a run with nothing to shape out by fontdue's whole-pixel path, so
+/// this grid's Latin and digits have no subpixel phase and a K81b arm on
+/// them counts nothing. With `--content shaped` the truetype pass turns this
+/// on while it builds and edits its host: a Hebrew word goes before every
+/// sheet cell and before the bound value each edit changes, so every edited
+/// run goes through the shaper and its digits land on fractional pens. Off
+/// everywhere else, so the timed arms, their byte-identity gates and the
+/// split twin draw what they always drew.
+static SHAPED_CONTENT: AtomicBool = AtomicBool::new(false);
+
+/// The Hebrew word (`סכום`, "sum") and a space, or nothing.
+fn prefix() -> &'static str {
+    if SHAPED_CONTENT.load(Ordering::Relaxed) {
+        "\u{5e1}\u{5db}\u{5d5}\u{5dd} "
+    } else {
+        ""
+    }
 }
 
 const W: u32 = 1400;
@@ -259,12 +281,13 @@ fn fill_sheet(sheet: &mut Sheet) {
                 &mut r.c5, &mut r.c6, &mut r.c7, &mut r.c8, &mut r.c9,
             ] {
                 n += 1;
+                let p = prefix();
                 c.set(match n % 5 {
-                    0 => format!("{:.2}", n as f32 * 0.37),
-                    1 => format!("Q{}", n % 4 + 1),
-                    2 => format!("{}", n * 7),
-                    3 => "—".into(),
-                    _ => format!("row {n}"),
+                    0 => format!("{p}{:.2}", n as f32 * 0.37),
+                    1 => format!("{p}Q{}", n % 4 + 1),
+                    2 => format!("{p}{}", n * 7),
+                    3 => format!("{p}—"),
+                    _ => format!("{p}row {n}"),
                 });
             }
         }
@@ -592,6 +615,83 @@ fn arm_c(h: &mut Bounded, at: (f32, f32), m: &mut dyn TextMeasure) {
     pump(h, m);
 }
 
+/// The value the truetype pass's edit `k` writes: one to six digits, the
+/// length changing every edit. **Not `1000 + k`**, which is what this pass
+/// wrote until M81/T81.8: this face's digits share one advance, so twenty
+/// four-digit values put every glyph of the formula bar on the same pens,
+/// an edit could introduce no phase, and K81b's injection (twelve phases
+/// instead of three) left the bound green at 3 misses over 1 new key. A
+/// length that changes moves the run's other glyphs — in a right-to-left
+/// line, the Hebrew word after the number — onto pens the screen has not
+/// shown (`docs/results-text.md` M81/T81.8).
+fn edit_value(k: u32) -> i64 {
+    i64::from(k + 1) * 10i64.pow(k % 6)
+}
+
+/// K81b's key counter (M81/T81.8): the distinct (glyph, phase) keys a
+/// display list draws on the surface, each run placed through the stack the
+/// canvas paints with and phased in thirds **here** — `round(3·fract(x))`
+/// past the floor, a fraction within a sixth of the next pixel going there
+/// at the first third — rather than by `text::pen_of`, so the counter is
+/// the decision and the renderer is what it checks.
+struct K81bKeys {
+    face: FontStack,
+    scratch: lumen_static_shell::text::ShapeScratch,
+    seen: std::collections::HashSet<(u32, u16, u8, u8)>,
+    /// Runs this counter placed, and of those through the shaper.
+    own: (u64, u64),
+}
+
+impl K81bKeys {
+    fn new(face: FontStack) -> Self {
+        K81bKeys { face, scratch: lumen_static_shell::text::ShapeScratch::new(), seen: Default::default(), own: (0, 0) }
+    }
+
+    /// Add every key the list draws on the surface; return how many the
+    /// counter had not seen.
+    fn screen(&mut self, list: &lumen_static::display::DisplayList) -> u64 {
+        use lumen_static::display::Cmd;
+        let before = lumen_static_shell::text::text_counters();
+        let mut new = 0;
+        for c in &list.cmds {
+            let Cmd::Text { rect, text, size, weight, line_height, .. } = c else { continue };
+            if rect[0] >= W as f32 || rect[1] >= H as f32 || rect[2] <= 0.0 || rect[3] <= 0.0 {
+                continue;
+            }
+            self.face.place_run_into(&mut self.scratch, list.str_of(*text), *size, *weight, *line_height, rect[2] - rect[0]);
+            for p in self.scratch.placed() {
+                let key = p.id.key();
+                let x = rect[0] + p.x;
+                let (gx, phase) = if key.phase == 0 {
+                    (x.round(), 0)
+                } else {
+                    let k = ((x - x.floor()) * 3.0).round() as u8;
+                    if k >= 3 { (x.floor() + 1.0, 1) } else { (x.floor(), 1 + k) }
+                };
+                let gy = (rect[1] + p.y).round();
+                if gx >= W as f32 || gy >= H as f32 || gx + p.w as f32 + 2.0 <= 0.0 || gy + p.h as f32 <= 0.0 {
+                    continue;
+                }
+                if self.seen.insert((key.px_bits, key.index, key.face, phase)) {
+                    new += 1;
+                }
+            }
+        }
+        // Its own placements are not the canvas's: kept out of the
+        // pass's "runs painted" and "through the shaper".
+        let after = lumen_static_shell::text::text_counters();
+        self.own.0 += after.shaped - before.shaped;
+        self.own.1 += after.complex - before.complex;
+        new
+    }
+
+    /// (distinct keys, distinct glyphs, phased keys) seen so far.
+    fn counts(&self) -> (usize, usize, usize) {
+        let glyphs: std::collections::HashSet<_> = self.seen.iter().map(|&(px, i, f, _)| (px, i, f)).collect();
+        (self.seen.len(), glyphs.len(), self.seen.iter().filter(|k| k.3 != 0).count())
+    }
+}
+
 fn main() {
     black_box(());
     let table = <Ui as Widget>::NODE_COUNT;
@@ -650,12 +750,20 @@ fn main() {
     // screen would keep the allocation gate green while a window
     // allocated. It must read 0, and so must the misses after warm-up.
     //
-    // **`--shaping basic|complex`** (M81/T81.3, for K81b in T81.8): the
-    // truetype canvas's stack in that mode; `complex` needs the benches
-    // `shaping` feature. The runs the shaper laid out are printed as the
-    // setup. Since K81a's response (`docs/plan-shaped-paint.md`, "What
-    // building found") a run with nothing to shape takes fontdue's path
-    // under `Complex`, so this grid's Latin and digits print 0 there.
+    // **`--shaping basic|complex`** (M81/T81.3): the truetype canvas's
+    // stack in that mode; `complex` needs the benches `shaping` feature.
+    // Since K81a's response (`docs/plan-shaped-paint.md`, "What building
+    // found") a run with nothing to shape takes fontdue's path under
+    // `Complex`, so this grid's Latin and digits reach no shaper and no
+    // subpixel phase there.
+    //
+    // **K81b** (M81/T81.8) is `--shaping complex --content shaped`: a Hebrew
+    // word before every cell and the bound value (`SHAPED_CONTENT`), so the
+    // edited runs are shaped and land on thirds. Each edit prints its cache
+    // misses beside the (glyph, phase) keys it introduces, counted by
+    // `K81bKeys`, and the binary exits non-zero over 3× or on a reset.
+    // Setup: shaper runs > 0 and keys > glyphs on the warm screen. `--content
+    // latin` (the default) is the accept direction: 0 phased keys.
     let args: Vec<String> = std::env::args().skip(1).collect();
     let shaping = match args.iter().position(|a| a == "--shaping").map(|i| args.get(i + 1).map(String::as_str)) {
         None | Some(Some("basic")) => lumen_static_shell::text::Shaping::Basic,
@@ -663,33 +771,79 @@ fn main() {
         Some(Some("complex")) => lumen_static_shell::text::Shaping::Complex,
         Some(other) => panic!("--shaping takes basic or complex (complex needs the `shaping` feature), not {other:?}"),
     };
+    // **`--content latin|shaped`** (M81/T81.8, K81b): see `SHAPED_CONTENT`.
+    let shaped_content = match args.iter().position(|a| a == "--content").map(|i| args.get(i + 1).map(String::as_str)) {
+        None | Some(Some("latin")) => false,
+        Some(Some("shaped")) => true,
+        Some(other) => panic!("--content takes latin or shaped, not {other:?}"),
+    };
     if let Some(face) = FontStack::system() {
         let face = face.with_shaping(shaping);
+        SHAPED_CONTENT.store(shaped_content, Ordering::Relaxed);
+        // Measured by the stack that paints, so a shaped run's box is the
+        // shaper's.
+        let mut tm = FontMetrics::new(face.clone());
         let shaped0 = lumen_static_shell::text::text_counters();
-        let mut hw = host(m);
-        let mut tc = Canvas::with_font(W, H, face);
+        let mut hw = host(&mut tm);
+        let mut tc = Canvas::with_font(W, H, face.clone());
         for _ in 0..3 {
             lumen_static::Renderer::render(&mut tc, &hw.list, W, H);
         }
         let _ = hw.take_damage_for_age(1);
         let warm = tc.glyph_cache_stats();
-        for k in 0..20 {
-            arm_a(&mut hw, 1000 + k, m);
+        // K81b's key counter: the distinct (glyph, phase) keys on the
+        // surface, phased in **thirds by its own arithmetic**, not by
+        // `pen_of`, so a renderer that quantised more finely than the
+        // decision would show as misses over keys.
+        let mut keys = K81bKeys::new(face.clone());
+        keys.screen(&hw.list);
+        let (warm_keys, warm_glyphs, warm_phased) = keys.counts();
+        let mut per_edit = Vec::new();
+        let mut over = Vec::new();
+        for k in 0..20u32 {
+            let before = tc.glyph_cache_stats().misses;
+            arm_a(&mut hw, edit_value(k), &mut tm);
             for r in hw.take_damage_for_age(1).regions([0.0, 0.0, W as f32, H as f32]) {
                 tc.clear_within(r, PAGE);
                 tc.render_within(&hw.list, r);
             }
+            let misses = tc.glyph_cache_stats().misses - before;
+            let new = keys.screen(&hw.list);
+            if misses > 3 * new {
+                over.push(format!("edit {k}: {misses} misses over {new} new keys"));
+            }
+            per_edit.push((misses, new));
         }
         let after = tc.glyph_cache_stats();
         let shaped1 = lumen_static_shell::text::text_counters();
+        let through = shaped1.complex - shaped0.complex - keys.own.1;
+        SHAPED_CONTENT.store(false, Ordering::Relaxed);
         println!(
-            "glyph cache [{shaping:?}]: warm {warm:?}; after 20 edits {after:?} (bound: uncached 0, resets 0, \
-             misses after warm-up only for digits not yet drawn); {} runs painted, {} through the shaper\n",
-            shaped1.shaped - shaped0.shaped,
-            shaped1.complex - shaped0.complex
+            "glyph cache [{shaping:?}, {} content]: warm {warm:?}; after 20 edits {after:?} (bound: uncached 0, resets 0, \
+             misses after warm-up only for keys not yet drawn); {} runs painted, {through} shaper runs (measure and paint)",
+            if shaped_content { "shaped" } else { "latin" },
+            shaped1.shaped - shaped0.shaped - keys.own.0,
+        );
+        let (misses, new): (u64, u64) = per_edit.iter().fold((0, 0), |a, e| (a.0 + e.0, a.1 + e.1));
+        println!(
+            "K81b: warm screen {warm_keys} distinct (glyph, phase) keys over {warm_glyphs} distinct glyphs, {warm_phased} \
+             phased; 20 edits: {misses} misses beside {new} new keys (bound per edit: misses <= 3 x new keys), per edit \
+             (misses, new) {per_edit:?}; resets {} (bound 0)\n",
+            after.resets
         );
         assert_eq!(after.uncached, 0, "the glyph cache drew {} glyphs uncached on the grid", after.uncached);
         assert_eq!(after.resets, 0, "the glyph cache reset {} times on one screen", after.resets);
+        assert!(over.is_empty(), "K81b: phases thrash the glyph cache: {}", over.join("; "));
+        if shaped_content && shaping != lumen_static_shell::text::Shaping::Basic {
+            assert!(through > 0, "setup: no run of the shaped grid went through the shaper");
+            assert!(
+                warm_keys > warm_glyphs,
+                "setup: {warm_keys} keys over {warm_glyphs} glyphs -- phases do not multiply the keys, so K81b counts nothing"
+            );
+        } else {
+            // The accept direction: Latin (or a Basic stack) has no phase.
+            assert_eq!(warm_phased, 0, "{warm_phased} phased keys on a grid with nothing to shape");
+        }
     }
 
     // ---- the byte-identity gate --------------------------------------

@@ -2,7 +2,9 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Not started.** The shared byte inventory, seams (S1,
+> its own file. Built 2026-10-04: M81a (T81.0–T81.6) and M81b
+> (T81.7–T81.8); each half closes on `just ci-verify` (S5), cited in
+> AGENT.md.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -610,6 +612,9 @@ rather than as a display-list command: see the first decision.*
   note expects misses after warm-up "only for digits not yet drawn"
   (`benches/src/bin/grid.rs:644-673`), about 0, so 3× phase-off is
   about 0 and fails correct code.
+  **Held at T81.8** on `--content shaped` (since T81.7: "What building
+  found"): resets 0, 2 misses over 2 new keys in twenty edits
+  (`docs/results-text.md` M81/T81.8).
   **When it fires:** phases ship off (`Complex` glyphs use phase 1 only)
   and the numbers are recorded; reopen with a larger `GlyphCache`.
 - **K81c — kept face bytes.** `tests/font_heap.rs`' `Complex` arm.
@@ -953,8 +958,8 @@ rather than as a display-list command: see the first decision.*
   layout floors `pen + xmin` for that reason). So a shaped glyph whose
   `offset_x` is 0.5 or more draws **one pixel right**: 7 of the probe's
   12 single-glyph cases, Complex against Basic ink centroid exactly
-  `round(offset_x)` (`a_shaped_glyph_draws_its_bearing_fraction_twice`,
-  pinned green for T81.8 to flip). T81.3's gates compared ink rows with
+  `round(offset_x)` (pinned green for T81.8 to flip; flipped there as
+  `a_shaped_glyph_draws_its_bearing_fraction_once`). T81.3's gates compared ink rows with
   `Basic`'s, never columns. Deciding the phase from `pen_of(rect_x +
   p.x)` with `p.x` still `pen + xmin` would count it a third time, since
   the derivation puts the outline `offset_x + k/3` into a column 0 at
@@ -983,6 +988,70 @@ rather than as a display-list command: see the first decision.*
   > 0 and distinct (glyph, phase) keys > distinct glyphs (phases really
   multiply the keys); the Latin grid stays as the accept direction,
   printing 0 phased keys. The injection stays as written.
+
+- T81.8: **"the pin prints 0.000" is against the shipped phase-1 bitmap;
+  against `Basic` it is the derivation's own residual.** T81.7's 0.000 was
+  measured with the placement change alone, before phases: a phased glyph
+  is drawn from the derived bitmap, which sits up to 1/6 px from fontdue's
+  1× one by the decision's own arithmetic. So the flipped pin
+  (`a_shaped_glyph_draws_its_bearing_fraction_once`) holds two checks: the
+  `Complex` ink against the shipped phase-1 bitmap at 10 + `floor(xmin)`,
+  computed from fontdue's metrics, **0.000** in all twelve (bound 0.01),
+  and against `Basic`'s ink, **0.155** worst (bound 1/6 + 0.05, the
+  probe's abs column to the third decimal). Its injection (`shaped_ink`
+  back at `pen + xmin`) prints +1.000 at worst and names nine cases,
+  because `pen_of` then turns the bearing fraction into a phase as well:
+  the third count T81.7 predicted.
+- T81.8: **the column check lives where the row check did.**
+  `glyph_placement.rs`'s shaped test compared ink rows with `Basic`'s and
+  never columns, which is how the doubled fraction shipped; it now compares
+  the first inked column too (equal at 16–64 px), with a setup that some
+  size puts `1` on a bearing fraction ≥ 0.5 (0.758 at 16 px). The same
+  injection prints 13 against 12 at 16 px and 16 against 15 at 48 px.
+- T81.8: **a placement is marked phaseable in its id, and `pen_of`
+  answers the width.** `place_run_into` hands a shaped glyph out with
+  `phase` 1, and `pen_of` replaces it with 1 + *k*, so `Placed` gains no
+  field. The derived bitmap is two columns wider than the 1× one, and the
+  GPU sizes its quad from the placement, so `pen_of` returns `Pen { x, id,
+  w }` and both backends take the width from it.
+- T81.8: **K81b's injection left its bound green on the arm's first
+  build** — 3 misses over 1 new key, exactly 3×. The truetype pass wrote
+  `1000 + k`, and this face's digits share one advance, so twenty
+  four-digit values put every glyph of the formula bar on the same pens and
+  no edit could introduce a phase, at three or at twelve. The edit values
+  now change length every edit (`edit_value`), which in a right-to-left
+  line moves the Hebrew word after the number onto pens the screen has not
+  shown: twelve phases print **20 misses over 2 keys**, five edits named;
+  thirds print **2 over 2** (`docs/results-text.md` M81/T81.8). The counter
+  phases in thirds by its own arithmetic, not by `pen_of`, as the
+  injection requires, and agrees with the renderer exactly (74 keys, 74
+  warm misses).
+- T81.8: **the bound value carries the Hebrew word through its binding's
+  format**, `#[bind(ui.top.formula, "{1}= {0}", prefix())]`, because a
+  `#[bind]` formats every pump and would overwrite a direct write. The
+  switch (`SHAPED_CONTENT`) is on only while the truetype pass builds and
+  edits its host, so the timed arms, their byte-identity gates and the
+  split twin draw what they always drew; with it off the format prints
+  `= {v}` byte for byte. `just grid` passes its arguments to the binary,
+  building with `shaping` for a `complex` run.
+- T81.8: **counting the bearing fraction once narrowed a shaped run's
+  box, and T81.4's drag gate lost its margin.** `shaped_extent` takes ink
+  from `shaped_ink`, so `שלום עולם` at 14 px measures 65 px at 1× (66
+  before) against 64.5 for the 2× measure over 2: they part by 0.5, and
+  `scale_memo.rs`' bound of 0.5 px could no longer see a stale box. Its
+  setup ("must part by > 0.5") caught it rather than passing vacuously; no
+  size from 11 to 20 px parts by more than 0.5 now, because a 2× box is
+  whole physical pixels. The bound is 0.01 px (the box after the drag
+  equals the 2× measure exactly) and the setup > 0.25; T81.4's injection
+  (`set_scale` no longer reaches the measurer) prints 65x20 against
+  64.5x19.5 and fails by name.
+- T81.8: **the probe's tests share process-wide counters**
+  (`text_counters`), and with five tests shaping in parallel one test's
+  runs reached another's "0 through the shaper" bound; each holds a file
+  lock while it shapes.
+- T81.8: **T81.6's −708 B on `firmware_interactive` had not reached K4's
+  four-binary table** in `docs/results-embedded.md` (63,792 there against
+  63,084 linked); T81.8 added its column.
 
 **What the review found (M81).**
 

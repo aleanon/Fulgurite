@@ -529,7 +529,11 @@ pub struct GlyphKey {
     pub index: u16,
     /// Which face of the stack: 0 regular, 1 bold, 2 + k fallback `k`.
     pub face: u8,
-    /// The subpixel phase: 0 is unphased (every glyph today). M81b gives
-    /// it meaning (`docs/plan-shaped-paint.md`, the subpixel decision).
+    /// The subpixel phase (M81/T81.8, `docs/plan-shaped-paint.md`, the
+    /// subpixel decision): 0 is unphased, the rasteriser's own bitmap
+    /// (every `Basic` glyph); 1 + *k*, *k* in 0..3, is the glyph moved
+    /// *k*/3 px right, which only a shaped run's glyphs take. The shell
+    /// decides it where a glyph is drawn (`text::pen_of`) and owns the
+    /// raster (`FontStack::rasterize`); a shaper hands over 0.
     pub phase: u8,
 }

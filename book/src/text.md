@@ -144,6 +144,21 @@ Left and Right still step through the text in reading order, not across
 the screen (`docs/plan-shaped-paint.md`, "Not in M81"); the gates and
 their numbers are in `docs/results-text.md` (M81/T81.5).
 
+**A shaped glyph lands on a third of a pixel** (M81/T81.8). A shaper's
+advances are fractional, and rounding each glyph to a whole pixel makes
+the gaps in a word uneven, so a `Complex` run's glyphs are drawn at the
+nearest third: three bitmaps per glyph at most, derived from the
+rasteriser's own 3× horizontal raster, keyed apart in the glyph cache.
+Both renderers choose the column and the third in one function:
+
+```text
+{{#include ../../crates/lumen-static-shell/src/text.rs:pen_rule}}
+```
+
+A `Basic` glyph has no phase, so nothing a program drew before M81 moves.
+What the thirds cost a real screen, and how close each is to the glyph
+really moved a third, are in `docs/results-text.md` (M81/T81.7, M81/T81.8).
+
 ## Localisation
 
 A `Catalogue` is a sorted `&'static [(&str, &str)]` — the same shape a

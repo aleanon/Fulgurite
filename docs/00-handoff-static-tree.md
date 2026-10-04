@@ -1085,6 +1085,12 @@ The years go to:
   0.156 px against a 0.217 bound, `docs/results-text.md` M81/T81.7), so
   no `ab_glyph`. Found there and owed to T81.8: a shaped glyph's bearing
   fraction is drawn twice, one pixel right when it is 0.5 or more.
+  *M81/T81.8:* subpixel pens **DECIDED** and shipped, closing M81b: a
+  shaped glyph lands on the nearest third (`GlyphKey::phase` 1–3, derived
+  in `FontStack::rasterize`, chosen by `text::pen_of` in both renderers),
+  a `Basic` glyph on phase 0, byte for byte as before; the bearing
+  fraction is counted once. K81b holds (`docs/results-text.md` M81/T81.8,
+  `docs/text-render-adoption-decision.md` "Subpixel pens").
 - **Platform integration**: multi-window, HiDPI, per-monitor scaling, clipboard,
   drag and drop. *Status (M54/T54.7):* multi-window, platform drag and
   drop and platform dialogs are **types shipped, never assembled** — no

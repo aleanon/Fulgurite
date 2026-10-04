@@ -104,9 +104,13 @@ fn a_host_that_stays_at_1x_keeps_its_box() {
 /// `Complex`, so `Local`'s `Session::set_scale` still reaches
 /// `FontMetrics::set_scale`: after the drag, a Hebrew label's box must be
 /// the shaped run's physical measure over 2, not its 1× box. 14 px is
-/// where the two differ by more than the bound on the system face (the
-/// shaped widths are whole physical pixels, so 1× and 2×/2 part by up to
-/// a pixel); the setup asserts it. Skips without a system face unless
+/// where the two differ on the system face (the shaped widths are whole
+/// physical pixels, so 1× and 2×/2 part by half a pixel at most since
+/// M81/T81.8 took a glyph's bearing fraction out of its ink extent; they
+/// parted by 1.5 px before, while the fraction was counted twice); the
+/// setup asserts they part by more than a quarter pixel, and the box after
+/// the drag must equal the 2× measure to within 0.01 px, which half a
+/// pixel cannot pass. Skips without a system face unless
 /// `LUMEN_REQUIRE_FONTS=1`.
 #[cfg(all(feature = "truetype", feature = "shaping"))]
 #[test]
@@ -127,10 +131,10 @@ fn a_complex_session_dragged_to_2x_re_measures_its_shaped_labels() {
     let at_1x = FontMetrics::with_scale(stack.clone(), 1.0).measure(HEBREW, SIZE, f32::INFINITY);
     let physical_over_2 = FontMetrics::with_scale(stack, 2.0).measure(HEBREW, SIZE, f32::INFINITY);
     println!(
-        "setup: {HEBREW:?} at {SIZE} px, Complex: 1x box {}x{}, physical measure / 2 {}x{} (must part by > 0.5)",
+        "setup: {HEBREW:?} at {SIZE} px, Complex: 1x box {}x{}, physical measure / 2 {}x{} (must part by > 0.25)",
         at_1x.w, at_1x.h, physical_over_2.w, physical_over_2.h
     );
-    assert!((at_1x.w - physical_over_2.w).abs() > 0.5, "setup: 1x and 2x agree, so a stale box could not be seen");
+    assert!((at_1x.w - physical_over_2.w).abs() > 0.25, "setup: 1x and 2x agree, so a stale box could not be seen");
 
     let program = application(|| {
         let mut p = Page::default();
@@ -149,7 +153,7 @@ fn a_complex_session_dragged_to_2x_re_measures_its_shaped_labels() {
     s.frame(0.0, LW * 2, LH * 2);
     let after = s.host.states[index()].size;
     println!(
-        "Session::shaping {:?}; label box at 1x {}x{}; after set_scale(2.0) {}x{}, physical / 2 {}x{} (bound 0.5 px)",
+        "Session::shaping {:?}; label box at 1x {}x{}; after set_scale(2.0) {}x{}, physical / 2 {}x{} (bound 0.01 px)",
         s.shaping(),
         before.w,
         before.h,
@@ -159,9 +163,9 @@ fn a_complex_session_dragged_to_2x_re_measures_its_shaped_labels() {
         physical_over_2.h
     );
     assert_eq!(s.shaping(), Shaping::Complex, "setup: the session is not Complex");
-    assert!((before.w - at_1x.w).abs() <= 0.5, "setup: the 1x box is not the shaped run's 1x measure");
+    assert!((before.w - at_1x.w).abs() <= 0.01, "setup: the 1x box is not the shaped run's 1x measure");
     assert!(
-        (after.w - physical_over_2.w).abs() <= 0.5 && (after.h - physical_over_2.h).abs() <= 0.5,
+        (after.w - physical_over_2.w).abs() <= 0.01 && (after.h - physical_over_2.h).abs() <= 0.01,
         "the label kept a stale box after the drag: {}x{} where the 2x measure is {}x{}",
         after.w,
         after.h,

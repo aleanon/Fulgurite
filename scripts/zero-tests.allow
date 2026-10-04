@@ -10,3 +10,8 @@
 # would record the recording machine's fonts (golden.rs's module docs).
 # `--workspace` turns `truetype` on, so it runs alone in `dev-shape`.
 lumen-static-shell/golden: justfile
+
+# `#![cfg(all(feature = "truetype", feature = "shaping"))]` since M81/T81.8:
+# the phase probe reaches the shipped raster through a `Complex` stack, and
+# `--workspace` does not turn `shaping` on, so `just fonts` runs it alone.
+lumen-static-shell/subpixel_phase: justfile

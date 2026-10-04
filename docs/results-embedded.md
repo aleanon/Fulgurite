@@ -890,6 +890,13 @@ only it links `TextInput::offset_at`, which inlines into
 is an inlining decision, not a saving the change earns; recorded as
 measured. The paint-only headline above is unchanged.
 
+### Subpixel pens cost the firmware nothing — M81/T81.8
+
+`just firmware-delta 3b3760d` (K4's default): **+0 B** `.text` and
+`.rodata` on all four binaries. The phase is decided and rasterised in
+the shell (`text::pen_of`, `FontStack::rasterize`), which no firmware
+links; the core changed only `GlyphKey::phase`'s rustdoc.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the
@@ -933,15 +940,19 @@ names: Δ 0 on all four), rewritten by M81/T81.2 (`Cluster::rtl`, and
 re-measured by M81/T81.3 (`Label` placing a right-to-left cut's `…`
 at the left, behind `alloc`, which the leaf tier drops: Δ 0 on all four,
 `just firmware-delta 4ccde3b`), and rewritten by M81/T81.5 (`TextInput`'s
-caret and selection through the `caret` module; the section below).
+caret and selection through the `caret` module; the section below);
+rewritten by M81/T81.8 to carry M81/T81.6's −708 B on
+`firmware_interactive` (its own section above), which T81.6 had recorded
+there and not here, and re-measured by T81.8 itself: Δ 0 on all four
+(`just firmware-delta 3b3760d`).
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 30,226 | 36.9% | 51,694 | 13,316 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 |
-| `firmware_interactive` | **63,792** | **77.9%** | **18,128** | 21,846 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** |
-| `firmware_bind` | 33,686 | 41.1% | 48,234 | 13,920 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 |
-| `firmware_cascade` | 32,366 | 39.5% | 49,554 | 14,092 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 30,226 | 36.9% | 51,694 | 13,316 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 |
+| `firmware_interactive` | **63,084** | **77.0%** | **18,836** | 21,846 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** |
+| `firmware_bind` | 33,686 | 41.1% | 48,234 | 13,920 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 |
+| `firmware_cascade` | 32,366 | 39.5% | 49,554 | 14,092 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 |
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:
