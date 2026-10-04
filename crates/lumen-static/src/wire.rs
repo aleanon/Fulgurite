@@ -28,9 +28,13 @@ use alloc::vec::Vec;
 use crate::display::{Cmd, Color, DisplayList, ImageId, Material, Rect, Stops, MAX_STOPS};
 use crate::desc::Point;
 
-/// The encoding's version. Bumped when a field changes meaning, never
-/// for an appended tag.
-pub const VERSION: u8 = 1;
+/// The encoding's version. Bumped when a field changes meaning or a
+/// command gains one, never for an appended tag.
+///
+/// 2 since M80/T80.1: `Cmd::Text` carries `line_height`, one byte after
+/// its weight. A version-1 buffer has no such byte, so it is refused
+/// rather than read one byte out of step.
+pub const VERSION: u8 = 2;
 
 /// Append `list`'s encoding to `out`.
 pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
@@ -51,13 +55,14 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.rect(rect);
                 w.color(color);
             }
-            Cmd::Text { rect, text, size, weight, color } => {
+            Cmd::Text { rect, text, size, weight, line_height, color } => {
                 w.u8(1);
                 w.rect(rect);
                 w.u32(text.0);
                 w.u32(text.1);
                 w.f32(size);
                 w.f32(weight);
+                w.u8(line_height);
                 w.color(color);
             }
             Cmd::RoundedRect { rect, color, radius } => {
@@ -166,6 +171,7 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
                 text: (r.u32()?, r.u32()?),
                 size: r.f32()?,
                 weight: r.f32()?,
+                line_height: r.u8()?,
                 color: r.color()?,
             },
             2 => Cmd::RoundedRect { rect: r.rect()?, color: r.color()?, radius: r.f32()? },
@@ -307,7 +313,7 @@ mod tests {
         let mut l = DisplayList::new();
         l.bounds = Some([0.0, 0.0, 640.0, 480.0]);
         l.rect([1.0, 2.0, 3.0, 4.0], Color(1, 2, 3, 4));
-        l.text_weighted([5.0, 6.0, 70.0, 20.0], "héllo", 15.0, 700.0, Color(9, 8, 7, 6));
+        l.text_spaced([5.0, 6.0, 70.0, 20.0], "héllo", 15.0, 700.0, 24, Color(9, 8, 7, 6));
         l.cmds.push(Cmd::RoundedRect { rect: [0.0; 4], color: Color::BLACK, radius: 3.5 });
         l.cmds.push(Cmd::StrokedRect { rect: [1.0; 4], color: Color::BLACK, radius: 2.0, width: 1.5 });
         l.cmds.push(Cmd::Shadow { rect: [2.0; 4], color: Color::BLACK, radius: 4.0, spread: 8.0 });
@@ -338,6 +344,32 @@ mod tests {
         assert_eq!(d.text, l.text);
         assert_eq!(d.bounds, l.bounds);
         assert_eq!(d.hash_from(0), l.hash_from(0));
+    }
+
+    /// M80/T80.1: the line pitch survives the trip, and a buffer of the
+    /// version before it is refused, not read a byte out of step.
+    #[test]
+    fn a_line_height_round_trips_and_the_old_version_is_refused() {
+        let mut l = DisplayList::new();
+        l.text_spaced([0.0, 0.0, 80.0, 40.0], "two\nlines", 16.0, 400.0, 24, Color::BLACK);
+        assert_eq!(l.cmds.len(), 1, "the fixture must hold the command it round-trips");
+        let mut b = Vec::new();
+        encode(&l, &mut b);
+        let d = decode(&b).expect("decodes");
+        let got = match d.cmds[0] {
+            Cmd::Text { line_height, .. } => line_height,
+            c => panic!("decoded {c:?}, not a text run"),
+        };
+        println!("line_height: encoded 24, decoded {got} (version {VERSION})");
+        assert_eq!(got, 24, "the line pitch did not survive the trip");
+        assert_eq!(d.cmds, l.cmds);
+        // Version 1 is the encoding without the byte: a reader of it must
+        // not be handed this one, nor this reader one of those.
+        assert_ne!(VERSION, 1, "Cmd::Text gained a field and VERSION was not bumped");
+        let mut old = b.clone();
+        old[0] = 1;
+        println!("a version-{} buffer decodes: {}", old[0], decode(&old).is_some());
+        assert!(decode(&old).is_none(), "a buffer of version {} decoded under {VERSION}", old[0]);
     }
 
     #[test]

@@ -259,7 +259,7 @@ fn every_command() -> Vec<(&'static str, lumen_static::Cmd, f32, bool)> {
         (
             // Block glyphs: `Canvas::new` has no font. 30 `H`s at 16 px.
             "Text",
-            Cmd::Text { rect: [10.0, 50.0, 190.0, 70.0], text: (0, 30), size: 16.0, weight: 400.0, color: ink },
+            Cmd::Text { rect: [10.0, 50.0, 190.0, 70.0], text: (0, 30), size: 16.0, weight: 400.0, line_height: 0, color: ink },
             area([10.0, 50.0, 190.0, 70.0]),
             false,
         ),

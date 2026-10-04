@@ -103,7 +103,7 @@ The same fold keyed `FoldedText`, from 0 and with no length, so `"x"`
 and `"\0x"` shared a memo and `Button`, `Badge` and `Chip` served the
 wrong width (`crates/lumen-static-widgets/tests/folded_text_identity.rs`).
 
-**Now all three text call sites — `Recording::text_weighted`,
+**Now all three text call sites — `Recording::text_spaced` (`text_weighted` until M80/T80.1),
 `DisplayList::hash_from` and `FoldedText::fold_of` — call
 `display::hash_bytes`**: the length as seed, a folded multiply per 8-byte
 word (the 128-bit product's halves xored), SplitMix64's finaliser.

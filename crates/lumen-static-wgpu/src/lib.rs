@@ -1217,7 +1217,7 @@ impl Gpu {
                         _pad: [0; 3],
                     });
                 }
-                Cmd::Text { rect, text, size, weight, color } => {
+                Cmd::Text { rect, text, size, weight, line_height, color } => {
                     // Cull the run before shaping it — the check that
                     // took a 3000-row frame from 7.3 ms to 0.16 ms on
                     // the software path (`docs/results-competitive.md`).
@@ -1231,7 +1231,9 @@ impl Gpu {
                     let s = list.str_of(*text);
                     match &font {
                         Some(f) => {
-                            if self.glyphs(f, rect, s, *size, *weight, *color, clip, shaping, out).is_err()
+                            if self
+                                .glyphs(f, rect, s, *size, *weight, *line_height, *color, clip, shaping, out)
+                                .is_err()
                             {
                                 result = Err(Overflow::Glyph);
                             }
@@ -1288,12 +1290,15 @@ impl Gpu {
         text: &str,
         size: f32,
         weight: f32,
+        line_height: u8,
         color: Color,
         clip: &[Rect],
         shape: &mut lumen_static_shell::text::ShapeScratch,
         out: &mut Vec<Quad>,
     ) -> Result<(), Overflow> {
-        font.place_run_into(shape, text, size, weight, rect[2] - rect[0]);
+        // The command's line pitch, so the lines land where the software
+        // canvas puts them (M80/T80.1; `tests/parity.rs` sees a drop).
+        font.place_run_into(shape, text, size, weight, line_height, rect[2] - rect[0]);
         let col = linear(color);
         for &g in shape.placed() {
             // Rounded to whole pixels, like `draw_run` — a glyph bitmap

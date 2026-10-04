@@ -75,7 +75,7 @@ fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
         (vec![Cmd::RoundedRect { rect: r, color: RED, radius: 4.0 }], 0, r#"rx="4.00" fill="#),
         (vec![Cmd::StrokedRect { rect: r, color: RED, radius: 4.0, width: 2.0 }], 0, r#"stroke-width="2.00""#),
         (vec![Cmd::Shadow { rect: r, color: RED, radius: 4.0, spread: 3.0 }], 0, r#"opacity="0.35""#),
-        (vec![Cmd::Text { rect: [0.0, 0.0, 50.0, 16.0], text: (0, 2), size: 12.0, weight: 400.0, color: RED }], 0, ">hi</text>"),
+        (vec![Cmd::Text { rect: [0.0, 0.0, 50.0, 16.0], text: (0, 2), size: 12.0, weight: 400.0, line_height: 0, color: RED }], 0, ">hi</text>"),
         (vec![Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 9.0, y: 9.0 }, width: 2.0, color: RED }], 0, "<line"),
         (vec![Cmd::Gradient { rect: r, stops: Stops::two(RED, Color(0, 0, 255, 255)), angle: 0.0 }], 0, "<linearGradient"),
         (vec![Cmd::Image { rect: r, id: ImageId(3), tint: RED }], 0, r#"data-image="3""#),

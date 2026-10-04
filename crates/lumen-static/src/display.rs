@@ -65,7 +65,7 @@ pub(crate) fn fold(h: u64, v: u64) -> u64 {
 const K: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// A 64-bit hash of a byte string: **the one text identity** in this
-/// crate (M46/T46.1). `Recording::text_weighted` (retention),
+/// crate (M46/T46.1). `Recording::text_spaced` (retention),
 /// [`DisplayList::hash_from`] (the agent journal's signatures) and
 /// `FoldedText::fold_of` (the `Button`/`Badge`/`Chip` memo key) all call
 /// it, so the three cannot disagree about when two strings are the same.
@@ -157,7 +157,17 @@ fn has_area(r: Rect) -> bool {
 pub enum Cmd {
     Rect { rect: Rect, color: Color },
     /// `text` indexes [`DisplayList::text`].
-    Text { rect: Rect, text: (u32, u32), size: f32, weight: f32, color: Color },
+    ///
+    /// `line_height` is the run's line pitch in **sixteenths of `size`**
+    /// (16 = 1.0×, 24 = 1.5×), and `0` means the face's own spacing —
+    /// what every run painted before M80/T80.1 got, so a tree that sets
+    /// nothing paints the same pixels. A ratio, not a length, so
+    /// [`Scaled`] forwards it untouched and the renderer multiplies by
+    /// the physical size. Where the lines then go is
+    /// `FontStack::place_run_into`'s rustdoc (`lumen-static-shell`):
+    /// CSS's and iced's half-leading, with a pitch below the face's
+    /// spacing keeping its ink inside `rect`.
+    Text { rect: Rect, text: (u32, u32), size: f32, weight: f32, line_height: u8, color: Color },
     /// A filled rect with rounded corners. `radius` of 0 is a plain
     /// rect; a renderer that cannot round may treat it as one.
     RoundedRect { rect: Rect, color: Color, radius: f32 },
@@ -658,7 +668,7 @@ impl Cmd {
                 f(h, radius.to_bits() as u64);
                 f(h, spread.to_bits() as u64);
             }
-            Cmd::Text { rect, text, size, weight, color } => {
+            Cmd::Text { rect, text, size, weight, line_height, color } => {
                 f(h, 2);
                 for v in rect {
                     f(h, v.to_bits() as u64);
@@ -691,6 +701,9 @@ impl Cmd {
                 f(h, text.1 as u64);
                 f(h, size.to_bits() as u64);
                 f(h, weight.to_bits() as u64);
+                // The pitch moves every line after the first, inside a box
+                // that need not change size (M80/T80.1).
+                f(h, *line_height as u64);
                 f(h, u32::from_be_bytes([color.0, color.1, color.2, color.3]) as u64);
             }
             Cmd::Line { a, b, width, color } => {
@@ -804,7 +817,25 @@ pub fn shadow_ink(rect: Rect, spread: f32) -> Rect {
 
 pub trait Painter {
     fn rect(&mut self, rect: Rect, color: Color);
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color);
+    /// A text run at a line pitch of `line_height` sixteenths of `size`,
+    /// `0` meaning the face's own spacing (M80/T80.1; the semantics are
+    /// [`Cmd::Text`]'s).
+    ///
+    /// **Required**, for the reason [`Painter::stroked_rect`] gives: the
+    /// byte has no lossy fallback, and a wrapper that inherited a body
+    /// would drop it. Every wrapper (`Scaled`, `Deferring`, `Recording`)
+    /// implements this one and **not** [`Painter::text_weighted`], so no
+    /// wrapper holds two text bodies that must agree.
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color);
+    /// A run at the face's own line spacing. **Provided**, forwarding to
+    /// [`Painter::text_spaced`] with `0`, exactly as [`Painter::text`]
+    /// forwards here. That is not the provided-method trap the rest of
+    /// this trait warns about: the body calls a *required* method on the
+    /// same painter, which a wrapper implements by forwarding, so nothing
+    /// is dropped whichever of the three a caller uses.
+    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        self.text_spaced(rect, s, size, weight, 0, color);
+    }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32);
     fn shadow(&mut self, rect: Rect, radius: f32, spread: f32);
     /// A border: an inset stroked rounded rect (M27/T27.1).
@@ -968,13 +999,19 @@ impl DisplayList {
 
     /// Record a text run at a given weight (400 regular, 700 bold).
     pub fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+        self.text_spaced(rect, s, size, weight, 0, color);
+    }
+
+    /// Record a text run at a line pitch of `line_height` sixteenths of
+    /// `size` (`0` = the face's own spacing) — M80/T80.1, `Cmd::Text`.
+    pub fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
         if !has_area(rect) {
             return;
         }
         let start = self.text.len() as u32;
         self.text.push_str(s);
         let range = (start, self.text.len() as u32 - start);
-        self.cmds.push(Cmd::Text { rect, text: range, size, weight, color });
+        self.cmds.push(Cmd::Text { rect, text: range, size, weight, line_height, color });
     }
 
     /// Record a filled rect with rounded corners.
@@ -1257,14 +1294,17 @@ impl Painter for Scaled<'_> {
         let (y0, y1) = snap_axis(r[1], r[3]);
         self.inner.rect([x0, y0, x1, y1], color);
     }
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+    /// The one text body: `text` and `text_weighted` arrive here through
+    /// their provided forwards (M80/T80.1), so every run is rounded by it.
+    /// `line_height` is a ratio and is forwarded unscaled.
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
         // The run's *origin* on the grid, its size kept: a glyph run
         // starting on a half pixel is rasterised soft (M57/A15).
         let r = self.r(rect);
         let (dx, dy) = (crate::num::round(r[0]) - r[0], crate::num::round(r[1]) - r[1]);
         let r = [r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy];
         let size = size * self.scale;
-        self.inner.text_weighted(r, s, size, weight, color);
+        self.inner.text_spaced(r, s, size, weight, line_height, color);
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         let r = self.snapped(rect);
@@ -1359,8 +1399,8 @@ impl Painter for DisplayList {
     fn rect(&mut self, rect: Rect, color: Color) {
         DisplayList::rect(self, rect, color)
     }
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
-        DisplayList::text_weighted(self, rect, s, size, weight, color)
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
+        DisplayList::text_spaced(self, rect, s, size, weight, line_height, color)
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         DisplayList::rounded_rect(self, rect, color, radius)

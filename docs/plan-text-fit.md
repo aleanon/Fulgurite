@@ -828,6 +828,30 @@ in the accept direction in the same session.*
   sink that keeps the last cluster whose x fits, confirmed by one
   measure.
 
+**What building found (M80).**
+
+- T80.1: **the test face's spacing is 19/16 em, not ≈1.36 em.** The
+  pinned `DejaVuSans.ttf` at 16 px has a ceiled `new_line_size` of 19 px
+  (`tests/line_height.rs` prints it), so the deficit `max(0, nls −
+  pitch)` is non-zero only below 19/16, and iced's 1.3 (21/16) sits
+  *above* the face's spacing, not under it as Decisions says. The rule
+  is unchanged; the gates use 16 (1.0×, deficit 3 px) for the
+  below-spacing case and 24/32 for the exact `n × pitch` case, as the
+  plan's gate text already did. Recorded in `docs/results-text.md`
+  M80/T80.1.
+- T80.1: **the accept direction at 0 is compared against fontdue, not
+  `place_run`.** `place_run` now calls `place_run_into(.., 0, ..)`, so
+  "every `Placed` equal to `place_run`'s" compares the function with
+  itself and cannot see the "treat 0 as `pitch = px`" injection. The
+  gate lays the run out with fontdue directly and asserts every glyph
+  keeps fontdue's `x` and differs in `y` by one constant (the cap
+  shift); the injection moves 4 of 8.
+- T80.1: **the firmware cost is +52–56 B, not ≈ +676 B.** T27.1's figure
+  was a new `Cmd` variant painted by every painter; T80.1 adds a vtable
+  slot beside one that became a provided forward, and a byte `Checksum`
+  folds. The re-placement lives in `lumen-static-shell`, which the
+  firmware does not link (`docs/results-embedded.md`).
+
 **What the review found (M80).**
 
 - C2 → adopted: the inventory is in Decisions; M80 takes both of

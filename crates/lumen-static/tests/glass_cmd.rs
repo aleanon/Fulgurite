@@ -12,6 +12,9 @@ use lumen_static::{Cmd, DisplayList, Painter};
 /// from anything this variant does.
 #[test]
 fn the_command_is_free() {
+    // M80/T80.1: `Text` gained `line_height: u8` (payload 36 -> 37 B),
+    // still under the 56 B that sets the size.
+    println!("Cmd is {} B (bound 60)", core::mem::size_of::<Cmd>());
     assert_eq!(core::mem::size_of::<Cmd>(), 60, "Cmd grew; every command in every list grew");
 
     // The payload, mirrored: `size_of` cannot see into a variant.
@@ -167,7 +170,7 @@ fn the_painter_fallback_paints_something_you_can_see() {
     struct Plain(Vec<(Color, f32)>);
     impl Painter for Plain {
         fn rect(&mut self, _: [f32; 4], _: Color) {}
-        fn text_weighted(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: Color) {}
+        fn text_spaced(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: u8, _: Color) {}
         fn rounded_rect(&mut self, _: [f32; 4], color: Color, radius: f32) {
             self.0.push((color, radius));
         }

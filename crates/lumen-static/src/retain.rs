@@ -937,14 +937,23 @@ impl<R: Retention> Painter for Recording<'_, R> {
     /// a per-byte linear fold let two same-length strings collide, and a
     /// label changed to the other one reported no damage (M46/T46.1,
     /// `lumen-static-shell/tests/text_hash_collision.rs`).
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+    ///
+    /// **The line pitch is folded too** (M80/T80.1): it moves every line
+    /// after the first inside a rect that need not change, so a run whose
+    /// only change is its `line_height` must still be damage. The run's
+    /// ink stays inside `rect` at any pitch (the placer's rule,
+    /// `FontStack::place_run_into`), so damaging the rect is enough.
+    /// `text_weighted` and `text` reach this through their provided
+    /// forwards; there is no second text body here.
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
         let mut h = h_rect(fold(0, 2), rect);
         h = fold(h, size.to_bits() as u64);
         h = fold(h, weight.to_bits() as u64);
+        h = fold(h, line_height as u64);
         h = h_color(h, color);
         h = fold(h, hash_bytes(s.as_bytes()));
         self.ret.observe(h, rect);
-        self.inner.text_weighted(rect, s, size, weight, color);
+        self.inner.text_spaced(rect, s, size, weight, line_height, color);
     }
 
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {

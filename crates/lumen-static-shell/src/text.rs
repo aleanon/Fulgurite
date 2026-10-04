@@ -479,9 +479,12 @@ impl FontStack {
     /// **Allocates**: a fresh [`ShapeScratch`] and the returned `Vec`. A
     /// caller that shapes every frame keeps a scratch and calls
     /// [`FontStack::place_run_into`] (M51/T51.4's GPU path).
+    ///
+    /// At the face's own line spacing (`line_height` 0); a run at a pitch
+    /// goes through [`FontStack::place_run_into`].
     pub fn place_run(&self, text: &str, px: f32, weight: f32, max_w: f32) -> (Vec<Placed>, Size) {
         let mut scratch = ShapeScratch::new();
-        let size = self.place_run_into(&mut scratch, text, px, weight, max_w);
+        let size = self.place_run_into(&mut scratch, text, px, weight, 0, max_w);
         (scratch.placed, size)
     }
 
@@ -494,7 +497,41 @@ impl FontStack {
     /// primary face covers with nothing substituted. A run that needs a
     /// fallback face or a substitute allocates for that, as
     /// `FontStack::prepare` says.
-    pub fn place_run_into(&self, scratch: &mut ShapeScratch, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
+    ///
+    /// **`line_height` is the pitch, in sixteenths of `px`** — M80/T80.1,
+    /// [`lumen_static::Cmd::Text`]. `0` is fontdue's own placement, byte
+    /// for byte what this did before the byte existed. Otherwise, with
+    /// `pitch = line_height / 16 × px`, CSS's and iced's rule, not
+    /// fontdue's:
+    ///
+    /// - line *k*'s box starts at `k × pitch`, and its glyphs sit at
+    ///   half-leading inside it: moved down by *k* × pitch + (pitch −
+    ///   *nls*)/2 − *top*, where *nls* is the line's `max_new_line_size`
+    ///   and *top* its top as fontdue laid it out. A single line is
+    ///   pitched too.
+    /// - **A pitch below the face's spacing keeps its ink in the box.**
+    ///   With `d = max(0, nls − pitch)` (`nls` the largest line's), every
+    ///   line moves down a further `d/2`, so line 0's top and the last
+    ///   line's bottom land on the box's edges, and the box is
+    ///   `n × pitch + d` tall, the ink kept by the max
+    ///   `FontStack::extent_by` already takes. At or above the face's
+    ///   spacing `d` is 0 and the box is exactly `n × pitch`. Nothing clips a run and `Recording`
+    ///   damages its rect, so ink outside it would be left stale.
+    ///
+    /// fontdue's `LayoutSettings::line_height` is **not** used: it scales
+    /// the face's ceil'd new-line size and only between lines, so a ratio
+    /// passed through paints 1.5× as about 2 em and leaves a single line
+    /// unscaled. Re-placing from `layout.lines()` with a forward cursor
+    /// allocates nothing (`tests/line_height.rs`).
+    pub fn place_run_into(
+        &self,
+        scratch: &mut ShapeScratch,
+        text: &str,
+        px: f32,
+        weight: f32,
+        line_height: u8,
+        max_w: f32,
+    ) -> Size {
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         // From the run's first face, for every glyph: one baseline, one
@@ -507,7 +544,9 @@ impl FontStack {
         let layout = &scratch.layout;
         let out = &mut scratch.placed;
         out.clear();
-        for g in layout.glyphs() {
+        let mut pitched = Pitched::new(layout, px, line_height);
+        for (gi, g) in layout.glyphs().iter().enumerate() {
+            let dy = pitched.dy(gi);
             if g.width == 0 || g.height == 0 {
                 continue;
             }
@@ -521,7 +560,7 @@ impl FontStack {
             out.push(Placed {
                 id: GlyphId { index: g.key.glyph_index, px_bits: px.to_bits(), face },
                 x: g.x,
-                y: g.y + shift,
+                y: g.y + dy + shift,
                 w: g.width as u32,
                 h: g.height as u32,
             });
@@ -529,7 +568,19 @@ impl FontStack {
         PLACED.fetch_add(out.len() as u64, core::sync::atomic::Ordering::Relaxed);
         // The box by the same rule `measure_run` uses (`extent`), so the
         // two cannot disagree.
-        Self::extent(&faces, layout, px)
+        let size = Self::extent(&faces, layout, px);
+        if line_height == 0 {
+            return size;
+        }
+        // At a pitch: `n × pitch + d`, or the moved ink if it reaches
+        // further, measured as `extent_by` measures ink (without the cap
+        // shift, which centres capitals in the line box it was given).
+        let mut pitched = Pitched::new(layout, px, line_height);
+        let mut ink = 0.0f32;
+        for (gi, g) in layout.glyphs().iter().enumerate() {
+            ink = ink.max(g.y + pitched.dy(gi) + g.height as f32);
+        }
+        Size { w: size.w, h: pitched.height().max(ink).ceil() }
     }
 
     /// The coverage mask for one glyph identity: `(width, height, cov)`.
@@ -775,6 +826,51 @@ fn cap_shift(font: &Font, px: f32) -> f32 {
     match probe.glyphs().first() {
         Some(h) if h.height > 0 => (line / 2.0 - (h.y + h.height as f32 / 2.0)).round(),
         _ => 0.0,
+    }
+}
+
+/// Where each line of a laid-out run moves to at a line pitch — M80/T80.1.
+///
+/// [`FontStack::place_run_into`]'s rule, as a forward cursor over the
+/// layout's lines, so re-placing a run allocates nothing and costs one
+/// comparison per glyph. Inert (every `dy` 0) at `line_height` 0, which
+/// is how the run that sets nothing keeps fontdue's placement exactly.
+struct Pitched<'l> {
+    lines: &'l [fontdue::layout::LinePosition],
+    /// `line_height / 16 × px`; 0 when the run keeps the face's spacing.
+    pitch: f32,
+    /// `max(0, nls − pitch)`, `nls` the largest line's new-line size.
+    deficit: f32,
+    li: usize,
+}
+
+impl<'l> Pitched<'l> {
+    fn new(layout: &'l Layout, px: f32, line_height: u8) -> Self {
+        let lines = layout.lines().map_or(&[][..], |l| l.as_slice());
+        if line_height == 0 {
+            return Pitched { lines: &[], pitch: 0.0, deficit: 0.0, li: 0 };
+        }
+        let pitch = line_height as f32 / 16.0 * px;
+        let nls = lines.iter().fold(0.0f32, |m, l| m.max(l.max_new_line_size));
+        Pitched { lines, pitch, deficit: (nls - pitch).max(0.0), li: 0 }
+    }
+
+    /// How far glyph `gi` moves down. Glyphs must be asked in order. A
+    /// glyph in no line (an empty line's range is backwards) moves with
+    /// the line the cursor is on, as `shape_into` reports it.
+    fn dy(&mut self, gi: usize) -> f32 {
+        let lines = self.lines;
+        while self.li + 1 < lines.len() && gi > lines[self.li].glyph_end {
+            self.li += 1;
+        }
+        let Some(l) = lines.get(self.li) else { return 0.0 };
+        let top = l.baseline_y - l.max_ascent;
+        self.li as f32 * self.pitch + (self.pitch - l.max_new_line_size) / 2.0 + self.deficit / 2.0 - top
+    }
+
+    /// `n × pitch + max(0, nls − pitch)`: the box the lines' boxes fill.
+    fn height(&self) -> f32 {
+        self.lines.len() as f32 * self.pitch + self.deficit
     }
 }
 

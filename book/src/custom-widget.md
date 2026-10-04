@@ -63,9 +63,11 @@ Runtime state belongs in `layout`, which runs every frame.
 This is the most important paragraph in the chapter, and it is a rule
 about *provided* trait methods.
 
-`Painter` has eleven methods and four of them are provided: `line`,
-`gradient`, `image` and `glass` have default bodies that degrade to a
-simpler command, and `text` forwards to `text_weighted`. Those defaults
+Several of `Painter`'s methods are provided: `line`, `gradient`,
+`image` and `glass` have default bodies that degrade to a simpler
+command, and `text` forwards to `text_weighted`, which forwards to the
+required `text_spaced` (a forward to a required method on the same
+painter drops nothing, so it is the safe kind). Those defaults
 are written for a **leaf** implementor — a rasteriser that only knows how
 to fill rectangles.
 

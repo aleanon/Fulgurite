@@ -451,6 +451,9 @@ fn deferring_forwards_every_command() {
             4.0,
             lumen_static::display::Material::FROSTED,
         );
+        // M80/T80.1: the required text body, with a line pitch a wrong
+        // forward (through `inner.text_weighted`) would drop.
+        p.text_spaced([0.0, 0.0, 40.0, 30.0], "two\nlines", 12.0, 400.0, 24, Color(4, 5, 6, 255));
     }
 
     let mut direct = DisplayList::new();
@@ -465,12 +468,19 @@ fn deferring_forwards_every_command() {
 
     // Assert the setup happened before comparing: two empty lists are
     // equal, and that is the vacuous shape `AGENT.md` names.
-    assert_eq!(direct.cmds.len(), 5, "the unwrapped painter dropped something itself");
-    assert_eq!(
-        direct.cmds, wrapped.cmds,
-        "Deferring changed the command stream: {} in, {} out",
+    println!("deferring: {} commands in, {} out (want 6)", direct.cmds.len(), wrapped.cmds.len());
+    assert_eq!(direct.cmds.len(), 6, "the unwrapped painter dropped something itself");
+    // The first command that differs, named, so a forward that keeps the
+    // count and drops a field (the line pitch through `text_weighted`)
+    // says which command it changed.
+    let first = direct.cmds.iter().zip(&wrapped.cmds).position(|(a, b)| a != b);
+    assert!(
+        direct.cmds == wrapped.cmds,
+        "Deferring changed the command stream: {} in, {} out; first difference at {first:?}: {:?} became {:?}",
         direct.cmds.len(),
-        wrapped.cmds.len()
+        wrapped.cmds.len(),
+        first.map(|i| direct.cmds[i]),
+        first.map(|i| wrapped.cmds[i]),
     );
 
     // `clip_bounds` is invisible to the comparison above -- a
@@ -481,12 +491,13 @@ fn deferring_forwards_every_command() {
     struct Surfaced(Option<lumen_static::display::Rect>);
     impl Painter for Surfaced {
         fn rect(&mut self, _: lumen_static::display::Rect, _: Color) {}
-        fn text_weighted(
+        fn text_spaced(
             &mut self,
             _: lumen_static::display::Rect,
             _: &str,
             _: f32,
             _: f32,
+            _: u8,
             _: Color,
         ) {
         }
@@ -516,6 +527,55 @@ fn deferring_forwards_every_command() {
         want,
         "Deferring hid the surface bounds, so culling turns off under an overlay pass"
     );
+}
+
+/// **The other two wrappers forward the line pitch** — M80/T80.1,
+/// `docs/plan-iced-roadmap.md` §2.2's "same shape of check".
+///
+/// `Scaled` and `Recording` each hold the one text body now
+/// (`text_spaced`); `text_weighted` reaches it through `Painter`'s
+/// provided forward. A body that forwarded `0`, or forwarded through
+/// `inner.text_weighted`, would compile and paint every run at the face's
+/// spacing; this reads the byte off the inner list.
+#[test]
+fn scaled_and_recording_forward_the_line_height() {
+    use lumen_static::display::{Cmd, Color, Painter, Scaled};
+    use lumen_static::retain::{Incremental, Recording};
+
+    fn pitch_of(list: &DisplayList) -> (usize, u8) {
+        let lh = list
+            .cmds
+            .iter()
+            .find_map(|c| match c {
+                Cmd::Text { line_height, .. } => Some(*line_height),
+                _ => None,
+            })
+            .expect("no text command reached the inner list");
+        (list.cmds.len(), lh)
+    }
+    let run = |p: &mut dyn Painter| {
+        p.text_spaced([1.0, 2.0, 41.0, 32.0], "two\nlines", 12.0, 400.0, 24, Color(4, 5, 6, 255));
+    };
+
+    let mut list = DisplayList::new();
+    run(&mut Scaled::new(&mut list, 2.0));
+    let (n, lh) = pitch_of(&list);
+    let size = match list.cmds[0] {
+        Cmd::Text { size, .. } => size,
+        _ => unreachable!(),
+    };
+    println!("Scaled at 2.0: {n} command(s), line_height {lh} (want 24), size {size} (want 24)");
+    assert_eq!(n, 1, "Scaled dropped or split the run");
+    assert_eq!(size, 24.0, "Scaled did not scale the size, so the setup is not a scaled run");
+    assert_eq!(lh, 24, "Scaled did not forward the line pitch (a ratio: unscaled)");
+
+    let mut list = DisplayList::new();
+    let mut ret = Incremental::default();
+    run(&mut Recording::new(&mut list, &mut ret));
+    let (n, lh) = pitch_of(&list);
+    println!("Recording: {n} command(s), line_height {lh} (want 24)");
+    assert_eq!(n, 1, "Recording dropped or split the run");
+    assert_eq!(lh, 24, "Recording did not forward the line pitch");
 }
 
 // ---- M24/T24.2: activation inside an overlay -------------------------

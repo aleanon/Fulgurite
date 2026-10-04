@@ -176,7 +176,9 @@ impl Renderer for Svg {
                         Self::colour(*color)
                     );
                 }
-                Cmd::Text { rect, text, size, weight, color } => {
+                // `line_height` is named and ignored: an SVG `<text>` is
+                // one line, so there is no second line to pitch (M80/T80.1).
+                Cmd::Text { rect, text, size, weight, line_height: _, color } => {
                     let _ = write!(
                         body,
                         r#"<text x="{:.2}" y="{:.2}" font-size="{size:.2}" font-weight="{weight:.0}" fill="{}" xml:space="preserve">{}</text>"#,

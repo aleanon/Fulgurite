@@ -45,11 +45,11 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **28,616 B** (27.9 KB) | **pass**, at 34.9% of budget; re-measured at the M56 merge (2026-09-29; section below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **28,672 B** (28.0 KB) | **pass**, at 35.0% of budget; re-measured at M80/T80.1 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 12,864 B | of which the baked face is most; 9,010 B at T13.7 |
-| Total (`size -A`) | ≤ 512 KB flash | **41,045 B** (40.1 KB) | 7.8% of the part |
+| `.rodata` | — | 13,240 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M80/T80.1 |
+| Total (`size -A`) | ≤ 512 KB flash | **42,129 B** (41.1 KB) | 8.0% of the part; re-measured at M80/T80.1 |
 | RAM, 100 nodes | ≤ 24 KB | **16.0 KB** state + style | **pass**; measured at M27/T27.1 (2026-09-18), below |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
@@ -760,23 +760,37 @@ press latch, focus moves, the combobox's edges), `firmware_bind` 32,008,
 `firmware_cascade` 30,644 (delta over paint-only 2,028, bound 3,072).
 Every binary is gated on the ceiling, and the interactive one had
 **3,614 B** left under 64 KB, which is why the owner raised it to 80 KB
-(D5): **19,998 B** left now. The table below is the current four-binary
+(D5): **19,998 B** left at the merge. The table below is the current four-binary
 record.
 
-### All four at `553fa5e`, against 80 KB — M80/T80.0 (2026-10-04)
+### All four, against 80 KB — M80/T80.1 (2026-10-04)
 
-`scripts/check_text.sh` and `scripts/firmware_delta.sh` at `553fa5e`
-(the M56/M61 merge), release, `thumbv7em-none-eabihf`. **This table is
-the one K4 (`docs/plan-iced-roadmap.md`) rewrites** when a task moves a
-binary; the dated tables above and below were measured against the
-64 KB ceiling that held then, and stay as measured.
+`scripts/check_text.sh` and `scripts/firmware_delta.sh`, release,
+`thumbv7em-none-eabihf`. **This table is the one K4
+(`docs/plan-iced-roadmap.md`) rewrites** when a task moves a binary; the
+dated tables above and below were measured against the 64 KB ceiling
+that held then, and stay as measured. First written by M80/T80.0 at
+`553fa5e` (the M56/M61 merge; the "at `553fa5e`" column), rewritten by
+T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
+`Cmd::Text.line_height` byte folded by `Checksum`).
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` |
-|---|---:|---:|---:|---:|
-| `firmware` | 28,616 | 34.9% | 53,304 | 13,236 |
-| `firmware_interactive` | **61,922** | **75.6%** | **19,998** | 21,714 |
-| `firmware_bind` | 32,008 | 39.1% | 49,912 | 13,840 |
-| `firmware_cascade` | 30,644 | 37.4% | 51,276 | 13,988 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| `firmware` | 28,672 | 35.0% | 53,248 | 13,240 | 28,616 | +56 |
+| `firmware_interactive` | **61,974** | **75.7%** | **19,946** | 21,718 | 61,922 | **+52** |
+| `firmware_bind` | 32,064 | 39.1% | 49,856 | 13,844 | 32,008 | +56 |
+| `firmware_cascade` | 30,700 | 37.5% | 51,220 | 13,992 | 30,644 | +56 |
+
+**T80.1's +52–56 B is a twelfth of what the plan expected.** The plan
+cited T27.1's +676 B paint-only cost for a required method plus a field
+(M27, a border: a new `Cmd` variant, its painter body and its fold in
+every painter). T80.1 adds a vtable slot (`text_spaced`) beside one that
+became a provided forward (`text_weighted`), and one byte folded by
+`Checksum::text_spaced`; nothing in the firmware paints a second line, so
+the re-placement code is in `lumen-static-shell`, which the firmware does
+not link. Printed by `just firmware-delta 845de0c
+firmware_interactive=1000` (K4's per-task cap, 1,000 B, on
+`firmware_interactive`), `.rodata` +4 B on each.
 
 A task's cost is measured by `just firmware-delta <parent>`, which builds
 the four at the parent commit and at the work tree and fails a per-binary

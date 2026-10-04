@@ -256,8 +256,14 @@ impl Painter for Checksum {
     /// text reached paint but not that anything could draw it — and
     /// "nothing can draw it" was exactly M13's missing piece before
     /// T13.7 (`docs/plan-embedded.md`).
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
+    ///
+    /// The line pitch is folded beside the size (M80/T80.1): this is the
+    /// one required text body, so `text_weighted` and `text` arrive here
+    /// with `0`. The pen walk below is one line and does not re-place
+    /// lines at the pitch; the checksum proves the byte reached paint.
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
         self.r(2, rect, &[size, weight]);
+        self.fold(&[line_height]);
         self.color(color);
         let mut pen = rect[0];
         for ch in s.chars() {

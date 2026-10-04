@@ -2199,7 +2199,7 @@ mod tests {
                 let (sx, sy) = stage_origin(&h);
                 let inside = |r: &[f32; 4], x: f32, y: f32| r[0] <= x && x <= r[2] && r[1] <= y && y <= r[3];
                 for (k, cmd) in h.list.cmds.iter().enumerate() {
-                    let Cmd::Text { rect, text, size, weight, color } = cmd else { continue };
+                    let Cmd::Text { rect, text, size, weight, line_height: _, color } = cmd else { continue };
                     if rect[0] <= sx || rect[1] <= sy || color.3 == 0 {
                         continue;
                     }

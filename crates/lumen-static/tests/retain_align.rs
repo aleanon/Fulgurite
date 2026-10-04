@@ -26,7 +26,7 @@ struct Null;
 
 impl Painter for Null {
     fn rect(&mut self, _: Rect, _: Color) {}
-    fn text_weighted(&mut self, _: Rect, _: &str, _: f32, _: f32, _: Color) {}
+    fn text_spaced(&mut self, _: Rect, _: &str, _: f32, _: f32, _: u8, _: Color) {}
     fn rounded_rect(&mut self, _: Rect, _: Color, _: f32) {}
     fn shadow(&mut self, _: Rect, _: f32, _: f32) {}
     fn stroked_rect(&mut self, _: Rect, _: Color, _: f32, _: f32) {}
@@ -168,4 +168,39 @@ fn one_changed_command_damages_its_own_rect() {
         got < VIEW_AREA * 0.2,
         "one changed command damaged {got} px² of {VIEW_AREA}"
     );
+}
+
+/// **A line pitch change is damage** — M80/T80.1.
+///
+/// The pitch moves every line after the first inside a rect that need not
+/// change, so a `Recording` that left `line_height` out of its hash would
+/// call the frame unchanged and leave the old lines on screen. One rect,
+/// one string, one size, weight and colour on both frames: the byte is
+/// the only difference.
+#[test]
+fn a_line_height_change_damages_the_run() {
+    fn run(ret: &mut Incremental, rect: Rect, lh: u8) -> Damage {
+        let mut null = Null;
+        {
+            let mut rec = Recording::new(&mut null, ret);
+            for r in chrome() {
+                rec.rect(r, Color(r[0] as u8, r[1] as u8, r[2] as u8, 255));
+            }
+            rec.text_spaced(rect, "two\nlines", 14.0, 400.0, lh, Color(0, 0, 0, 255));
+        }
+        ret.finish()
+    }
+    let (a, b): (Rect, Rect) = ([40.0, 60.0, 200.0, 120.0], [40.0, 60.0, 200.0, 120.0]);
+    println!("setup: rects {a:?} and {b:?} (equal: {})", a == b);
+    assert_eq!(a, b, "setup: the rects differ, so the byte is not the only difference");
+    let mut ret = Incremental::default();
+    run(&mut ret, a, 16);
+    run(&mut ret, a, 16);
+    let same = area(&run(&mut ret, a, 16));
+    let d = run(&mut ret, b, 24);
+    let got = area(&d);
+    let want = (a[2] - a[0]) * (a[3] - a[1]);
+    println!("line_height 16 -> 24: damaged {got} px² against the rect's {want} px² (bound: equal); unchanged frame {same} px²");
+    assert_eq!(same, 0.0, "setup: an unchanged frame reported damage, so the baseline is not still");
+    assert_eq!(got, want, "a line_height change damaged {got} px², not the run's {want} px²");
 }

@@ -214,7 +214,7 @@ fn run(n: usize) {
         struct Sink;
         impl Painter for Sink {
             fn rect(&mut self, _: [f32; 4], _: Color) {}
-            fn text_weighted(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: Color) {}
+            fn text_spaced(&mut self, _: [f32; 4], _: &str, _: f32, _: f32, _: u8, _: Color) {}
             fn rounded_rect(&mut self, _: [f32; 4], _: Color, _: f32) {}
             fn stroked_rect(&mut self, _: [f32; 4], _: Color, _: f32, _: f32) {}
             fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}

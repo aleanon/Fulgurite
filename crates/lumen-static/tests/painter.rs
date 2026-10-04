@@ -21,8 +21,8 @@ impl Painter for Echo {
     fn rect(&mut self, r: [f32; 4], c: Color) {
         self.calls.push(format!("rect {r:?} {c:?}"));
     }
-    fn text_weighted(&mut self, r: [f32; 4], s: &str, size: f32, w: f32, c: Color) {
-        self.calls.push(format!("text {r:?} {s:?} {size} {w} {c:?}"));
+    fn text_spaced(&mut self, r: [f32; 4], s: &str, size: f32, w: f32, lh: u8, c: Color) {
+        self.calls.push(format!("text {r:?} {s:?} {size} {w} {lh} {c:?}"));
     }
     fn rounded_rect(&mut self, r: [f32; 4], c: Color, radius: f32) {
         self.calls.push(format!("round {r:?} {c:?} {radius}"));

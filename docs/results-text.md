@@ -342,3 +342,41 @@ for a caret move whether the area paints one run per line or one run in
 all, so the rasterised count stopped being able to see this defect.
 Placed, the same move is 180 glyphs against the bound of 660, and the
 whole value as one run again is 107,190.
+
+## M80/T80.1 — lines at a pitch: the paint seam (2026-10-04)
+
+`Painter::text_spaced` (required; `text_weighted` now a provided forward
+to it), `Cmd::Text.line_height` (sixteenths of the size, `0` = the face's
+own spacing), and `FontStack::place_run_into` re-placing fontdue's lines
+at that pitch with half-leading. Nothing sets the byte from a `Style`
+until T80.2, so every default tree paints the same pixels; the gates
+drive the placer, the canvas, `Recording`, the wire and the wrappers
+directly. Measured on the pinned face (`DejaVuSans.ttf`) at 16 px, two
+lines `"Ågjy\nÅgjy"`, whose ceiled new-line size `nls` is **19 px**
+(1.19 em):
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| placement, `tests/line_height.rs` | line 2 − line 1, at 16/24/32 | 16 / 24 / 32 px | pitch ± 0.5 | re-placement skipped: **19** px at 16 (= `nls`) |
+| | box height, at 16/24/32 | 35 / 48 / 64 | `2 × pitch + max(0, nls − pitch)` = 35 / 48 / 64 | re-placement skipped: 38 at 16 |
+| | at 0, glyphs off fontdue's own layout | 0 of 8 | 0 | 0 treated as 16 (1.0×): **4 of 8** |
+| ink at 1.0× (half-leading −1.5) | ink rows above / below the rect | 0 / 0 (35 rows inked, 35 tall) | 0 / 0 | `max(0, nls − pitch)` dropped: **1** above |
+| | changed pixels outside `Recording`'s damage, text change | 0 of 611 | 0 | `max(0, nls − pitch)` dropped: **5** of 611 |
+| canvas paints the byte | line 2 − line 1 ink rows at 24 / 32 | 24 / 32 | pitch ± 1 | re-placement skipped: one ink band, setup refuses |
+| GPU passes the byte, `lumen-static-wgpu/tests/parity.rs` (RTX 4070) | px over 8, a pitched run at 24 | 0 (28 rows each side) | 2 (the text region's) | GPU passes 0: **366** |
+| retention, `tests/retain_align.rs` | damage, only the byte changed | 9,600 px² | the rect's 9,600 | `Recording` skips the byte: **0** |
+| wire, `wire.rs` | line_height after a round trip | 24 (`VERSION` 2) | 24 | decode skips the byte: **0** |
+| forwarding, `tests/overlay.rs` | `Deferring` commands in / out | 6 / 6 | equal | empty body: **6 in, 5 out**; via `inner.text_weighted`: differs at command 5, `line_height` 24 → 0 |
+| | `Scaled` at 2.0, `Recording`: forwarded `line_height` | 24, 24 | 24 | either forwards 0: **0** |
+
+`Cmd` stays **60 B** (`tests/glass_cmd.rs`; `Text`'s payload 36 → 37 B).
+Firmware, `just firmware-delta 845de0c firmware_interactive=1000`: **+56 B**
+`.text` on `firmware`, `firmware_bind` and `firmware_cascade`, **+52 B** on
+`firmware_interactive` (bound 1,000), `.rodata` +4 B each
+(`docs/results-embedded.md`, the four-binary table).
+
+The placer's rule, `pitch < nls` included, is `FontStack::place_run_into`'s
+rustdoc. **The face's spacing is 19/16 here, not the ≈22/16 the plan
+assumed**, so iced's 1.3 (21/16) is *above* it on this face and only 1.0×
+to 1.1875× exercise the deficit (`docs/plan-text-fit.md`, "What building
+found").

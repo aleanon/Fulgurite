@@ -152,13 +152,20 @@ impl TextState {
             match c {
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => clip.pop(),
-                Cmd::Text { rect, text, size, weight, .. } => {
+                Cmd::Text { rect, text, size, weight, line_height, .. } => {
                     let pad = *size;
                     let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
                     if clipped(reach, clip.as_slice()).is_none() {
                         continue;
                     }
-                    font.place_run_into(&mut self.shape, list.str_of(*text), *size, *weight, rect[2] - rect[0]);
+                    font.place_run_into(
+                        &mut self.shape,
+                        list.str_of(*text),
+                        *size,
+                        *weight,
+                        *line_height,
+                        rect[2] - rect[0],
+                    );
                     let start = self.placed.len();
                     for p in self.shape.placed() {
                         let (gx, gy) = ((rect[0] + p.x).round(), (rect[1] + p.y).round());
@@ -1266,7 +1273,10 @@ impl Surface<'_> {
                         self.shadow_within(*rect, r, *color, *radius, *spread);
                     }
                 }
-                Cmd::Text { rect, text, size, weight, color } => {
+                // `line_height` reaches the glyphs through `prepare`, which
+                // shaped this run already; the block-glyph path below draws
+                // one line and has no pitch to apply.
+                Cmd::Text { rect, text, size, weight, line_height: _, color } => {
                     // Cull the run before shaping it.
                     //
                     // Every other arm of this match tests `clipped` first

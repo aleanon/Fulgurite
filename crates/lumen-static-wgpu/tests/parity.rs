@@ -279,7 +279,7 @@ fn the_frame_uses_every_command() {
         Cmd::RoundedRect { rect: r, color: PAGE, radius: 0.0 },
         Cmd::StrokedRect { rect: r, color: PAGE, radius: 0.0, width: 1.0 },
         Cmd::Shadow { rect: r, color: PAGE, radius: 0.0, spread: 1.0 },
-        Cmd::Text { rect: r, text: (0, 0), size: 1.0, weight: 400.0, color: PAGE },
+        Cmd::Text { rect: r, text: (0, 0), size: 1.0, weight: 400.0, line_height: 0, color: PAGE },
         Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 1.0, y: 1.0 }, width: 1.0, color: PAGE },
         Cmd::Gradient { rect: r, stops: Stops::two(PAGE, PAGE), angle: 0.0 },
         Cmd::Image { rect: r, id: CARD_ID, tint: PAGE },
@@ -548,6 +548,43 @@ fn the_gpu_half_ran() {
         Some(g) => println!("adapter: {}", g.adapter()),
         None => println!("adapter: none -- the GPU half of this file compared nothing"),
     }
+}
+
+/// **Each backend passes the line pitch** — M80/T80.1.
+///
+/// Both backends place glyphs with the same `FontStack::place_run_into`,
+/// so this cannot see a placer bug (`tests/line_height.rs` in the shell
+/// is that gate); it sees a backend that drops `Cmd::Text.line_height`
+/// on its way there, which would paint the second line at the face's
+/// spacing on one side and at the pitch on the other. The text region's
+/// own bound applies.
+#[test]
+fn a_line_pitch_reaches_both_backends() {
+    let Some(mut g) = gpu() else { return };
+    let mut l = DisplayList::new();
+    l.text_spaced([10.0, 20.0, 140.0, 100.0], "pitch\npitch", 14.0, 400.0, 24, Color(0, 0, 0, 255));
+    let mut c = canvas();
+    c.clear(PAGE);
+    c.render(&l, W, H);
+    g.clear(PAGE);
+    g.render(&l, W, H);
+    let gp = g.read_rgba();
+    let bbox = [8, 18, 142, 102];
+    let ink = |px: &[u8]| {
+        (bbox[1]..bbox[3])
+            .filter(|&y| (bbox[0]..bbox[2]).any(|x| px[((y * W + x) * 4) as usize] < 128))
+            .count()
+    };
+    let (rows_cpu, rows_gpu) = (ink(&c.pixels), ink(&gp));
+    let (over, worst) = region_over(&c.pixels, &gp, W, bbox, 8);
+    let text = REGIONS.iter().position(|r| r.name == "text").expect("a text region");
+    println!(
+        "line_height 24: {over} px over 8 (bound {}, the text region's), worst {worst}; \
+         inked rows cpu {rows_cpu}, gpu {rows_gpu}",
+        bound(text)
+    );
+    assert!(rows_cpu > 14, "setup: the canvas painted {rows_cpu} rows, not two lines");
+    assert!(over <= bound(text), "the backends disagree on a pitched run: {over} px over 8");
 }
 
 

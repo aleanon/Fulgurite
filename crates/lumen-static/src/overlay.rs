@@ -191,15 +191,20 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn rect(&mut self, rect: crate::display::Rect, color: crate::display::Color) {
         self.inner.rect(rect, color);
     }
-    fn text_weighted(
+    /// The one text forward: `text_weighted` and `text` reach it through
+    /// their provided bodies (M80/T80.1), and it forwards the line pitch
+    /// through `inner.text_spaced`, never `inner.text_weighted`, which
+    /// would drop it.
+    fn text_spaced(
         &mut self,
         rect: crate::display::Rect,
         s: &str,
         size: f32,
         weight: f32,
+        line_height: u8,
         color: crate::display::Color,
     ) {
-        self.inner.text_weighted(rect, s, size, weight, color);
+        self.inner.text_spaced(rect, s, size, weight, line_height, color);
     }
     fn rounded_rect(
         &mut self,

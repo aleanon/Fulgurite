@@ -40,8 +40,8 @@ impl Painter for Counting {
     fn rect(&mut self, rect: Rect, color: Color) {
         self.list.rect(rect, color);
     }
-    fn text_weighted(&mut self, rect: Rect, s: &str, size: f32, weight: f32, color: Color) {
-        self.list.text_weighted(rect, s, size, weight, color);
+    fn text_spaced(&mut self, rect: Rect, s: &str, size: f32, weight: f32, line_height: u8, color: Color) {
+        self.list.text_spaced(rect, s, size, weight, line_height, color);
     }
     fn rounded_rect(&mut self, rect: Rect, color: Color, radius: f32) {
         self.rounded_calls += 1;
