@@ -97,8 +97,11 @@ const UNCUT: (u32, f32) = (u32::MAX, -1.0);
 /// memo hit included. Calling `resolve_self` here cost the
 /// "layout, memo warm" arm of `--bin bindings` about 1.1 ns of a 7.8 ns hit,
 /// outside the parent's spread (K80c, `docs/results-text.md` M80/T80.3).
+///
+/// `pub(crate)` for `Selectable` (M80/T80.4), which shapes its clusters
+/// against the same room so a cluster's line is the painted run's.
 #[inline]
-fn text_room(limits: Constraints, style: &Style) -> f32 {
+pub(crate) fn text_room(limits: Constraints, style: &Style) -> f32 {
     let own = match style.width {
         Length::Fixed(v) => lumen_static::num::clamp(v, limits.min_w, limits.max_w),
         _ => limits.max_w,
@@ -232,6 +235,50 @@ impl<S: TextStorage> Label<S> {
         (t.get(..end as usize).unwrap_or(""), true)
     }
 
+    /// The label's ground: its background and border — the first half of
+    /// [`Node::paint`], split out (M80/T80.4) so `Selectable` can paint its
+    /// selection tint between the ground and the run. **`pub(crate)` and
+    /// inlined**: the split must compile to the same leaf code, which
+    /// `just firmware-delta` holds at 0 B on all four binaries.
+    #[inline]
+    pub(crate) fn paint_ground(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let r = rect_of(&st[i]);
+        out.rounded_rect(r, st[i].bg, st[i].radius);
+        border(st, i, out);
+    }
+
+    /// The label's run, inside its padding box — the second half of
+    /// [`Node::paint`] (see [`Label::paint_ground`]).
+    #[inline]
+    pub(crate) fn paint_run(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let r = rect_of(&st[i]);
+        // Text sits inside the padding box; `layout` sized the node to
+        // include it. At the pitch `record_painted` stamped (M80/T80.2):
+        // the renderer places the lines, so the box `layout` measured and
+        // the lines painted come from one rule.
+        //
+        // Cut (M80/T80.3): the prefix layout kept, then the `…` where
+        // layout measured the prefix to end — two ordinary runs, as
+        // `AppBar` paints its title, so each is damaged by its own rect
+        // and neither reaches past the node.
+        let p = st[i].pad;
+        let content = [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3];
+        let t = self.text.get().as_ref();
+        let (px, wt, lh, fg) = (st[i].font_size, st[i].font_weight, st[i].line_height, st[i].fg);
+        let (end, mark) = self.fit();
+        if end == u32::MAX {
+            out.text_spaced(content, t, px, wt, lh, fg);
+            return;
+        }
+        // `get`, not an index: a reload restores the text without the dirty
+        // bit, and a cut from the old text must not panic before the next
+        // layout recomputes it.
+        out.text_spaced(content, t.get(..end as usize).unwrap_or(""), px, wt, lh, fg);
+        if mark >= 0.0 {
+            out.text_spaced([content[0] + mark, content[1], content[2], content[3]], crate::fit::ELLIPSIS, px, wt, lh, fg);
+        }
+    }
+
     /// The cut, or [`UNCUT`] in the leaf tier, which never cuts.
     #[inline]
     fn fit(&self) -> (u32, f32) {
@@ -362,34 +409,8 @@ impl<S: TextStorage> Node for Label<S> {
         record_painted(st, i, limits, resolve_self(limits, &style[i], boxed), &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        let r = rect_of(&st[i]);
-        out.rounded_rect(r, st[i].bg, st[i].radius);
-        border(st, i, out);
-        // Text sits inside the padding box; `layout` sized the node to
-        // include it. At the pitch `record_painted` stamped (M80/T80.2):
-        // the renderer places the lines, so the box `layout` measured and
-        // the lines painted come from one rule.
-        //
-        // Cut (M80/T80.3): the prefix layout kept, then the `…` where
-        // layout measured the prefix to end — two ordinary runs, as
-        // `AppBar` paints its title, so each is damaged by its own rect
-        // and neither reaches past the node.
-        let p = st[i].pad;
-        let content = [r[0] + p.0, r[1] + p.1, r[2] - p.2, r[3] - p.3];
-        let t = self.text.get().as_ref();
-        let (px, wt, lh, fg) = (st[i].font_size, st[i].font_weight, st[i].line_height, st[i].fg);
-        let (end, mark) = self.fit();
-        if end == u32::MAX {
-            out.text_spaced(content, t, px, wt, lh, fg);
-            return;
-        }
-        // `get`, not an index: a reload restores the text without the dirty
-        // bit, and a cut from the old text must not panic before the next
-        // layout recomputes it.
-        out.text_spaced(content, t.get(..end as usize).unwrap_or(""), px, wt, lh, fg);
-        if mark >= 0.0 {
-            out.text_spaced([content[0] + mark, content[1], content[2], content[3]], crate::fit::ELLIPSIS, px, wt, lh, fg);
-        }
+        self.paint_ground(st, i, out);
+        self.paint_run(st, i, out);
     }
     lumen_static::leaf_common!(Label<S>, 0);
 

@@ -52,6 +52,8 @@ ROLES = {
     "TextArea": "MultilineTextInput",
     # A label takes no input; its demo's switch restyles it (M80/T80.2).
     "Label": "Label",
+    # M80/T80.4: read-only text a reader selects; it announces as a label.
+    "Selectable": "Label",
     "Slider": "Slider",
     "Button": "Button",
     "CheckBox": "CheckBox",

@@ -46,6 +46,11 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "TextInput": ("#d_textinput_a", [KeyAction("typing edits it", ["text:x"])]),
     # M80/T80.2: the Label demo's switch, which sets the paragraph's line height.
     "Label": ("#d_label_spacing > #labelled-control", [KeyAction("Space sets the line height", ["Space"])]),
+    # M80/T80.4: Tab reaches the text itself. The demo opens with all of it
+    # selected, so Escape clears it first and Ctrl+A then selects it all
+    # again -- each a change the readout (selected characters) reports.
+    "Selectable": ("#d_selectable_a", [KeyAction("Escape clears the selection", ["Escape"]),
+                                        KeyAction("Ctrl+A selects all", [("a", ["ctrl"])])]),
     "ColorPicker": ("#d_colorpicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),
     "DatePicker": ("#d_datepicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),
     "TimePicker": ("#d_timepicker_a > #picker-trigger", [KeyAction("Space opens it", ["Space"], "open")]),

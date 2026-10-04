@@ -927,6 +927,45 @@ in the accept direction in the same session.*
   type default is `Ellipsis`, so the `overflow` probe is `Clip`, which
   differs from both kinds' defaults.
 
+- T80.4: **the plan's tint failed its own contrast gate.** `Selectable`
+  was to reuse `input::selection_tint` (the text colour at alpha 64). The
+  showcase demo opens with its paragraph selected, so M57's D4 gate reads
+  the text over the tint, and the dark palette measured **3.62:1**, under
+  AA's 4.5. `Selectable`'s default is the same colour at alpha 40
+  (`selectable::tint_of`): 8.66 light, 5.58 dark. A field's selected text
+  sits on the alpha-64 tint unmeasured, because no demo opens with a
+  field's selection; recorded in `docs/results-text.md` M80/T80.4, not
+  changed here (it is `TextInput`'s and `TextArea`'s look, and the
+  scrollbar track's).
+- T80.4: **the Ctrl+X gate lives in `lumen-static-winit/tests/clipboard_shortcut.rs`**,
+  not `widgets/tests/selectable.rs`: it asserts `keys::clipboard_decision`
+  for the state the drag left, and the widgets crate cannot name the
+  window's crate. Everything else in it is the plan's.
+- T80.4: **the rows gate checks every row of eight lines, not only line
+  2.** At `line_height` 0 the named injection (rows at
+  `TextMeasure::line_height`, 18.6 px for the pinned face against the
+  painter's ceil'd 19) drifts 0.4 px a row, so line 2 cannot see it; line
+  5 is 2 px off. At 24 line 2 already reads 5 px. The bound is still 1 px,
+  measured as line k's (ink top − tint top) against line 1's, because a
+  glyph's first ink row is not its row's top.
+- T80.4: **the widgets crate's shell dev-dependency takes `truetype`**, for
+  `tests/selectable.rs` and `tests/selectable_idle.rs`; `--workspace` had
+  unified it on for every test there already. The idle gate is its own
+  binary (the text counters are process-wide) and **forces its idle frames
+  to lay out**, with a zeroed box as the evidence: a pump with nothing
+  marked skips layout and would read 0 whatever a layout did.
+- T80.4: **the keyboard entry is two actions.** The demo opens selected
+  (for the contrast gate), so Ctrl+A alone changed nothing the pass could
+  see; Escape clears it and Ctrl+A selects all again, each moving the
+  readout (the selected character count).
+- T80.4: **adding a catalogue entry broke a showcase test that had nothing
+  to do with it.** `every_sidebar_row_picks_its_own_entry` chose its
+  scroll direction by `r < first` alone, so a row first in the window but
+  cut by its top edge was scrolled *away from*, and the walk oscillated
+  between two offsets 32 px apart. Latent while the list's reveal offset
+  was a multiple of the step; one more entry moved it off. It scrolls up
+  for a row materialized above the viewport now.
+
 **What the review found (M80).**
 
 - C2 → adopted: the inventory is in Decisions; M80 takes both of

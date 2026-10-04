@@ -508,3 +508,65 @@ firmware-delta 845de0c firmware=1024 firmware_interactive=1536`: **910 of
 1,024 B** and **1,150 of 1,536 B**, after the fallback (2,710 B on
 `firmware` without it).
 
+
+## M80/T80.4 — `Selectable<S>` and `app.copy` (2026-10-04)
+
+`Selectable<S: TextStorage>` (`lumen-static-widgets`, `selectable.rs`,
+behind `alloc`): one `FOCUSABLE` table entry that owns a `Label<S>`, lays
+it out and paints it at the same index, shapes the shown text into a
+cluster list keyed exactly as the label's memo is, and answers
+`Node::selection` itself, so `Host::copy` (which asks the focused index)
+gets the selection. Press, drag under capture, double press (`word_at`),
+triple press and Ctrl+A (all), Escape and a lost focus (clear);
+`Backspace` and `Delete` are not handled, so the window's Cut copies and
+deletes nothing. `TextTarget` clamps the selection when a bind replaces
+the text. `Label`'s paint is split `pub(crate)` into `paint_ground` and
+`paint_run` so the tint goes between them. The window answers `app.copy`
+(`{copied, clipboard, set, error}`). Pinned face at 16 px:
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| copy, `widgets/tests/selectable.rs`, a drag over two lines | `Host::copy()` after a press at "quick" and a drag to "jumps" on line 2 | `"quick brown fox\nLid jumps"`, 25 B | exactly the dragged substring | `Selectable`'s `selection` override removed: **`None`**, press and drag still handled |
+| | setup: press / drag handled; the focused index | true / true; the Selectable's (1) | both; its own | — |
+| | a double press; a triple press | `"over"`; all 52 B | one word; the text | — |
+| | accept: a press on a plain `Label` beside it | not handled, `copy()` `None` | false, `None` | — |
+| rows, same file, 8 identical lines | each line's (ink top − tint top) against line 1's, at `line_height` 0 and 24 | 0.00 px on every line, both (rows 19 px at 0, 24 at 24) | ≤ 1 px | rows at `TextMeasure::line_height` (18.6 px at 0): line 5 **2.00 px**; at 24, line 2 **5.00 px** |
+| the bind seam, same file | `copy()` after a whole-text selection and a bind writing `"Hold"` | `"Hold"` | the new text | no clamp in `TextTarget::set_str`: **`None`** |
+| idle, `widgets/tests/selectable_idle.rs` (alone in its binary) | runs measured or shaped over two forced-layout idle frames | **0** | 0 | reshape on every layout: **2** |
+| | setup: both frames rewrote the node's zeroed box; the first frames shaped | 2 of 2; 2 runs | 2; > 0 | — |
+| Ctrl+X, `winit/tests/clipboard_shortcut.rs` | the Cut's `Backspace`: handled; text; `copy()` | false; unchanged; `"this"` | false; unchanged; the word | `Selectable` clears its selection on `Backspace`: **handled true, `copy()` `None`** |
+| | setup: the drag handled; `keys::clipboard_decision` for that state | true / true; `Cut` | `Cut` | — |
+| sizes, `selectable.rs` | `Label<&str>`, `Label<String>` on the host | 80, 88 B | T80.3's 80, 88 | — |
+| role, `widgets/tests/a11y_roles.rs` | rows / `Node` impls covered | 64 / 48 of 48 | all | the row deleted: "Node impls with no row in the table: [\"Selectable\"]" |
+| contrast (M57's D4), showcase `every_demo_text_reads_in_both_palettes` | the demo's text over its own tint, light / dark | **8.66 / 5.58:1** at alpha 40 | 4.5 | alpha 64 (`input::selection_tint`'s): dark **3.62:1** |
+
+**The highlight is lighter than a field's, by measurement.** The plan
+reused `input::selection_tint` (the text colour at alpha 64). The demo
+opens with its paragraph selected so the contrast gates see text over the
+tint, and at 64 the dark palette read 3.62:1, under AA. `Selectable`'s
+default is the same colour at alpha 40 (`selectable::tint_of`), which
+passes both palettes. A `TextInput`'s or `TextArea`'s selected text sits
+on the alpha-64 tint and is not measured by any gate, because no demo
+opens with a field's text selected; that is recorded here, not changed by
+this task.
+
+**Live**, `just widget-drive Selectable`, all four legs green
+(`Everything`, `Boundaries`, the shadow oracle with 322 frames compared and
+none diverging, scale 2 with the full-repaint check): a drag along the
+first line then `app.copy` copied **`"Drag across these words to"`**
+(26 chars, 5 words; 27 at scale 2), `clipboard` equal and `error` null,
+both inputs `handled`; a double click copied one word (`"across"`;
+`"these"` at scale 2); the same drag above the widget, and a press just
+outside, left `copied: null`. Each action changed the widget's pixels
+(`ui.regionHash`, 26,576 px) and damaged **1.00×** its own box (26,576 px²;
+20,922 at scale 2). The keyboard pass reached it in one Tab; Escape
+cleared the selection and Ctrl+A selected all 117 characters again (the
+readout). Under the inventory's injection (no `selection` override) the
+drag's inputs are both `handled` and `app.copy` answers `copied: null`:
+the action fails on all four legs.
+
+Firmware, `just firmware-delta 1cd123e firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0`: **+0 B** `.text` and `.rodata` on all
+four binaries — `Selectable` is `alloc`-tier and the paint split compiles
+to the same leaf code. With `paint_run` marked `#[inline(never)]`: +28 /
++332 / +40 / +28 B `.text` (+16 `.rodata` each), failing all four by name.

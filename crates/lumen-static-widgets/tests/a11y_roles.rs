@@ -56,6 +56,8 @@ const fn toggle(wid: &'static str, role: Role, on: bool) -> Row {
 // ANCHOR: rows
 const ROWS: &[Row] = &[
     row("Label", "Label", Role::Label, false),
+    // M80/T80.4: a label a reader can select; it announces as one.
+    row("Selectable", "Selectable", Role::Label, false),
     row("Button", "Button", Role::Button, true),
     row("Fixed", "Fixed", Role::GenericContainer, false),
     row("Spacer", "Spacer", Role::GenericContainer, false),

@@ -507,6 +507,9 @@ stateless! {
     [] crate::choose::OptionList,
     [] crate::image::Image,
     [S: 'static] crate::select::Select<S>,
+    // M80/T80.4: its text is code, as a label's is, and a selection is a
+    // gesture in flight, which a swap does not keep.
+    [S: TextStorage] crate::selectable::Selectable<S>,
 }
 
 /// A container with nothing of its own to keep: its content's half.

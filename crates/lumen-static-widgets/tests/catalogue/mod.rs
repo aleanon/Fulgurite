@@ -156,6 +156,11 @@ pub struct Ui {
     pub avatar: Avatar<String>,
     #[widget_id("Icon")]
     pub icon: Icon,
+    // M80/T80.4: read-only text that takes focus and a selection; built
+    // with its text selected, so the contrast harness measures the run
+    // over its tint.
+    #[widget_id("Selectable")]
+    pub selectable: Selectable<String>,
 }
 
 fn bind_row(l: &mut Label<String>, i: usize) {
@@ -235,6 +240,8 @@ pub fn build() -> Ui {
     ui.chip = Chip::new("tag".into());
     ui.labelled = lumen_static_widgets::Labelled::new(lumen_static_widgets::ops::Fixed { w: 16.0, h: 16.0 }, "Remember me");
     ui.avatar.set("AB".into());
+    ui.selectable = Selectable::new("selectable text".into());
+    ui.selectable.select_all();
     ui
 }
 

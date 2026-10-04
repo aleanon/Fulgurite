@@ -1196,6 +1196,32 @@ impl Win {
             }));
             return;
         }
+        // **`app.copy` is the window's** — M80/T80.4. A drive's Ctrl+C
+        // reaches the session as an `input.key`, and only a real
+        // `KeyboardInput` goes through `clipboard_shortcut`, so a drive
+        // could never copy. This is the copy that shortcut makes: the
+        // session's selection onto the system clipboard, then read back,
+        // so the reply says what reached the clipboard and not only what
+        // was asked for. `copied` is `null` with nothing selected (the
+        // clipboard is then left alone); `error` names a clipboard that
+        // did not read back what was set.
+        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.copy") {
+            let copied = self.session.copy();
+            let set = copied.as_deref().is_some_and(|t| self.clipboard.set(t));
+            let clipboard = self.clipboard.get();
+            let error = match &copied {
+                Some(t) if clipboard.as_deref() != Some(t.as_str()) => Some(format!(
+                    "the system clipboard did not read back what was set (set: {set}, read: {})",
+                    if clipboard.is_some() { "other text" } else { "nothing" }
+                )),
+                _ => None,
+            };
+            let _ = rpc.reply.send(serde_json::json!({
+                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "result": {"copied": copied, "clipboard": clipboard, "set": set, "error": error},
+            }));
+            return;
+        }
         // An input's latency runs from its arrival to the frame that
         // shows it (M60/T60.3): the present inside this request, and the
         // redraw asked for below, which journals it.

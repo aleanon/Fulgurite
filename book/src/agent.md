@@ -41,7 +41,10 @@ and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 with status 0 (every turnkey window since M48/T48.13); `app.reloads`
 counts hot swaps; `app.presents` counts frames presented and redraws
 that presented nothing because nothing changed (M53/T53.4), and asking
-does not draw a frame. The list above, the skill's and the code are held to
+does not draw a frame; `app.copy` copies the focused node's selection to
+the system clipboard and reads it back, replying `{copied, clipboard}`
+(M80/T80.4) — a drive's `input.key` Ctrl+C reaches the session, not the
+window's clipboard shortcut, so this is how a drive copies. The list above, the skill's and the code are held to
 one another by `scripts/check_agent_methods.sh`.
 
 **A synthesised input reports what arrived.** Everything above goes

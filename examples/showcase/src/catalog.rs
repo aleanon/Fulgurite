@@ -302,6 +302,11 @@ fn toggle<const K: u8>(on_: bool, on_toggle: fn(&mut Store, &EventCtx)) -> Toggl
 pub const LABEL_PROSE: &str = "The quick brown fox jumps over the lazy dog, \
     and every line of this paragraph moves when the line height changes.";
 
+/// The `Selectable` demo's paragraph (M80/T80.4): several lines in its
+/// 320 px box, so a drag can cross one.
+pub const SELECTABLE_PROSE: &str = "Drag across these words to select them, then copy. \
+    A double click takes one word, a triple click the whole paragraph.";
+
 /// The `Label` demo's switch: 1.5× line height, applied by the program's
 /// `style_by` (M80/T80.2).
 fn flip_spacing(s: &mut Store, _: &EventCtx) {
@@ -350,6 +355,19 @@ pub static CATALOG: &[Entry] = &[
             if s.store.spaced { "1.5×" } else { "the face's" },
             if s.store.ellipsis { "ellipsis" } else { "wrap" }
         )),
+    // ANCHOR: selectable
+    entry!("Text", "Selectable", "Read-only text: drag to select, then copy.",
+        false,
+        |s| on(s, Demo::Selectable(DSelectable {
+            a: { let mut t = Selectable::<String>::default(); t.label.set(SELECTABLE_PROSE.into()); t.select_all(); t } })),
+        |s| match &s.ui.main.stage.row.demo {
+            Demo::Selectable(d) => match d.a.selected_str() {
+                Some(t) => format!("selected: {} chars", t.chars().count()),
+                None => "selected: nothing".into(),
+            },
+            _ => String::new(),
+        }),
+    // ANCHOR_END: selectable
     entry!("Text", "Badge", "A count, a status and a tag.",
         false,
         |s| on(s, Demo::Badge(DBadge {

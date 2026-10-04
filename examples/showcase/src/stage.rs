@@ -519,6 +519,16 @@ pub struct DLabel {
     pub a: Label<String>,
 }
 
+/// A paragraph a reader can select and copy — M80/T80.4. It opens with
+/// its whole text selected, so the tint is on the stage (and in the
+/// contrast gates) before anyone drags.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 12.0)]
+pub struct DSelectable {
+    #[widget_id("d_selectable_a")]
+    pub a: Selectable<String>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DBadge {
@@ -742,6 +752,7 @@ macro_rules! demos {
 
 demos! {
     Label(DLabel),
+    Selectable(DSelectable),
     Badge(DBadge),
     Chip(DChip),
     Avatar(DAvatar),
@@ -804,7 +815,7 @@ impl Default for Demo {
 }
 
 /// How many demos the stage has. Asserted against the catalogue.
-// The branch's 52 (M56/M57) and main's TextArea and ScrollView (M44,
-// M45); main's second `Select` is not among them — the sidebar replaced
+// The branch's 52 (M56/M57), main's TextArea and ScrollView (M44,
+// M45), and M80/T80.4's Selectable; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
-pub const DEMOS: usize = 54;
+pub const DEMOS: usize = 55;

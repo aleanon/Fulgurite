@@ -789,6 +789,18 @@ its seed does not declare `Fields::OVERFLOW` (so the sheet lint reports an
 tier through `fit::cut`, by `char` where there is no allocator, and is not
 in any firmware.
 
+### `Selectable` costs the firmware nothing — M80/T80.4
+
+`just firmware-delta 1cd123e firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0`: **+0 B** `.text` and `.rodata` on all
+four binaries, so the headline and the four-binary table above stand as
+T80.3 measured them. `Selectable` is behind `alloc`, which the leaf tier
+does not take, and `Label`'s paint split (`paint_ground`, `paint_run`,
+`pub(crate)` and `#[inline]`) compiles to the same code. The gate's
+injection, `paint_run` marked `#[inline(never)]`, prints +28 / +332 / +40 /
++28 B `.text` and fails all four by name. `Label` stays 80 B on the host
+and the embedded `Ui` 1,216 B; `Style` and `NodeState` are untouched.
+
 ### The headline re-measured at the M56 merge — 2026-09-29
 
 `scripts/check_text.sh` refused the merge: **28,616 B** linked against the

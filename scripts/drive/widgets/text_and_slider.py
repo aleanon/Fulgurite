@@ -520,4 +520,104 @@ LABEL = ("Label", "#d_label_a", [
     ),
 ])
 
-ALL = [TEXTINPUT, TEXTAREA, SLIDER, LABEL]
+# --- Selectable (M80/T80.4) -------------------------------------------
+# Read-only text a reader selects and copies. A drive's Ctrl+C reaches the
+# session as an `input.key`, never the window's clipboard shortcut, so the
+# copy is `app.copy`, which the window answers: the session's selection
+# onto the system clipboard, then read back. `copied` and `clipboard` must
+# both be the selection -- the X11 clipboard needs no external tool, so a
+# clipboard that does not read back fails here, with its error printed,
+# and is never a skip (D7).
+SEL = "#d_selectable_a"
+
+
+def _copy(c):
+    r = c.c.rpc("app.copy")
+    c.__dict__["_copy"] = r
+    return r
+
+
+def _drag_first_line(c):
+    """Press at the first line's left edge, drag under capture to 70% of
+    the width, release: several words of the first line."""
+    b = c.box(SEL)
+    y = b[1] + 10.0
+    x0, x1 = b[0] + 1.0, b[0] + (b[2] - b[0]) * 0.7
+    c.__dict__["_handled"] = [
+        c.c.rpc("input.pointerDown", x=x0, y=y).get("handled"),
+        c.c.rpc("input.hover", x=x1, y=y).get("handled"),
+    ]
+    c.c.rpc("input.pointerUp", x=x1, y=y)
+    _copy(c)
+
+
+def _drag_outside(c):
+    """The same drag, above the widget: it must select nothing here, and a
+    press outside also clears what was selected."""
+    b = c.box(SEL)
+    y = b[1] - 6.0
+    x0, x1 = b[0] + 1.0, b[0] + (b[2] - b[0]) * 0.7
+    c.c.rpc("input.pointerDown", x=x0, y=y)
+    c.c.rpc("input.hover", x=x1, y=y)
+    c.c.rpc("input.pointerUp", x=x1, y=y)
+    _copy(c)
+
+
+def _copied_words(c, at_least):
+    r = c._copy
+    copied, board, err = r.get("copied"), r.get("clipboard"), r.get("error")
+    value = c.value(SEL)
+    words = len(copied.split()) if copied else 0
+    ok = (copied is not None and board == copied and err is None
+          and copied in value and words >= at_least)
+    return ok, (f"copied {copied!r} ({len(copied) if copied else 0} chars, {words} words; "
+                f"want >= {at_least}, a substring of the text); clipboard {board!r} "
+                f"(must equal copied); error {err!r}; handled {c.__dict__.get('_handled')}")
+
+
+def _double_click_word(c):
+    b = c.box(SEL)
+    c.c.rpc("input.click", x=b[0] + (b[2] - b[0]) * 0.3, y=b[1] + 10.0, clicks=2)
+    _copy(c)
+
+
+def _one_word(c):
+    r = c._copy
+    copied, board, err = r.get("copied"), r.get("clipboard"), r.get("error")
+    ok = (copied is not None and re.fullmatch(r"\w+", copied) is not None
+          and board == copied and err is None and copied in c.value(SEL))
+    return ok, (f"copied {copied!r} (want one word of the text); clipboard {board!r} "
+                f"(must equal copied); error {err!r}")
+
+
+def _click_outside_copy(c):
+    c.click_outside()
+    _copy(c)
+
+
+SELECTABLE = ("Selectable", SEL, [
+    Action(
+        visible=True,
+        name="a drag across the first line selects its words, and app.copy puts them on the clipboard",
+        needs="the paragraph on the stage, wrapped to several lines",
+        do=_drag_first_line,
+        expect=lambda c: _copied_words(c, 3),
+        # A press above the widget selects nothing, and with focus gone the
+        # copy is null -- the "press just outside clears it" leg.
+        isolate=_drag_outside,
+        injection="remove Selectable's Node::selection override (the drag is handled, "
+                  "and app.copy answers copied: null)",
+    ),
+    Action(
+        visible=True,
+        name="a double click copies one word",
+        needs="the paragraph, nothing selected",
+        do=_double_click_word,
+        expect=_one_word,
+        isolate=_click_outside_copy,
+        injection="drop the double-press arm (clicks == 2) in Selectable::on_event: the "
+                  "second press only moves the caret and nothing is copied",
+    ),
+])
+
+ALL = [TEXTINPUT, TEXTAREA, SLIDER, LABEL, SELECTABLE]

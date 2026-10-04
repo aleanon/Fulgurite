@@ -60,5 +60,8 @@ reload = ["std", "dep:serde_json", "lumen-static/reload"]
 [dev-dependencies]
 # M54/T54.0: `tests/text_contrast.rs` measures the catalogue's painted
 # text with `lumen_static_shell::contrast`, the one WCAG implementation.
-# No features: the harness is headless and needs no face.
-lumen-static-shell = { path = "../lumen-static-shell" }
+# The harness itself is headless and needs no face; `truetype` is for
+# `tests/selectable.rs` (M80/T80.4), which selects across a run the pinned
+# face shaped and wrapped, as the window's measurer does. `--workspace`
+# already unified it on for every test here.
+lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }

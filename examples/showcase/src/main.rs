@@ -1532,6 +1532,8 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
     for (kind, w) in [
         // A paragraph that wraps, so a line height shows (M80/T80.2).
         ("DLabel", Length::Fixed(320.0)),
+        // A paragraph that wraps, so a drag can cross a line (M80/T80.4).
+        ("DSelectable", Length::Fixed(320.0)),
         ("DRichText", Length::Fixed(420.0)),
         ("DMarkdown", Length::Fixed(420.0)),
         ("DRichTextEditor", Length::Fixed(420.0)),
@@ -2466,7 +2468,12 @@ mod tests {
             // text-only demo was credited with the divider's rect.
             // The filter now takes only what is strictly inside the
             // stage card, which is what made that visible.
-            if e.name != "Label" && e.name != "RichText" {
+            //
+            // And `Selectable` (M80/T80.4): its one shape is the tint of a
+            // selection, placed from shaped clusters, and this pumps the
+            // `BlockMetrics` stand-in, which reports none — so it draws
+            // the text alone here, as a label does.
+            if e.name != "Label" && e.name != "RichText" && e.name != "Selectable" {
                 let shapes = h
                     .list
                     .cmds
@@ -3021,7 +3028,16 @@ mod tests {
                 // A positive `dy` is a wheel turned toward the user, which
                 // moves a list back toward its top (`PullToRefresh` pulls
                 // on the same sign) — so reaching a lower row is negative.
-                let dy = if r < first { NAV_ROW_H } else { -NAV_ROW_H };
+                //
+                // **Up, too, for a row materialized above the viewport's
+                // top** — M80/T80.4. Deciding by `r < first` alone sent a
+                // row that was first in the window but cut by the top edge
+                // *down*: the walk oscillated between two offsets 32 px
+                // apart and never reached it. Latent while the list's
+                // starting offset happened to be a multiple of the step;
+                // one more catalogue entry moved the reveal off it.
+                let above = k < len && s.row_state(k).pos.y < ny;
+                let dy = if r < first || above { NAV_ROW_H } else { -NAV_ROW_H };
                 h.post(Event::Scroll { x: nx + 100.0, y: ny + nh / 2.0, dy });
                 h.pump();
             }

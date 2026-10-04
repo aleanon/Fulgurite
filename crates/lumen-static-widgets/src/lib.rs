@@ -111,6 +111,10 @@ pub mod scroll;
 // `lumen_static::repeat::Repeat`, which core gates the same way.
 #[cfg(feature = "alloc")]
 pub mod select;
+// M80/T80.4: read-only selection holds a cluster list, so it is behind
+// `alloc` with `Select` and `RichText`, and the leaf firmware links none.
+#[cfg(feature = "alloc")]
+pub mod selectable;
 pub mod slider;
 pub mod textarea;
 pub mod toggle;
@@ -142,6 +146,8 @@ pub use popup::{Anchor, Popup};
 pub use scroll::ScrollView;
 #[cfg(feature = "alloc")]
 pub use select::Select;
+#[cfg(feature = "alloc")]
+pub use selectable::Selectable;
 pub use slider::Slider;
 pub use textarea::TextArea;
 pub use toggle::{CheckBox, Radio, Switch, Toggle};
@@ -183,7 +189,7 @@ pub mod prelude {
         Labelled, Switch, TextArea, TextInput, Toggle,
     };
     #[cfg(feature = "alloc")]
-    pub use crate::Select;
+    pub use crate::{Select, Selectable};
 
     pub use crate::{
         Avatar, Badge, BarChart, Card, Chip, Divider, Icon, LineChart, PieChart, ProgressBar,

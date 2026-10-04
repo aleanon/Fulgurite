@@ -104,7 +104,10 @@ checked against both by `scripts/check_agent_methods.sh`, M48/T48.14):
 window since M48/T48.13; the reply comes first, then the process exits 0),
 `app.reloads`, and `app.presents` (`{presents, skipped}`: frames
 presented, and redraws that presented nothing because nothing changed —
-M53/T53.4; answered without drawing a frame). `input.compose` takes `{text, commit}` or
+M53/T53.4; answered without drawing a frame), and `app.copy` (the
+focused node's selection onto the system clipboard and read back,
+`{copied, clipboard, set, error}` — what a real Ctrl+C does, which a
+drive's `input.key` cannot reach; M80/T80.4). `input.compose` takes `{text, commit}` or
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and

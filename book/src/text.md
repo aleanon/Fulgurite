@@ -77,6 +77,28 @@ firmware's budget. The same demo's second switch:
 What the cut costs, in shaping and in flash, is in `docs/results-text.md`
 and `docs/results-embedded.md` (M80/T80.3).
 
+## Selecting text you cannot edit
+
+A `Label` paints text; a `Selectable` is a label a reader can select and
+copy. It takes focus, a press puts the caret, a drag extends the
+selection, a double press takes a word and a triple press (or Ctrl+A)
+the whole text, and losing focus clears it. The copy is the window's
+ordinary Ctrl+C, because the widget answers the same question a text
+field does — "what is selected?" — at the one node it shares with its
+label. Ctrl+X copies too, and deletes nothing: the text is not the
+widget's to change. The showcase's demo opens with its paragraph
+selected, and its readout counts what is:
+
+```text
+{{#include ../../examples/showcase/src/catalog.rs:selectable}}
+```
+
+It selects a `Label`'s one run, so it does not select `RichText` or
+`Markdown`, which paint word by word. It needs an allocator (its
+cluster list is a `Vec`), so the leaf firmware does not link it; what it
+costs, and why its highlight is lighter than a field's, is in
+`docs/results-text.md` (M80/T80.4).
+
 ## Complex scripts are a crate, not a feature
 
 `lumen-static-text` is separate on purpose. That is the M15 gating
