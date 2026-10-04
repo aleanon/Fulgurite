@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# The embedded firmwares' `.text` must stay under an eighth of flash —
-# M13/T13.9's threshold, enforced 2026-09-10 — and, since M52/T52.1, for
-# FOUR binaries, each asserting before its number is read that the code
-# it exists to price is linked (scripts/lib/firmware.sh says why four).
-# The interactive one keeps the same 64 KB: an application that handles
-# input is the ordinary case, not a larger product
-# (docs/plan-embedded-footprint.md §2.5). And two symbol classes are
+# The embedded firmwares' `.text` must stay under 80 KB, 15.6% of the
+# T13.0 part's flash -- M13/T13.9's threshold (an eighth, 64 KB, enforced
+# 2026-09-10), raised by the owner on 2026-09-30 (D5,
+# docs/plan-iced-roadmap.md) -- and, since M52/T52.1, for FOUR binaries,
+# each asserting before its number is read that the code it exists to
+# price is linked (scripts/lib/firmware.sh says why four). All four share
+# the one ceiling: an application that handles input is the ordinary
+# case, not a larger product (docs/plan-embedded-footprint.md §2.5). And two symbol classes are
 # forbidden outright, bound 0, per binary -- float formatting and soft
 # `f64` (M52/T52.2) -- because the ceiling absorbed both regressions.
 #
 # **The number was written down on 2026-09-05 and nothing checked it.**
-# `docs/results-embedded.md` states `<= 64 KB` as a gate and records
+# `docs/results-embedded.md` stated `<= 64 KB` as a gate and recorded
 # 20,524 B against it; by 2026-09-10 the linked firmware was 22,458 B and
 # the doc still said 20,524. A 9.4% drift, invisible, because a threshold
 # in prose is not a threshold that was checked -- the same lesson
@@ -36,10 +37,13 @@ export LC_ALL=C
 
 DOC=docs/results-embedded.md
 TOLERANCE_PCT=1
-# An eighth of the T13.0 device's 512 KB flash. Raising this is a
-# re-budget and belongs in docs/results-embedded.md with the argument,
-# not in this line.
-CEILING=${LUMEN_TEXT_CEILING:-65536}
+# 80 KB: 15.6% of the T13.0 device's 512 KB flash, under the budget
+# row's own "more than a fifth of the part" line (owner, D5, 2026-09-30).
+# Raising it is a re-budget and belongs in docs/results-embedded.md with
+# the argument -- so the unset default is checked against that row below,
+# and the script and the doc cannot become two copies of one number.
+CEILING_DEFAULT=81920
+CEILING=${LUMEN_TEXT_CEILING:-$CEILING_DEFAULT}
 
 # shellcheck source=lib/firmware.sh
 source scripts/lib/firmware.sh
@@ -47,6 +51,27 @@ firmware_build || exit 1
 
 rc=0
 fail() { echo "text: $*" >&2; rc=1; }
+
+# **The default agrees with the budget row** (M80/T80.0). Read the
+# `Framework .text` threshold from the doc's budget table and compare it
+# with CEILING_DEFAULT, by name, with both numbers printed. An override
+# (`LUMEN_TEXT_CEILING`) changes the comparison below, not the budget, so
+# it skips this check -- which is about the default.
+row=$(python3 - "$DOC" <<'PY'
+import re, sys
+m = re.search(r"^\| Framework `\.text` \| \*\*≤ ([0-9]+) KB\*\*", open(sys.argv[1]).read(), re.M)
+print(int(m.group(1)) * 1024 if m else "")
+PY
+)
+if [ -z "${LUMEN_TEXT_CEILING:-}" ]; then
+    if [ -z "$row" ]; then
+        fail "ceiling: no 'Framework .text' budget row in $DOC"
+    elif [ "$row" -ne "$CEILING_DEFAULT" ]; then
+        fail "ceiling: the default $CEILING_DEFAULT B disagrees with $DOC's budget row ($row B) -- re-budget both together"
+    else
+        echo "text: ceiling $CEILING_DEFAULT B, the same as $DOC's budget row ($row B)"
+    fi
+fi
 
 # count PATTERN -- symbols of the current binary matching a literal.
 count() { printf '%s\n' "$NM" | grep -cF -- "$1" || true; }
@@ -192,8 +217,8 @@ pct=$(awk -v t="$text" -v c="$CEILING" 'BEGIN { printf "%.1f", 100 * t / c }')
 if [ "$text" -gt "$CEILING" ]; then
   fail "$name: .text is $text B, over the $CEILING B ceiling by $((text - CEILING)) B"
   echo "" >&2
-  echo "An eighth of the device's flash is the budget docs/results-embedded.md" >&2
-  echo "set before measuring. Shrink it, or re-budget there with the argument." >&2
+  echo "80 KB (15.6% of the device's flash, owner D5) is the budget" >&2
+  echo "docs/results-embedded.md sets. Shrink it, or re-budget there with the argument." >&2
   continue
 fi
 

@@ -412,6 +412,15 @@ firmware-size:
     echo "firmware: $FIRMWARE"
     size -A "$FIRMWARE" | grep -E '\.text|\.rodata|\.bss|\.data|Total'
 
+# What one task costs the four firmwares, against a base commit
+# (docs/plan-iced-roadmap.md K4, M80/T80.0). Bounds are per binary, as
+# plain words: `just firmware-delta <sha> firmware=0
+# firmware_interactive=256`; none means K4's `firmware_interactive=1000`,
+# and `print` records without failing.
+firmware-delta base *bounds:
+    ./scripts/probe.sh thumb || exit $?
+    ./scripts/firmware_delta.sh {{ base }} {{ bounds }}
+
 # Cortex-M4F no_std build of the core + fixture (docs/results-embedded.md).
 thumb:
     ./scripts/probe.sh thumb

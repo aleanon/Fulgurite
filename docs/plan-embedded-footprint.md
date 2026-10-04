@@ -296,6 +296,11 @@ number.
 
 ### 2.5 The interactive firmware keeps the 64 KB ceiling
 
+> **SUPERSEDED 2026-09-30 (number only):** the owner raised the
+> ceiling to 80 KB for every binary (D5, `docs/plan-iced-roadmap.md`;
+> `docs/results-embedded.md`'s budget row). The argument below still
+> holds: one ceiling for all four, never a separate one for input.
+
 It measures 88.6% of 64 KB today (§1.1). The options are a separate,
 higher ceiling for an interactive build, or the same one. **The same
 one:** the ceiling is "an eighth of flash for the framework", and an

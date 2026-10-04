@@ -30,6 +30,14 @@ Bound: 3 MB. **Fired.** The cost is `accesskit_unix` and the D-Bus stack
 under it: `lumen-static-winit` resolves **95** crates without the
 feature and **166** with it (`cargo tree -e normal`, deduplicated).
 
+**Re-measured 2026-10-04 at `553fa5e`** (M80/T80.0) with K2's exact
+command (`cargo tree -p lumen-static-winit -e normal --prefix none
+[--features F] | sed 's/ (\*)$//' | sort -u | wc -l`,
+`docs/plan-iced-roadmap.md` K2): default build **96**, `a11y` **167**
+(**+71**); `--no-default-features` 91, so `clipboard` is **+5**; and
+`dialogs` **+10**. The window crate's manifest cites these; its
+earlier "11", "79" and "62" counted the whole workspace graph.
+
 ### Idle redraw — condition 1
 
 `scripts/a11y_cost.py` (`just a11y-cost`): the showcase with

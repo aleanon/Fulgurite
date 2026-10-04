@@ -4,6 +4,17 @@
 # docs/plan-review-fixes.md forward references:
 
 
+# M80–M90 (docs/plan-iced-roadmap.md): results docs each milestone's first
+# measuring task creates. Remove each entry in the commit that writes it.
+docs/results-paint-vocabulary.md   # M82 (docs/plan-paint-vocabulary.md)
+docs/results-shader.md             # M83 (docs/plan-gpu-extension.md)
+docs/results-images.md             # M84 (docs/plan-images-in-motion.md)
+docs/results-layout-input.md       # M85 (docs/plan-layout-input.md)
+docs/results-transitions.md        # M86 (docs/plan-transitions.md)
+docs/results-markdown.md           # M87 (docs/plan-markdown.md)
+docs/results-windows.md            # M89 (docs/plan-windows.md)
+docs/results-desktop-integration.md  # M90 (docs/plan-desktop-integration.md)
+
 # Cargo targets (`bin NAME` / `package NAME`) cited but not in either
 # workspace, each with why. Checked by the second half of check_doc_paths.sh.
 #
@@ -18,3 +29,7 @@ bin serde
 package root
 package compNNN
 package monolith
+# M80–M90: bench bins the plans add in the task that measures with them.
+bin vocabulary   # M82 (docs/plan-paint-vocabulary.md)
+bin scroll_cull  # M85 (docs/plan-layout-input.md)
+bin markdown     # M87 (docs/plan-markdown.md)

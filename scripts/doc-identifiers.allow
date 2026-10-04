@@ -122,3 +122,103 @@ Inval                # the strategy alias M55/T55.4 replaced with a type paramet
 WinApp  # counter-window's own ApplicationHandler, deleted by M60 (docs/plan-tally-slim.md); docs/plan-desktop.md's M14 history names it
 
 MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 maps widgets onto them
+
+
+# --- M80–M90 (docs/plan-iced-roadmap.md and its eleven milestone plans):
+# names the plans propose, not built. Delete each entry in the commit whose
+# task builds it; a built name left here is reported as stale by this script.
+DEFAULT                        # proposed by ?
+GstFeed                        # proposed by ?
+LINE_HEIGHT                    # proposed by ?
+LineHeight                     # proposed by ?
+LinuxClipboardKind             # proposed by ?
+MainContext                    # proposed by ?
+TRANSITION                     # proposed by ?
+LineCount                      # proposed by M80
+PhysicalSize                   # proposed by M80
+TextOverflow                   # proposed by M80
+TextSource                     # proposed by M80
+BASIC_CHECKSUM                 # proposed by M81
+FaceSource                     # proposed by M81
+GlyphKey                       # proposed by M81
+GlyphRuns                      # proposed by M81
+ShapedGlyph                    # proposed by M81
+ShapedRun                      # proposed by M81
+TEXTINPUT_RTL                  # proposed by M81
+TRACKED                        # proposed by M81
+BACKGROUND_FILL                # proposed by M82
+GradKind                       # proposed by M82
+GradShape                      # proposed by M82
+GradientPayload                # proposed by M82
+MaskKey                        # proposed by M82
+PAINTBOX                       # proposed by M82
+PATH_TILE                      # proposed by M82
+PathEl                         # proposed by M82
+PathPaint                      # proposed by M82
+PathSink                       # proposed by M82
+PopTransform                   # proposed by M82
+PushTransform                  # proposed by M82
+VECTORTEXT                     # proposed by M82
+BackendFactory                 # proposed by M83
+BackendTarget                  # proposed by M83
+LUMEN_GPU_BAD_SHADER           # proposed by M83
+RunId                          # proposed by M83
+ShaderDesc                     # proposed by M83
+ShaderEnd                      # proposed by M83
+ShaderId                       # proposed by M83
+ShaderTable                    # proposed by M83
+ShaderView                     # proposed by M83
+WindowHandles                  # proposed by M83
+AnimatedImage                  # proposed by M84
+DecodedImage                   # proposed by M84
+GifFeed                        # proposed by M84
+ImageChain                     # proposed by M84
+ImageError                     # proposed by M84
+ImageStore                     # proposed by M84
+VideoFeed                      # proposed by M84
+VideoFrame                     # proposed by M84
+CountingLeaf                   # proposed by M85
+CullTo                         # proposed by M85
+INKS_OUTSIDE                   # proposed by M85
+VectorText                     # proposed by M85
+WATCHES_VIEW                   # proposed by M85
+MIX_LEVELS                     # proposed by M86
+ImageRef                       # proposed by M87
+KEYS                           # proposed by M87
+LINKED_MARKDOWN                # proposed by M87
+LINKS                          # proposed by M87
+LinkedMarkdown                 # proposed by M87
+MarkdownTheme                  # proposed by M87
+ClipFormat                     # proposed by M88
+ClipKind                       # proposed by M88
+ClipboardRead                  # proposed by M88
+ClipboardWrite                 # proposed by M88
+CloseWindow                    # proposed by M88
+GetExtLinux                    # proposed by M88
+ImageData                      # proposed by M88
+OpenWindow                     # proposed by M88
+SetExtLinux                    # proposed by M88
+GpuContext                     # proposed by M89
+OpenProgram                    # proposed by M89
+WindowApp                      # proposed by M89
+WindowClosed                   # proposed by M89
+WindowSlot                     # proposed by M89
+WindowSpec                     # proposed by M89
+WindowTable                    # proposed by M89
+CommandList                    # proposed by M90
+ContextMenu                    # proposed by M90
+ContextRequest                 # proposed by M90
+MenuBar                        # proposed by M90
+MenuEntry                      # proposed by M90
+MenuMask                       # proposed by M90
+RegisteredStatusNotifierItems  # proposed by M90
+TrayModel                      # proposed by M90
+TraySpec                       # proposed by M90
+CARGO_FEATURE_SHADER           # proposed by M83
+DEP_LUMEN_STATIC_SHADER        # proposed by M83
+FEATURE_GATED        # proposed by M83: the list of feature-gated items checked both ways
+NoSuchProgram        # proposed by M89: Answer variant for an unknown program index
+WindowOpened         # proposed by M89: Answer variant carrying the new window's key
+LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
+LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
+PATH                 # the process environment variable, named by M88's xclip refuse direction

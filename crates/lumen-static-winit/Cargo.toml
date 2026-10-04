@@ -44,8 +44,11 @@ simd = ["lumen-static-shell/simd"]
 threads = ["lumen-static-shell/threads"]
 # M34/T34.1: the shadow oracle, reported by the agent's `app.shadow`.
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
-# Clipboard is default-ON: arboard costs **11 crates** (207 -> 218,
-# 2026-09-05). A text field without copy and paste is not a working text
+# Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
+# crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e
+# normal --prefix none`, `(*)` markers stripped, deduplicated --
+# docs/plan-iced-roadmap.md K2; the 2026-09-05 "11" counted the whole
+# workspace graph, 207 -> 218). A text field without copy and paste is not a working text
 # field. An application that wants neither this nor `a11y` writes
 # `default-features = false`.
 #
@@ -87,10 +90,12 @@ clipboard = ["dep:arboard"]
 # `translate::dropped` for an application that owns its event loop.
 dnd = []
 # Platform file pickers (T15.11). Default-OFF, and the measurement is
-# why rather than a formality: rfd costs **79 crates** (218 -> 297,
-# 2026-09-07) against clipboard's 11 and a11y's 62. It is the most
-# expensive optional thing in this workspace, and an application that
-# never opens a file should not carry it.
+# why rather than a formality: rfd costs **+10 crates** over the default
+# build, against clipboard's +5 and a11y's +71 (2026-10-04, K2's method
+# above; docs/results-a11y-platform.md has a11y's 95 -> 166). The
+# 2026-09-07 "79" counted the whole workspace graph (218 -> 297), as the
+# old "11" and "62" did. An application that never opens a file should
+# not carry it.
 dialogs = ["dep:rfd"]
 # The GPU renderer (T15.12). Default-OFF, and the most expensive feature
 # in this workspace on every axis measured: +37 crates, +6.97 MB of
@@ -112,8 +117,10 @@ lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
 winit = "0.30"
 softbuffer = "0.4"
 # The platform's file pickers (T15.11). `gtk3` rather than
-# `xdg-portal`, measured 2026-09-07: gtk3 costs 79 crates (218 -> 297)
-# and xdg-portal costs 273 (218 -> 491), because the portal backend
+# `xdg-portal`, measured 2026-09-07 over the whole workspace graph: gtk3
+# 79 crates (218 -> 297) and xdg-portal 273 (218 -> 491); +10 for gtk3
+# by K2's per-crate method (2026-10-04, see `dialogs`). The portal is
+# dearer because the portal backend
 # pulls an async runtime for a dialog this framework opens
 # synchronously. Neither is cheap, which is why the feature is off.
 rfd = { version = "0.15", optional = true, default-features = false, features = ["gtk3"] }

@@ -36,24 +36,27 @@ scroll.
 
 ## Common to all six — the gaps that are not about any one framework
 
-These are absent from lumen-static and present in **every** other arm.
-If the list is read for priorities, it should be read here.
+These were absent from lumen-static and present in **every** other arm
+when this survey was taken (2026-09-06). **Most have shipped since**;
+re-checked against `553fa5e` on 2026-10-04 (M80/T80.0), each row now
+says what exists and which plan owns what is left. The per-framework
+sections below are still the 2026-09-06 survey.
 
-| capability | what is missing |
+| capability | status at `553fa5e` |
 |---|---|
-| **Images** | No `Image` widget and no `Cmd` that carries pixels. No PNG/JPEG/WebP decode, no nine-patch, no icons. |
-| **Vector drawing** | No paths, strokes, gradients, or line primitives. `Rect`/`RoundedRect`/`Shadow` is the whole geometry vocabulary. No SVG. |
-| **Animation** | No timers, no clock, no easing, no transitions, no spring physics. Nothing in the framework can change a value over time; an application must drive every frame itself. |
-| **Overlays and z-order** | No popup, dropdown, menu, tooltip, modal or toast. Deliberate — `docs/plan-widgets.md` T11.5 records this as a *layout* milestone (out-of-flow positioning, paint-after/hit-first, click-outside dismissal), not three widgets. |
-| **Menus** | No menu bar, no context menu. Follows from overlays and from having no right-click routing above the event vocabulary. |
-| **Multi-window** | `Host` is one tree, one surface. No second window, no dialog, no popup surface. |
-| **Drag and drop** | Neither within an application nor across the platform boundary. Pointer capture (T11.2) is the substrate; nothing is built on it. |
-| **Touch and gestures** | The event vocabulary has no touch, pinch, rotate, swipe or long-press. Pointer only. |
-| **Complex-script text** | No bidi, no Arabic/Indic shaping, no grapheme-correct segmentation. Deliberate and recorded twice in `docs/text-render-adoption-decision.md` — fontdue does not do it, and the baked embedded face does not either. |
-| **Localisation** | No translation catalogue, no locale-aware formatting, no RTL layout mirroring. |
-| **Focus ring / keyboard nav beyond Tab** | Tab traversal exists; arrow-key navigation within a group, focus scopes, and a visible focus indicator do not. |
-| **File / colour / font dialogs** | None. These are platform-owned in Qt, GTK and Slint. |
-| **GPU rendering** | Software rasteriser only. `Renderer` is the seam a GPU backend would plug into (M10a) and nothing has. |
+| **Images** | Shipped: `Cmd::Image`, the `Image` widget, `ImageSource`. Decoding and animated frames: `docs/plan-images-in-motion.md` (M84). |
+| **Vector drawing** | Lines and linear gradients shipped (`Cmd::Line`, `Cmd::Gradient`). Paths, radial and style gradients, vector text: `docs/plan-paint-vocabulary.md` (M82). |
+| **Animation** | Shipped: `Animated<T>`, `Easing`, `App::tick`, timers (M28). Built-in widget transitions: `docs/plan-transitions.md` (M86). |
+| **Overlays and z-order** | Shipped: popups, menus, tooltips, modals, toasts, nested overlays (M15, M27). Arbitrary z-order stays rejected (`docs/plan-capabilities.md`). |
+| **Menus** | `Menu` shipped (M27). Right-click context menus, a menu bar and a tray: `docs/plan-desktop-integration.md` (M90). |
+| **Multi-window** | Not in a turnkey window (M54/T54.7 un-marked T15.10). `docs/plan-windows.md` (M89). |
+| **Drag and drop** | Within an application shipped (`Drag`); the platform half compiles behind `dnd` and is not routed by `run` (M54/T54.7). |
+| **Touch and gestures** | Shipped: touch events and recognisers (`gesture.rs`, M15; M44/T44.4). |
+| **Complex-script text** | Measured and edited (`lumen-static-text`, M45), not painted. `docs/plan-shaped-paint.md` (M81). |
+| **Localisation** | RTL layout mirroring exists (T15.9); no catalogue or locale formatting. Not planned. |
+| **Focus ring / keyboard nav beyond Tab** | Shipped: arrow groups, focus traps, a keyboard-only focus ring (M15/T15.6, M44). |
+| **File / colour / font dialogs** | File dialogs behind `dialogs` (T15.11); colour, date and file pickers as widgets (M27/T27.11). |
+| **GPU rendering** | Shipped: `lumen-static-wgpu`, behind `gpu` (T15.12, M51). Custom shaders and backends: `docs/plan-gpu-extension.md` (M83). |
 
 ---
 

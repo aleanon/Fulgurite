@@ -653,6 +653,33 @@ found" section rather than silently replacing itself.
     colour change needs no rebuild.
   - **Deferred:** a compile-time cascade (§4).
 
+- **M80–M90 — `docs/plan-iced-roadmap.md`** and its eleven milestone
+  plans: what iced's roadmap to 1.0 has that this framework does not,
+  on branch `iced-roadmap`. **Queued 2026-10-04; T80.0 starts it.**
+  Written 2026-09-28 from iced's board, then reviewed twice by eight
+  lenses with adversarial verification (202, then 189 findings; 19,
+  then 9 blocking), redrafted per milestone, and checked three times
+  for cross-file consistency; every file keeps both review lists.
+  Renumbered from M62–M72 because `m62-m64-plans` claimed those first.
+  - **Order (index §5):** M80 text fit → M81 shaped paint →
+    M82 paint vocabulary → M83 GPU extension → M84 images in motion →
+    M85 layout and input → M86 transitions → M87 Markdown →
+    M88 platform requests → M89 windows → M90 desktop integration.
+    Most are split into a/b halves, each closing on its own
+    `just ci-verify`.
+  - **Owner decisions, binding (index header):** D1 no new crate, four
+    moves; D2 a drawn menu bar on Linux, native `muda` deferred;
+    D3 `shader` gated at every use site (`cfg(lumen_shader)` outside
+    the core); D4 `Style` 84 / `NodeState` 88 at most; D5 the firmware
+    ceiling is **80 KB** (raised from 64 KB; 19,998 B left on
+    `firmware_interactive`); D6 `text_spaced` and `fills` are accepted
+    firmware growth; D7 `xclip` is installed on the reference machine.
+  - **Per-task firmware cost** is `just firmware-delta <parent>`
+    (K4: 1,000 B per task on `firmware_interactive`).
+  - **Not planned, with reasons (index §1.3):** font hinting,
+    time-travel debugging, the Comet debugger, arbitrary z-order, a
+    separate test emulator, iced's own renderers and dependencies.
+
 
 - ~~**M56 — `docs/plan-showcase-design.md`**~~ — **DONE 2026-09-25**
   on branch `m56-showcase-design`, all six tasks. It built what was

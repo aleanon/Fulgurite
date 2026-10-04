@@ -13,7 +13,7 @@ framebuffer.
 
 | | Threshold | Why that number |
 |---|---:|---|
-| Framework `.text` | **≤ 64 KB** | An eighth of flash. The app, its face and its data need the rest; a GUI framework that takes more than a fifth of the part is not an embedded GUI framework. |
+| Framework `.text` | **≤ 80 KB** | 15.6% of flash. **Raised from 64 KB (an eighth) by the owner on 2026-09-30** (D5, `docs/plan-iced-roadmap.md`): the interactive firmware stood at 94.5% of 64 KB with 3,614 B left, against roughly 9.8 KB of planned growth (M80–M90). 80 KB is still under this row's own line: the app, its face and its data need the rest, and a GUI framework that takes more than a fifth of the part is not an embedded GUI framework. `scripts/check_text.sh` reads this row and fails when its default disagrees. |
 | Framework `.bss` + `.data` | **zero symbols**, exemptions named | The framework's *own* statics. **Tightened from "≤ 2 KB" on 2026-09-07**: a bound nothing had approached told nobody anything, and what the number was standing in for is a *shape* — no allocator arena, no lazily-initialised registry, no static caches, nothing claiming RAM before `main`. `scripts/check_bss.sh` checks that, and `scripts/bss.allow` names what is allowed and why. |
 | RAM for a 100-node tree | **≤ 24 KB** | T13.0's budget said ~19 KB for state + style + widget structs. 24 KB leaves headroom and still fits with the 8 KB stack in well under half of RAM. |
 | Stack, actual depth | **≤ 4 KB** | T13.0 measured 256–272 B per level and a real screen at 4–5 deep (~1.6 KB). 4 KB is generous for that and half the 8 KB budgeted. |
@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 64 KB | **28,616 B** (27.9 KB) | **pass**, at 43.7% of budget; re-measured at the M56 merge (2026-09-29; section below) |
+| `.text` | ≤ 80 KB | **28,616 B** (27.9 KB) | **pass**, at 34.9% of budget; re-measured at the M56 merge (2026-09-29; section below), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 12,864 B | of which the baked face is most; 9,010 B at T13.7 |
@@ -150,8 +150,8 @@ every host carries under `panic = "unwind"`; the gate counts symbols
 *defined* in the module and prints the glue beside the count.
 
 **The gates read all four since T52.1** (R11-F4). `scripts/check_text.sh`
-prints each binary's `.text` against the same 64 KB ceiling — the
-interactive build keeps it, because an application that handles input
+prints each binary's `.text` against the same ceiling (64 KB until
+2026-09-30, 80 KB since, D5) — the interactive build keeps it, because an application that handles input
 is the ordinary case and not a larger product
 (`docs/plan-embedded-footprint.md` §2.5); needing more is a re-budget
 argued here. Before reading a number, each binary asserts the code it
@@ -754,12 +754,34 @@ clipped line), `ops::shaded` +240, `ops::record_painted` +124 (M56's
 `paints` flag); `Button` and the derived `Ui` net about zero or below.
 
 The other three binaries, same build: `firmware_interactive` **61,922 B,
-94.5% of 64 KB** (56,802 in the M55/T55.5 table below — the dispatch
-path carries M57's input work: the press latch, focus moves, the
-combobox's edges), `firmware_bind` 32,008, `firmware_cascade` 30,644
-(delta over paint-only 2,028, bound 3,072). Every binary is gated on the
-64 KB ceiling, and the interactive one has **3,614 B** left under it: the
-next milestone that adds input will meet the gate.
+75.6% of 80 KB** (94.5% of the 64 KB ceiling then; 56,802 in the
+M55/T55.5 table below — the dispatch path carries M57's input work: the
+press latch, focus moves, the combobox's edges), `firmware_bind` 32,008,
+`firmware_cascade` 30,644 (delta over paint-only 2,028, bound 3,072).
+Every binary is gated on the ceiling, and the interactive one had
+**3,614 B** left under 64 KB, which is why the owner raised it to 80 KB
+(D5): **19,998 B** left now. The table below is the current four-binary
+record.
+
+### All four at `553fa5e`, against 80 KB — M80/T80.0 (2026-10-04)
+
+`scripts/check_text.sh` and `scripts/firmware_delta.sh` at `553fa5e`
+(the M56/M61 merge), release, `thumbv7em-none-eabihf`. **This table is
+the one K4 (`docs/plan-iced-roadmap.md`) rewrites** when a task moves a
+binary; the dated tables above and below were measured against the
+64 KB ceiling that held then, and stay as measured.
+
+| binary | `.text` | of 81,920 | headroom | `.rodata` |
+|---|---:|---:|---:|---:|
+| `firmware` | 28,616 | 34.9% | 53,304 | 13,236 |
+| `firmware_interactive` | **61,922** | **75.6%** | **19,998** | 21,714 |
+| `firmware_bind` | 32,008 | 39.1% | 49,912 | 13,840 |
+| `firmware_cascade` | 30,644 | 37.4% | 51,276 | 13,988 |
+
+A task's cost is measured by `just firmware-delta <parent>`, which builds
+the four at the parent commit and at the work tree and fails a per-binary
+bound by name; `check_text.sh`'s 1% headline tolerance is about 280 B of
+the paint-only binary and cannot say "unchanged".
 
 ### Grapheme editing is behind `alloc` — M45/T45.5
 
