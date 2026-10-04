@@ -213,6 +213,29 @@ which is the application's data and not the frame.
   against wgpu's submission alone (`Gpu::submit_floor`). Before T51.4 the
   caret frame read 10 over the floor (R9-F8).
 
+## `Shaping::Complex` frames — M81/T81.3 (2026-10-04)
+
+`alloc_gate.rs` `mod complex` (`--features truetype,shaping`, run by
+`just fonts`), on the pinned face as a stack in `Shaping::Complex`. The
+shaper keeps its parsed faces, shape plans, `UnicodeBuffer` and scratch
+in the canvas's and the measurer's `ShapeScratch`
+(`docs/plan-shaped-paint.md`, `docs/results-text.md` M81/T81.3):
+
+| arm | allocs / frees | bound |
+|---|---:|---|
+| a changing label that needs the shaper but not bidi (`cafe` + U+0301 + a number), 50 full frames; 2.00 shaped runs a frame | **0 / 0** | 0 |
+| plain Latin (`PlainApp`), 50 full frames: 0 runs through the shaper since K81a's response | **0 / 0** | 0 |
+| a still right-to-left screen, 40 frames over the damage | **0 / 0** | 0 |
+| a changing right-to-left label, 40 frames over the damage: 80 runs ordered by `unicode_bidi` | **960 / 960** | = 80 × 12, what `BidiInfo::new` plus one `visual_runs` allocate for that string, counted in the test |
+
+**The file's one text budget** is the last row: a right-to-left run
+allocates exactly what `unicode_bidi` does for it — the `BidiInfo` and
+each line's `visual_runs` — and nothing else, per run the shaper lays
+out (`TextCounters::bidi`). **Reopen** with a bidi pass into caller-kept
+buffers (`unicode_bidi` has no such API in 0.3), which would make it 0.
+Injection: a shape plan built per call instead of from the scratch puts
+**650** allocations in 50 frames on the first arm.
+
 ## The threaded rasteriser's budget — M50/T50.4 (2026-09-27)
 
 **A decision, not a zero.** `render_banded` (`threads`, default-off)

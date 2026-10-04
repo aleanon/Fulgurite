@@ -19,7 +19,10 @@
 //! `crates/lumen-static-shell/tests/fit_cost.rs`'s gate.
 //!
 //! **The cut is logical**, in byte order. A right-to-left run's `…`
-//! belongs on its visual start, which is M81's.
+//! belongs on its visual start: [`rtl`] asks the measurer the prefix's
+//! paragraph direction, and `Label` puts the mark at the left under a
+//! right-to-left one (M81/T81.3). A measurer that does not order runs —
+//! every `Basic` one — answers left to right, so nothing moves there.
 
 use lumen_static::cx::TextMeasure;
 
@@ -83,4 +86,25 @@ pub fn cut(m: &mut dyn TextMeasure, text: &str, px: f32, weight: f32, room: f32,
         }
     }
     Some((prefix(lo), lo_w))
+}
+
+/// Whether `text`'s paragraph runs right to left, as the measurer lays it
+/// out — M81/T81.3 (`docs/plan-shaped-paint.md`, M80 under `Complex`).
+///
+/// Read from the trailing insertion point the shaping seam reports last,
+/// which carries the last paragraph's direction (`Cluster::rtl`,
+/// `lumen-static-text`'s `ShapedRun`). Only a measurer that orders
+/// bidirectional runs ever sets it, so under every other one this is
+/// `false` and a cut's `…` stays at the right. One shape query, made on the
+/// memo's miss beside the cut, never on a still frame.
+pub fn rtl(m: &mut dyn TextMeasure, text: &str, px: f32, weight: f32) -> bool {
+    struct Last(bool);
+    impl lumen_static::cx::GlyphSink for Last {
+        fn cluster(&mut self, c: lumen_static::cx::Cluster) {
+            self.0 = c.rtl;
+        }
+    }
+    let mut last = Last(false);
+    m.shape(text, px, weight, f32::INFINITY, &mut last);
+    last.0
 }

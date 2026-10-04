@@ -46,7 +46,9 @@ use lumen_static::widget::{Node, Widget};
 ///
 /// **It reads `Style::overflow`** (M80/T80.3): under `Clip` or `Ellipsis`
 /// it is one line, cut in layout at a grapheme boundary by
-/// [`crate::fit::cut`], and paints the prefix (then `…`). The cut is made
+/// [`crate::fit::cut`], and paints the prefix (then `…`; before it, at the
+/// left, when the measurer lays the prefix out right to left — M81/T81.3,
+/// [`crate::fit::rtl`]). The cut is made
 /// inside the memo's miss, so a still frame cuts nothing, and against the
 /// width the label will **occupy** — its own resolved width less its
 /// padding, not the width its parent offered (a `Fixed(90)` label in a
@@ -60,7 +62,9 @@ pub struct Label<S: TextStorage = &'static str> {
     /// The cut, from layout — M80/T80.3: the prefix's end byte
     /// (`u32::MAX` = paint the whole text, as before `overflow` existed)
     /// and where the `…` starts from the content box's left edge, which
-    /// is negative under `Clip` (no mark). **+8 B per `Label`** where
+    /// is negative under `Clip` (no mark), and at or below `RTL_MARK`
+    /// for a right-to-left cut whose mark sits at the left (M81/T81.3,
+    /// `cut_places`). **+8 B per `Label`** where
     /// there is an allocator; **absent in the leaf tier**, which reads
     /// every `TextOverflow` as `Wrap` (K80b's fallback,
     /// `docs/results-embedded.md` M80/T80.3).
@@ -83,6 +87,26 @@ const LABEL_OVERFLOW: lumen_static::style::Fields =
 
 /// `Label::fit` when nothing is cut.
 const UNCUT: (u32, f32) = (u32::MAX, -1.0);
+
+/// `Label::fit`'s mark offset at and below which the cut is right to left
+/// (M81/T81.3): the `…` sits at the content box's left edge and the prefix
+/// starts `RTL_MARK - offset` px in, the mark's width. `-1.0` is `Clip`'s
+/// no-mark, and a left-to-right mark is never negative.
+const RTL_MARK: f32 = -2.0;
+
+/// Where a cut's prefix and `…` start from the content box's left edge,
+/// from `Label::fit`'s mark offset: `(prefix, Some(mark))`, or no mark
+/// under `Clip`.
+#[inline]
+fn cut_places(mark: f32) -> (f32, Option<f32>) {
+    if mark <= RTL_MARK {
+        (RTL_MARK - mark, Some(0.0))
+    } else if mark >= 0.0 {
+        (0.0, Some(mark))
+    } else {
+        (0.0, None)
+    }
+}
 
 /// The width a label's text is measured and cut against — M80/T80.3: the
 /// width the node will occupy (its `width` resolved under `limits`, which
@@ -159,7 +183,11 @@ fn measure_cut(cx: &mut LayoutCx, text: &str, s: &Style, room: f32, scale: f32, 
             let e = lumen_static::cx::measure_spaced(cx.text, scale, crate::fit::ELLIPSIS, px, wt, lh, f32::INFINITY);
             let h = line.h.max(e.h);
             if mark {
-                (Size { w: w + e.w, h }, (end as u32, w))
+                // The mark at the paragraph direction's end (M81/T81.3):
+                // left of a right-to-left prefix, which then starts after
+                // it — encoded as `RTL_MARK - e.w` (see `cut_places`).
+                let rtl = !prefix.is_empty() && crate::fit::rtl(cx.text, prefix, px, wt);
+                (Size { w: w + e.w, h }, (end as u32, if rtl { RTL_MARK - e.w } else { w }))
             } else {
                 (Size { w, h }, (end as u32, -1.0))
             }
@@ -273,9 +301,10 @@ impl<S: TextStorage> Label<S> {
         // `get`, not an index: a reload restores the text without the dirty
         // bit, and a cut from the old text must not panic before the next
         // layout recomputes it.
-        out.text_spaced(content, t.get(..end as usize).unwrap_or(""), px, wt, lh, fg);
-        if mark >= 0.0 {
-            out.text_spaced([content[0] + mark, content[1], content[2], content[3]], crate::fit::ELLIPSIS, px, wt, lh, fg);
+        let (at, mark) = cut_places(mark);
+        out.text_spaced([content[0] + at, content[1], content[2], content[3]], t.get(..end as usize).unwrap_or(""), px, wt, lh, fg);
+        if let Some(m) = mark {
+            out.text_spaced([content[0] + m, content[1], content[2], content[3]], crate::fit::ELLIPSIS, px, wt, lh, fg);
         }
     }
 

@@ -649,7 +649,23 @@ fn main() {
     // `docs/plan-raster-allocation.md` §5 names: a cap too small for a real
     // screen would keep the allocation gate green while a window
     // allocated. It must read 0, and so must the misses after warm-up.
+    //
+    // **`--shaping basic|complex`** (M81/T81.3, for K81b in T81.8): the
+    // truetype canvas's stack in that mode; `complex` needs the benches
+    // `shaping` feature. The runs the shaper laid out are printed as the
+    // setup. Since K81a's response (`docs/plan-shaped-paint.md`, "What
+    // building found") a run with nothing to shape takes fontdue's path
+    // under `Complex`, so this grid's Latin and digits print 0 there.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let shaping = match args.iter().position(|a| a == "--shaping").map(|i| args.get(i + 1).map(String::as_str)) {
+        None | Some(Some("basic")) => lumen_static_shell::text::Shaping::Basic,
+        #[cfg(feature = "shaping")]
+        Some(Some("complex")) => lumen_static_shell::text::Shaping::Complex,
+        Some(other) => panic!("--shaping takes basic or complex (complex needs the `shaping` feature), not {other:?}"),
+    };
     if let Some(face) = FontStack::system() {
+        let face = face.with_shaping(shaping);
+        let shaped0 = lumen_static_shell::text::text_counters();
         let mut hw = host(m);
         let mut tc = Canvas::with_font(W, H, face);
         for _ in 0..3 {
@@ -665,9 +681,12 @@ fn main() {
             }
         }
         let after = tc.glyph_cache_stats();
+        let shaped1 = lumen_static_shell::text::text_counters();
         println!(
-            "glyph cache: warm {warm:?}; after 20 edits {after:?} (bound: uncached 0, resets 0, \
-             misses after warm-up only for digits not yet drawn)\n"
+            "glyph cache [{shaping:?}]: warm {warm:?}; after 20 edits {after:?} (bound: uncached 0, resets 0, \
+             misses after warm-up only for digits not yet drawn); {} runs painted, {} through the shaper\n",
+            shaped1.shaped - shaped0.shaped,
+            shaped1.complex - shaped0.complex
         );
         assert_eq!(after.uncached, 0, "the glyph cache drew {} glyphs uncached on the grid", after.uncached);
         assert_eq!(after.resets, 0, "the glyph cache reset {} times on one screen", after.resets);

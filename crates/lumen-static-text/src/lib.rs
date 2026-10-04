@@ -8,9 +8,9 @@
 //!   greedy line breaking at UAX #14 opportunities, and each line put
 //!   in visual order. Its output, a [`ShapedRun`], is glyph keys a
 //!   rasteriser can draw and clusters in source order. M81/T81.2 built
-//!   it; `lumen-static-shell`'s `FontStack` is to implement
-//!   [`FaceSource`] and paint from it under its `shaping` feature
-//!   (T81.3).
+//!   it; since M81/T81.3 `lumen-static-shell`'s `FontStack` implements
+//!   [`FaceSource`] and paints from it under its `shaping` feature, in
+//!   `Shaping::Complex`.
 //! - [`ComplexText`], a [`TextMeasure`] over one face: the same
 //!   [`Shaper`] through a single-face [`FaceSource`], so a `Host` caller
 //!   measures with it as before T81.2.
@@ -28,27 +28,28 @@
 //! strongest mechanism: nothing here enters a dependency graph unless a
 //! manifest names it — since M81/T81.1 that manifest is the shell's,
 //! behind its default-off `shaping` feature. The core is untouched,
-//! `BakedFace` and `FontMetrics` are untouched, and `just thumb` still
-//! builds the core with no `std` and no allocator.
+//! `BakedFace` is untouched, and `just thumb` still builds the core with
+//! no `std` and no allocator.
 //!
-//! # What it does and does not do — measurement only
+//! # What it changes — measured and painted, under `Complex`
 //!
-//! It shapes and it orders, and what that changes is **the box and the
-//! clusters**: the width a run is laid out in, and where a caret, a
-//! selection and a click land. It does **not** change what is painted.
-//! Glyphs reach the screen through `lumen-static-shell`'s canvas, which
-//! draws the *string* with its own cmap lookup in logical order — so
-//! Arabic is painted unjoined and left to right inside a box measured
-//! for the joined, right-to-left run (R10-F2,
-//! `docs/plan-text-correctness.md` §2.1). This used to say it "changes
-//! where the glyphs go", which it never did.
+//! Until M81/T81.3 this section was "measurement only": the shaper's box
+//! and clusters were right, and the painter drew the *string* with its
+//! own cmap lookup in logical order, so Arabic was painted unjoined and
+//! left to right (R10-F2, `docs/plan-text-correctness.md` §2.1). Since
+//! T81.3 a `FontStack` in `Shaping::Complex` measures, reports clusters
+//! **and paints** through [`Shaper`] — in `FontStack::place_run_into`,
+//! the one function both backends place glyphs with — so what is painted
+//! is the shaper's glyphs (`lumen-static-shell/tests/paint_shaped.rs`).
+//! A run in which no character needs shaping keeps fontdue's layout even
+//! there: shaping Latin through rustybuzz cost 2.2–3.6× `Basic` (K81a,
+//! `docs/results-text.md` M81/T81.3).
 //!
-//! **A window cannot install it.** The winit `Session` builds a
-//! `FontMetrics`, and a `Program` has no measurer parameter; a `Host`
-//! caller passes one to `pump_with` by hand. Shaped paint — the painter
-//! consuming this crate's glyphs — is M81's (`docs/plan-shaped-paint.md`,
-//! T81.3), and `tests/paint_shaped.rs` is the pin that goes red when it
-//! lands.
+//! **A window cannot select it yet.** The window builds its stack as
+//! `Basic`; `Program::shaping` and `Session::shaping`, which carry the
+//! mode to the window, the agent's measurer and the headless shots, are
+//! M81/T81.4's (`docs/plan-shaped-paint.md`). A `Host` caller builds a
+//! `Complex` stack and hands clones to its measurer and canvas by hand.
 #![forbid(unsafe_code)]
 
 use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
@@ -127,6 +128,12 @@ pub struct ShapedRun {
     /// direction and sits at that direction's end of the last line.
     pub clusters: Vec<Cluster>,
     pub lines: Vec<ShapedLine>,
+    /// Whether `unicode_bidi` ordered this run: some character has a
+    /// right-to-left bidi class. A run without one builds no `BidiInfo`
+    /// and allocates nothing for it; one with one allocates what
+    /// `unicode_bidi` does, which M81/T81.3's allocation gate counts per
+    /// run of this kind.
+    pub bidi: bool,
 }
 
 impl ShapedRun {
@@ -134,11 +141,12 @@ impl ShapedRun {
         Self::default()
     }
 
-    /// Empty all three, keeping their capacity.
+    /// Empty all three, keeping their capacity, and clear `bidi`.
     pub fn clear(&mut self) {
         self.glyphs.clear();
         self.clusters.clear();
         self.lines.clear();
+        self.bidi = false;
     }
 
     /// The widest line, px.
@@ -300,6 +308,7 @@ impl Shaper {
         // Bidi only when something can be right to left: a Latin run
         // builds no `BidiInfo` and allocates nothing for it.
         let bidi = if text.chars().any(rtl_class) { Some(BidiInfo::new(text, None)) } else { None };
+        out.bidi = bidi.is_some();
         self.paras.clear();
         match &bidi {
             Some(info) => {
@@ -605,15 +614,12 @@ impl FaceSource for OneFace {
 /// broke by reporting them in visual order. A right-to-left cluster's
 /// `x` is its right edge, and its `rtl` is set.
 ///
-/// **Pair it only with a painter that consumes its clusters, and none
-/// exists yet.** Measured with this and painted with `Canvas::with_font`,
-/// a run is laid out in the shaper's box and drawn with fontdue's own
-/// advances, which are wider for every string (plain ASCII included), so
-/// the painter would once have wrapped every label. Since M45/T45.1 the
-/// painter lays a run out in its rect plus half a pixel and does not
-/// re-wrap one that fits, so the harm left is a horizontal overhang of a
-/// few pixels — and Arabic drawn unjoined, left to right
-/// (`docs/plan-text-correctness.md` §2.1 B).
+/// **Its painter is a `Complex` stack** (M81/T81.3): measured with this
+/// and painted with a `Basic` `Canvas::with_font`, a run is laid out in
+/// the shaper's box and drawn with fontdue's own advances and order —
+/// Arabic unjoined, left to right (`docs/plan-text-correctness.md` §2.1
+/// B). A `FontStack` in `Shaping::Complex` measures and paints with the
+/// same [`Shaper`] instead, which is what a window will use (T81.4).
 pub struct ComplexText {
     source: OneFace,
     /// For the face's vertical metrics.
@@ -642,15 +648,11 @@ impl ComplexText {
     }
 
     /// The glyphs `text` shapes into, **in visual order**, as `(glyph id,
-    /// x)` at `px`, unwrapped — what a painter that consumed this shaper
-    /// would draw. `x` includes the glyph's own offset.
+    /// x)` at `px`, unwrapped — what a painter that consumes this shaper
+    /// draws. `x` includes the glyph's own offset.
     ///
-    /// None does: glyphs reach the screen through
-    /// `lumen-static-shell`'s canvas, which draws the *string* with its
-    /// own cmap lookup (`docs/plan-text-correctness.md` §2.1). This is
-    /// what `tests/paint_shaped.rs` compares the painted glyphs with, so
-    /// the claim "the shaper is right, the painter does not use it" is a
-    /// checked one.
+    /// What `lumen-static-shell/tests/paint_shaped.rs` compares a
+    /// `Complex` stack's painted glyphs with, since M81/T81.3 equal.
     pub fn shaped_glyphs(&self, text: &str, px: f32) -> Vec<(u16, f32)> {
         let mut run = ShapedRun::new();
         Shaper::new().shape(&self.source, text, px, 400.0, f32::INFINITY, &mut run);

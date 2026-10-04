@@ -111,7 +111,6 @@ RECOVER              # replaced by the RecoverPolicy type in M52/T52.7; the plan
 
 # --- M39: the agent transport's threat model names things outside the code ---
 curl                 # the HTTP client a developer points at the port; the refusal reply is for them
-Origin               # the HTTP header the transport deliberately never reads (framing, not policy)
 ptrace               # why same-user processes are out of the transport's scope
 rasterising_a_frame_allocates_nothing # renamed rasterising_a_block_glyph_frame_allocates_nothing in M50/T50.1; the rename is recorded
 TextRun              # the glyph-blit argument struct M50/T50.3 removed; the plan's T50.8 note cites it
@@ -212,4 +211,3 @@ NoSuchProgram        # proposed by M89: Answer variant for an unknown program in
 WindowOpened         # proposed by M89: Answer variant carrying the new window's key
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
-PATH                 # the process environment variable, named by M88's xclip refuse direction

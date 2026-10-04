@@ -64,6 +64,98 @@ pub struct FontStack {
     /// The fallback faces, shared by every clone — so the measurer and
     /// the canvas that hold clones of one stack load each face once.
     fallback: std::sync::Arc<[Slot]>,
+    /// How a run is laid out — M81/T81.3, [`Shaping`]. One byte; every
+    /// clone carries it, so the measurer and the renderers that hold
+    /// clones of one stack cannot shape differently.
+    shaping: Shaping,
+    /// Where each face's bytes come from, for the shaper — M81/T81.3.
+    /// Read only under `Shaping::Complex`; see `Sources`.
+    #[cfg(feature = "shaping")]
+    sources: std::sync::Arc<Sources>,
+}
+
+/// How a [`FontStack`] lays a run out — M81/T81.3
+/// (`docs/plan-shaped-paint.md`, "The shaping mode is a property of the
+/// `FontStack`").
+///
+/// - `Basic`, the default: fontdue's own layout — cmap glyphs in logical
+///   order, whole-pixel advances, its own wrap. Byte for byte what every
+///   stack did before the mode existed, with the `shaping` feature
+///   compiled in or not (`tests/basic_placements.rs`).
+/// - `Complex`, only with the shell's `shaping` feature: the
+///   `lumen-static-text` shaper — bidirectional order, joining, marks,
+///   UAX #14 line breaks — for the measure, the cluster query **and the
+///   paint**, since both backends place glyphs through
+///   [`FontStack::place_run_into`].
+///
+/// Chosen per stack, not per run or per widget: the frame's measurer, the
+/// agent's audit measurer and both renderers hold clones of one stack.
+/// Not yet selectable in a window: `Program::shaping` is T81.4's.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Shaping {
+    #[default]
+    Basic = 0,
+    #[cfg(feature = "shaping")]
+    Complex = 1,
+}
+
+/// Where a primary face's bytes can be had again — M81/T81.3.
+///
+/// fontdue keeps no bytes once it has parsed a face, and rustybuzz
+/// borrows them for as long as it shapes with it, so a stack that is to
+/// shape must be able to get them back: from the file it read
+/// ([`FontStack::from_files`], [`FontStack::system`]), or from the
+/// caller's own `'static` bytes ([`FontStack::from_static`]). A stack
+/// built by [`FontStack::from_bytes`] keeps no way back, and under
+/// `Shaping::Complex` lays its runs out as `Basic` does.
+#[derive(Clone, Copy)]
+#[cfg_attr(not(feature = "shaping"), allow(dead_code))]
+enum Origin {
+    File(&'static str),
+    Static(&'static [u8]),
+    Unknown,
+}
+
+/// Each face's bytes, for the shaper — M81/T81.3. Shared by every clone
+/// (one `Arc`), so the measurer and the canvas ask once between them.
+///
+/// The bytes are read the first time a `Complex` run needs the face,
+/// never under `Basic`: K81c bounds what is kept at the face's file size
+/// plus 64 KiB (`tests/font_heap.rs`). A face read from a file is
+/// **interned once per process** by (path, collection index), so two
+/// stacks over the same face, and a stack built again, keep one copy.
+#[cfg(feature = "shaping")]
+struct Sources {
+    regular: Origin,
+    bold: Origin,
+    /// Per face id (0 regular, 1 bold, 2 + k fallback `k`).
+    bytes: Box<[std::sync::OnceLock<Option<&'static [u8]>>]>,
+}
+
+#[cfg(feature = "shaping")]
+impl Sources {
+    fn new(regular: Origin, bold: Origin, fallbacks: usize) -> Self {
+        Sources { regular, bold, bytes: (0..2 + fallbacks).map(|_| std::sync::OnceLock::new()).collect() }
+    }
+}
+
+/// The process's interned face files, by (path, collection index) —
+/// `Sources`. Leaked on purpose: a parsed `rustybuzz::Face` borrows its
+/// bytes for as long as any shaper keeps it, which is the process. A hot
+/// swap loads a new library image with its own table, so each swap reads
+/// the faces once again (M37: v1 never unloads).
+#[cfg(feature = "shaping")]
+fn intern_face(path: &'static str, index: u32) -> Option<&'static [u8]> {
+    type Table = Vec<(&'static str, u32, &'static [u8])>;
+    static TABLE: std::sync::Mutex<Table> = std::sync::Mutex::new(Vec::new());
+    let mut t = TABLE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(&(_, _, b)) = t.iter().find(|e| e.0 == path && e.1 == index) {
+        return Some(b);
+    }
+    let bytes: &'static [u8] = Box::leak(std::fs::read(path).ok()?.into_boxed_slice());
+    t.push((path, index, bytes));
+    Some(bytes)
 }
 
 /// The bold face: its bytes until something needs it, then the face.
@@ -197,14 +289,53 @@ impl FontStack {
     ///
     /// The regular face is parsed here; the bold one is kept as bytes and
     /// parsed on its first use (M50/T50.7).
+    ///
+    /// The bytes are not kept, so under `Shaping::Complex` a stack built
+    /// here has nothing to shape from and lays its runs out as `Basic`
+    /// does; [`FontStack::from_static`] and [`FontStack::from_files`] keep
+    /// a way back to them (M81/T81.3).
     pub fn from_bytes(regular: &[u8], bold: Option<&[u8]>) -> Option<Self> {
+        Self::build(regular, bold, Origin::Unknown, Origin::Unknown)
+    }
+
+    /// [`FontStack::from_bytes`] over bytes that live as long as the
+    /// program (an `include_bytes!`, a leaked buffer) — M81/T81.3. The
+    /// stack remembers them, so `Shaping::Complex` shapes from them with
+    /// no copy; under `Basic` it holds two references more and nothing
+    /// else.
+    pub fn from_static(regular: &'static [u8], bold: Option<&'static [u8]>) -> Option<Self> {
+        let b = bold.map_or(Origin::Unknown, Origin::Static);
+        Self::build(regular, bold, Origin::Static(regular), b)
+    }
+
+    /// A stack over two face files, read here (so a missing one is found
+    /// now) — what [`FontStack::system`] builds from each candidate pair.
+    /// Under `Shaping::Complex` a face's bytes are read again, once per
+    /// process, the first time a run needs them (M81/T81.3); under `Basic`
+    /// they are never kept.
+    pub fn from_files(regular: &'static str, bold: Option<&'static str>) -> Option<Self> {
+        let r = std::fs::read(regular).ok()?;
+        let b = bold.and_then(|p| std::fs::read(p).ok());
+        let bo = match (bold, &b) {
+            (Some(p), Some(_)) => Origin::File(p),
+            _ => Origin::Unknown,
+        };
+        Self::build(&r, b.as_deref(), Origin::File(regular), bo)
+    }
+
+    fn build(regular: &[u8], bold: Option<&[u8]>, r: Origin, b: Origin) -> Option<Self> {
         let load = |b: &[u8]| {
             Font::from_bytes(b, fontdue::FontSettings::default()).ok().map(std::sync::Arc::new)
         };
+        #[cfg(not(feature = "shaping"))]
+        let _ = (r, b);
         Some(FontStack {
             regular: load(regular)?,
             bold: std::sync::Arc::new(Bold::new(bold)),
             fallback: std::sync::Arc::new([]),
+            shaping: Shaping::Basic,
+            #[cfg(feature = "shaping")]
+            sources: std::sync::Arc::new(Sources::new(r, b, 0)),
         })
     }
 
@@ -216,7 +347,35 @@ impl FontStack {
             .iter()
             .map(|&(path, index)| Slot { path, index, face: std::sync::OnceLock::new() })
             .collect();
+        #[cfg(feature = "shaping")]
+        {
+            self.sources = std::sync::Arc::new(Sources::new(self.sources.regular, self.sources.bold, faces.len()));
+        }
         self
+    }
+
+    /// The same stack, laying runs out by `shaping` — M81/T81.3. Every
+    /// clone made after this carries the mode; a measurer built over an
+    /// older clone keeps the old one, so build the measurer and the
+    /// renderer from the stack this returns.
+    pub fn with_shaping(mut self, shaping: Shaping) -> Self {
+        self.shaping = shaping;
+        self
+    }
+
+    /// The mode this stack lays runs out by.
+    pub fn shaping(&self) -> Shaping {
+        self.shaping
+    }
+
+    /// The parsed fontdue face a [`GlyphKey::face`] names, if this stack
+    /// has it.
+    fn font_of(&self, face: u8) -> Option<&Font> {
+        match face {
+            REGULAR => Some(self.regular.as_ref()),
+            BOLD => self.bold.get(),
+            k => self.fallback.get(k as usize - 2)?.get(),
+        }
     }
 
     /// The face for a CSS-style weight: 600 and up is bold.
@@ -243,11 +402,7 @@ impl FontStack {
     pub fn system() -> Option<Self> {
         CANDIDATES
             .iter()
-            .find_map(|(r, b)| {
-                let regular = std::fs::read(r).ok()?;
-                let bold = std::fs::read(b).ok();
-                Self::from_bytes(&regular, bold.as_deref())
-            })
+            .find_map(|&(r, b)| Self::from_files(r, Some(b)))
             .map(|s| s.with_fallbacks(FALLBACKS))
     }
 
@@ -331,13 +486,7 @@ impl FontStack {
                 (fi, c)
             } else {
                 substituted = true;
-                let sub = match c {
-                    '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
-                    '\u{2018}' | '\u{2019}' => '\'',
-                    '\u{201c}' | '\u{201d}' => '"',
-                    _ => '?',
-                };
-                (0, sub)
+                (0, substitute(c))
             };
             let at = out.len();
             out.push(ch);
@@ -519,6 +668,16 @@ impl FontStack {
     ///   spacing `d` is 0 and the box is exactly `n × pitch`. Nothing clips a run and `Recording`
     ///   damages its rect, so ink outside it would be left stale.
     ///
+    /// **Under `Shaping::Complex`** (M81/T81.3) a run that
+    /// [`needs_shaping`] is laid out by `lumen-static-text`'s `Shaper`
+    /// instead of fontdue: bidi order, joining, marks, UAX #14 breaks at
+    /// the painter's width. Each glyph sits on fontdue's ceil'd ascent and
+    /// line size, with the same cap shift, and is re-placed at the pitch
+    /// by the rule below; its `x` keeps the shaper's fraction, which the
+    /// backends round. Placements come out in visual order. A run with
+    /// nothing to shape takes the fontdue path whatever the mode
+    /// (`tests/basic_placements.rs` holds it to `BASIC_CHECKSUM`).
+    ///
     /// fontdue's `LayoutSettings::line_height` is **not** used: it scales
     /// the face's ceil'd new-line size and only between lines, so a ratio
     /// passed through paints 1.5× as about 2 em and leaves a single line
@@ -533,6 +692,10 @@ impl FontStack {
         line_height: u8,
         max_w: f32,
     ) -> Size {
+        #[cfg(feature = "shaping")]
+        if self.complex(text) {
+            return self.place_shaped(scratch, text, px, weight, line_height, max_w);
+        }
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         // From the run's first face, for every glyph: one baseline, one
@@ -608,11 +771,7 @@ impl FontStack {
     /// correct rather than approximately correct.
     pub fn rasterize(&self, id: GlyphId) -> Option<(u32, u32, Vec<u8>)> {
         let GlyphKey { px_bits, index, face, .. } = id.0;
-        let font = match face {
-            REGULAR => self.regular.as_ref(),
-            BOLD => self.bold.get()?,
-            k => self.fallback.get(k as usize - 2)?.get()?,
-        };
+        let font = self.font_of(face)?;
         let (m, cov) = font.rasterize_indexed(index, f32::from_bits(px_bits));
         RASTERISED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         Some((m.width as u32, m.height as u32, cov))
@@ -634,7 +793,18 @@ impl FontStack {
     ///
     /// Into the caller's `layout`, which [`FontMetrics`] keeps, so a
     /// measure allocates nothing once that layout is warm (M50/T50.2).
-    pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32, layout: &mut Layout) -> Size {
+    ///
+    /// Under `Shaping::Complex` the shaper lays the run out instead
+    /// (M81/T81.3), into the scratch's `ShapedRun`, and the box is
+    /// `shaped_extent`'s — the rule `place_run_into`'s `Complex` branch
+    /// sizes by, so measure and paint still cannot disagree.
+    pub(crate) fn measure_run(&self, text: &str, px: f32, weight: f32, max_w: f32, scratch: &mut ShapeScratch) -> Size {
+        #[cfg(feature = "shaping")]
+        if self.complex(text) {
+            MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            return self.shape_complex(scratch, text, px, weight, max_w);
+        }
+        let layout = &mut scratch.layout;
         let (faces, prepared) = self.prepare(text, weight);
         let text: &str = &prepared;
         Self::run(&faces, text, px, max_w, layout);
@@ -663,8 +833,23 @@ impl FontStack {
         weight: f32,
         max_w: f32,
         sink: &mut dyn GlyphSink,
-        layout: &mut Layout,
+        scratch: &mut ShapeScratch,
     ) -> Size {
+        #[cfg(feature = "shaping")]
+        if self.complex(text) {
+            // The shaper's clusters, already in the contract's terms:
+            // source order, leading-edge x, `rtl` set (M81/T81.2).
+            MEASURED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            let size = self.shape_complex(scratch, text, px, weight, max_w);
+            for c in &scratch.shaped.run.clusters {
+                if sink.is_full() {
+                    break;
+                }
+                sink.cluster(*c);
+            }
+            return size;
+        }
+        let layout = &mut scratch.layout;
         let (faces, prepared) = self.prepare(text, weight);
         let laid: &str = &prepared;
         Self::run(&faces, laid, px, max_w, layout);
@@ -726,6 +911,212 @@ impl FontStack {
     }
 }
 
+/// The `Complex` path — M81/T81.3 (`docs/plan-shaped-paint.md`, "Shaping
+/// happens where it already happens"). The shaper lays a run out; these
+/// put its glyphs on the baseline, the cap shift and the line pitch the
+/// `Basic` path uses, so a widget sized under one mode is sized by the
+/// same rule under the other.
+#[cfg(feature = "shaping")]
+impl FontStack {
+    /// Whether runs take the shaper: the mode is `Complex` and the
+    /// regular face's bytes can be had (a [`FontStack::from_bytes`] stack's
+    /// cannot, and keeps `Basic`'s layout).
+    ///
+    /// **And the run needs shaping** ([`needs_shaping`]) — K81a's
+    /// response (`docs/plan-shaped-paint.md`, `docs/results-text.md`
+    /// M81/T81.3): shaping Latin through rustybuzz cost 2.17× (1 KB) and
+    /// 3.63× (100 KB) of `Basic` on `--bin textarea`, over the 1.5× bound,
+    /// so a run with nothing to shape is laid out by fontdue under
+    /// `Complex` too, byte-identical to `Basic` (`tests/basic_placements.rs`).
+    fn complex(&self, text: &str) -> bool {
+        self.shaping == Shaping::Complex
+            && needs_shaping(text)
+            && lumen_static_text::FaceSource::bytes(self, REGULAR).is_some()
+    }
+
+    /// The line metrics a shaped run is stacked by: the face `weight`
+    /// picks, fontdue's ceil'd ascent and new-line size, as its layout
+    /// takes them (`Layout::append`).
+    fn shaped_lines(&self, weight: f32, px: f32) -> (f32, f32) {
+        match self.face(weight).0.horizontal_line_metrics(px) {
+            Some(m) => (m.ascent.ceil(), m.new_line_size.ceil()),
+            None => (px, (px * 1.2).ceil()),
+        }
+    }
+
+    /// Shape `text` into the scratch's run and return its box.
+    fn shape_complex(&self, scratch: &mut ShapeScratch, text: &str, px: f32, weight: f32, max_w: f32) -> Size {
+        let sh = &mut scratch.shaped;
+        sh.shaper.shape(self, text, px, weight, max_w, &mut sh.run);
+        COMPLEX.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if sh.run.bidi {
+            BIDI.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+        self.shaped_extent(&sh.run, px, weight)
+    }
+
+    /// Where shaped glyph `g` inks, unpitched: (x, top) from the run's
+    /// top-left, and its bitmap size; `None` for a glyph with no ink or a
+    /// face this stack does not have.
+    fn shaped_ink(&self, g: &lumen_static_text::ShapedGlyph, px: f32, ascent: f32, nls: f32) -> Option<(f32, f32, u32, u32)> {
+        let m = self.font_of(g.key.face)?.metrics_indexed(g.key.index, px);
+        if m.width == 0 || m.height == 0 {
+            return None;
+        }
+        // fontdue's own placement of a bitmap against its baseline
+        // (`Layout::append`): the bounds' xmin, and the top floored.
+        let baseline = g.line as f32 * nls + ascent;
+        let top = baseline + (g.y - m.bounds.height - m.bounds.ymin).floor();
+        Some((g.x + m.bounds.xmin, top, m.width as u32, m.height as u32))
+    }
+
+    /// A shaped run's box, by `extent_by`'s rule: per line the larger of
+    /// where the pen ends (the line's width) and where the ink ends, and
+    /// the lines' height or the ink's, whichever reaches further.
+    fn shaped_extent(&self, run: &lumen_static_text::ShapedRun, px: f32, weight: f32) -> Size {
+        let (ascent, nls) = self.shaped_lines(weight, px);
+        let mut w = run.width();
+        let mut h = run.line_count().max(1) as f32 * nls;
+        for g in &run.glyphs {
+            if let Some((x, top, gw, gh)) = self.shaped_ink(g, px, ascent, nls) {
+                w = w.max(x + gw as f32);
+                h = h.max(top + gh as f32);
+            }
+        }
+        Size { w: w.ceil(), h: h.ceil() }
+    }
+
+    /// `place_run_into` under `Complex`: shape at the painter's width
+    /// (`paint_width`), then each glyph on its line's baseline with the
+    /// cap shift, re-placed at the pitch by M80's rule (`Pitched`), which
+    /// for a shaped run's uniform lines is line *k* moved by *k* × pitch +
+    /// (pitch − nls)/2 + d/2 − *k* × nls.
+    fn place_shaped(&self, scratch: &mut ShapeScratch, text: &str, px: f32, weight: f32, line_height: u8, max_w: f32) -> Size {
+        let size = self.shape_complex(scratch, text, px, weight, Self::paint_width(max_w));
+        SHAPED.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        let (font, id) = self.face(weight);
+        let shift = scratch.caps.shift(id, font, px);
+        let (ascent, nls) = self.shaped_lines(weight, px);
+        let lines = scratch.shaped.run.line_count().max(1) as f32;
+        let (pitch, deficit) = if line_height == 0 {
+            (0.0, 0.0)
+        } else {
+            let p = line_height as f32 / 16.0 * px;
+            (p, (nls - p).max(0.0))
+        };
+        let dy = |line: u16| {
+            if line_height == 0 {
+                0.0
+            } else {
+                let k = line as f32;
+                k * pitch + (pitch - nls) / 2.0 + deficit / 2.0 - k * nls
+            }
+        };
+        let out = &mut scratch.placed;
+        out.clear();
+        let mut ink = 0.0f32;
+        for g in &scratch.shaped.run.glyphs {
+            let Some((x, top, w, h)) = self.shaped_ink(g, px, ascent, nls) else { continue };
+            let d = dy(g.line);
+            ink = ink.max(top + d + h as f32);
+            out.push(Placed { id: GlyphId::from_key(g.key), x, y: top + d + shift, w, h });
+        }
+        PLACED.fetch_add(out.len() as u64, core::sync::atomic::Ordering::Relaxed);
+        if line_height == 0 {
+            return size;
+        }
+        Size { w: size.w, h: (lines * pitch + deficit).max(ink).ceil() }
+    }
+}
+
+/// Whether a run has anything for a shaper to do — K81a's response
+/// (M81/T81.3). One pass over the characters, each tested against a short
+/// list of ranges that **need no shaping**: no right-to-left bidi class,
+/// no joining script, no combining mark, no bidi or joiner control and no
+/// variation selector — Latin with its extensions and IPA, spacing
+/// modifiers, Greek and Cyrillic (less their combining marks), Armenian,
+/// Latin and Greek extended, general punctuation (less the zero-width,
+/// joiner and bidi controls), super/subscripts and currency, the symbol
+/// and arrow blocks, kana (less the combining voicing marks), unified CJK
+/// ideographs and Hangul syllables. Anything else — Hebrew, Arabic, every
+/// Indic and South-East Asian script, combining marks, emoji and every
+/// supplementary-plane character — goes to the shaper. Conservative by
+/// construction: a character not listed costs speed, never correctness.
+pub fn needs_shaping(text: &str) -> bool {
+    text.chars().any(|c| {
+        let c = c as u32;
+        !(c < 0x300
+            || (0x370..0x483).contains(&c)
+            || (0x48a..0x591).contains(&c)
+            || (0x1e00..0x2000).contains(&c)
+            || (0x2010..0x2028).contains(&c)
+            || (0x2030..0x2066).contains(&c)
+            || (0x2070..0x20d0).contains(&c)
+            || (0x2100..0x2c00).contains(&c)
+            || (0x3040..0x3099).contains(&c)
+            || (0x30a0..0x3100).contains(&c)
+            || (0x4e00..0xa000).contains(&c)
+            || (0xac00..0xd7a4).contains(&c))
+    })
+}
+
+/// The stack's own rule, for the shaper — M81/T81.3 (`docs/plan-shaped-paint.md`,
+/// "The shaper"): which face draws a character, and its bytes.
+#[cfg(feature = "shaping")]
+impl lumen_static_text::FaceSource for FontStack {
+    /// Per character, in `prepare`'s order: the face `weight` asks for
+    /// (whitespace always), the other primary face, the first fallback
+    /// face that has it, and otherwise the asked-for face with
+    /// `substitute`'s character.
+    fn face_for(&self, ch: char, weight: f32) -> (u8, char) {
+        let (wanted, id) = self.face(weight);
+        if ch.is_whitespace() || wanted.lookup_glyph_index(ch) != 0 {
+            return (id, ch);
+        }
+        let (other, oid) = self.other(weight);
+        if other.lookup_glyph_index(ch) != 0 {
+            return (oid, ch);
+        }
+        match self.fallback_for(ch) {
+            Some((k, _)) => (2 + k as u8, ch),
+            None => (id, substitute(ch)),
+        }
+    }
+
+    /// The face's bytes, read on first use and kept for the process
+    /// (`Sources`, `intern_face`).
+    fn bytes(&self, face: u8) -> Option<&'static [u8]> {
+        let slot = self.sources.bytes.get(face as usize)?;
+        *slot.get_or_init(|| {
+            let origin = match face {
+                REGULAR => self.sources.regular,
+                BOLD => self.sources.bold,
+                k => {
+                    let s = self.fallback.get(k as usize - 2)?;
+                    return intern_face(s.path, s.index);
+                }
+            };
+            match origin {
+                Origin::File(p) => intern_face(p, 0),
+                Origin::Static(b) => Some(b),
+                Origin::Unknown => None,
+            }
+        })
+    }
+}
+
+/// What a character no face in the stack has is drawn as — the tofu
+/// doctrine's last resort (`FontStack::prepare`), shared with the shaper's
+/// `FaceSource::face_for` so the two paths substitute alike.
+fn substitute(c: char) -> char {
+    match c {
+        '\u{2212}' | '\u{2013}' | '\u{2014}' => '-',
+        '\u{2018}' | '\u{2019}' => '\'',
+        '\u{201c}' | '\u{201d}' => '"',
+        _ => '?',
+    }
+}
+
 /// Every glyph [`FontStack::rasterize`] has produced in this process.
 static RASTERISED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
@@ -749,6 +1140,10 @@ static MEASURED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::
 static PLACED: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 /// Glyphs the software canvas blitted — [`text_counters`].
 static DRAWN: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+/// Runs laid out by the shaper under `Shaping::Complex` — [`text_counters`].
+static COMPLEX: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+/// Of those, runs `unicode_bidi` ordered — [`text_counters`].
+static BIDI: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
 /// What the text stack has done in this process, as counts — M50/T50.0.
 ///
@@ -774,6 +1169,14 @@ pub struct TextCounters {
     pub rasterised: u64,
     /// Glyphs the software canvas blitted.
     pub drawn: u64,
+    /// Runs the `lumen-static-text` shaper laid out, for a measure, a
+    /// cluster query or a paint, under `Shaping::Complex` (M81/T81.3).
+    /// Always 0 without the shell's `shaping` feature.
+    pub complex: u64,
+    /// Of `complex`, the runs `unicode_bidi` ordered (a right-to-left
+    /// character present): the only shaped runs that allocate on a warm
+    /// scratch (`tests/alloc_gate.rs` `mod complex`).
+    pub bidi: u64,
 }
 
 /// The process's [`TextCounters`], now.
@@ -785,6 +1188,8 @@ pub fn text_counters() -> TextCounters {
         measured: MEASURED.load(Relaxed),
         rasterised: RASTERISED.load(Relaxed),
         drawn: DRAWN.load(Relaxed),
+        complex: COMPLEX.load(Relaxed),
+        bidi: BIDI.load(Relaxed),
     }
 }
 
@@ -889,6 +1294,20 @@ pub struct ShapeScratch {
     layout: Layout,
     placed: Vec<Placed>,
     caps: CapShifts,
+    /// The shaper and the run it refills, under `Shaping::Complex`
+    /// (M81/T81.3): its parsed faces, shape plans and buffers kept, so a
+    /// steady frame shapes without allocating (`tests/alloc_gate.rs`
+    /// `mod complex`).
+    #[cfg(feature = "shaping")]
+    shaped: Shaped,
+}
+
+/// A [`ShapeScratch`]'s shaper and its output — M81/T81.3.
+#[cfg(feature = "shaping")]
+#[derive(Default)]
+struct Shaped {
+    shaper: lumen_static_text::Shaper,
+    run: lumen_static_text::ShapedRun,
 }
 
 impl Default for ShapeScratch {
@@ -901,7 +1320,13 @@ impl ShapeScratch {
     /// Empty; it grows to the longest run it is asked to shape and keeps
     /// that capacity.
     pub fn new() -> Self {
-        ShapeScratch { layout: Layout::new(CoordinateSystem::PositiveYDown), placed: Vec::new(), caps: CapShifts::default() }
+        ShapeScratch {
+            layout: Layout::new(CoordinateSystem::PositiveYDown),
+            placed: Vec::new(),
+            caps: CapShifts::default(),
+            #[cfg(feature = "shaping")]
+            shaped: Shaped::default(),
+        }
     }
 
     /// The last run's placements.
@@ -1172,11 +1597,12 @@ pub struct FontMetrics {
     /// [`FontMetrics::set_stack`], never 0 (the stand-ins' value), so a
     /// memo keyed on it cannot serve one stack's box to another.
     generation: u32,
-    /// The layout every measure and shape query lays its run out into —
-    /// M50/T50.2. A fresh one per measure grew three `Vec`s from empty
+    /// The scratch every measure and shape query lays its run out into —
+    /// M50/T50.2. A fresh layout per measure grew three `Vec`s from empty
     /// each time: 4.60 allocations a frame on a label that changed every
-    /// frame (`docs/results-allocation.md`).
-    layout: Layout,
+    /// frame (`docs/results-allocation.md`). A [`ShapeScratch`] since
+    /// M81/T81.3, so a `Complex` stack's measure keeps its shaper too.
+    scratch: ShapeScratch,
 }
 
 /// The next [`FontMetrics`] generation. Starts at 1: 0 is every
@@ -1190,14 +1616,14 @@ fn next_generation() -> u32 {
 impl FontMetrics {
     /// A measurer for a 1:1 display.
     pub fn new(stack: FontStack) -> Self {
-        FontMetrics { stack, scale: 1.0, generation: next_generation(), layout: Layout::new(CoordinateSystem::PositiveYDown) }
+        FontMetrics { stack, scale: 1.0, generation: next_generation(), scratch: ShapeScratch::new() }
     }
 
     /// A measurer that reports logical sizes for a display with this
     /// scale factor.
     pub fn with_scale(stack: FontStack, scale: f32) -> Self {
         let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-        FontMetrics { stack, scale, generation: next_generation(), layout: Layout::new(CoordinateSystem::PositiveYDown) }
+        FontMetrics { stack, scale, generation: next_generation(), scratch: ShapeScratch::new() }
     }
 
     /// Measure with a different font stack from now on. A new
@@ -1228,7 +1654,7 @@ impl TextMeasure for FontMetrics {
         }
         let k = self.scale;
         // `measure_run`, not `glyphs`: measuring must not rasterise.
-        let s = self.stack.measure_run(text, size * k, weight, max_w * k, &mut self.layout);
+        let s = self.stack.measure_run(text, size * k, weight, max_w * k, &mut self.scratch);
         Size { w: s.w / k, h: s.h / k }
     }
 
@@ -1249,7 +1675,7 @@ impl TextMeasure for FontMetrics {
         // by `layout` and `paint`, both of which speak logical.
         let k = self.scale;
         let mut scaled = LogicalClusters { inner: sink, scale: k };
-        let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled, &mut self.layout);
+        let s = self.stack.shape_into(text, size * k, weight, max_w * k, &mut scaled, &mut self.scratch);
         Size { w: s.w / k, h: s.h / k }
     }
 

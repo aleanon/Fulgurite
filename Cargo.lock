@@ -1632,6 +1632,7 @@ dependencies = [
  "lumen-static-widgets",
  "serde",
  "serde_json",
+ "unicode-bidi",
  "wide",
 ]
 
@@ -1640,7 +1641,6 @@ name = "lumen-static-text"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
- "lumen-static-shell",
  "rustybuzz",
  "unicode-bidi",
  "unicode-linebreak",

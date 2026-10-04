@@ -12,8 +12,16 @@
 //! machine: one face's heap first, then a stack with a "bold" face, a
 //! regular-only frame on it (peak below one face plus the bold bytes it
 //! holds and the frame's glyph cache), then one bold run (the face appears). Its own binary, because
-//! the counter is process-wide; one test, so nothing else allocates
-//! beside it.
+//! the counter is process-wide; its tests take one lock, so nothing else
+//! allocates beside the one measuring.
+//!
+//! **K81c — the face bytes a `Complex` stack keeps** (M81/T81.3,
+//! `docs/plan-shaped-paint.md`), the second test: a stack in
+//! `Shaping::Complex` keeps each face's bytes resident for the shaper,
+//! read once per process; its resident heap after a frame, above the same
+//! stack's under `Basic`, is bounded at the face's file size + 64 KiB. And
+//! a `Basic` stack built from the file keeps none: within 64 KiB of one
+//! built from bytes, which cannot.
 #![cfg(feature = "truetype")]
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -52,8 +60,12 @@ fn frame(stack: &FontStack, weight: f32) {
     c.render(&l, 200, 40);
 }
 
+/// One arm at a time: the counter is process-wide.
+static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn the_bold_face_is_parsed_on_its_first_bold_run() {
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let bytes = pinned::bytes();
     // One face's heap: a stack with no bold face at all.
     let base = LIVE.load(Relaxed);
@@ -93,4 +105,63 @@ fn the_bold_face_is_parsed_on_its_first_bold_run() {
     println!("no bold face, one bold run: live heap grew {grew} B (bound < one face {face})");
     assert!((grew as usize) < face / 2, "a stack with no bold face grew {grew} B on a bold run");
     drop(stack);
+}
+
+/// The live heap a stack and a canvas that drew one regular frame hold,
+/// both kept: (resident bytes, the stack, the canvas).
+#[cfg(feature = "shaping")]
+fn resident(build: impl FnOnce() -> FontStack) -> (usize, FontStack, Canvas) {
+    // Hebrew in it, so the run needs the shaper under Complex
+    // (`needs_shaping`, K81a's response): plain Latin takes fontdue's path
+    // and would load no bytes to measure.
+    let base = LIVE.load(Relaxed);
+    let stack = build();
+    let mut c = Canvas::with_font(200, 40, stack.clone());
+    let mut l = DisplayList::new();
+    l.text_weighted([4.0, 4.0, 196.0, 36.0], "Regular \u{5e9}\u{5dc}\u{5d5}\u{5dd} 0123", 16.0, 400.0, Color(0, 0, 0, 255));
+    c.render(&l, 200, 40);
+    (LIVE.load(Relaxed) - base, stack, c)
+}
+
+/// **K81c** — a `Complex` stack's resident heap above a `Basic` one's is
+/// at most the face's file size + 64 KiB; a `Basic` stack keeps no bytes.
+/// Injection (T81.3's commit): keep the bytes under `Basic` too; the
+/// `Basic` bound fires.
+#[cfg(feature = "shaping")]
+#[test]
+fn a_complex_stack_keeps_one_copy_of_its_face_bytes() {
+    use lumen_static_shell::text::{text_counters, Shaping};
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+    const PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+    let file = std::fs::metadata(PATH).expect("the pinned face").len() as usize;
+    let bytes = pinned::bytes();
+
+    let (from_bytes, a, b) = resident(|| FontStack::from_bytes(bytes, None).expect("parses"));
+    drop((a, b));
+    let (basic, a, b) = resident(|| FontStack::from_files(PATH, None).expect("parses"));
+    drop((a, b));
+    let before = text_counters().complex;
+    let (complex, stack, canvas) =
+        resident(|| FontStack::from_files(PATH, None).expect("parses").with_shaping(Shaping::Complex));
+    let shaped = text_counters().complex - before;
+    // A second Complex stack over the same file reads nothing again.
+    let (again, s2, c2) =
+        resident(|| FontStack::from_files(PATH, None).expect("parses").with_shaping(Shaping::Complex));
+    let k = 64 << 10;
+    println!(
+        "resident after one frame: Basic from bytes {from_bytes} B, Basic from the file {basic} B \
+         (bound from bytes + 64 KiB = {}); Complex from the file {complex} B, {} B above Basic \
+         (bound file {file} + 64 KiB = {}); a second Complex stack {again} B, {} B above Basic; \
+         {shaped} runs through the shaper (setup > 0)",
+        from_bytes + k,
+        complex as isize - basic as isize,
+        file + k,
+        again as isize - basic as isize
+    );
+    assert!(shaped > 0, "setup: the Complex frame laid nothing out through the shaper");
+    assert!(complex > basic + file / 2, "setup: the Complex stack kept no face bytes ({complex} B against {basic})");
+    assert!(basic <= from_bytes + k, "a Basic stack built from the file kept {} B more than one from bytes: it keeps face bytes", basic - from_bytes);
+    assert!(complex <= basic + file + k, "a Complex stack kept {} B above Basic, over the file's {file} + 64 KiB", complex - basic);
+    assert!(again <= basic + k, "a second Complex stack over the same file kept {} B above Basic: the bytes were not interned", again.saturating_sub(basic));
+    drop((stack, canvas, s2, c2));
 }

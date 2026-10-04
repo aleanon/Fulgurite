@@ -40,11 +40,10 @@ unicode-bidi = "0.3"
 # fires, is breaking at whitespace instead.
 unicode-linebreak = "0.1"
 
-# M81/T81.1 (D1 a, docs/plan-shaped-paint.md): the shell is a DEV
-# dependency only. `src/` names `lumen_static` alone; the shell serves
-# `tests/paint_shaped.rs`, which paints with it. The edge runs the other
-# way now: the shell reaches this crate through its default-off `shaping`
-# feature. This edge enables `truetype` and not `shaping`, so no cycle
-# forms (T81.3 drops it when the pins move into the shell).
-[dev-dependencies]
-lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
+# M81/T81.1 (D1 a, docs/plan-shaped-paint.md): the edge runs the other
+# way -- the shell reaches this crate through its default-off `shaping`
+# feature. Until M81/T81.3 the shell was a DEV dependency here, for
+# `tests/paint_shaped.rs`; that test moved into the shell with the pins
+# (`crates/lumen-static-shell/tests/paint_shaped.rs`), and the edge was
+# dropped rather than kept as a dev cycle under `shaping`, which would
+# compile two copies of this crate.

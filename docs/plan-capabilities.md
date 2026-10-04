@@ -582,7 +582,20 @@ Two behaviours that make the difference between a drag and a click:
 It builds on pointer capture (T11.2), the fourth thing to do so, which
 is what routes `PointerMove` to the node that started the gesture.
 
-### T15.8 — complex-script text — **DONE 2026-09-07, measurement only**
+### T15.8 — complex-script text — **DONE 2026-09-07; painted under `Complex` since M81/T81.3, not yet selectable in a window**
+
+> **Painted since M81/T81.3 (2026-10-04).** A `FontStack` in
+> `Shaping::Complex` (the shell's `shaping` feature) lays runs out with
+> `lumen-static-text`'s `Shaper` for the measure, the clusters **and the
+> paint** — renderer-side, in `FontStack::place_run_into`, which both
+> backends place glyphs through; no glyph command was added
+> (`docs/plan-shaped-paint.md`, first decision). Arabic is painted joined
+> and right to left, inside its box; the pins moved to
+> `crates/lumen-static-shell/tests/paint_shaped.rs` without their
+> `should_panic`. **Not yet selectable in a window**: `Program::shaping`
+> and `Session::shaping` are M81/T81.4's. A run with nothing to shape
+> keeps fontdue's layout even under `Complex` (K81a,
+> `docs/results-text.md` M81/T81.3).
 
 > **Corrected by M45/T45.4 (2026-09-26): measurement only.** The gate
 > below says "measures and paints right-to-left", and only the first
@@ -595,8 +608,8 @@ is what routes `PointerMove` to the node that started the gesture.
 > task delivered. **Shaped paint** — a glyph command carrying the
 > shaper's ids and positions, rasterised by id in both backends, and a
 > measurer seam on `Program` — is proposed as its own milestone
-> (`docs/plan-text-correctness.md` §2.1 A, §4). The pin that goes red the
-> day it is built is `crates/lumen-static-text/tests/paint_shaped.rs`.
+> (`docs/plan-text-correctness.md` §2.1 A, §4). The pin that went red the
+> day it was built was the text crate's `tests/paint_shaped.rs`.
 
 Bidi, Arabic and Indic shaping, grapheme-correct segmentation. The
 seam already exists — `TextMeasure` — and

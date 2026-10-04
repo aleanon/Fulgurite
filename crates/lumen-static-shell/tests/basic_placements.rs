@@ -12,6 +12,14 @@
 //! with that feature (T81.3) and one without compare against the same number
 //! rather than against each other inside one process.
 //!
+//! **The stack is built with `FontStack::from_static`** since M81/T81.3:
+//! a `from_bytes` stack keeps no bytes and so cannot reach the shaper
+//! whatever its mode, and the injection below ("take the `Complex` branch
+//! whenever the feature is compiled") would have stayed green against it.
+//! The last test runs the corpus on a stack in `Shaping::Complex`: K81a's
+//! response routes every run with nothing to shape through fontdue, so it
+//! folds to the same constant.
+//!
 //! The corpus is `tests/text_containment.rs`' twelve strings at its ten
 //! sizes and two weights, at scales 1, 1.25 and 2 (the run laid out at
 //! `size × scale` physical px, as a scaled frame does), on the pinned
@@ -103,7 +111,7 @@ fn fold_scale(font: &FontStack, scratch: &mut ShapeScratch, scale: f32) -> (u64,
 #[test]
 fn every_basic_placement_folds_to_the_recorded_checksum() {
     let bytes = pinned::bytes();
-    let font = FontStack::from_bytes(bytes, Some(bytes)).expect("the pinned face parses");
+    let font = FontStack::from_static(bytes, Some(bytes)).expect("the pinned face parses");
     let mut scratch = ShapeScratch::new();
     let mut total = Fnv::new();
     let mut glyphs = 0;
@@ -156,7 +164,7 @@ fn glyph_key_and_glyph_id_stay_eight_bytes() {
 #[test]
 fn every_corpus_glyph_id_round_trips_through_its_glyph_key() {
     let bytes = pinned::bytes();
-    let font = FontStack::from_bytes(bytes, Some(bytes)).expect("the pinned face parses");
+    let font = FontStack::from_static(bytes, Some(bytes)).expect("the pinned face parses");
     let mut scratch = ShapeScratch::new();
     let mut by_key = std::collections::HashMap::<GlyphKey, GlyphId>::new();
     let mut ids = std::collections::HashSet::<GlyphId>::new();
@@ -196,4 +204,61 @@ fn every_corpus_glyph_id_round_trips_through_its_glyph_key() {
     );
     assert!(checked > 0 && faces[1] > 0, "setup: the corpus placed no glyph, or none from the bold face");
     assert_eq!(ids.len(), by_key.len(), "distinct ids and distinct keys differ in number");
+}
+
+/// **K81a's response: a `Complex` stack places a run with nothing to shape
+/// exactly as `Basic` does** — M81/T81.3 (`docs/plan-shaped-paint.md`,
+/// `docs/results-text.md` M81/T81.3). The whole corpus on a stack in
+/// `Shaping::Complex` folds to `BASIC_CHECKSUM`, and reaches the shaper 0
+/// times. Then a mixed paragraph laid out as its runs: the Latin runs'
+/// placements are identical to a `Basic` stack's, and the Hebrew run still
+/// goes through the shaper (counter printed) and is placed right to left,
+/// unlike `Basic`'s. Injection (T81.3's commit): `needs_shaping` always
+/// answers yes; the Latin rows go back to the shaper and the checksum moves.
+#[cfg(feature = "shaping")]
+#[test]
+fn a_complex_stack_places_runs_with_nothing_to_shape_as_basic_does() {
+    use lumen_static_shell::text::{text_counters, Shaping};
+    let bytes = pinned::bytes();
+    let complex = FontStack::from_static(bytes, Some(bytes)).expect("parses").with_shaping(Shaping::Complex);
+    let basic = FontStack::from_static(bytes, Some(bytes)).expect("parses");
+    let mut scratch = ShapeScratch::new();
+    let before = text_counters().complex;
+    let mut total = Fnv::new();
+    let mut glyphs = 0;
+    for (i, &k) in SCALES.iter().enumerate() {
+        let (sum, n, _, _) = fold_scale(&complex, &mut scratch, k);
+        println!("Complex stack, scale {k}: checksum {sum:#018x} (recorded {:#018x}), {n} glyphs", BASIC_BY_SCALE[i]);
+        assert_eq!(sum, BASIC_BY_SCALE[i], "a Complex stack placed a run with nothing to shape off Basic's placement at scale {k}");
+        total.u64(sum);
+        glyphs += n;
+    }
+    let shaped = text_counters().complex - before;
+    println!("Complex stack, all scales: checksum {:#018x} (recorded {BASIC_CHECKSUM:#018x}), {glyphs} glyphs; {shaped} runs through the shaper (bound 0)", total.0);
+    assert!(glyphs > 0, "setup: the corpus placed no glyph");
+    assert_eq!(shaped, 0, "plain Latin went through the shaper on a Complex stack");
+    assert_eq!(total.0, BASIC_CHECKSUM, "the Complex stack's checksum moved");
+
+    // A mixed paragraph, as the runs a label row paints.
+    let runs = ["Taj Mahal, ", "\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd}", " quay j"];
+    let place = |font: &FontStack, scratch: &mut ShapeScratch, t: &str| -> Vec<(u16, u32, u32)> {
+        font.place_run_into(scratch, t, 16.0, 400.0, 0, f32::INFINITY);
+        scratch.placed().iter().map(|p| (p.id.index(), p.x.to_bits(), p.y.to_bits())).collect()
+    };
+    let mut b = ShapeScratch::new();
+    for t in runs {
+        let before = text_counters().complex;
+        let c = place(&complex, &mut scratch, t);
+        let through = text_counters().complex - before;
+        let p = place(&basic, &mut b, t);
+        let hebrew = t.chars().any(|ch| ('\u{590}'..'\u{600}').contains(&ch));
+        println!("{t:?}: {through} runs through the shaper; identical to Basic: {}", c == p);
+        if hebrew {
+            assert_eq!(through, 1, "setup: the Hebrew run did not go through the shaper");
+            assert_ne!(c, p, "the Hebrew run was placed as Basic places it");
+        } else {
+            assert_eq!(through, 0, "the Latin run {t:?} went through the shaper");
+            assert_eq!(c, p, "the Latin run {t:?} was placed off Basic's placement");
+        }
+    }
 }

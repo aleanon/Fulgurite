@@ -168,7 +168,9 @@ rather than as a display-list command: see the first decision.*
   run. T81.7's probe decides; K81d is the fallback.
 - **Not in M81, with reopen conditions.** Per-widget shaping (iced's
   `Text::shaping`): reopen if K81a fires or an application needs mixed
-  modes. Visual caret movement (Left/Right stay logical, as today).
+  modes. **K81a fired in T81.3 (2.17× at 1 KB, 3.63× at 100 KB), so it is
+  reopened**; K81a's response is built, and `Complex` stays opt-in
+  (`docs/results-text.md` M81/T81.3, "What building found"). Visual caret movement (Left/Right stay logical, as today).
   Bidi word order in `RichText`, `Markdown` and `RichTextEditor`, whose
   breaker lays words out left to right: each word is shaped, the order is
   not reordered; reopen with a paragraph direction on `RichText`. The
@@ -712,6 +714,74 @@ rather than as a display-list command: see the first decision.*
   (x 0 for a right-to-left paragraph, lines being laid out from 0); a
   soft-wrapped line's width leaves out the whitespace it ends in; a line
   separator is shaped as a space, drawn as nothing and takes no width.
+
+- T81.3: **K81a fired, and its response is built.** Every `Complex` run
+  through the shaper cost 2.17× `Basic` at 1 KB and 3.63× at 100 KB on
+  `--bin textarea`'s paint rows (eight runs a side, quiet), and the cost is
+  rustybuzz's: 10.2 ms of the shaper's 12.7 ms on 100 KB of Latin,
+  against fontdue's whole measure at 3.8 ms. As K81a says, a run with
+  nothing to shape (`text::needs_shaping`: one pass over the characters
+  against a list of ranges that need no shaping, conservative — a
+  character not listed goes to the shaper) takes fontdue's path under
+  `Complex`, gated to `BASIC_CHECKSUM` on a `Complex` stack with 0 runs
+  through the shaper. Re-measured: **0.97×** and **0.99×**. `Complex`
+  stays opt-in; per-widget shaping is reopened (Decisions). Two
+  consequences for later tasks: the K81a rows' "setup: shaped runs > 0"
+  now reads 0 under `complex`, because the document is Latin; and **`just
+  grid --shaping complex` shapes nothing** (909 runs painted, 0 through
+  the shaper), so K81b in T81.8 has no phased glyph to count on the grid
+  as it stands — T81.8 needs a grid with text that needs shaping, or a
+  different arm.
+- T81.3: **a cut's `…` needed a widget change.** A cut `Label` paints its
+  prefix and its `…` as two runs (M80/T80.3, for damage), so shaping
+  alone cannot put the mark at a right-to-left paragraph's end. `Label`
+  asks the measurer the prefix's direction (`fit::rtl`: the trailing
+  cluster's `rtl`, one shape query on the memo's miss) and places the
+  mark at the left, encoded in its existing `fit` field. Under `Basic` it
+  answers left to right, so nothing moves; firmware Δ 0 (the cut is behind
+  `alloc`). `AppBar`'s title cut is not moved: owed to whichever task next
+  touches it.
+- T81.3: **a stack built from bytes cannot shape.** fontdue keeps no
+  bytes, and keeping them under `Basic` is K81c's injection. So the stack
+  remembers where its faces came from: `FontStack::from_files` (and
+  `system`, which builds through it) re-reads a file once per process,
+  `FontStack::from_static` keeps the caller's `'static` bytes, and a
+  `from_bytes` stack in `Complex` lays out as `Basic`. The intern table
+  is keyed by path; content-hashing `from_bytes` input, which Decisions
+  allowed, would have needed the bytes it cannot keep.
+- T81.3: **`basic_placements.rs` builds its stack with `from_static`.**
+  With `from_bytes` the planned injection ("take the `Complex` branch
+  whenever compiled") could not reach the shaper and left it green.
+- T81.3: **the allocation gate counts bidi runs, not shaped runs.** A
+  Latin label in the same frame went through the shaper too and allocates
+  nothing, so "per changed run" over every shaped run asserted the wrong
+  number. `ShapedRun::bidi` and `TextCounters::bidi` count the runs
+  `unicode_bidi` ordered; the RTL arm asserts allocations = bidi runs ×
+  what `BidiInfo::new` and one `visual_runs` allocate (12 for its string).
+  The Latin arm became two: a combining-mark label that needs the shaper
+  but not bidi (0), and plain Latin, which reaches the shaper 0 times.
+- T81.3: **the cap-shift injection could not fire on the 1 px centring
+  bound.** On the pinned face the cap shift is 0 px at 16 px and 1 px at
+  32 and 64, so dropping it kept every case within 1 px. The `Complex`
+  gate now also requires the shaped run's ink rows to equal `Basic`'s at
+  16–64 px, and the injection prints rows one off at 32 and 64.
+- T81.3: **plain Latin no longer reaches the shaper**, so the `Complex`
+  centring and line-height gates force it with a zero-width joiner
+  (`needs_shaping` sends U+200D to the shaper; it inks nothing and takes
+  no width), and the heap arm draws a run with Hebrew in it.
+- T81.3: **gate details.** The containment arm needed a 240 px window:
+  at 80 px the paragraph's label box was cut short by the window and its
+  ink below the canvas, so "wrapped" is `Case::taller` there (the painted
+  layout taller than the rect), a paragraph being meant to wrap. At
+  `line_height` 12 consecutive lines' ink overlaps, so the line-height gate
+  reads line starts from the placements (each line of its prose starts
+  with a capital at the left edge) rather than from ink rows. The GPU
+  region's setup first demanded two bidi runs, which the GPU-only
+  injection broke before the bound could speak; it asks for one (the
+  canvas's), and the injection is named by the bound (885 px over 2).
+  K81c's injection (bytes kept under `Basic`) fires the new `Basic`
+  bound (a file-built stack within 64 KiB of a bytes-built one); the
+  older peak bound did not fire under it (22,045,185 under 23,966,104).
 
 **What the review found (M81).**
 

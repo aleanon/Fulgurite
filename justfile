@@ -153,6 +153,10 @@ fonts:
     # that adds it -- the workspace lines build default features only.
     cargo clippy -q -p lumen-static-shell --features shaping --all-targets -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features shaping
+    # M81/T81.3: the `Complex` gates and the `Basic` checksum with the shaper
+    # compiled in -- the pins, centring, containment, line height and the
+    # ellipsis, K81c's heap, and `mod complex`'s allocations.
+    cargo test -q -p lumen-static-shell --features truetype,shaping --test paint_shaped --test basic_placements --test glyph_placement --test text_containment --test line_height --test font_heap --test alloc_gate --test shaping
 
 # Security advisories, offline, against deny.toml's accepted list: a NEW
 # advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.
@@ -373,7 +377,10 @@ gpu:
             cargo test -q -p lumen-static-winit --features gpu --test cpu_adapter -- --nocapture 2>&1 | grep -E '^(Auto:|adapters:|test result)'
     elif [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: no lavapipe ($lvp) -- the CPU-only step skipped"
     else echo "gpu: no lavapipe ($lvp): cannot make a CPU-only machine (LUMEN_ALLOW_SKIP=1 to skip)"; exit 1; fi
+    # M81/T81.3: both backends paint shaped -- the `Complex` parity region.
+    cargo test -q -p lumen-static-wgpu --features shaping --test parity -- --nocapture 2>&1 | grep -E 'shaped region|test result'
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
+    cargo clippy -p lumen-static-wgpu --features shaping --all-targets -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32

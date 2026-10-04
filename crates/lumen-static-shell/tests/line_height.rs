@@ -302,10 +302,16 @@ fn prose_index() -> usize {
 /// `a_fixed_width_label_wraps_at_its_own_width_less_padding`); the setup is
 /// kept so this gate measures what it always measured.
 fn label_frame(font: &FontStack, lh: u8, scale: f32) -> (lumen_static::NodeState, Canvas) {
+    let (host, canvas) = label_host(font, PROSE, lh, scale);
+    (host.states[prose_index()], canvas)
+}
+
+/// [`label_frame`], keeping the host.
+fn label_host(font: &FontStack, text: &str, lh: u8, scale: f32) -> (Host<LabelApp>, Canvas) {
     let (lw, lhgt) = (LABEL_W, 160.0f32);
     let (w, h) = ((lw * scale).round() as u32, (lhgt * scale).round() as u32);
     let mut a = LabelApp::default();
-    a.ui.prose.set(PROSE.to_owned());
+    a.ui.prose.set(text.to_owned());
     let mut host: Host<LabelApp> = Host::new(a, w, h);
     host.set_scale(scale);
     let mut patch = Patch::new().color(Color(0, 0, 0, 255));
@@ -318,7 +324,7 @@ fn label_frame(font: &FontStack, lh: u8, scale: f32) -> (lumen_static::NodeState
     let mut canvas = Canvas::with_font(w, h, font.clone());
     canvas.clear(Color(255, 255, 255, 255));
     host.render(&mut canvas);
-    (host.states[prose_index()], canvas)
+    (host, canvas)
 }
 
 /// The first row of each run of inked rows inside `x0..x1`, in physical px.
@@ -387,6 +393,69 @@ fn a_label_at_a_line_height_measures_and_paints_three_pitches() {
     let content = st.size.h - st.pad.1 - st.pad.3;
     println!("line_height 0: content height {content} against measure_weighted's {}", today.h);
     assert_eq!(content, today.h, "line_height 0 changed the label's box");
+}
+
+/// **M80's line height under `Complex`** — M81/T81.3
+/// (`docs/plan-shaped-paint.md`). The shaped branch re-places lines at the
+/// pitch by M80's rule, as the fontdue branch does, and does not hand the
+/// ratio to fontdue: a `Label` at `line_height` 12 (0.75 em, under the
+/// face's spacing) on a `Complex` stack measures `3 × pitch + (nls −
+/// pitch)` and paints line 2 one pitch below line 1, at scales 1 and 2.
+/// Injection (T81.3's commit): the `Complex` branch ignores `line_height`;
+/// the painted gap prints the face's spacing instead of the pitch.
+/// `PROSE` with a zero-width joiner after its last word, so the run needs
+/// the shaper (`needs_shaping`): plain Latin takes fontdue's path under
+/// `Complex` since K81a's response. The joiner inks nothing and takes no
+/// width, so the lines break where `PROSE`'s do.
+#[cfg(feature = "shaping")]
+const PROSE_SHAPED: &str = "Hold Lid Bold Kid Held Did\u{200d}";
+
+#[cfg(feature = "shaping")]
+#[test]
+fn a_shaped_label_at_line_height_12_paints_its_second_line_one_pitch_down() {
+    use lumen_static_shell::text::{text_counters, Shaping};
+    let font = FontStack::from_static(pinned::bytes(), None).expect("parses").with_shaping(Shaping::Complex);
+    let nls = nls(&font);
+    let lh = 12u8;
+    let pitch = lh as f32 / 16.0 * PX;
+    let before = text_counters().complex;
+    for scale in [1.0f32, 2.0] {
+        let (host, _) = label_host(&font, PROSE_SHAPED, lh, scale);
+        let st = host.states[prose_index()];
+        let content = st.size.h - st.pad.1 - st.pad.3;
+        let want = 3.0 * pitch + (nls - pitch).max(0.0);
+        // Painted: the label's run placed as both canvases place it. At a
+        // pitch under the face's spacing the lines' ink overlaps, so the
+        // lines are told apart by their first glyphs (each line of `PROSE`
+        // starts with a capital at the run's left edge), not by ink rows.
+        let (rect, size, weight, line_height) = host
+            .list
+            .cmds
+            .iter()
+            .find_map(|c| match c {
+                Cmd::Text { rect, size, weight, line_height, .. } => Some((*rect, *size, *weight, *line_height)),
+                _ => None,
+            })
+            .expect("setup: the label painted no run");
+        let mut scratch = ShapeScratch::new();
+        font.place_run_into(&mut scratch, PROSE_SHAPED, size, weight, line_height, rect[2] - rect[0]);
+        let left = scratch.placed().iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let mut starts: Vec<f32> = scratch.placed().iter().filter(|p| p.x <= left + 1.0).map(|p| p.y).collect();
+        starts.sort_by(f32::total_cmp);
+        println!(
+            "Complex, scale {scale}: measured content height {content} (want 3 x pitch + (nls - pitch) = {want}, \
+             pitch {pitch}, nls {nls}); painted line starts at y {starts:?} (physical, run line_height {line_height})"
+        );
+        assert_eq!(line_height, lh, "setup @ {scale}: the run carries line_height {line_height}");
+        assert_eq!(starts.len(), 3, "setup @ {scale}: {} lines start at the left edge", starts.len());
+        let d = starts[1] - starts[0];
+        println!("Complex, scale {scale}: line 2's baseline - line 1's = {d} px (want pitch x scale = {} +- 1)", pitch * scale);
+        assert!((content - want).abs() <= 1.0, "@ {scale}: the label measured {content}, not {want}");
+        assert!((d - pitch * scale).abs() <= 1.0, "@ {scale}: line 2 painted {d} px below line 1, want {}", pitch * scale);
+    }
+    let shaped = text_counters().complex - before;
+    println!("Complex: {shaped} runs through the shaper (setup > 0)");
+    assert!(shaped > 0, "setup: nothing went through the shaper");
 }
 
 #[derive(StaticTree, Default)]

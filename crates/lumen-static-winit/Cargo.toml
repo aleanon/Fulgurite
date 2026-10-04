@@ -46,10 +46,12 @@ threads = ["lumen-static-shell/threads"]
 shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # Shaped paint (M81, docs/plan-shaped-paint.md D1 a): forwards the
 # shell's default-off `shaping`, which pulls `lumen-static-text`'s shaper.
-# Empty of code at M81/T81.1. Default-OFF: by K2's method (above, at
+# It carries code since M81/T81.3 (a stack's `Complex` mode); the window
+# selects it from `Program::shaping` in T81.4. Default-OFF: by K2's method (above, at
 # `clipboard`) it costs **+7 crates** (96 -> 103, 2026-10-04): the text crate,
 # rustybuzz and five unicode tables; ttf-parser is already in the graph.
-# **+8** (96 -> 104) since M81/T81.2 added `unicode-linebreak`.
+# **+8** (96 -> 104) since M81/T81.2 added `unicode-linebreak`; unchanged
+# by T81.3. A release window links 310 shaper symbols with it, 0 without.
 shaping = ["lumen-static-shell/shaping"]
 # Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
 # crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e

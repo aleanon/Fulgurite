@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # `just release-window-shape`: a shipped release window links no panic-
-# recovery code, and (M81/T81.1) no shaper -- M52 (docs/plan-embedded-footprint.md §2.2, F-NEW-3).
+# recovery code, and (M81/T81.1, symbols since T81.3) no shaper -- M52 (docs/plan-embedded-footprint.md §2.2, F-NEW-3).
 #
 # M36's rule 3 (docs/plan-panic-recovery.md) says recovery is there in debug
 # builds and in release builds with `lumen-static-winit/reload`, and that a
@@ -85,10 +85,12 @@ read -r n_off b_off t_off g_off <<<"$(count "$off")" || exit 1
 # docs/plan-shaped-paint.md (D1 a) puts rustybuzz and unicode-bidi behind
 # the shell's default-off `shaping` feature (lumen-static-winit/shaping
 # forwards it). A default release window links no symbol of either crate.
-# The positive control is the GRAPH here, not the symbols: at T81.1
-# `shaping` holds no code, so nothing references the crates and the
-# linker keeps 0 symbols with the feature on too. T81.3, which gives the
-# feature its code, adds the symbol positive control and its injection.
+# Two positive controls. The SYMBOLS (M81/T81.3, when the feature got its
+# code): a release `minimal` built with `lumen-static-winit/shaping` links
+# more than 0 of them, because the stack's mode is a runtime branch in
+# `FontStack::place_run_into` -- so the pattern is shown matching, and the
+# default's 0 is a 0 the pattern could have exceeded. And the GRAPH (T81.1,
+# when `shaping` held no code and the linker kept 0 either way).
 # The graph is compared against `truetype`, not the bare default: `shaping`
 # implies `truetype`, so against the default it would count fontdue's
 # eight packages and stay above 0 with the text crate dropped from it.
@@ -99,6 +101,9 @@ tree_count() {
     cargo tree -p lumen-static-shell -e normal --prefix none "$@" 2>/dev/null \
         | sed 's/ (\*)$//' | sort -u | wc -l
 }
+shaped_bin=$(build --features lumen-static-winit/shaping) || exit 1
+n_shape_on=$(nm -C "$shaped_bin" | grep -cE "$SHAPE_RE" || true)
+echo "release-window-shape: window with lumen-static-winit/shaping: $n_shape_on rustybuzz::/unicode_bidi:: symbols (bound > 0)"
 g_plain=$(tree_count --features truetype)
 g_shape=$(tree_count --features shaping)
 echo "release-window-shape: lumen-static-shell graph: $g_plain packages with \`truetype\` (what a window builds), $g_shape with \`shaping\` (difference $((g_shape - g_plain)), bound > 0)"
@@ -113,6 +118,11 @@ if [ "$n_shape" -ne 0 ]; then
     echo "release-window-shape: a default release window links $n_shape shaper symbols:" >&2
     nm -C "$off" | grep -E "$SHAPE_RE" | head -5 | sed 's/^/    /' >&2
     echo "D1 (a): rustybuzz and unicode-bidi are reached only through \`shaping\`." >&2
+    fail=1
+fi
+if [ "$n_shape_on" -eq 0 ]; then
+    echo "release-window-shape: a \`shaping\` window links no shaper symbol -- the pattern" >&2
+    echo "matches nothing there, so the default's 0 proves nothing" >&2
     fail=1
 fi
 if [ "$g_shape" -le "$g_plain" ]; then

@@ -674,8 +674,9 @@ mod truetype {
 
     /// The text counters are process-wide and these arms run on threads:
     /// one arm at a time, so a frame's counts are its own. The block-glyph
-    /// arms above never shape, so they cannot move them.
-    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// arms above never shape, so they cannot move them. Shared with
+    /// `mod complex` (M81/T81.3).
+    use super::truetype_lock::ONE;
 
     fn face() -> FontStack {
         FontStack::from_bytes(pinned::bytes(), None).expect("the pinned face parses")
@@ -940,4 +941,264 @@ mod truetype {
 #[cfg(feature = "truetype")]
 fn lock(m: &'static std::sync::Mutex<()>) -> std::sync::MutexGuard<'static, ()> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// **`Shaping::Complex` frames** — M81/T81.3 (`docs/plan-shaped-paint.md`,
+/// `docs/results-allocation.md` M81/T81.3).
+///
+/// The shaper keeps its parsed faces, shape plans, buffer and scratch in
+/// the canvas's and the measurer's `ShapeScratch`, so a steady frame on a
+/// `Complex` stack touches the allocator no more than a `Basic` one:
+///
+/// - a changing left-to-right label that needs the shaper (a combining
+///   mark), full redraws: **0** (no right-to-left character, so no
+///   `BidiInfo` is built); and plain Latin, which since K81a's response
+///   never reaches the shaper: **0**, through fontdue;
+/// - a still right-to-left screen, drawn over its damage: **0**;
+/// - a changing right-to-left label, drawn over its damage: exactly what
+///   `unicode_bidi` allocates for each run the shaper laid out — one
+///   `BidiInfo` and one `visual_runs` per line, counted here by calling
+///   them on the same strings — and nothing else. The file's one text
+///   budget, with its reopen condition in the results doc: a bidi pass
+///   into caller-kept buffers would make it 0.
+///
+/// Injection (T81.3's commit): build a shape plan per call instead of
+/// from the scratch; the left-to-right arm prints its allocations.
+#[cfg(feature = "shaping")]
+mod complex {
+    use super::{counters, PlainApp};
+    use lumen_static::prelude::*;
+    use lumen_static::{Color, Incremental, Renderer};
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::text::{text_counters, FontMetrics, FontStack, Shaping};
+    use lumen_static_shell::Host;
+    use lumen_static_widgets::prelude::*;
+
+    use super::pinned;
+
+    fn face() -> FontStack {
+        FontStack::from_static(pinned::bytes(), None).expect("the pinned face parses").with_shaping(Shaping::Complex)
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct MarkUi {
+        #[widget_id("value")]
+        value: Label<String>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct MarkApp {
+        #[tree]
+        ui: MarkUi,
+    }
+
+    /// Thirty values of one shape, each with a combining acute, so every
+    /// run needs the shaper (`needs_shaping`) and none needs `unicode_bidi`.
+    /// Plain Latin no longer reaches the shaper at all since K81a's
+    /// response, so it could not exercise the shaper's kept scratch.
+    fn marked(i: usize) -> String {
+        format!("cafe\u{301} {:02}", i % 30)
+    }
+
+    #[test]
+    fn a_changing_left_to_right_label_on_a_complex_stack_allocates_nothing() {
+        let _one = super::lock(&super::truetype_lock::ONE);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut host: Host<_, Incremental> = Host::new(MarkApp::default(), 320, 200);
+        let mut canvas = Canvas::with_font(320, 200, f);
+        let mut values: Vec<String> = (0..30).map(marked).collect();
+        for v in &values {
+            host.app.ui.value.set_str(v);
+            assert!(host.invalidate("value"), "setup: #value is not addressable");
+            host.pump_with(&mut m);
+            canvas.render(&host.list, 320, 200);
+        }
+        let t0 = text_counters();
+        let (mut pump, mut raster) = ((0, 0), (0, 0));
+        for i in 0..50 {
+            let v = std::mem::take(&mut values[i % 30]);
+            host.app.ui.value.set_str(&v);
+            values[i % 30] = v;
+            assert!(host.invalidate("value"), "setup: #value is not addressable");
+            let a = counters();
+            host.pump_with(&mut m);
+            let b = counters();
+            canvas.render(&host.list, 320, 200);
+            let c = counters();
+            pump = (pump.0 + b.0 - a.0, pump.1 + b.1 - a.1);
+            raster = (raster.0 + c.0 - b.0, raster.1 + c.1 - b.1);
+        }
+        let t1 = text_counters();
+        let (shaped, bidi) = (t1.complex - t0.complex, t1.bidi - t0.bidi);
+        println!(
+            "Complex, changing combining-mark label, 50 frames: pump allocs {} frees {}, raster allocs {} frees {} \
+             (bound 0 each); {:.2} runs through the shaper per frame (setup >= 1), {bidi} through unicode_bidi (setup 0)",
+            pump.0, pump.1, raster.0, raster.1, shaped as f64 / 50.0
+        );
+        assert!(shaped >= 50, "setup: the Complex frames laid nothing out through the shaper ({shaped})");
+        assert_eq!(bidi, 0, "setup: a left-to-right label went through unicode_bidi");
+        assert_eq!((pump, raster), ((0, 0), (0, 0)), "a Complex left-to-right frame touched the allocator");
+    }
+
+    /// **Plain Latin under `Complex` takes fontdue's path** — K81a's
+    /// response: `PlainApp`'s changing label reaches the shaper 0 times and
+    /// allocates nothing, as under `Basic`.
+    #[test]
+    fn a_changing_latin_label_on_a_complex_stack_takes_fontdue_and_allocates_nothing() {
+        let _one = super::lock(&super::truetype_lock::ONE);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut host: Host<_, Incremental> = Host::new(PlainApp::default(), 320, 200);
+        let mut canvas = Canvas::with_font(320, 200, f);
+        for i in 0..30 {
+            host.app.count = i;
+            host.pump_with(&mut m);
+            canvas.render(&host.list, 320, 200);
+        }
+        let t0 = text_counters();
+        let (mut pump, mut raster) = ((0, 0), (0, 0));
+        for i in 0..50 {
+            host.app.count = i % 30;
+            let a = counters();
+            host.pump_with(&mut m);
+            let b = counters();
+            canvas.render(&host.list, 320, 200);
+            let c = counters();
+            pump = (pump.0 + b.0 - a.0, pump.1 + b.1 - a.1);
+            raster = (raster.0 + c.0 - b.0, raster.1 + c.1 - b.1);
+        }
+        let t1 = text_counters();
+        println!(
+            "Complex PlainApp, 50 changing frames: pump allocs {} frees {}, raster allocs {} frees {} (bound 0 each); \
+             {} runs through the shaper (bound 0), {:.2} runs shaped per frame (setup >= 1)",
+            pump.0, pump.1, raster.0, raster.1, t1.complex - t0.complex, (t1.shaped - t0.shaped) as f64 / 50.0
+        );
+        assert!(t1.shaped - t0.shaped >= 50, "setup: the frames painted no text");
+        assert_eq!(t1.complex - t0.complex, 0, "plain Latin went through the shaper under Complex");
+        assert_eq!((pump, raster), ((0, 0), (0, 0)), "a Complex Latin frame touched the allocator");
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct RtlUi {
+        #[widget_id("title")]
+        title: Label,
+        #[widget_id("rtl")]
+        rtl: Label<String>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct RtlApp {
+        #[tree]
+        ui: RtlUi,
+    }
+
+    /// Two right-to-left values of one shape: same length, same bidi
+    /// classes, so each costs `unicode_bidi` the same.
+    const VALUES: [&str; 2] = ["\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd}", "\u{5e2}\u{5d5}\u{5dc}\u{5dd} \u{5e9}\u{5dc}\u{5d5}\u{5dd}"];
+
+    /// What `unicode_bidi` allocates for one single-line run of `text`, as
+    /// the shaper calls it: one `BidiInfo`, one `visual_runs`.
+    fn bidi_allocs(text: &str) -> usize {
+        let a = counters().0;
+        let info = unicode_bidi::BidiInfo::new(text, None);
+        let runs = info.visual_runs(&info.paragraphs[0], 0..text.len());
+        let n = counters().0 - a;
+        drop((runs, info));
+        n
+    }
+
+    /// One frame over its damage; (allocs, frees) of pump and raster.
+    fn frame(host: &mut Host<RtlApp, Incremental>, m: &mut FontMetrics, canvas: &mut Canvas) -> ((usize, usize), (usize, usize), usize) {
+        let vp = [0.0, 0.0, 320.0, 120.0];
+        let a = counters();
+        host.pump_with(m);
+        let b = counters();
+        let mut regions = 0;
+        for r in host.take_damage_for_age(1).regions(vp) {
+            canvas.clear_within(r, Color(255, 255, 255, 255));
+            canvas.render_within(&host.list, r);
+            regions += 1;
+        }
+        let c = counters();
+        ((b.0 - a.0, b.1 - a.1), (c.0 - b.0, c.1 - b.1), regions)
+    }
+
+    #[test]
+    fn right_to_left_frames_allocate_only_inside_unicode_bidi() {
+        let _one = super::lock(&super::truetype_lock::ONE);
+        let f = face();
+        let mut m = FontMetrics::new(f.clone());
+        let mut app = RtlApp::default();
+        app.ui.title = Label::new("Inbox");
+        app.ui.rtl.set(VALUES[0].to_owned());
+        let mut host: Host<_, Incremental> = Host::new(app, 320, 120);
+        let mut canvas = Canvas::with_font(320, 120, f);
+        canvas.clear(Color(255, 255, 255, 255));
+        host.pump_with(&mut m);
+        canvas.render(&host.list, 320, 120);
+        host.take_damage_for_age(1);
+        let per_run: Vec<usize> = VALUES.iter().map(|v| bidi_allocs(v)).collect();
+        assert!(per_run.iter().all(|&n| n == per_run[0] && n > 0), "setup: the two values cost bidi {per_run:?}");
+        let per_run = per_run[0];
+
+        // A changing right-to-left label.
+        let change = |host: &mut Host<RtlApp, Incremental>, m: &mut FontMetrics, canvas: &mut Canvas, k: usize| {
+            host.app.ui.rtl.set_str(VALUES[k % 2]);
+            assert!(host.invalidate("rtl"), "setup: #rtl is not addressable");
+            frame(host, m, canvas)
+        };
+        for k in 0..10 {
+            change(&mut host, &mut m, &mut canvas, k);
+        }
+        let t0 = text_counters();
+        let (mut pump, mut raster, mut regions) = ((0, 0), (0, 0), 0);
+        for k in 0..40 {
+            let (p, r, n) = change(&mut host, &mut m, &mut canvas, k);
+            pump = (pump.0 + p.0, pump.1 + p.1);
+            raster = (raster.0 + r.0, raster.1 + r.1);
+            regions += n;
+        }
+        let t1 = text_counters();
+        let (shaped, bidi) = ((t1.complex - t0.complex) as usize, (t1.bidi - t0.bidi) as usize);
+        let allocs = pump.0 + raster.0;
+        println!(
+            "Complex, changing RTL label, 40 frames over {regions} damage regions: pump allocs {} frees {}, \
+             raster allocs {} frees {}; {shaped} runs through the shaper, {bidi} of them ordered by unicode_bidi \
+             x {per_run} unicode_bidi allocations per run = {} (bound: allocs == that)",
+            pump.0,
+            pump.1,
+            raster.0,
+            raster.1,
+            bidi * per_run
+        );
+        assert!(regions >= 40, "setup: the changes damaged nothing ({regions} regions)");
+        assert!(bidi >= 40, "setup: the changed label was not laid out through unicode_bidi ({bidi} of {shaped} runs)");
+        assert_eq!(allocs, bidi * per_run, "a changing RTL label allocated outside unicode_bidi");
+
+        // A still right-to-left screen.
+        let (mut pump, mut raster) = ((0, 0), (0, 0));
+        for _ in 0..40 {
+            let (p, r, _) = frame(&mut host, &mut m, &mut canvas);
+            pump = (pump.0 + p.0, pump.1 + p.1);
+            raster = (raster.0 + r.0, raster.1 + r.1);
+        }
+        let held = host.list.cmds.iter().any(|c| matches!(c, lumen_static::Cmd::Text { text, .. } if host.list.str_of(*text) == VALUES[1]));
+        println!(
+            "Complex, still RTL screen, 40 frames: pump allocs {} frees {}, raster allocs {} frees {} (bound 0 each); \
+             the list holds the RTL run: {held}",
+            pump.0, pump.1, raster.0, raster.1
+        );
+        assert!(held, "setup: the still screen holds no right-to-left run");
+        assert_eq!((pump, raster), ((0, 0), (0, 0)), "a still RTL screen touched the allocator");
+    }
+}
+
+/// The lock the truetype arms share — `mod truetype`'s, reachable from
+/// `mod complex`, whose arms read the same process-wide text counters.
+#[cfg(feature = "truetype")]
+mod truetype_lock {
+    pub static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 }

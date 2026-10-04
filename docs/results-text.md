@@ -621,7 +621,7 @@ today's behaviour.
 
 | what | gate or command | at `d4859b4` | bound / later use |
 |---|---|---|---|
-| Hebrew paint order | `lumen-static-text/tests/paint_shaped.rs` `hebrew_paints_right_to_left` (`should_panic`) | `שלום` painted as glyphs `[1344, 1331, 1324, 1332]` at x **1, 24, 44, 53** (logical order, rising); every letter has a cmap glyph (setup) | x strictly falling; T81.3 drops the `should_panic` |
+| Hebrew paint order | `lumen-static-text/tests/paint_shaped.rs` `hebrew_paints_right_to_left` (`should_panic`; moved to the shell's tests by T81.3) | `שלום` painted as glyphs `[1344, 1331, 1324, 1332]` at x **1, 24, 44, 53** (logical order, rising); every letter has a cmap glyph (setup) | x strictly falling; T81.3 drops the `should_panic` |
 | — accept direction | the same assertion fed `ComplexText::shaped_glyphs`' x per glyph | x **48.14, 29.95, 21.23, 0** — falling; the harness reports "did not panic" | — |
 | every `Basic` placement | `lumen-static-shell/tests/basic_placements.rs` | `BASIC_CHECKSUM` **0x866444d1064ccda8**; 6,600 glyphs (2,200 per scale at 1, 1.25, 2), 240 narrowed runs wrapped per scale, **0** glyphs at a fractional x or y | equal, with `shaping` compiled in (T81.3) and phases built (T81.8) |
 | — injection | `cap_shift` floors instead of rounding | checksum 0x550bf3328192bd02; scale 1 named first (0xe46a0473ae03abd5 against 0x5ed8be5616d27ffd) | — |
@@ -691,3 +691,71 @@ face, 16 px:
 Crate counts by K2's method after `unicode-linebreak` (one crate, no
 dependencies): the text crate **22**, the shell with `shaping` **28**,
 `lumen-static-winit` with `shaping` **104** (96 default, unchanged).
+
+## M81/T81.3 — `Shaping` on the stack: both backends paint shaped (2026-10-04)
+
+`FontStack` gains a mode, `Shaping { Basic, Complex }` (`Complex` with the
+shell's `shaping` feature), set by `with_shaping`. Under `Complex`,
+`place_run_into` (both backends), `measure_run` and `shape_into` lay a run
+out with `lumen-static-text`'s `Shaper` over the stack's own `FaceSource`,
+and put each glyph on fontdue's baseline, the `Basic` cap shift and M80's
+pitch. Face bytes come back from where the stack read them (`from_files`,
+`system`) or the caller's `'static` bytes (`from_static`), interned once
+per process; `from_bytes` keeps none, and lays out as `Basic`. A cut
+`Label` puts its `…` at the left of a right-to-left prefix (`fit::rtl`).
+**K81a fired, and its response is built**: a run with nothing to shape
+(`text::needs_shaping`) takes fontdue's path under `Complex` too.
+
+### K81a — `Complex` on Latin
+
+`cargo run --release -p benches --features shaping --bin textarea --
+--shaping basic|complex 1 100`, the new "keystroke + layout + paint
+[mode]" rows, eight invocations a side under `just bench-lock` (all
+sixteen quiet each time), medians of eight:
+
+| build | 1 KB basic / complex | ratio | 100 KB basic / complex | ratio | bound |
+|---|---|---:|---|---:|---:|
+| as first built: every `Complex` run shaped | 0.155 / 0.337 ms | **2.17×** | 5.338 / 19.376 ms | **3.63×** | 1.5× — **fired** |
+| K81a's response: a run `needs_shaping` refuses takes fontdue | 0.158 / 0.153 ms | **0.97×** | 5.342 / 5.277 ms | **0.99×** | 1.5× — holds |
+
+Attribution of the first row: on 100 KB of Latin, `Shaper::shape` took
+12.7 ms with a one-face source or the stack's (the face lookup costs
+nothing measurable), **rustybuzz alone 10.2 ms**, `unicode_linebreak`
+0.21 ms, against fontdue's whole `Basic` measure at 3.8 ms. The shaper is
+the cost, not its bookkeeping. Setup, after the response: the `complex`
+rows report 0 runs through the shaper (the document is Latin) and 84 runs
+painted. Injection: `needs_shaping` always answers yes; one quiet
+invocation a side prints 0.158 / 0.346 ms and 5.599 / 20.077 ms, with 105
+runs through the shaper — the ratio back at 2.2× and 3.6×. K3's
+"keystroke + layout" row, computed first and unchanged: 0.068 / 5.213 ms
+(median of 16), inside its spread. `Complex` stays opt-in; per-widget
+shaping is reopened (`docs/plan-shaped-paint.md`).
+
+### The gates
+
+| gate | quantity | measured | bound | injection → measured |
+|---|---|---|---|---|
+| `shell/tests/paint_shaped.rs` Arabic pin (`Complex`) | painted ids left to right; ink against the box the stack measured | `[5256, 5260, 5277, 5288, 5341]` = the shaper's; box [10, 10, 84, 48], ink 13..83 × 16..49 | equal; inside ±1 px | `place_run_into` ignores the mode: painted `[1390, 1366, 1375, 1365, 1371]`, "the painter drew other glyphs than the shaper produced" |
+| — Hebrew pin | `שלום`'s x per letter, logical order | **49.5, 31.3, 24.1, 2.9** | strictly falling | the same injection: 1, 24, 44, 53, "the painter drew Hebrew in logical order" |
+| — `Basic` pin | painted ids on a `Basic` stack | `[1390, 1375, 1371, 1366, 1365]` = cmap, logical order | equal | — (the accept direction of both pins) |
+| `basic_placements.rs`, `shaping` build | `BASIC_CHECKSUM` | **0x866444d1064ccda8** | equal | `Complex` branch whenever compiled: 0xa2f9db2d8e3371bd, scale 1 named first, 2,188 of 2,200 glyphs fractional |
+| — on a `Complex` stack (K81a's response) | the corpus's checksum; runs through the shaper; a mixed paragraph's runs | **0x866444d1064ccda8**, **0** runs; `Taj Mahal, ` and ` quay j` identical to `Basic`, `שלום עולם` 1 run through the shaper and placed otherwise | equal; 0; identical / shaped | `needs_shaping` always yes: scale 1 0xa5087129ecf88821 against 0x5ed8be5616d27ffd |
+| `glyph_placement.rs` on `Complex` | centring offset; ink rows against `Basic`'s at 16–64 px | −0.5 px; rows equal at all five sizes | ≤ 1 px; equal | cap shift dropped: rows one off at 32 px (107..130 against 108..131) and 64 px (113..160 against 114..161) |
+| `text_containment.rs` on `Complex` | 18 strings (the corpus + 6 RTL, joined, mixed and a paragraph) × 10 sizes × 2 weights × scales 1, 1.25, 1.5, 2, `Host` label, measured with one stack and painted with a clone | 1,440 cases, **0** wrapped, worst overhang **1** px; mixed runs report both directions; the paragraph wraps in 80 of 80 (setup) | 0; ≤ 1 px | the `Complex` measure ignores `max_w`: **80** wrapped, worst overhang 286 px, every paragraph case named |
+| — the right-to-left cut | the `…`'s ink x against the prefix's, three 120 px `Ellipsis` labels | Hebrew `…` 5..19, prefix 20.7..111.4; LTR-base mixed `…` 100..114 after 5.0..98.4; RTL-base mixed `…` 5..19, prefix 21.5..109.1; overhang 0 | leftmost / rightmost by base; 0 | `fit::rtl` answers false: both RTL `…` at x 97 and 95, "not the leftmost ink" |
+| `line_height.rs`, `line_height` 12 `Label` on `Complex` | measured content height; painted line-start y | 43 (want 3 × 12 + (19 − 12)); 3, 15, 27 (scale 1) and 7, 31, 55 (scale 2) | ±1; pitch × scale ± 1 | the `Complex` branch ignores `line_height`: line starts 3, 22, 41, "line 2 painted 19 px below line 1, want 12" |
+| `font_heap.rs` K81c | resident heap after one frame, kept stack + canvas | `Complex` **803,992 B** above `Basic`; a second `Complex` stack 44,112 B; `Basic` from the file = from bytes (+0) | file 759,720 + 64 KiB = 825,256; `Basic` ≤ from bytes + 64 KiB | the bytes kept under `Basic` too: `Basic` from the file 759,366 B over from bytes, the `Basic` bound fires; the older peak bound did not (22,045,185 under 23,966,104) |
+| `alloc_gate.rs` `mod complex` | allocations per frame, after warm-up | combining-mark label **0** (2 shaped runs a frame, 0 bidi); plain Latin **0** (0 shaped); still RTL screen **0**; changing RTL label **960** = 80 bidi runs × 12 | 0 / 0 / 0 / bidi runs × `unicode_bidi`'s own count | a shape plan per call: the combining-mark arm prints 650 allocations in 50 frames |
+| `lumen-static-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8 | **0** (worst 1), ink 355 both, 2 bidi runs (RTX 4070) | 2 (the text region's) | the GPU shapes with a `Basic` clone: **885** px, "the backends disagree on a shaped run" |
+| `just release-window-shape` | `rustybuzz::`/`unicode_bidi::` symbols, release `minimal` | default **0**; with `lumen-static-winit/shaping` **310** | 0; > 0 | `shaping` a default shell feature: default 310, "a default release window links 310 shaper symbols" |
+| `--bin grid --shaping basic\|complex` | the truetype pass's glyph cache, runs painted / through the shaper | identical under both: 28 misses, 0 resets, 909 runs painted, **0** through the shaper | — (K81b is T81.8's) | — |
+
+### K2 and K81e
+
+By K2's method: the shell 8 default, 16 `truetype`, **28** `shaping`;
+`lumen-static-winit` 96 default, **104** with `shaping` — unchanged from
+T81.2, since T81.3 adds no crate (`unicode-bidi` joins the shell as a
+dev-dependency, the version the text crate already pulls). Stripped
+release `examples/showcase`: 9,679,336 B → 10,428,296 B with
+`lumen-static-winit/shaping`, **+748,960 B** (0.71 MiB) against K81e's
+3 MB — holds.

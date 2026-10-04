@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **29,366 B** (28.7 KB) | **pass**, at 35.8% of budget; re-measured at M81/T81.2 (2026-10-04; the four-binary table below), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **29,366 B** (28.7 KB) | **pass**, at 35.8% of budget; re-measured at M81/T81.3 (2026-10-04; the four-binary table below, Δ 0), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,276 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M81/T81.2, unchanged |
@@ -900,16 +900,19 @@ T80.1 (`Painter::text_spaced` required, `text_weighted` provided, the
 as `Wrap`, and `Label` measuring against its own width less its padding)
 and T80.5 (the `Node::caret_rect` slot; T80.4 moved nothing),
 re-measured by M81/T81.1 (the core's `GlyphKey`, which no firmware
-names: Δ 0 on all four), and rewritten by M81/T81.2 (`Cluster::rtl`, and
-`InlineClusters::default` through a `const` element; the section below).
+names: Δ 0 on all four), rewritten by M81/T81.2 (`Cluster::rtl`, and
+`InlineClusters::default` through a `const` element; the section below),
+and re-measured by M81/T81.3 (`Label` placing a right-to-left cut's `…`
+at the left, behind `alloc`, which the leaf tier drops: Δ 0 on all four,
+`just firmware-delta 4ccde3b`).
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 29,366 | 35.8% | 52,554 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 |
-| `firmware_interactive` | **62,948** | **76.8%** | **18,972** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** |
-| `firmware_bind` | 32,826 | 40.1% | 49,094 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 |
-| `firmware_cascade` | 31,506 | 38.5% | 50,414 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 29,366 | 35.8% | 52,554 | 13,276 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 |
+| `firmware_interactive` | **62,948** | **76.8%** | **18,972** | 21,806 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 |
+| `firmware_bind` | 32,826 | 40.1% | 49,094 | 13,880 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 |
+| `firmware_cascade` | 31,506 | 38.5% | 50,414 | 14,052 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 |
 
 **T80.3's cost, from a symbol diff of the two builds**: `text_limits` (the
 room `Label` now measures against, its own width less its padding:

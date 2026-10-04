@@ -86,7 +86,7 @@ const LW: f32 = 320.0;
 const LH: f32 = 80.0;
 
 pub struct Case {
-    pub text: &'static str,
+    pub text: String,
     pub px: f32,
     pub weight: f32,
     pub scale: f32,
@@ -101,6 +101,12 @@ pub struct Case {
     pub left: f32,
     /// A hash of the canvas, for "pixel-identical" comparisons.
     pub hash: u64,
+    /// The painter's own layout inside the rect came back taller than the
+    /// rect (by more than half a pixel): it re-wrapped into more lines than
+    /// layout measured. The `Complex` arm's "wrapped" (M81/T81.3), where a
+    /// paragraph is meant to wrap and differing from the unlimited layout
+    /// is not a defect.
+    pub taller: bool,
 }
 
 fn stack() -> FontStack {
@@ -108,12 +114,17 @@ fn stack() -> FontStack {
 }
 
 /// One label, laid out and painted at one (text, size, weight, scale).
-fn case(font: &FontStack, text: &'static str, px: f32, weight: f32, scale: f32, lead: f32) -> Case {
+fn case(font: &FontStack, text: &str, px: f32, weight: f32, scale: f32, lead: f32) -> Case {
+    case_in(font, text, px, weight, scale, lead, LH)
+}
+
+/// [`case`] in a window `lh` logical px tall.
+fn case_in(font: &FontStack, text: &str, px: f32, weight: f32, scale: f32, lead: f32, lh: f32) -> Case {
     let mut app = Page::default();
     app.ui.label.set(text.to_owned());
     // No height: it paints its colour, and its ink is not the label's.
     app.ui.lead = Fixed { w: lead, h: 0.0 };
-    let (pw, ph) = ((LW * scale) as u32, (LH * scale) as u32);
+    let (pw, ph) = ((LW * scale) as u32, (lh * scale) as u32);
     let mut h: Host<Page> = Host::new(app, pw, ph);
     h.set_scale(scale);
     h.set_stylesheet(&[Rule::new(
@@ -138,10 +149,11 @@ fn case(font: &FontStack, text: &'static str, px: f32, weight: f32, scale: f32, 
 
     // Wrapped: the painter's layout inside the rect against its layout
     // with no limit.
-    let (inside, _) = font.place_run(text, size, w, rect[2] - rect[0]);
+    let (inside, painted) = font.place_run(text, size, w, rect[2] - rect[0]);
     let (free, _) = font.place_run(text, size, w, f32::INFINITY);
     let wrapped = inside.len() != free.len()
         || inside.iter().zip(&free).any(|(a, b)| a.x != b.x || a.y != b.y);
+    let taller = painted.h > rect[3] - rect[1] + 0.5;
 
     let mut canvas = Canvas::with_font(pw, ph, font.clone());
     canvas.clear(Color(255, 255, 255, 255));
@@ -167,7 +179,7 @@ fn case(font: &FontStack, text: &'static str, px: f32, weight: f32, scale: f32, 
     let left = (rect[0] - x0 as f32).max(0.0);
     let ox = (x1 as f32 - rect[2]).max(0.0);
     let oy = (rect[1] - y0 as f32).max(y1 as f32 - rect[3]).max(0.0);
-    Case { text, px, weight, scale, wrapped, over: (ox, oy), left, hash }
+    Case { text: text.to_owned(), px, weight, scale, wrapped, over: (ox, oy), left, hash, taller }
 }
 
 /// Every case, in a fixed order.
@@ -229,6 +241,101 @@ fn a_run_with_no_overhanging_glyph_stays_on_one_line() {
             assert!(!c.wrapped && c.over.0 <= 1.0 && c.over.1 <= 1.0, "{t:?} at {k}");
         }
     }
+}
+
+// ---- M81/T81.3: the same on a `Complex` stack -----------------------------
+
+/// Right-to-left, joined and mixed runs for the `Complex` arm, and one
+/// paragraph long enough to wrap in the window at every size, so the arm
+/// holds a run whose measure *must* honour its width.
+#[cfg(feature = "shaping")]
+const SHAPED: [&str; 6] = [
+    "\u{5e9}\u{5dc}\u{5d5}\u{5dd}",
+    "\u{645}\u{631}\u{62d}\u{628}\u{627}",
+    "\u{5e9}\u{5dc}\u{5d5}\u{5dd} world 123",
+    "Hello \u{645}\u{631}\u{62d}\u{628}\u{627} again",
+    "\u{5e9}\u{5dc}\u{5d5}\u{5dd} (abc) \u{5e2}\u{5d5}\u{5dc}\u{5dd}",
+    "The quick brown fox \u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} jumps over the lazy dog \u{645}\u{631}\u{62d}\u{628}\u{627} and on",
+];
+
+/// The `Complex` arm's window height, logical: tall enough for the
+/// paragraph's every line at 32 px, so no label box is cut short by the
+/// window and ink below a line is on the canvas to be seen.
+#[cfg(feature = "shaping")]
+const TALL: f32 = 240.0;
+
+/// **A `Complex` stack's measured box holds what it paints** — M81/T81.3
+/// (`docs/plan-shaped-paint.md`). The corpus above plus [`SHAPED`],
+/// through a `Host` label at scales 1, 1.25, 1.5 and 2, measured with
+/// one stack (`FontMetrics`) and painted with a clone (`Canvas`), as a
+/// window does (the review's A29).
+///
+/// "Wrapped" here is [`Case::taller`]: the painter's own layout inside
+/// the rect needed more lines than layout measured, since the paragraph
+/// is meant to wrap. Overhang is bounded as above.
+///
+/// Injection (T81.3's commit): the `Complex` measure ignores `max_w`
+/// while paint honours it; the wrapped count names the paragraph's
+/// cases.
+#[cfg(feature = "shaping")]
+#[test]
+fn a_complex_stacks_measured_run_holds_its_painted_ink() {
+    use lumen_static::cx::{Cluster, GlyphSink};
+    use lumen_static_shell::text::{text_counters, Shaping};
+    let font = FontStack::from_static(pinned::bytes(), None).expect("parses").with_shaping(Shaping::Complex);
+
+    // Setup: the mixed runs report both directions.
+    struct Dirs(bool, bool);
+    impl GlyphSink for Dirs {
+        fn cluster(&mut self, c: Cluster) {
+            if c.rtl {
+                self.0 = true;
+            } else {
+                self.1 = true;
+            }
+        }
+    }
+    for t in &SHAPED[2..] {
+        let mut d = Dirs(false, false);
+        lumen_static::TextMeasure::shape(&mut FontMetrics::new(font.clone()), t, 16.0, 400.0, f32::INFINITY, &mut d);
+        println!("setup: {t:?} reports rtl {} and ltr {}", d.0, d.1);
+        assert!(d.0 && d.1, "setup: the mixed run {t:?} reports one direction only");
+    }
+
+    let before = text_counters().complex;
+    let mut all = Vec::new();
+    let mut n = 0;
+    for t in STRINGS.iter().chain(SHAPED.iter()) {
+        for &px in &SIZES {
+            for &w in &WEIGHTS {
+                for &k in &[1.0, 1.25, 1.5, 2.0] {
+                    all.push(case_in(&font, t, px, w, k, LEADS[n % LEADS.len()], TALL));
+                    n += 1;
+                }
+            }
+        }
+    }
+    let shaped = text_counters().complex - before;
+    let wrapped: Vec<&Case> = all.iter().filter(|c| c.taller).collect();
+    let outside: Vec<&Case> = all.iter().filter(|c| c.over.0 > 1.0 || c.over.1 > 1.0).collect();
+    let worst_x = all.iter().map(|c| c.over.0).fold(0.0, f32::max);
+    let worst_y = all.iter().map(|c| c.over.1).fold(0.0, f32::max);
+    let paragraph = all.iter().filter(|c| c.text == SHAPED[5] && c.wrapped).count();
+    for c in wrapped.iter().chain(outside.iter()).take(12) {
+        println!("  {:?} {} px w{} x{}: wrapped={} overhang x={} y={}", c.text, c.px, c.weight, c.scale, c.taller, c.over.0, c.over.1);
+    }
+    println!(
+        "Complex: {} cases, {shaped} runs through the shaper; wrapped {} (bound 0), worst overhang x/y \
+         {worst_x}/{worst_y} px (bound 1.0), {} outside; the paragraph wraps in {paragraph} of 80 cases (setup > 0)",
+        all.len(),
+        wrapped.len(),
+        outside.len()
+    );
+    assert_eq!(all.len(), 18 * 10 * 2 * 4, "setup: the corpus is 18 x 10 x 2 x 4");
+    assert!(shaped > 0, "setup: nothing went through the shaper");
+    assert!(paragraph > 0, "setup: the paragraph never wrapped, so no case needs the measure to honour its width");
+    assert!(wrapped.is_empty(), "{} of {} runs re-wrapped inside their measured box", wrapped.len(), all.len());
+    assert!(outside.is_empty(), "{} runs painted ink more than 1 px outside their box", outside.len());
 }
 
 #[derive(StaticTree, Default)]
@@ -497,4 +604,80 @@ fn a_clipped_labels_change_damages_only_its_box() {
     assert_ne!(before, host.app.ui.lab.shown().0, "setup: the cut did not change, so nothing was repainted");
     assert!(damaged > 0.0, "setup: the change damaged nothing");
     assert!((damaged / own - 1.0).abs() < 0.005, "a clipped label damaged {:.2}x its own box", damaged / own);
+}
+
+/// **A right-to-left cut ends in `…` at its left** — M81/T81.3, M80's
+/// overflow under `Complex` (`docs/plan-shaped-paint.md`). A cut label
+/// paints its prefix and its `…` as two runs, so the shaper cannot place
+/// the mark: `Label` asks the measurer the prefix's paragraph direction
+/// (`fit::rtl`) and puts the `…` at the left of a right-to-left one. On a
+/// `Complex` stack, a Hebrew label's `…` is its leftmost ink; a mixed
+/// label with a left-to-right base keeps it at the right, and one with a
+/// right-to-left base at the left. Every cut's ink stays in its content
+/// box. Injection (T81.3's commit): `fit::rtl` answers `false`; the
+/// Hebrew label's `…` x prints right of its prefix.
+#[cfg(feature = "shaping")]
+#[test]
+fn a_right_to_left_cut_ends_in_an_ellipsis_at_its_base_directions_end() {
+    use lumen_static_shell::text::Shaping;
+    let font = FontStack::from_static(pinned::bytes(), None).expect("parses").with_shaping(Shaping::Complex);
+    let cases: [(&str, bool); 3] = [
+        ("\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} \u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e2}\u{5d5}\u{5dc}\u{5dd} \u{5e9}\u{5dc}\u{5d5}\u{5dd}", true),
+        ("abc \u{5e9}\u{5dc}\u{5d5}\u{5dd} def ghi jkl mno pqr stu vwx", false),
+        ("\u{5e9}\u{5dc}\u{5d5}\u{5dd} abc \u{5e2}\u{5d5}\u{5dc}\u{5dd} def \u{5e9}\u{5dc}\u{5d5}\u{5dd} ghi", true),
+    ];
+    let mut wrong = Vec::new();
+    for (text, rtl) in cases {
+        let f = cut_frame(&font, text, 120.0, CUT_PAD, TextOverflow::Ellipsis);
+        assert!(f.cut, "setup: {text:?} was not cut at 120 px");
+        // The two runs' painted ink, from the placer the canvas paints by.
+        let mut a = CutPage::default();
+        a.ui.lab.set(text.to_owned());
+        let mut host: Host<CutPage> = Host::new(a, CUT_WINDOW.0, CUT_WINDOW.1);
+        host.set_stylesheet(&[Rule::new(
+            Selector::Id("lab"),
+            Patch::new()
+                .width(Length::Fixed(120.0))
+                .padding(Edges::all(CUT_PAD))
+                .overflow(TextOverflow::Ellipsis)
+                .color(Color(0, 0, 0, 255)),
+        )]);
+        host.pump_with(&mut FontMetrics::new(font.clone()));
+        let runs: Vec<([f32; 4], String, f32, f32)> = host
+            .list
+            .cmds
+            .iter()
+            .filter_map(|c| match c {
+                Cmd::Text { rect, text, size, weight, .. } => Some((*rect, host.list.str_of(*text).to_owned(), *size, *weight)),
+                _ => None,
+            })
+            .collect();
+        let ink = |(r, t, px, w): &([f32; 4], String, f32, f32)| -> (f32, f32) {
+            let (p, _) = font.place_run(t, *px, *w, r[2] - r[0]);
+            let x0 = p.iter().map(|g| r[0] + g.x).fold(f32::INFINITY, f32::min);
+            let x1 = p.iter().map(|g| r[0] + g.x + g.w as f32).fold(f32::NEG_INFINITY, f32::max);
+            (x0, x1)
+        };
+        let mark = runs.iter().find(|r| r.1 == "\u{2026}").map(ink);
+        let prefix = runs.iter().find(|r| r.1 != "\u{2026}").map(ink);
+        let over = overhang(&f);
+        println!(
+            "{text:?} (base {}): prefix ink x {prefix:?}, ellipsis ink x {mark:?}; ink overhang {over} px (bound 0)",
+            if rtl { "rtl" } else { "ltr" }
+        );
+        let (Some(m), Some(p)) = (mark, prefix) else {
+            wrong.push(format!("{text:?}: runs {runs:?} lack a prefix or the ellipsis"));
+            continue;
+        };
+        if rtl && m.0 >= p.0 {
+            wrong.push(format!("{text:?}: the ellipsis at x {} is not the leftmost ink (prefix from {})", m.0, p.0));
+        }
+        if !rtl && m.0 < p.1 - 1.0 {
+            wrong.push(format!("{text:?}: the ellipsis at x {} is not right of the prefix (to {})", m.0, p.1));
+        }
+        if over > 0.0 {
+            wrong.push(format!("{text:?}: ink {over} px past the content box"));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }

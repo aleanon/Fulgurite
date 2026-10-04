@@ -588,6 +588,59 @@ fn a_line_pitch_reaches_both_backends() {
 }
 
 
+/// **Both backends paint shaped** — M81/T81.3 (`docs/plan-shaped-paint.md`).
+///
+/// A region holding `שלום world 123` on a stack in `Shaping::Complex`,
+/// given to both backends: each places its glyphs through the same
+/// `FontStack::place_run_into`, whose `Complex` branch shapes, so the
+/// region agrees within the text region's own bound. Setup: the region
+/// has ink on both, and the run went through `unicode_bidi` (2 runs: one
+/// per backend, printed).
+///
+/// Injection (T81.3's commit): the GPU shapes with a `Basic` clone of the
+/// stack it was given (a GPU-only break; G9's "logical order" injection
+/// could not fire, since glyph positions are absolute); the region's
+/// differing pixels exceed its bound.
+#[cfg(feature = "shaping")]
+#[test]
+fn a_shaped_run_agrees_across_the_backends() {
+    use lumen_static_shell::text::{text_counters, FontStack, Shaping};
+    let Some(mut g) = gpu() else { return };
+    let font = FontStack::system().expect("a system face").with_shaping(Shaping::Complex);
+    g.set_font(font.clone());
+    let mut c = Canvas::with_font(W, H, font);
+    let mut l = DisplayList::new();
+    l.text([10.0, 20.0, 230.0, 44.0], "\u{5e9}\u{5dc}\u{5d5}\u{5dd} world 123", 16.0, Color(0, 0, 0, 255));
+    let before = text_counters();
+    c.clear(PAGE);
+    c.render(&l, W, H);
+    g.clear(PAGE);
+    g.render(&l, W, H);
+    let after = text_counters();
+    let gp = g.read_rgba();
+    let bbox = [8, 18, 232, 46];
+    let ink = |px: &[u8]| {
+        (bbox[1]..bbox[3])
+            .flat_map(|y| (bbox[0]..bbox[2]).map(move |x| (x, y)))
+            .filter(|&(x, y)| px[((y * W + x) * 4) as usize] < 128)
+            .count()
+    };
+    let (ink_cpu, ink_gpu) = (ink(&c.pixels), ink(&gp));
+    let (over, worst) = region_over(&c.pixels, &gp, W, bbox, 8);
+    let text = REGIONS.iter().position(|r| r.name == "text").expect("a text region");
+    let (shaped, bidi) = (after.complex - before.complex, after.bidi - before.bidi);
+    println!(
+        "shaped region: {over} px over 8 (bound {}, the text region's), worst {worst}; inked px cpu {ink_cpu}, \
+         gpu {ink_gpu}; {shaped} runs through the shaper, {bidi} ordered by unicode_bidi (setup > 0)",
+        bound(text)
+    );
+    assert!(ink_cpu > 0 && ink_gpu > 0, "setup: the region has no ink (cpu {ink_cpu}, gpu {ink_gpu})");
+    // At least the software canvas shaped it; a GPU that did not is the
+    // defect, and the bound below names it.
+    assert!(bidi >= 1, "setup: the run was never shaped ({bidi} bidi runs)");
+    assert!(over <= bound(text), "the backends disagree on a shaped run: {over} px over 8");
+}
+
 /// M51/T51.0 (R9-F1): a glyph set larger than one frame's atlas.
 ///
 /// The review's corpus: printable ASCII in eight sizes and two weights,

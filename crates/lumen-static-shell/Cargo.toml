@@ -65,14 +65,20 @@ a11y = ["lumen-static/a11y"]
 truetype = ["dep:fontdue"]
 # Shaped paint (M81, docs/plan-shaped-paint.md D1 a): the shell reaches
 # `lumen-static-text`'s shaper (rustybuzz, unicode-bidi) through this
-# feature. **Default-OFF**, and empty of code at M81/T81.1: it pulls the
-# crate and joins the ABI stamp's feature list (`session::abi_fields`)
-# and `process_features`, so the stamp refuses a library built with it
-# under a loader built without. Its cost by K2's method (`cargo tree -p
+# feature. **Default-OFF.** Since M81/T81.3 it holds the `Complex` mode of
+# `text::FontStack` (`text::Shaping`): measure, clusters and paint through
+# the shaper for a run that needs shaping. It joins the ABI stamp's feature
+# list (`session::abi_fields`) and `process_features`, so the stamp
+# refuses a library built with it under a loader built without. A default
+# release window links 0 shaper symbols, one with it 310
+# (`just release-window-shape`); the stripped showcase grows +748,960 B
+# with it, against K81e's 3 MB (docs/results-text.md M81/T81.3). Its cost
+# by K2's method (`cargo tree -p
 # lumen-static-shell -e normal --prefix none`, `(*)` stripped,
 # deduplicated): **8 -> 27** packages over the default, 16 -> 27 over
 # `truetype` (2026-10-04, T81.1); **28** since T81.2 added
-# `unicode-linebreak` to the text crate (16 -> 28 over `truetype`).
+# `unicode-linebreak` to the text crate (16 -> 28 over `truetype`);
+# T81.3 adds none (28).
 shaping = ["truetype", "dep:lumen-static-text"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It
@@ -125,6 +131,10 @@ lumen-static = { path = "../lumen-static", features = ["reload"] }
 # M49/T49.0: `tests/reload_schema.rs` keeps serde structs whose shape
 # changes between two builds.
 serde = { version = "1", features = ["derive"] }
+# M81/T81.3: `tests/alloc_gate.rs` `mod complex` counts what one
+# `BidiInfo` costs, so a changing right-to-left label is held to exactly
+# that. The version the text crate's shaper uses, so it is one crate.
+unicode-bidi = "0.3"
 
 # M34/T34.1: needs the oracle compiled in; `just test` runs it with the
 # feature (`dev-shape`).
@@ -183,3 +193,9 @@ required-features = ["live-agent", "truetype"]
 [[test]]
 name = "agent_audit_face"
 required-features = ["live-agent", "truetype"]
+
+# M81/T81.3: the shaped-paint pins, moved here from lumen-static-text
+# (whose dev edge to this crate is dropped), on a stack in Complex mode.
+[[test]]
+name = "paint_shaped"
+required-features = ["shaping", "truetype"]
