@@ -66,3 +66,32 @@ them.
 | `scripts/check_shell_headless.sh` (`just static`, no compile): the shell's normal dependencies, default and `truetype` | default **8** crates, `truetype` **16**, none of winit/softbuffer/wgpu | none | `winit = "0.30"` in the shell's `[dependencies]`: before the lock is updated, "cargo tree failed for the default build -- not a pass", exit 1; after `cargo update --workspace --offline`, "the shell's default build depends on winit v0.30.13" and the same for `truetype`, exit 1 |
 | — accept direction | `raw-window-handle` 0.6 (`std`, optional, enabled by `truetype`; T83.1's line) with its lock update: default **8**, `truetype` **17**, exit 0; `raw-window-handle v0.6.2` in the `truetype` run only | passes | — |
 | `contrast_names_every_command` (`lumen-static-shell/tests/contrast_commands.rs`): each `Cmd` under a text run's centre, the expected ground from an exhaustive match | 12 kinds built of `KINDS` = 12; probes reported **12** (measured 8, unmeasured 4); `Rect`, `RoundedRect` and `Gradient` measured against their colour; `Text`, `StrokedRect`, `Line`, `PushClip`, `PopClip` against the page; `Shadow`, `Image`, `Glass`, `Path` unmeasured with their reasons | every row as stated; 12 reported | `ground_at`'s `Glass` arm deleted: `Glass: want Unknown("glass"), got Miss`, red by name; the `Image` sample dropped: "kinds 11 built of 12", red by name |
+
+## T83.1 — `Backend`/`Frame` into the shell; `BackendTarget`, at `376301b` + T83.1 (2026-10-06)
+
+`Backend`, `Frame`, `BackendTarget` and `WindowHandles` live in
+`lumen_static_shell::backend`, behind the shell's `truetype`;
+`lumen-static-winit` re-exports them. `fetch_rgba`, `set_images` and
+`frame_rgba` are required; `GpuBackend` and winit's test `Fake` write the
+`None` bodies they inherited. `Software::new` and `GpuBackend::new` take
+`&BackendTarget`, which `resumed_impl` builds from the window once. No
+behaviour changes.
+
+**Crate counts** (K83d, K2's exact command).
+
+| quantity | T83.0 | T83.1 | bound |
+|---|---:|---:|---|
+| `lumen-static-winit`, default normal dependencies | 96 | **96** | +0 (K83d) |
+| `lumen-static-shell`, default | 8 | **8** | +0 (Decisions) |
+| `lumen-static-shell`, `--features truetype` | 16 | **17** | +1: `raw-window-handle v0.6.2`, the only line in the diff of the two sorted lists |
+
+**Gates.**
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| `scripts/check_shell_headless.sh` | default **8**, `truetype` **17**, none of winit/softbuffer/wgpu | none of the three | (T83.0's) |
+| `cargo check -p lumen-static-shell` (default features, `just test-crates`' build of the shell alone) | compiles | compiles | `#[cfg(feature = "truetype")]` dropped from `pub mod backend`: E0432 on `raw_window_handle`, `crate::session` (`FrameSource`) and `crate::text` (`FontStack`), 3 errors |
+| M57's D5 parity, `scripts/widget_drive.sh Label` (a filtered run compares the entries it names, M81/T81.6) | 67,584 px, **0** bytes differ, on all three legs (`Everything`, `Boundaries<256>`, `Boundaries<256>`+oracle) | 0 | `Software::new` stores `None` for the font: "the live demo with the agent differs from the headless render over 67584 px … **30,453** bytes differ (bound 0)", on all three legs |
+| `just resume-drive` | software-resume 0 / 458,620 px differ, backends 2; software-still 0, backends 1; gpu-resume 0 (`xwd`), backends 2 | 0.1% | its own M47/T47.7 injections stand; it gates presence and image retention, not constructor arithmetic |
+| `just agent-drive` | green, both strategies and the oracle leg (92 frames compared, none diverged) | — | its own |
+| firmware, `just firmware-delta 376301b firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text` and `.rodata` on all four | 0 (K83b, K4) | — (nothing the firmware links moved) |

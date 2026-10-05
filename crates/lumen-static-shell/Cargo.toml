@@ -31,6 +31,15 @@ lumen-static-text = { path = "../lumen-static-text", optional = true }
 # with (`no-std-float`, `opentype-layout`, default features off), so the
 # graph gains no package and no feature: 0 new crates (C32).
 ttf-parser = { version = "0.25", optional = true, default-features = false, features = ["no-std-float", "opentype-layout"] }
+# M83/T83.1 (D1 b, docs/plan-gpu-extension.md): `backend::BackendTarget`
+# carries the window as raw handles, so the shell can hold the `Backend`
+# trait without naming winit. Optional, enabled by `truetype` (where the
+# `backend` module lives): the default build gains no crate. `std` (hence
+# `alloc`) because the `Arc<H: ?Sized>` impls the target relies on are
+# behind `alloc`. 0.6.2, already in the lock through winit, softbuffer
+# and wgpu, so the window's graph gains none (K83d,
+# docs/results-shader.md T83.1).
+raw-window-handle = { version = "0.6", features = ["std"], optional = true }
 
 [features]
 default = []
@@ -67,7 +76,9 @@ live-agent = ["agent", "dep:lumen-static-agent", "dep:serde_json"]
 # `a11y` (docs/plan-a11y-platform.md §2.1), which pulls accesskit and
 # nothing of the agent.
 a11y = ["lumen-static/a11y"]
-truetype = ["dep:fontdue"]
+# M83/T83.1: `truetype` also holds the `backend` module, whose target
+# carries raw window handles: +1 crate (`raw-window-handle`) over 16.
+truetype = ["dep:fontdue", "dep:raw-window-handle"]
 # Shaped paint (M81, docs/plan-shaped-paint.md D1 a): the shell reaches
 # `lumen-static-text`'s shaper (rustybuzz, unicode-bidi) through this
 # feature. **Default-OFF.** Since M81/T81.3 it holds the `Complex` mode of

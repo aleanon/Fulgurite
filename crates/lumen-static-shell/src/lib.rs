@@ -19,6 +19,12 @@ use lumen_static::style::{Rule, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{pass, Constraints, Event, Point};
 
+/// M83/T83.1: what a backend must do to put a frame on screen, and what
+/// it is built from (`docs/plan-gpu-extension.md`, D1 b). Behind
+/// `truetype`, as `session` and `text` are: it names `FrameSource` and
+/// `FontStack`.
+#[cfg(feature = "truetype")]
+pub mod backend;
 /// M54/T54.0: WCAG contrast of each text run against what it is painted on.
 pub mod contrast;
 /// M53/T53.0: what a pump did, counted.

@@ -130,6 +130,15 @@ The four properties that produce the performance, in rough order of importance:
    half that was built is worth 20× at 4K (22.87 ms → 1.10 ms); the half
    that was not is what item 3 above needs, and nothing depends on it yet.
 
+   **DECIDED 2026-10-06 (M83/T83.1): the backend seam is the shell's.**
+   `Backend`, `Frame`, `BackendTarget` and `WindowHandles` live in
+   `lumen_static_shell::backend` (behind `truetype`), and
+   `lumen-static-winit` re-exports them; a backend is built from raw
+   window handles plus a size, and `fetch_rgba`, `set_images` and
+   `frame_rgba` are required. The shell still names no window or GPU
+   crate (`scripts/check_shell_headless.sh`); the window's graph is
+   unchanged at 96 crates (`docs/results-shader.md` T83.1).
+
 Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes

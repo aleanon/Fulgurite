@@ -11,42 +11,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lumen_static::Color;
+use lumen_static_shell::backend::{Frame, WindowHandles};
 use lumen_static_shell::session::FrameSource;
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
-use winit::window::Window;
-
-/// What one presented frame cost, in nanoseconds.
-///
-/// The same fields `lumen_static_agent::FrameTiming` wants, without
-/// depending on the agent crate — a window should not have to link the
-/// agent to time itself, and the example maps one to the other.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Frame {
-    pub layout_ns: u64,
-    pub paint_ns: u64,
-    pub render_ns: u64,
-    pub present_ns: u64,
-    pub frame_ns: u64,
-    /// Pixels the damage regions covered, or 0 for a frame that rendered
-    /// nothing and was presented anyway (see [`Surface::present`]).
-    /// **Physical** pixels, like the regions (M40/T40.1): before that
-    /// the regions were logical and this counted them as physical, so it
-    /// was short by the scale squared on a HiDPI display.
-    pub damaged_px: u64,
-    /// The frame was rendered and **did not reach the screen** — the
-    /// surface was outdated, lost or timed out (M47/T47.4, R7-F7). The
-    /// window asks for another frame on it, a bounded number of times in
-    /// a row ([`crate::present_retry`]). Always `false` from softbuffer,
-    /// which panics rather than dropping.
-    pub dropped: bool,
-    /// How many frames the GPU renderer has drawn with glyphs or images
-    /// missing because an atlas could not hold them, since it was made
-    /// (`lumen_static_wgpu::AtlasStats::give_ups`, M51/T51.1). A running
-    /// count, not this frame's; `None` from the software canvas, which has
-    /// no atlas.
-    pub atlas_give_ups: Option<u64>,
-}
 
 /// A canvas of `width` x `height` that rasterises with `font`.
 ///
@@ -91,13 +59,15 @@ pub fn sync_size(canvas: &mut Canvas, font: Option<&FontStack>, width: u32, heig
 /// window handle, and `crates/*/src` may contain no `unsafe`
 /// (`scripts/check_no_unsafe.sh`), so `create_surface_unsafe` is not
 /// available to reach for. softbuffer is generic over the handle and
-/// does not care either way.
+/// does not care either way. **As raw handles** since M83/T83.1
+/// ([`WindowHandles`]), so a backend built from a `BackendTarget` never
+/// names winit's `Window`; a winit window coerces to one.
 pub struct Surface {
-    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+    surface: softbuffer::Surface<Arc<dyn WindowHandles>, Arc<dyn WindowHandles>>,
 }
 
 impl Surface {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub fn new(window: Arc<dyn WindowHandles>) -> Self {
         let ctx = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         let surface = softbuffer::Surface::new(&ctx, window).expect("softbuffer surface");
         Surface { surface }

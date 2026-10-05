@@ -15,8 +15,7 @@ use lumen_static_shell::text::FontStack;
 use lumen_static_shell::session::FrameSource;
 use lumen_static_wgpu::Gpu;
 
-use crate::backend::Backend;
-use crate::surface::Frame;
+use crate::backend::{Backend, BackendTarget, Frame};
 
 /// A window drawn by `lumen-static-wgpu`.
 pub struct GpuBackend {
@@ -34,17 +33,14 @@ impl GpuBackend {
     /// and must not be treated as one. See
     /// [`Prefer`](crate::backend::Prefer).
     ///
-    /// `accept_cpu`: whether a CPU rasteriser such as llvmpipe counts as
-    /// an adapter (M51/T51.2). [`crate::choose_backend`] passes it for
-    /// `Prefer::Gpu` only.
-    pub fn new(
-        window: std::sync::Arc<winit::window::Window>,
-        font: Option<FontStack>,
-        accept_cpu: bool,
-    ) -> Option<Self> {
-        let size = window.inner_size();
-        let mut gpu = Gpu::for_window(window, size.width.max(1), size.height.max(1), accept_cpu)?;
-        if let Some(f) = font {
+    /// Built from the window's raw handles and size (M83/T83.1).
+    /// `target.accept_cpu`: whether a CPU rasteriser such as llvmpipe
+    /// counts as an adapter (M51/T51.2). [`crate::choose_backend`] passes
+    /// it for `Prefer::Gpu` only.
+    pub fn new(target: &BackendTarget) -> Option<Self> {
+        let (w, h) = (target.width.max(1), target.height.max(1));
+        let mut gpu = Gpu::for_window(target.window.clone(), w, h, target.accept_cpu)?;
+        if let Some(f) = target.font.clone() {
             gpu.set_font(f);
         }
         let name = format!("gpu ({})", gpu.adapter());
@@ -152,15 +148,27 @@ impl Backend for GpuBackend {
         }
     }
 
-    // `fetch_rgba` is deliberately left at its default `None`.
-    //
-    // The renderer *can* read its target back, and that would be easy
-    // to return here — but the target is what was rendered, not what
-    // was presented, and `Backend::fetch_rgba` exists precisely to see
-    // the present. Answering with the pre-present texture would make
-    // `ui.screenshot { source: "surface" }` report "the frame reached
-    // the screen" on a frame that did not. `None` is the honest answer:
-    // not checkable.
+    /// **`None`, deliberately** — written out since M83/T83.1 made the
+    /// method required; it was the inherited default.
+    ///
+    /// The renderer *can* read its target back, and that would be easy
+    /// to return here — but the target is what was rendered, not what
+    /// was presented, and `Backend::fetch_rgba` exists precisely to see
+    /// the present. Answering with the pre-present texture would make
+    /// `ui.screenshot { source: "surface" }` report "the frame reached
+    /// the screen" on a frame that did not. `None` is the honest answer:
+    /// not checkable.
+    fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        None
+    }
+
+    /// **`None`: this backend does not hand its pixels back** — written
+    /// out since M83/T83.1, as today's inherited default. `ui.screenshot`
+    /// reports "does not render", and `just resume-drive`'s GPU leg reads
+    /// the window off the X server instead.
+    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        None
+    }
 
     fn name(&self) -> &str {
         &self.name

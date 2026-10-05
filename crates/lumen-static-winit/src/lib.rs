@@ -144,13 +144,13 @@ pub mod windows;
 pub mod translate;
 pub mod keys;
 
-pub use backend::{Backend, Prefer, Software};
+pub use backend::{Backend, BackendTarget, Frame, Prefer, Software, WindowHandles};
 pub use clipboard::Clipboard;
 pub use dialog::Dialogs;
 #[cfg(feature = "gpu")]
 pub use gpu::GpuBackend;
 pub use windows::{Pane, Panes};
-pub use surface::{canvas, sync_size, Frame, Surface};
+pub use surface::{canvas, sync_size, Surface};
 pub use translate::{Cursor, Translated};
 
 /// The backend half of `resumed`: make a backend and hand it the images —
@@ -277,20 +277,20 @@ fn suspend_backend(images: &mut Option<Box<dyn lumen_static::ImageSource>>, mut 
 ///
 /// Without the `gpu` feature this is always the software canvas, and
 /// `prefer` only decides whether to say so.
-fn pick_backend(
-    window: Arc<Window>,
-    font: Option<FontStack>,
-    prefer: Prefer,
-) -> Box<dyn Backend> {
+///
+/// Every constructor is handed the same [`BackendTarget`], which
+/// `resumed_impl` builds from the window once (M83/T83.1); the GPU's is
+/// told `accept_cpu` by [`choose_backend`].
+fn pick_backend(target: &BackendTarget, prefer: Prefer) -> Box<dyn Backend> {
     #[cfg(feature = "gpu")]
     {
         choose_backend(
             prefer,
             |accept_cpu| {
-                gpu::GpuBackend::new(window.clone(), font.clone(), accept_cpu)
+                gpu::GpuBackend::new(&BackendTarget { accept_cpu, ..target.clone() })
                     .map(|g| Box::new(g) as Box<dyn Backend>)
             },
-            || Box::new(Software::new(window.clone(), font.clone())),
+            || Box::new(Software::new(target)),
         )
     }
     #[cfg(not(feature = "gpu"))]
@@ -298,7 +298,7 @@ fn pick_backend(
         if prefer == Prefer::Gpu {
             eprintln!("gpu requested, but this binary was built without the `gpu` feature");
         }
-        Box::new(Software::new(window, font))
+        Box::new(Software::new(target))
     }
 }
 
@@ -947,7 +947,7 @@ impl Win {
             // The pump's own figures still stand (under `Everything` it
             // laid out and painted); nothing was rendered or presented.
             let (layout_ns, paint_ns) = self.session.timings();
-            surface::Frame { layout_ns, paint_ns, frame_ns: start.elapsed().as_nanos() as u64, ..Default::default() }
+            Frame { layout_ns, paint_ns, frame_ns: start.elapsed().as_nanos() as u64, ..Default::default() }
         } else {
             self.presents.0 += 1;
             #[cfg(feature = "hot")]
@@ -1368,8 +1368,19 @@ impl Win {
         // physical, and this is the only thing that relates them (M10b).
         self.session.set_scale(window.scale_factor() as f32);
 
-        let (font, prefer) = (self.font.clone(), Prefer::from_env(self.config.backend));
-        let backend = resume_backend(&mut self.config.images, || pick_backend(window.clone(), font, prefer));
+        let prefer = Prefer::from_env(self.config.backend);
+        // **The target, built once from the window** (M83/T83.1): its raw
+        // handles, its physical size and the session's face. Every
+        // constructor reads it and nothing else of the window.
+        let size = window.inner_size();
+        let target = BackendTarget {
+            window: window.clone(),
+            width: size.width,
+            height: size.height,
+            font: self.font.clone(),
+            accept_cpu: prefer == Prefer::Gpu,
+        };
+        let backend = resume_backend(&mut self.config.images, || pick_backend(&target, prefer));
         eprintln!("lumen-static: {}", backend.name());
         self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
@@ -1883,11 +1894,11 @@ mod tests {
     /// window's hand-off to the session, which is what `app.perf` reports.
     #[test]
     fn frame_times_carries_the_atlas_give_up_count() {
-        let f = surface::Frame { frame_ns: 1, atlas_give_ups: Some(7), ..Default::default() };
+        let f = Frame { frame_ns: 1, atlas_give_ups: Some(7), ..Default::default() };
         let t = frame_times(&f);
         println!("Frame.atlas_give_ups {:?} -> FrameTimes.atlas_give_ups {:?}", f.atlas_give_ups, t.atlas_give_ups);
         assert_eq!(t.atlas_give_ups, Some(7));
-        let sw = surface::Frame { frame_ns: 1, ..Default::default() };
+        let sw = Frame { frame_ns: 1, ..Default::default() };
         assert_eq!(frame_times(&sw).atlas_give_ups, None, "the software canvas has no atlas");
     }
 
@@ -1895,7 +1906,7 @@ mod tests {
     /// shows, once — the next frame, with no input since, carries none.
     #[test]
     fn a_journal_frame_carries_its_inputs_latency_once() {
-        let f = surface::Frame { frame_ns: 1, ..Default::default() };
+        let f = Frame { frame_ns: 1, ..Default::default() };
         let mut at = Some(Instant::now() - std::time::Duration::from_millis(5));
         let first = journal_times(&f, &mut at).input_latency_ns;
         let second = journal_times(&f, &mut at).input_latency_ns;
@@ -2003,8 +2014,8 @@ mod tests {
         fn resize(&mut self, _w: u32, _h: u32) -> bool {
             false
         }
-        fn present(&mut self, _s: &mut dyn lumen_static_shell::session::FrameSource, _p: Color, _t: Instant) -> surface::Frame {
-            surface::Frame::default()
+        fn present(&mut self, _s: &mut dyn lumen_static_shell::session::FrameSource, _p: Color, _t: Instant) -> Frame {
+            Frame::default()
         }
         fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
             // Only a source that answers counts as images.
@@ -2017,6 +2028,13 @@ mod tests {
             self.images.take()
         }
         fn set_font(&mut self, _font: FontStack) {}
+        // Required since M83/T83.1; a fake reads nothing back.
+        fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+            None
+        }
+        fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+            None
+        }
         fn name(&self) -> &str {
             "fake"
         }
