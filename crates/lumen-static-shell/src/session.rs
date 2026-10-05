@@ -1205,6 +1205,13 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         // Complex (T81.3), a discriminant a loader built without it cannot
         // name, so the field refuses the pair (`just abi-stamp`).
         (cfg!(feature = "shaping"), "shaping"),
+        // M82/T82.7: **`vector-text` is not here, by a recorded exception**
+        // (docs/plan-iced-roadmap.md §2.3, docs/plan-paint-vocabulary.md
+        // "No `abi_fields` entry"). It changes `FontStack`'s fields, and no
+        // `FontStack` crosses the seam: the library builds its own measurer
+        // and the loader its own renderers' stack. What does cross --
+        // `TextMeasure`'s vtable, the `DisplayList` -- is the core's, under
+        // the source hash (M49). An entry would refuse a swap that is safe.
     ] {
         if on {
             features.push(name);

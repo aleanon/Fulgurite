@@ -760,6 +760,29 @@ impl TextMeasure for ComplexText {
         Size { w: lumen_static::num::ceil(self.run.width()), h: self.line_height(size) * lines }
     }
 
+    /// The shaper's glyphs as outlines — M82/T82.7: each glyph's
+    /// ttf-parser outline (through rustybuzz's face, which derefs to one)
+    /// at the shaper's own pen and offset, on its line's baseline
+    /// (`line_height` per line, the ascender below the line's top), in the
+    /// run's frame [`TextMeasure::outline`] states. Unwrapped, as
+    /// `measure` with no width would lay the run out, and in visual order.
+    fn outline(&mut self, text: &str, size: f32, weight: f32, sink: &mut dyn lumen_static::cx::PathSink) -> bool {
+        let upem = self.face.units_per_em() as f32;
+        if upem <= 0.0 {
+            return false;
+        }
+        self.shaper.shape(&self.source, text, size, weight, f32::INFINITY, &mut self.run);
+        let s = size / upem;
+        let ascent = self.face.ascender() as f32 * s;
+        let line = self.line_height(size);
+        for g in &self.run.glyphs {
+            sink.glyph(g.key.index);
+            let mut pen = OutlinePen { sink: &mut *sink, x: g.x, y: g.line as f32 * line + ascent + g.y, s };
+            self.face.outline_glyph(rustybuzz::ttf_parser::GlyphId(g.key.index), &mut pen);
+        }
+        true
+    }
+
     fn line_height(&mut self, size: f32) -> f32 {
         let upem = self.face.units_per_em() as f32;
         if upem <= 0.0 {
@@ -768,5 +791,43 @@ impl TextMeasure for ComplexText {
         let m = self.face.ascender() as f32 - self.face.descender() as f32
             + self.face.line_gap() as f32;
         m * size / upem
+    }
+}
+
+/// A ttf-parser outline builder writing [`PathEl`](lumen_static::display::PathEl)s
+/// to a sink: font units scaled by `s`, y flipped, moved to `(x, y)`, the
+/// glyph's pen and baseline — [`ComplexText`]'s `outline` (M82/T82.7).
+struct OutlinePen<'s> {
+    sink: &'s mut dyn lumen_static::cx::PathSink,
+    x: f32,
+    y: f32,
+    s: f32,
+}
+
+impl OutlinePen<'_> {
+    fn p(&self, x: f32, y: f32) -> lumen_static::Point {
+        lumen_static::Point { x: self.x + x * self.s, y: self.y - y * self.s }
+    }
+}
+
+impl rustybuzz::ttf_parser::OutlineBuilder for OutlinePen<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        let p = self.p(x, y);
+        self.sink.el(lumen_static::display::PathEl::Move(p));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        let p = self.p(x, y);
+        self.sink.el(lumen_static::display::PathEl::Line(p));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        let (a, p) = (self.p(x1, y1), self.p(x, y));
+        self.sink.el(lumen_static::display::PathEl::Quad(a, p));
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        let (a, b, p) = (self.p(x1, y1), self.p(x2, y2), self.p(x, y));
+        self.sink.el(lumen_static::display::PathEl::Cubic(a, b, p));
+    }
+    fn close(&mut self) {
+        self.sink.el(lumen_static::display::PathEl::Close);
     }
 }

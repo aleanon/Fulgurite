@@ -26,6 +26,11 @@ serde_json = { version = "1", optional = true }
 # `shaping` below. The text crate names only `lumen-static` in its own
 # dependencies, so this edge forms no cycle.
 lumen-static-text = { path = "../lumen-static-text", optional = true }
+# M82/T82.7: glyph outlines for `TextMeasure::outline`, behind `vector-text`
+# below. The version and the two features fontdue 0.9 already builds it
+# with (`no-std-float`, `opentype-layout`, default features off), so the
+# graph gains no package and no feature: 0 new crates (C32).
+ttf-parser = { version = "0.25", optional = true, default-features = false, features = ["no-std-float", "opentype-layout"] }
 
 [features]
 default = []
@@ -80,6 +85,20 @@ truetype = ["dep:fontdue"]
 # `unicode-linebreak` to the text crate (16 -> 28 over `truetype`);
 # T81.3 adds none (28).
 shaping = ["truetype", "dep:lumen-static-text"]
+# Vector text (M82/T82.7, docs/plan-paint-vocabulary.md "Vector text is
+# outlines from the measurer"): `FontStack::outline` and
+# `FontMetrics`'s `TextMeasure::outline`, from ttf-parser's glyph outlines,
+# which is what `VectorText` paints under a rotation. **Default-OFF**:
+# under it a stack keeps each face's bytes after parsing them (fontdue
+# keeps none), which the default should not pay. Its price, measured
+# 2026-10-06 (docs/results-paint-vocabulary.md T82.7): **0** new packages
+# by K2's method (16 -> 16 over `truetype`; ttf-parser was already fontdue's),
+# the stripped showcase +10,240 B against K2's 3 MB, and a default
+# release window links 0 outline symbols, one with it 10
+# (`just release-window-shape`). Not in the ABI stamp's feature list, by
+# a recorded exception (`session::abi_fields`; docs/plan-iced-roadmap.md
+# §2.3): no `FontStack` crosses the seam.
+vector-text = ["truetype", "dep:ttf-parser"]
 # M34/T34.1: after every bounded frame, lay out again under an all-dirty
 # view into scratch state and compare — a live invalidation oracle. It
 # re-runs layout (measure memos, repeater binds) every frame, so it is a
@@ -205,3 +224,10 @@ required-features = ["shaping", "truetype"]
 [[test]]
 name = "bidi_caret"
 required-features = ["shaping", "truetype"]
+
+# M82/T82.7: outlines from the measurer, which exist only under
+# `vector-text`; `just test` runs it with the feature named, so the default
+# selection never builds an empty binary.
+[[test]]
+name = "vector_text"
+required-features = ["vector-text"]

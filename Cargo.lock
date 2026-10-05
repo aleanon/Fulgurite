@@ -1632,6 +1632,7 @@ dependencies = [
  "lumen-static-widgets",
  "serde",
  "serde_json",
+ "ttf-parser",
  "unicode-bidi",
  "wide",
 ]

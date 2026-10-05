@@ -165,3 +165,53 @@ fn a_complex_stack_keeps_one_copy_of_its_face_bytes() {
     assert!(again <= basic + k, "a second Complex stack over the same file kept {} B above Basic: the bytes were not interned", again.saturating_sub(basic));
     drop((stack, canvas, s2, c2));
 }
+
+/// Resident set size from `/proc/self/status`, in bytes; 0 elsewhere.
+#[cfg(feature = "vector-text")]
+fn rss() -> usize {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("VmRSS:")).and_then(|l| l.split_whitespace().nth(1)?.parse::<usize>().ok()))
+        .map_or(0, |kb| kb * 1024)
+}
+
+/// **The face bytes `vector-text` keeps** — M82/T82.7
+/// (`docs/plan-paint-vocabulary.md`, "Under the feature, `FontStack` keeps
+/// each parsed face's bytes"). A stack with a bold face, after a bold run,
+/// holds above its two parsed faces exactly one copy of each face's bytes:
+/// at least the two files' size (the setup: they are kept), at most that +
+/// 64 KiB. Printed with the RSS the same build moves by.
+///
+/// Injection (T82.7's commit): `Bold::new` keeps the bytes in its parse
+/// buffer as well as in `kept`; the upper bound fires.
+#[cfg(feature = "vector-text")]
+#[test]
+fn vector_text_keeps_one_copy_of_each_face() {
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+    let bytes = pinned::bytes();
+    let base = LIVE.load(Relaxed);
+    let parsed = [
+        fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap(),
+        fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap(),
+    ];
+    let faces = LIVE.load(Relaxed) - base;
+    drop(parsed);
+
+    let (base, rss0) = (LIVE.load(Relaxed), rss());
+    let stack = FontStack::from_bytes(bytes, Some(bytes)).expect("parses");
+    frame(&stack, 700.0);
+    let held = LIVE.load(Relaxed) - base;
+    let rss1 = rss();
+    let kept = held as isize - faces as isize;
+    let files = 2 * bytes.len();
+    let k = 64 << 10;
+    println!(
+        "vector-text: a regular + bold stack holds {held} B after a bold run, its two parsed faces {faces} B; \
+         kept {kept} B (bound files {files} B .. + 64 KiB = {}); RSS moved {} B",
+        files + k,
+        rss1 as isize - rss0 as isize
+    );
+    assert!(kept >= files as isize - k as isize, "setup: the stack kept {kept} B, not the faces' {files} B");
+    assert!(kept <= (files + k) as isize, "the stack kept {kept} B above its faces, over one copy of each ({files} B) + 64 KiB");
+    drop(stack);
+}

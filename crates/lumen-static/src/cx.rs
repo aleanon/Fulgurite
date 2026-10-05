@@ -103,6 +103,45 @@ impl GlyphSink for NoSink {
     fn cluster(&mut self, _: Cluster) {}
 }
 
+/// Where [`TextMeasure::outline`] writes a run's glyph outlines —
+/// M82/T82.7 (`docs/plan-paint-vocabulary.md`, "Vector text is outlines
+/// from the measurer").
+///
+/// The outline arrives as [`PathEl`](crate::display::PathEl)s, the
+/// vocabulary [`Painter::path`](crate::display::Painter::path) draws, so a
+/// sink that collects them into a `Vec` holds a path ready to paint. A
+/// sink, not a returned buffer, for the reason [`GlyphSink`] is one: the
+/// measurer allocates nothing for the caller.
+///
+/// **Coordinates are the run's**, as [`TextMeasure::outline`] states them:
+/// logical px, the run's top-left at the origin, y down.
+pub trait PathSink {
+    /// One element of the outline, in order. Each glyph's contours are
+    /// whole subpaths — each starts with a `Move` and ends with a `Close`.
+    fn el(&mut self, e: crate::display::PathEl);
+
+    /// Called before glyph `index`'s elements (its id in the face that
+    /// draws it), for a sink that wants to tell one glyph from the next —
+    /// a test that holds each glyph's outline to its pen. A glyph with no
+    /// outline (a space) is announced and adds no element. The default
+    /// ignores it.
+    ///
+    /// **A sink that wraps another must forward this**, the provided-method
+    /// hazard `AGENT.md` records for `Painter`.
+    fn glyph(&mut self, index: u16) {
+        let _ = index;
+    }
+}
+
+/// The obvious growable sink: the elements, in order, ready for
+/// [`Painter::path`](crate::display::Painter::path).
+#[cfg(feature = "alloc")]
+impl PathSink for Vec<crate::display::PathEl> {
+    fn el(&mut self, e: crate::display::PathEl) {
+        self.push(e);
+    }
+}
+
 /// Counts the lines a shaped run landed on — M80/T80.2
 /// (`docs/plan-text-fit.md`, "Measurement needs no `TextMeasure` change").
 ///
@@ -269,6 +308,35 @@ pub trait TextMeasure {
     /// wraps another today.
     fn generation(&self) -> u32 {
         0
+    }
+
+    /// Write `text`'s glyph outlines at `size` px and `weight` to `sink`,
+    /// laid out as [`measure_weighted`](Self::measure_weighted) lays it out
+    /// on one line, and answer whether it did — M82/T82.7
+    /// (`docs/plan-paint-vocabulary.md`, "Vector text is outlines from the
+    /// measurer").
+    ///
+    /// The outline is in the run's frame: logical px, the run's top-left
+    /// at the origin, y down — the frame a painter places the run's
+    /// glyphs in, so an outline painted at the run's rect lands where the
+    /// glyphs would. Each glyph sits at the pen the measurer advances by,
+    /// so the outline's advances are the measured width's. This is what a
+    /// rotated run is drawn from, since a glyph bitmap cannot take a
+    /// rotation.
+    ///
+    /// **The default answers `false` and writes nothing**: a measurer with
+    /// no outlines — a baked bitmap face, a block stand-in — says so, and
+    /// the caller draws the string as ordinary text instead. A real
+    /// measurer overrides it: `lumen-static-shell`'s `FontMetrics` under
+    /// its `vector-text` feature, and `lumen-static-text`'s `ComplexText`.
+    ///
+    /// **A wrapper must forward this**, like [`generation`](Self::generation):
+    /// the provided `false` is right for a leaf and wrong for a wrapper,
+    /// which would report every wrapped stack as having no outlines. None
+    /// of the measurers in this workspace wraps another.
+    fn outline(&mut self, text: &str, size: f32, weight: f32, sink: &mut dyn PathSink) -> bool {
+        let _ = (text, size, weight, sink);
+        false
     }
 }
 

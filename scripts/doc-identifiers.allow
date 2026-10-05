@@ -63,7 +63,6 @@ TypeId               # std::any
 TestHarness          # masonry_testing, named in results-competitive.md's caveat
 RenderRoot           # masonry's public driver, used by probes/masonry-raw
 EnableAccessTree     # masonry's WindowEvent variant; the caveat turns on it
-VmRSS                # /proc/<pid>/status field; the RSS method quotes it
 BENCH_SIZES          # env var on the sibling harness (M16/T16.0)
 BENCH_CHURN_SIZES    # ditto
 LUMEN_TRACE          # env var named in a plan; nothing reads it yet
@@ -136,7 +135,6 @@ TextSource                     # proposed by M80
 GlyphRuns                      # proposed by M81
 TRACKED                        # proposed by M81
 PAINTBOX                       # proposed by M82
-PathSink                       # proposed by M82
 PopTransform                   # proposed by M82
 PushTransform                  # proposed by M82
 VECTORTEXT                     # proposed by M82

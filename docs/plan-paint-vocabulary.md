@@ -4,8 +4,8 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M82a (T82.0–T82.4) built 2026-10-04 and closes on
 > `just ci-verify` of its T82.4 commit (S5), cited in AGENT.md; M82b
-> (T82.5–T82.9) building: T82.5 landed 2026-10-05
-> (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
+> (T82.5–T82.9) building: T82.5 landed 2026-10-05, T82.6 and T82.7
+> 2026-10-06 (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1162,6 +1162,35 @@ crosses.*
   `just gpu-parity`'s PaintBox leg requires it (1.49% on the PaintBox
   entry). `AtlasStats` carries `path_masks` and `path_texels` for the
   headless gates.
+
+- T82.7: **`PathSink` announces each glyph.** The plan named the trait and
+  not its shape; it takes `el(PathEl)` and a provided `glyph(index)`
+  called before each glyph's elements, which is what lets the pens gate
+  hold each glyph's outline to its own pen and the outline gate check the
+  ids it drew against the cmap's. A wrapping sink forwards it
+  (`FontMetrics`'s scale-dividing `LogicalPath` does).
+- T82.7: **the outline carries the cap shift.** `place_run_into` moves
+  every glyph by the run's cap shift, so an outline placed on the bare
+  baseline would sit up to a pixel off the glyphs the same run paints; it
+  sits where they do, and the outline gate's 1 px comparison is against
+  `place_run`'s boxes, shift included. At scale 2 the shift is rounded at
+  physical px, so the logical outline's y moves 0.5 px from scale 1's.
+- T82.7: **29 implementors, not 28, and no production wrapper.** The
+  re-grep at `8db6ba5` finds 25 test stand-ins and the four real
+  measurers. Several stand-ins delegate `measure` to an inner measurer to
+  count calls (`measurer_generation.rs`, `text_memo.rs`,
+  `text_input_b15.rs`, `measure_scale_widgets.rs`): test fixtures that
+  never ask for an outline, so no forwarding test; T82.8's counting
+  measurer, which does, forwards it.
+- T82.7: **`ComplexText`'s gate runs in `vector_text.rs` under `shaping`
+  too**, a second `just` line (`--features vector-text,shaping`): the
+  plan puts the gate beside `FontMetrics`'s, and the shell's tests reach
+  `lumen-static-text` only through `shaping`. **The memory gate is
+  in `font_heap.rs`**, beside the counting allocator it needs; its bound
+  is one copy of each file + 64 KiB, and its RSS is printed in-process.
+- T82.7: under `shaping` and `vector-text` together a `Complex` stack holds
+  a face's bytes twice (the shaper's interned copy and this feature's);
+  recorded in `docs/results-paint-vocabulary.md` T82.7, not deduplicated.
 
 **What the review found (M82).**
 

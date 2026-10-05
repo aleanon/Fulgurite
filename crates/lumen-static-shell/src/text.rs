@@ -72,6 +72,13 @@ pub struct FontStack {
     /// Read only under `Shaping::Complex`; see `Sources`.
     #[cfg(feature = "shaping")]
     sources: std::sync::Arc<Sources>,
+    /// The regular face's bytes, kept for its outlines — M82/T82.7, under
+    /// `vector-text` ([`FontStack::outline`]). fontdue keeps no bytes once
+    /// it has parsed a face, and ttf-parser reads outlines from them. The
+    /// bold face keeps its own (`Bold`), and a fallback face its own when
+    /// it is first read (`Slot`). Shared by every clone.
+    #[cfg(feature = "vector-text")]
+    kept: std::sync::Arc<[u8]>,
 }
 
 /// How a [`FontStack`] lays a run out — M81/T81.3
@@ -162,20 +169,35 @@ fn intern_face(path: &'static str, index: u32) -> Option<&'static [u8]> {
 /// The bold face: its bytes until something needs it, then the face.
 struct Bold {
     bytes: std::sync::Mutex<Option<Vec<u8>>>,
+    /// Under `vector-text` (M82/T82.7) the bytes are kept here instead, for
+    /// as long as the stack lives: the face's outlines are read from them
+    /// ([`FontStack::outline`]), and `bytes` stays empty.
+    #[cfg(feature = "vector-text")]
+    kept: Option<std::sync::Arc<[u8]>>,
     face: std::sync::OnceLock<Option<Font>>,
 }
 
 impl Bold {
+    #[cfg(not(feature = "vector-text"))]
     fn new(bytes: Option<&[u8]>) -> Self {
         Bold { bytes: std::sync::Mutex::new(bytes.map(<[u8]>::to_vec)), face: std::sync::OnceLock::new() }
     }
 
+    #[cfg(feature = "vector-text")]
+    fn new(bytes: Option<&[u8]>) -> Self {
+        Bold { bytes: std::sync::Mutex::new(None), kept: bytes.map(std::sync::Arc::from), face: std::sync::OnceLock::new() }
+    }
+
     /// The face, parsed on first call; `None` when there were no bytes or
     /// they did not parse, which is remembered. The bytes are dropped once
-    /// parsed.
+    /// parsed — kept, under `vector-text`.
     fn get(&self) -> Option<&Font> {
         self.face
             .get_or_init(|| {
+                #[cfg(feature = "vector-text")]
+                if let Some(b) = &self.kept {
+                    return Font::from_bytes(&**b, fontdue::FontSettings::default()).ok();
+                }
                 let bytes = self.bytes.lock().unwrap_or_else(|e| e.into_inner()).take()?;
                 Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
             })
@@ -189,9 +211,23 @@ struct Slot {
     /// The face's index in a collection (`.ttc`); 0 for a single face.
     index: u32,
     face: std::sync::OnceLock<Option<std::sync::Arc<Font>>>,
+    /// The file's bytes, kept once the face is read — M82/T82.7, under
+    /// `vector-text`, for [`FontStack::outline`].
+    #[cfg(feature = "vector-text")]
+    kept: std::sync::OnceLock<std::sync::Arc<[u8]>>,
 }
 
 impl Slot {
+    fn new(path: &'static str, index: u32) -> Self {
+        Slot {
+            path,
+            index,
+            face: std::sync::OnceLock::new(),
+            #[cfg(feature = "vector-text")]
+            kept: std::sync::OnceLock::new(),
+        }
+    }
+
     /// The face, read and parsed on first use. `None` when the file is
     /// absent or not a font, which is remembered, so a missing path costs
     /// one failed `read`.
@@ -200,6 +236,16 @@ impl Slot {
             .get_or_init(|| {
                 let bytes = std::fs::read(self.path).ok()?;
                 let settings = fontdue::FontSettings { collection_index: self.index, ..Default::default() };
+                #[cfg(feature = "vector-text")]
+                {
+                    let kept: std::sync::Arc<[u8]> = bytes.into();
+                    let font = Font::from_bytes(&*kept, settings).ok().map(std::sync::Arc::new);
+                    if font.is_some() {
+                        let _ = self.kept.set(kept);
+                    }
+                    font
+                }
+                #[cfg(not(feature = "vector-text"))]
                 Font::from_bytes(bytes, settings).ok().map(std::sync::Arc::new)
             })
             .as_deref()
@@ -337,6 +383,8 @@ impl FontStack {
             shaping: Shaping::Basic,
             #[cfg(feature = "shaping")]
             sources: std::sync::Arc::new(Sources::new(r, b, 0)),
+            #[cfg(feature = "vector-text")]
+            kept: std::sync::Arc::from(regular),
         })
     }
 
@@ -346,7 +394,7 @@ impl FontStack {
     pub fn with_fallbacks(mut self, faces: &[(&'static str, u32)]) -> Self {
         self.fallback = faces
             .iter()
-            .map(|&(path, index)| Slot { path, index, face: std::sync::OnceLock::new() })
+            .map(|&(path, index)| Slot::new(path, index))
             .collect();
         #[cfg(feature = "shaping")]
         {
@@ -1081,6 +1129,157 @@ impl FontStack {
     }
 }
 
+/// Glyph outlines — M82/T82.7 (`docs/plan-paint-vocabulary.md`, "Vector
+/// text is outlines from the measurer"), under `vector-text`.
+#[cfg(feature = "vector-text")]
+impl FontStack {
+    /// The bytes and collection index of the face a [`GlyphKey::face`]
+    /// names, if this stack has read it: the kept copies `vector-text`
+    /// holds.
+    fn face_bytes(&self, face: u8) -> Option<(&[u8], u32)> {
+        match face {
+            REGULAR => Some((&self.kept, 0)),
+            BOLD => self.bold.kept.as_deref().map(|b| (b, 0)),
+            k => {
+                let slot = self.fallback.get(k as usize - 2)?;
+                slot.kept.get().map(|b| (&**b, slot.index))
+            }
+        }
+    }
+
+    /// `text`'s glyph outlines at `px` and `weight`, written to `sink` in
+    /// the run's frame — the top-left of its line box at the origin, y
+    /// down, in the units `px` is in — and whether any face could answer.
+    /// What `FontMetrics`'s [`TextMeasure::outline`] answers, at the
+    /// display's scale.
+    ///
+    /// **Laid out as `measure_run` lays it out**, on one line (a hard
+    /// break still starts another): the faces `prepare` chooses, with its
+    /// substitutions, and glyph ids from fontdue's layout. **Each glyph at
+    /// the pen `extent_by` advances by** — from each line's start, by
+    /// `ceil(advance)`, nothing for a control character — so the advances
+    /// are exactly the measured width's. Not from a placement's `x`: that
+    /// is fontdue's floored ink origin, `floor(pen + xmin)`, and an outline
+    /// placed there would carry its bearing twice and lose the fraction
+    /// (`tests/vector_text.rs`, "Pens"). Vertically, each glyph sits on its
+    /// line's baseline plus the run's cap shift, where `place_run_into`
+    /// puts its bitmap, so a run's outline and its glyphs land together.
+    ///
+    /// Points are ttf-parser's, scaled by `px / units_per_em` (fontdue's
+    /// own scale) with y flipped. `sink.glyph` announces each glyph,
+    /// control characters excepted.
+    ///
+    /// **Allocates** a fresh [`ShapeScratch`]; `FontMetrics` keeps one.
+    pub fn outline(&self, text: &str, px: f32, weight: f32, sink: &mut dyn lumen_static::cx::PathSink) -> bool {
+        self.outline_into(&mut ShapeScratch::new(), text, px, weight, sink)
+    }
+
+    /// [`FontStack::outline`] into a scratch the caller keeps.
+    pub(crate) fn outline_into(
+        &self,
+        scratch: &mut ShapeScratch,
+        text: &str,
+        px: f32,
+        weight: f32,
+        sink: &mut dyn lumen_static::cx::PathSink,
+    ) -> bool {
+        if text.is_empty() {
+            return true;
+        }
+        let (faces, prepared) = self.prepare(text, weight);
+        let laid: &str = &prepared;
+        let shift = scratch.caps.shift(faces.get(0).1, faces.first(), px);
+        Self::run(&faces, laid, px, f32::INFINITY, &mut scratch.layout);
+        let layout = &scratch.layout;
+        let glyphs = layout.glyphs();
+        // One parsed ttf-parser face per face id the run uses: parsing reads
+        // the table directory, not the outlines, so this is cheap, and a
+        // caller memoises the result anyway (`VectorText`).
+        let mut parsed: Vec<(u8, ttf_parser::Face<'_>)> = Vec::new();
+        let mut any = false;
+        let lines = layout.lines().map_or(&[][..], |l| l.as_slice());
+        let mut emit = |range: core::ops::Range<usize>, baseline: f32| {
+            let mut pen = 0.0f32;
+            for g in glyphs.get(range).unwrap_or(&[]) {
+                if g.char_data.is_control() {
+                    continue;
+                }
+                let (font, id) = faces.get(g.font_index);
+                let advance = font.metrics_indexed(g.key.glyph_index, px).advance_width.ceil();
+                sink.glyph(g.key.glyph_index);
+                let face = match parsed.iter().position(|(f, _)| *f == id) {
+                    Some(k) => Some(k),
+                    None => self
+                        .face_bytes(id)
+                        .and_then(|(b, index)| ttf_parser::Face::parse(b, index).ok())
+                        .map(|f| {
+                            parsed.push((id, f));
+                            parsed.len() - 1
+                        }),
+                };
+                if let Some(k) = face {
+                    let f = &parsed[k].1;
+                    let upem = f.units_per_em() as f32;
+                    if upem > 0.0 {
+                        let mut pen_out = OutlinePen { sink: &mut *sink, x: pen, y: baseline + shift, s: px / upem };
+                        f.outline_glyph(ttf_parser::GlyphId(g.key.glyph_index), &mut pen_out);
+                        any = true;
+                    }
+                }
+                pen += advance;
+            }
+        };
+        if lines.is_empty() {
+            emit(0..glyphs.len(), 0.0);
+        }
+        for l in lines {
+            emit(l.glyph_start..(l.glyph_end + 1).max(l.glyph_start), l.baseline_y);
+        }
+        any
+    }
+}
+
+/// A ttf-parser outline builder writing [`PathEl`](lumen_static::display::PathEl)s
+/// to a sink: font units scaled by `s`, y flipped, moved to `(x, y)` — the
+/// glyph's pen and baseline ([`FontStack::outline`]).
+#[cfg(feature = "vector-text")]
+struct OutlinePen<'s> {
+    sink: &'s mut dyn lumen_static::cx::PathSink,
+    x: f32,
+    y: f32,
+    s: f32,
+}
+
+#[cfg(feature = "vector-text")]
+impl OutlinePen<'_> {
+    fn p(&self, x: f32, y: f32) -> lumen_static::Point {
+        lumen_static::Point { x: self.x + x * self.s, y: self.y - y * self.s }
+    }
+}
+
+#[cfg(feature = "vector-text")]
+impl ttf_parser::OutlineBuilder for OutlinePen<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        let p = self.p(x, y);
+        self.sink.el(lumen_static::display::PathEl::Move(p));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        let p = self.p(x, y);
+        self.sink.el(lumen_static::display::PathEl::Line(p));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        let (a, p) = (self.p(x1, y1), self.p(x, y));
+        self.sink.el(lumen_static::display::PathEl::Quad(a, p));
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        let (a, b, p) = (self.p(x1, y1), self.p(x2, y2), self.p(x, y));
+        self.sink.el(lumen_static::display::PathEl::Cubic(a, b, p));
+    }
+    fn close(&mut self) {
+        self.sink.el(lumen_static::display::PathEl::Close);
+    }
+}
+
 /// Whether a run has anything for a shaper to do — K81a's response
 /// (M81/T81.3). One pass over the characters, each tested against a short
 /// list of ranges that **need no shaping**: no right-to-left bidi class,
@@ -1707,6 +1906,27 @@ pub struct FontMetrics {
     scratch: ShapeScratch,
 }
 
+/// A [`PathSink`](lumen_static::cx::PathSink) that divides every point by
+/// the display scale on its way to `inner` — what [`FontMetrics`] hands
+/// [`FontStack::outline`], as `LogicalClusters` does for clusters. A
+/// wrapper, so it forwards `glyph` too.
+#[cfg(feature = "vector-text")]
+struct LogicalPath<'s> {
+    inner: &'s mut dyn lumen_static::cx::PathSink,
+    inv: f32,
+}
+
+#[cfg(feature = "vector-text")]
+impl lumen_static::cx::PathSink for LogicalPath<'_> {
+    fn el(&mut self, e: lumen_static::display::PathEl) {
+        let k = self.inv;
+        self.inner.el(e.map(&[k, 0.0, 0.0, k, 0.0, 0.0]));
+    }
+    fn glyph(&mut self, index: u16) {
+        self.inner.glyph(index);
+    }
+}
+
 /// The next [`FontMetrics`] generation. Starts at 1: 0 is every
 /// stand-in's.
 static NEXT_GENERATION: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(1);
@@ -1783,6 +2003,18 @@ impl TextMeasure for FontMetrics {
 
     fn generation(&self) -> u32 {
         self.generation
+    }
+
+    /// The stack's outlines ([`FontStack::outline`]) at `size × scale` and
+    /// divided back down, as `measure_weighted` measures — so the
+    /// outline's advances are the logical width `Label` measures at this
+    /// scale. Under `vector-text` only (M82/T82.7); without it the
+    /// provided `false`.
+    #[cfg(feature = "vector-text")]
+    fn outline(&mut self, text: &str, size: f32, weight: f32, sink: &mut dyn lumen_static::cx::PathSink) -> bool {
+        let k = self.scale;
+        let mut logical = LogicalPath { inner: sink, inv: 1.0 / k };
+        self.stack.outline_into(&mut self.scratch, text, size * k, weight, &mut logical)
     }
 
     fn line_height(&mut self, size: f32) -> f32 {

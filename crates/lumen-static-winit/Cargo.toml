@@ -54,6 +54,17 @@ shadow-oracle = ["lumen-static-shell/shadow-oracle"]
 # **+8** (96 -> 104) since M81/T81.2 added `unicode-linebreak`; unchanged
 # by T81.3. A release window links 310 shaper symbols with it, 0 without.
 shaping = ["lumen-static-shell/shaping"]
+# Vector text (M82/T82.7, docs/plan-paint-vocabulary.md): forwards the
+# shell's default-off `vector-text` -- `FontMetrics` answers
+# `TextMeasure::outline` from ttf-parser, so `VectorText` draws a rotated
+# run as a path instead of its axis-aligned fallback. Default-OFF: a stack
+# keeps its faces' bytes under it. By K2's method (above, at `clipboard`)
+# it costs **0 crates** (96 -> 96, 2026-10-06: ttf-parser is already
+# fontdue's, with the same features); a release window links 0 outline
+# symbols without it and 10 with it (`just release-window-shape`);
+# the stripped showcase's delta is in docs/results-paint-vocabulary.md
+# T82.7.
+vector-text = ["lumen-static-shell/vector-text"]
 # Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
 # crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e
 # normal --prefix none`, `(*)` markers stripped, deduplicated --

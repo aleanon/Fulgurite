@@ -217,7 +217,7 @@ pub use invalidate::{Boundaries, Everything, Invalidation};
 #[cfg(feature = "alloc")]
 pub use hatch::{Dyn, List, NodeFor};
 pub use hit::{Hit, Inner};
-pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, LineCount, NoSink, TextMeasure};
+pub use cx::{BlockMetrics, Cluster, GlyphSink, LayoutCx, LineCount, NoSink, PathSink, TextMeasure};
 // T13.8 removed the `&DisplayList` from `Retention`, so retention is
 // available with no allocator: `Streaming<N>` keeps `(hash, ink)` in a
 // fixed array. Only `Incremental`, whose buffer grows, needs `alloc`.

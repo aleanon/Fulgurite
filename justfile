@@ -168,6 +168,15 @@ fonts:
     # following its program's mode.
     cargo test -q -p lumen-static-shell --features truetype,shaping,live-agent --test program --test agent_audit_face --test scale_memo
     cargo test -q -p showcase --features shaping shaping_shot
+    # M82/T82.7 (docs/plan-iced-roadmap.md §3.1): the shell's default-off
+    # `vector-text` -- outlines from the measurer (`vector_text`, with
+    # `ComplexText`'s arm under `shaping` too) and the face bytes it keeps
+    # (`font_heap`), linted and documented with the feature on, since the
+    # workspace lines build the shell without it.
+    cargo test -q -p lumen-static-shell --features vector-text --test vector_text --test font_heap
+    cargo test -q -p lumen-static-shell --features vector-text,shaping --test vector_text
+    cargo clippy -q -p lumen-static-shell --features vector-text --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features vector-text
 
 # Security advisories, offline, against deny.toml's accepted list: a NEW
 # advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.

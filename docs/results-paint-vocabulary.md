@@ -334,3 +334,43 @@ the atlas). The window's GPU backend logs K82d's line once. Gates:
 | K82d, the PaintBox entry's first GPU frame | **15,580** texels in 2 tiles, **1.49%** of 1024² | ≤ 25% | holds; read again with VectorText at T82.8 |
 | resume (`just resume-drive`) | masks are atlas contents, no new GPU resource: gpu-resume leg 0 / 458,620 px differ after a suspend/resume round trip (2 backends made) | 0.1% | — (the drive's own) |
 | firmware, `just firmware-delta a10ecec firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** `.text`, **+0** `.rodata` on all four (`firmware_interactive` 63,472 B) | 0 | — |
+
+## T82.7 — `TextMeasure::outline` and the `vector-text` feature (2026-10-06)
+
+`TextMeasure::outline(text, size, weight, sink) -> bool` is provided,
+answering `false`; `PathSink` takes `PathEl`s (and announces each glyph
+through a provided `glyph`). `FontMetrics` overrides it under the shell's
+default-off `vector-text` (forwarded by `lumen-static-winit/vector-text`):
+`FontStack::outline` lays the run out as `measure_run` does, on one line,
+and writes each glyph's ttf-parser outline at the pen `extent_by` advances
+by, on its line's baseline plus the cap shift, at `size × scale` divided
+back down. Under the feature a stack keeps each face's bytes (regular,
+bold, and a fallback once read); ttf-parser is the one fontdue already
+builds, with its features. `ComplexText` overrides it from its shaper's
+pens, through rustybuzz's face. Gates: `lumen-static-shell/tests/vector_text.rs`
+(`--features vector-text`, and `vector-text,shaping` for `ComplexText`)
+unless named.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| outline, `outline("AVWay", 32)` on the pinned face | **87** elements over 5 glyphs; box `[0.25, 7.67, 113.98, 37.66]` against fontdue's glyph boxes `[0, 7, 114, 38]` (run measured 115 × 38); ids `place_run` = cmap = announced: A 36, V 57, W 58, a 68, y 92 | > 0; 1 px per edge; equal | pens ignored (every glyph at x = 0): right edge **30.59** against 114, red by name ("edge 2") |
+| pens, `AVWay` and `A V` | every glyph's outline xmin = its pen + ttf-parser's bbox xmin, **0** difference (A 0 + 0.25, V 22 + 0.25, W 44 + 1.0625, a 76 + 1.92, y 96 + 0.95); the space announced with **0** elements; V at 22.25 in `AV`, 33.25 in `A V` | 1/64 px; 0; further right | pens from `Placed.x`: `'W' in "AVWay": outline xmin 46.0625 is not pen 44 + bbox xmin 1.0625` (A and V, bearing 0.25, floor to their pens and pass) |
+| pens, `ComplexText` | 87 elements; each glyph at its shaper pen + bbox xmin, **0** difference (pens 0, 19.84, 41.73, 71.33, 90.94: rustybuzz kerns `AV`) | 1/64 px | its override deleted: answers **false**, 0 elements, red by name |
+| scale | scale 2 against scale 1, logical px: the same 87 elements, x edges equal, y edges 0.5 apart (the cap shift is rounded at physical px) | 1 px per edge | — |
+| a stand-in | `BlockMetrics.outline` answers `false`, 0 elements | false | — |
+| memory, `tests/font_heap.rs` `vector_text_keeps_one_copy_of_each_face` (a regular + bold stack on the pinned face, after a bold run) | kept **1,519,960 B** above the two parsed faces (38,022,960 B), the two files 1,519,440 B; RSS moved **2,605,056 B** over the same steps (in-process, allocator reuse included) | files .. files + 64 KiB | `Bold::new` keeps the bytes in its parse buffer as well: **2,279,680 B**, red by name |
+| symbols, `scripts/release_window_shape.sh` (`examples/minimal`, release) | default **0** outline symbols, `.text` 2,811,158 B; with `lumen-static-winit/vector-text` **10**, `.text` 2,819,478 B (+8,320) | 0; > 0 | `vector-text` a default feature of the window crate: the default window links **10** (`FontStack::outline_into`, `OutlinePen`'s builder methods, …), exit 1 |
+| crates (K2's method) | `lumen-static-winit` **96 → 96**; `lumen-static-shell` 16 → 16 over `truetype` | 0 new | — |
+| stripped release showcase (K2) | 9,689,320 → 9,699,560 B, **+10,240 B** | 3 MB | — |
+| clippy, `cargo clippy -p lumen-static-shell --features vector-text --all-targets -- -D warnings` (the `fonts` recipe) | green | — | an unused binding in `outline_into`: the feature line fails (`unused variable: injected`), the workspace line stays green |
+| firmware, `just firmware-delta 8db6ba5` | **+8 B** `.text`, **+4** `.rodata` on all four: the provided `TextMeasure::outline` in `BakedFace`'s vtable (8 B by `nm`); `firmware_interactive` 63,480 B, headroom **18,440 B** | ≤ 1,000 B on `firmware_interactive` (K4); K82b floor 1,024 | — |
+
+**K2 for `vector-text` holds**: 0 new crates and +10,240 B stripped,
+against 3 MB. It ships default-off as designed — a stack keeps its faces'
+bytes under it (the memory row: one copy of each file), which no
+application that never rotates text should pay. **The outline slot is in
+neither D3's nor D6's list**: 8 B on every firmware binary, reported to the
+owner (`docs/results-embedded.md` M82/T82.7). Under `shaping` and
+`vector-text` together a `Complex` stack holds a face's bytes twice — the
+shaper's interned copy and this feature's — which is recorded, not
+deduplicated.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # `just release-window-shape`: a shipped release window links no panic-
-# recovery code, and (M81/T81.1, symbols since T81.3) no shaper -- M52 (docs/plan-embedded-footprint.md §2.2, F-NEW-3).
+# recovery code, (M81/T81.1, symbols since T81.3) no shaper, and (M82/T82.7)
+# no outline code -- M52 (docs/plan-embedded-footprint.md §2.2, F-NEW-3).
 #
 # M36's rule 3 (docs/plan-panic-recovery.md) says recovery is there in debug
 # builds and in release builds with `lumen-static-winit/reload`, and that a
@@ -107,6 +108,26 @@ echo "release-window-shape: window with lumen-static-winit/shaping: $n_shape_on 
 g_plain=$(tree_count --features truetype)
 g_shape=$(tree_count --features shaping)
 echo "release-window-shape: lumen-static-shell graph: $g_plain packages with \`truetype\` (what a window builds), $g_shape with \`shaping\` (difference $((g_shape - g_plain)), bound > 0)"
+
+# ---- M82/T82.7: no outline code in a default window ---------------------
+#
+# docs/plan-paint-vocabulary.md puts `TextMeasure::outline`'s real answer
+# behind the shell's default-off `vector-text` (lumen-static-winit/
+# vector-text forwards it). Without it `FontMetrics` keeps the provided
+# `false`, whose symbol is the core trait's, so a default release window
+# links no symbol of the shell's outline code: `FontStack::outline`, its
+# ttf-parser builder `OutlinePen`, the scale-dividing `LogicalPath`, and
+# `FontMetrics`'s override. The positive control is a window built with the
+# feature, where the override sits in `FontMetrics`'s vtable and so links.
+# Not ttf-parser's own symbols: fontdue parses every outline through them
+# at load, in every window.
+OUTLINE_RE='lumen_static_shell::text::(OutlinePen|LogicalPath|FontStack::outline)|FontMetrics as lumen_static::cx::TextMeasure>::outline'
+n_outline=$(nm -C "$off" | grep -cE "$OUTLINE_RE" || true)
+outline_bin=$(build --features lumen-static-winit/vector-text) || exit 1
+n_outline_on=$(nm -C "$outline_bin" | grep -cE "$OUTLINE_RE" || true)
+t_outline_on=$(size -A "$outline_bin" | awk '$1 == ".text" {print $2}')
+echo "release-window-shape: default window: $n_outline outline symbols (bound 0), .text $t_off B"
+echo "release-window-shape: window with lumen-static-winit/vector-text: $n_outline_on outline symbols (bound > 0), .text $t_outline_on B"
 echo "release-window-shape: without reload: $n_off recover symbols ($b_off B) (bound 0), .text $t_off B; $g_off drop-glue symbols naming a recover type (not code; recorded)"
 
 on=$(build --features lumen-static-winit/reload) || exit 1
@@ -128,6 +149,17 @@ fi
 if [ "$g_shape" -le "$g_plain" ]; then
     echo "release-window-shape: \`shaping\` adds no package to the shell's truetype graph ($g_plain -> $g_shape):" >&2
     echo "the feature does not pull lumen-static-text, so the 0 above proves nothing" >&2
+    fail=1
+fi
+if [ "$n_outline" -ne 0 ]; then
+    echo "release-window-shape: a default release window links $n_outline outline symbols:" >&2
+    nm -C "$off" | grep -E "$OUTLINE_RE" | head -5 | sed 's/^/    /' >&2
+    echo "M82/T82.7: outlines are reached only through \`vector-text\`." >&2
+    fail=1
+fi
+if [ "$n_outline_on" -eq 0 ]; then
+    echo "release-window-shape: a \`vector-text\` window links no outline symbol -- the pattern" >&2
+    echo "matches nothing there, so the default's 0 proves nothing" >&2
     fail=1
 fi
 if [ "$n_on" -eq 0 ]; then
