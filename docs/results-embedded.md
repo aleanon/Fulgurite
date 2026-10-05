@@ -1009,7 +1009,15 @@ the firmware's `BakedFace` takes the default): **+8 B** `.text` on all four,
 It is in neither D3's nor D6's list, so it is reported to the owner here,
 under K4's 1,000 B cap at 8 B. Printed by `just firmware-delta 8db6ba5`
 (K4's default, `firmware_interactive=1000`), with `firmware_interactive` at
-**18,440 B** of headroom.
+**18,440 B** of headroom. M82/T82.8 (`VectorText`, behind the widgets'
+`alloc`) changed no linked code: Δ 0 on all four (`just firmware-delta
+996c878 firmware=0 firmware_interactive=0 firmware_bind=0
+firmware_cascade=0`). Re-measured by M82/T82.9 (M82b's close, docs only):
+Δ 0 on all four (`just firmware-delta 291e5d5 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`). At M82b's
+close the `outline` slot stays what T82.7 recorded: in neither D3's nor
+D6's list, within K4, reported to the owner and not accepted growth
+(`docs/results-paint-vocabulary.md`, "M82b's kill rules, at its close").
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
 | binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ |

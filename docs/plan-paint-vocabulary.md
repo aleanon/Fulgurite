@@ -4,8 +4,9 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M82a (T82.0–T82.4) built 2026-10-04 and closes on
 > `just ci-verify` of its T82.4 commit (S5), cited in AGENT.md; M82b
-> (T82.5–T82.9) building: T82.5 landed 2026-10-05, T82.6–T82.8
-> 2026-10-06 (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
+> (T82.5–T82.9) built 2026-10-05–06 and closes on `just ci-verify` of
+> its T82.9 commit (S5), cited in AGENT.md
+> (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1214,6 +1215,19 @@ crosses.*
   loops over PaintBox and VectorText, so K82d reads both entries' first
   frames. K82e's arm needs `benches --features vector-text`, so K3's arms
   build without the feature as before.
+- T82.9 (M82b's close): **every M82b kill rule held, one by ruling.**
+  K82c read literally fired at T82.5, on the fast side; the coordinator
+  ruled it not a firing (2026-10-05): a faster median is not a cost, and
+  every response K82c names answers one, so it stays two-sided as a
+  measurement and is read one-sided as a stop (T82.5's entry above).
+  **T82.6 deviated from the plan's parity bound**: ≤ 1 is held per paint
+  over the page, and the whole scene is held to ≤ 2, one rounding per
+  blend, because a translucent fill and the stroke over it are two
+  blends (T82.6's entry above). **The owner is told the `outline` slot**:
+  T82.7's provided `TextMeasure::outline` in `BakedFace`'s vtable is
+  +8 B `.text` on all four firmware binaries, in neither D3's nor D6's
+  list, within K4, reported and not accepted growth. The numbers are
+  `docs/results-paint-vocabulary.md`, "M82b's kill rules, at its close".
 
 **What the review found (M82).**
 

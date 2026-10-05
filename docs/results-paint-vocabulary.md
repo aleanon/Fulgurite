@@ -32,6 +32,42 @@ section cites them and states none of its own.
   `Host::show` dropping the fill table on a retry was caught before it
   shipped (`docs/plan-paint-vocabulary.md`, "What building found").
 
+## M82b's headline — paths and vector text, closed at T82.9 (2026-10-06)
+
+**A widget can draw an arbitrary path, filled or stroked, on either
+backend, and text can be turned to any angle — for no `Cmd` growth, no
+per-node byte, and a firmware cost of one method body and one vtable
+slot.** As M82a's headline does, this section cites the task sections
+below and the kill-rule table at the end, and states no figure of its own.
+
+- **One command, its points in the list.** `Cmd::Path` fits inside the
+  60 B `Cmd` with its elements in `DisplayList::paths`, hashed by content
+  and never by offset, so a path that changes its length damages its own
+  ink and nothing after it (T82.5's phantom-damage row). The transform
+  travels with each path; no stack was built (D3's allowance unused).
+- **The GPU draws the software canvas's coverage.** Each paint is an R8
+  mask from the same `rasterize_path`, cached in the glyph atlas by
+  content and fractional offset, in fixed tiles: one blend's rounding per
+  paint against the software render, and a whole-pixel scroll is a cache
+  hit (T82.6). The masks take a small share of the atlas (K82d, below).
+- **Vector text is outlines from the measurer, at the measured pens.**
+  `TextMeasure::outline` is provided and answers `false` by default;
+  `FontMetrics` and `ComplexText` answer under the default-off
+  `vector-text`, which adds no crate (T82.7). `VectorText` turns a run in
+  a box sized to the turned ink, memoised on the measurer's generation,
+  and paints the level string where there are no outlines (T82.8).
+- **What it cost.** `Painter::path`'s body in the firmware's `Checksum`
+  (accepted by D3) and the provided `outline`'s slot in `BakedFace`'s
+  vtable (in neither D3's nor D6's list: reported, within K4); no `Style`
+  or `NodeState` byte; and no frame cost with no path in the tree (K82c,
+  ruled at T82.5). The software canvas did not need the GPU's mask cache
+  (K82e).
+- **What the new gates found on the way.** The D4 contrast walk, taught
+  to read path ink, failed T82.5's own star in the dark palette (T82.8);
+  a banded frame differed from a whole one on T82.5's first build; and
+  `Checksum::path`'s first version linked an order of magnitude more than
+  it does (`docs/plan-paint-vocabulary.md`, "What building found").
+
 ## Thresholds, written before anything is built (T82.0, 2026-10-04)
 
 M82's own kill rules and the bounds its tasks state, copied from the
@@ -418,3 +454,42 @@ elements (setup > 0, one `Path` a frame).
 **K82e holds**: 109.4 µs a frame against 250, so the software canvas does
 not get the GPU's `MaskKey` cache. The outline itself is about 11 µs of a
 frame (the `cold` arm's difference), which the memo saves.
+
+## M82b's kill rules, at its close (T82.9, 2026-10-06)
+
+Every rule M82b could read, with its number, fired or not (S5). The
+milestone's firmware total is T82.4's head (`a77cc52`, M82a's close)
+against T82.8's head (`291e5d5`): the sum of the four task deltas, each
+printed by `just firmware-delta <parent>` against its own parent. T82.9
+changes no linked code: `just firmware-delta 291e5d5 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0` prints **+0**
+`.text` and **+0** `.rodata` on all four (`firmware_interactive` 63,480 B).
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K82a — the gradient fits | `GradientPayload` ≤ 56 B, `Cmd` 60 | M82b does not touch `Gradient`; `Cmd` **60** with `Path`'s 36 B payload inside it (T82.5) | holds (M82a's rule; re-read) |
+| K82b — firmware floor | `firmware_interactive` ≥ 1,024 B under 81,920 after every task; no binary over | least headroom **18,440 B** (T82.7, unchanged by T82.8); largest binary 63,480 B | holds |
+| K82b / K4 — per task | `firmware_interactive` Δ ≤ 1,000 B | T82.5 **+68**, T82.6 **+0**, T82.7 **+8**, T82.8 **+0** | holds |
+| — M82b's total | recorded | `firmware` **+72**, the other three **+76** `.text`; `.rodata` **+8** on all four (two vtable slots) | recorded |
+| — M82's total (M82a + M82b) | recorded | `firmware` **+380**, `firmware_interactive` **+396**, `firmware_bind` / `firmware_cascade` **+328** | recorded |
+| K82c (K3) — no path, no frame cost | each row inside the base's eight-run spread | read at T82.5: departures in four of five runs, three of them *faster* than the base's minimum, the slower two on arms T82.5 does not run; the quiet run's one departure faster (T82.5's K82c table) | **ruled not a firing** by the coordinator (2026-10-05): a faster median is not a cost, and every response K82c names answers a cost. K82c stays two-sided as a measurement and is read one-sided as a stop; neither step taken |
+| K82d — masks crowd out glyphs | mask texels ≤ 25% of the glyph atlas's start size, first GPU frame | PaintBox **1.49%** (T82.6), VectorText **0.54%** (T82.8) | holds; paths share the glyph atlas |
+| K82e — software vector text | ≤ 250 µs a frame, 24 glyphs at 32 px, uncached | **109.4** µs median (T82.8) | holds; the software canvas gets no mask cache |
+| K2 (`vector-text`) | 0 new crates; stripped showcase against 3 MB | **96 → 96** crates; **+10,240 B** (T82.7) | holds; ships default-off as designed |
+| K1 — the struct budget | `Style` ≤ 84, `NodeState` ≤ 88; `Cmd` 60, `Event` 16 | `Style` **84**, `NodeState` **84** (unchanged since T82.3); `Cmd` 60, `Event` 16; no `fixtures/embedded` struct moved, so the embedded `Ui` stays 1,216 B | holds |
+
+**The `outline` slot** (T82.7: the provided `TextMeasure::outline` in
+`BakedFace`'s vtable, **+8 B** `.text` and +4 `.rodata` on all four
+firmware binaries) is in neither D3's list nor D6's: D6 names it among
+the slots that are measured under K4 and reported, not accepted. It is
+reported to the owner here, within K4's 1,000 B cap, and is not recorded
+as accepted growth (`docs/results-embedded.md` M82/T82.7).
+`Checksum::path` (T82.5, 66 B of its +64/+68) is D3's accepted path
+growth.
+
+**T82.6's parity bound** is one blend's rounding *per paint*, not per
+frame: each paint alone over the page holds to 1 on both adapters, and
+the whole scene to 2, because a translucent fill and the stroke over it
+are two blends (T82.6's parity rows). The plan's ≤ 1 for the scene was
+the wrong quantity for a scene with overlapping translucent paints;
+both injections are red on the per-paint half.
