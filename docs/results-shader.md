@@ -95,3 +95,31 @@ behaviour changes.
 | `just resume-drive` | software-resume 0 / 458,620 px differ, backends 2; software-still 0, backends 1; gpu-resume 0 (`xwd`), backends 2 | 0.1% | its own M47/T47.7 injections stand; it gates presence and image retention, not constructor arithmetic |
 | `just agent-drive` | green, both strategies and the oracle leg (92 frames compared, none diverged) | — | its own |
 | firmware, `just firmware-delta 376301b firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text` and `.rodata` on all four | 0 (K83b, K4) | — (nothing the firmware links moved) |
+
+## T83.2 — `Program::backend_with`, at `44d5824` + T83.2 (2026-10-06)
+
+`Program::backend_with` installs a `BackendFactory` (a boxed `FnMut(&BackendTarget)
+-> Option<Box<dyn Backend>>`, behind the shell's `truetype`); `run_program`
+moves it into `Config::backend_with` once, and `pick_backend` asks it on
+every `resumed` in **both** `cfg` branches, through `choose_backend(prefer,
+custom, gpu, software)`. `examples/glasswall --features custom-backend` is
+the factory the live leg drives.
+
+**Gates.**
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| `cpu_adapter.rs`, the custom column (no window) | `(Auto, custom Some)` → `Custom`, calls (1, 0); `(Gpu, custom None)` → `Gpu { accept_cpu: true }`, (1, 1); `(Software, custom Some)` → `Software`, (0, 0); `(Auto, custom None, gpu None)` → `Software`, (1, 1); `(Auto, custom Some, gpu Absent)` → `Custom`, (1, 0) | each row as stated | `gpu` asked before `custom`: row 1 prints `Gpu { accept_cpu: false }; custom called 0, gpu called 1`, red ("made the wrong backend"); `custom` called under `Software`: row 3 prints `custom called 1`, red ("calls (custom, gpu)") |
+| `just resume-drive`'s `custom-resume` leg (glasswall `agent,custom-backend`, no `gpu`, `LUMEN_BACKEND=auto`, `LUMEN_TEST_RESUME=4000`) | factory backends before the resume **1**; wallpaper pixel (112, 105) **(46, 115, 214)** against page (8, 10, 18); factory backends **2**, backend #2 `counting (software) #2`; 0 / 458,620 px differ | exactly 2; the pixel not the page colour; 0.1% | `Config::backend_with` `take()`n on first use: "factory backends 1 (bound: exactly 2); backend #2 is 'software (softbuffer)'"; the counter's `set_images` drops the source: pixel (8, 10, 18), "the first capture shows the page colour"; the counter's `frame_rgba` answers `None`: "ui.screenshot failed: this host does not render"; `pick_backend`'s `not(gpu)` branch builds `Software::new` directly: "factory backends before the resume 0" — each exit 1 |
+| — the other legs (`just resume-drive`, full) | software-resume, software-still, gpu-resume: 0 px differ each | 0.1% | their own |
+| firmware, `just firmware-delta 44d5824 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** on all four | 0 (K83b, K4) | — |
+
+## M83a closes — K83d at T83.2 (2026-10-06)
+
+| quantity | T83.0 | at T83.2 | bound | verdict |
+|---|---:|---:|---|---|
+| `lumen-static-winit`, default normal dependencies (K2's exact command) | 96 | **96** | +0 | holds |
+| the stripped release showcase (`cargo build --release -p showcase`, GNU strip 2.42) | 9,719,656 B | **9,727,848 B** (+8,192 B; 13,055,688 B unstripped) | under +3 MB | holds |
+
+`just ci-verify` on this half is the coordinator's, and is cited in
+AGENT.md's queue entry.

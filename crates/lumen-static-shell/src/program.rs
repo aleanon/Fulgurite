@@ -311,6 +311,10 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// takes it back on suspend (M47/T47.7), so one source serves every
     /// resume.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
+    /// [`Program::backend_with`]'s factory — M83/T83.2. Moved into the
+    /// window's `Config` by `run`, once; never read by a hot swap.
+    #[cfg(feature = "truetype")]
+    pub backend_with: Option<crate::backend::BackendFactory>,
     /// Where to serve the agent endpoint, when the window crate was
     /// built with its `agent` feature. Inert otherwise.
     pub agent: Option<String>,
@@ -366,6 +370,8 @@ where
         fills: &[],
         backend: Prefer::Auto,
         images: None,
+        #[cfg(feature = "truetype")]
+        backend_with: None,
         agent: None,
         strategy: core::marker::PhantomData,
         accessible: cfg!(feature = "a11y"),
@@ -397,6 +403,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
             fills: self.fills,
             backend: self.backend,
             images: self.images,
+            #[cfg(feature = "truetype")]
+            backend_with: self.backend_with,
             agent: self.agent,
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
@@ -577,6 +585,45 @@ impl<A: App, I: Invalidation> Program<A, I> {
 
     pub fn images(mut self, images: impl lumen_static::ImageSource + 'static) -> Self {
         self.images = Some(Box::new(images));
+        self
+    }
+
+    /// **Build this program's window backend yourself** — M83/T83.2
+    /// (`docs/plan-gpu-extension.md`, "The factory").
+    ///
+    /// `factory` is called with the window's
+    /// [`BackendTarget`](crate::backend::BackendTarget) — raw handles,
+    /// physical size, the session's face and `accept_cpu` — **before** the
+    /// built-in choice, on every `resumed` (once per window, and again
+    /// after a suspend), in a build with or without the window crate's
+    /// `gpu`. `None` falls through to the GPU-then-software choice, so the
+    /// software fallback stands.
+    ///
+    /// Where each setting is consumed:
+    ///
+    /// | setting | read | across a hot swap |
+    /// |---|---|---|
+    /// | [`Program::backend`] | once, into the window's `Config` | the loader's |
+    /// | [`Program::images`] | once; handed to each backend, taken back on suspend | the loader's |
+    /// | `backend_with` | once, into `Config`; called per `resumed` | the loader's; **a hot library's is ignored** |
+    ///
+    /// - **`Prefer::Software` skips it** — from [`Program::backend`] or
+    ///   from `LUMEN_BACKEND=software` — so the escape hatch for a driver
+    ///   bug works however the application was written.
+    /// - **Not reloadable.** The loader reads the static binary's program
+    ///   once and a swap never re-reads the window's `Config`, so the
+    ///   closure is loader code and never a pointer into a dylib. Changing
+    ///   it needs a restart.
+    /// - A backend it returns is a forwarding wrapper as often as not, so
+    ///   every `Backend` method that acts on what it holds is required.
+    ///
+    /// Behind the shell's `truetype`, as the `backend` module is.
+    #[cfg(feature = "truetype")]
+    pub fn backend_with(
+        mut self,
+        factory: impl FnMut(&crate::backend::BackendTarget) -> Option<Box<dyn crate::backend::Backend>> + 'static,
+    ) -> Self {
+        self.backend_with = Some(Box::new(factory));
         self
     }
 

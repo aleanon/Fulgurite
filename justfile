@@ -112,6 +112,9 @@ dev-shape:
     cargo test -q -p lumen-static-shell --features truetype --test alloc_gate
     n=$(cargo test -q -p lumen-static-shell --features truetype --test alloc_gate -- --list 2>/dev/null | grep -c '^truetype::'); echo "alloc_gate: $n truetype arms (bound >= 3)"; [ "$n" -ge 3 ]
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+    # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
+    # backend through `Program::backend_with`), linted with the feature on.
+    cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An

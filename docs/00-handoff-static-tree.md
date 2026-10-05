@@ -462,6 +462,14 @@ table's (`docs/plan-boundaries-repair.md` §2.3, §6).
 `dexterous_developer` does serde-based state migration across dylib reload for
 Bevy using `rmp_serde`, explicitly supporting schema evolution.
 
+**DECIDED 2026-10-06 (M83/T83.2): a program's backend factory is not
+reloadable.** `Program::backend_with` is window-side: `run` moves it into
+the window's `Config` once, from the static binary's program, and calls it
+on every `resumed`; a swap never re-reads `Config`, so a hot library's
+factory is ignored and changing it needs a restart. The closure is loader
+code and never a pointer into a dylib, so rule 3 (below) does not apply
+(`docs/plan-gpu-extension.md`, "Not reloadable").
+
 ### The model
 
 Throw away the tree, rebuild from the new code, graft old *values* back on.

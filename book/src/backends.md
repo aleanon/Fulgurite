@@ -96,6 +96,32 @@ LUMEN_BACKEND=software   # or =gpu
 A driver bug on one machine should not need a rebuild to work around. An
 unrecognised value is ignored rather than fatal.
 
+## Your own backend: `.backend_with`
+
+A program can build its window's backend itself. The factory is handed a
+`BackendTarget` — the window as raw handles, its physical size, the face
+the session measures with, and whether a CPU adapter is acceptable — and
+answers `Some(backend)`, or `None` to fall through to the built-in
+GPU-then-software choice. It is asked on every `resumed`, before that
+choice, in a build with or without the `gpu` feature;
+`LUMEN_BACKEND=software` skips it, so the escape hatch still works.
+
+`examples/glasswall`'s `custom-backend` feature is the smallest real one:
+the software backend inside a counter whose name says which backend of
+the run it is. It forwards every method, because the trait makes each one
+that acts on what a backend holds required — a wrapper that inherited a
+default `set_images` would drop every image without a word.
+
+```text
+{{#include ../../examples/glasswall/src/main.rs:factory}}
+```
+
+It is read once, from the program the binary started with, and never
+across a hot reload: a hot library's factory is ignored, and changing it
+needs a restart (`docs/plan-gpu-extension.md`). `just resume-drive`'s
+`custom-resume` leg counts the factory's backends across a suspend and
+resume, and checks the second one kept the wallpaper.
+
 ## What the GPU backend does and does not do
 
 It keeps a persistent target texture that damage is scissored into, so a

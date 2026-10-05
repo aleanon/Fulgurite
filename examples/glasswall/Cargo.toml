@@ -29,6 +29,11 @@ gpu = ["lumen-static-winit/gpu", "dep:lumen-static-wgpu"]
 # window before and after a suspend/resume round trip. Glasswall is the
 # example with images, which is what that round trip used to lose.
 agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+# M83/T83.2: the window's backend comes from `Program::backend_with` -- a
+# counter that wraps `Software` and forwards every method, so
+# `just resume-drive`'s `custom-resume` leg can count the backends the
+# factory made (one per `resumed`). No dependency.
+custom-backend = []
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

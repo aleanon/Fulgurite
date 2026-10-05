@@ -16,7 +16,7 @@ use lumen_static_shell::session::{FrameSource, FrameTimes, Screen};
 use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
 
-pub use lumen_static_shell::backend::{Backend, BackendTarget, Frame, WindowHandles};
+pub use lumen_static_shell::backend::{Backend, BackendFactory, BackendTarget, Frame, WindowHandles};
 
 /// The software canvas, blitted through softbuffer — what every window
 /// in this workspace did before T15.12, unchanged.

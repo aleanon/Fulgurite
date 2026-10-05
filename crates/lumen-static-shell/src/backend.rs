@@ -212,3 +212,14 @@ pub trait Backend {
     /// should not have to guess which renderer they got.
     fn name(&self) -> &str;
 }
+
+/// A program's own backend constructor — M83/T83.2
+/// (`Program::backend_with`, `docs/plan-gpu-extension.md`, "The factory").
+///
+/// Asked on every `resumed`, before the built-in GPU-then-software
+/// choice, with the window's [`BackendTarget`]; `None` falls through to
+/// that choice, so the software fallback stands. A closure, not a `fn`,
+/// so a backend that wants to share a device can capture one. **Window
+/// side and never reloadable**: the window takes it once, from the static
+/// binary's program, into its `Config`; a hot library's is ignored.
+pub type BackendFactory = Box<dyn FnMut(&BackendTarget) -> Option<Box<dyn Backend>>>;

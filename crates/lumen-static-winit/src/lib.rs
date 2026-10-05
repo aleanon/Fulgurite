@@ -144,7 +144,7 @@ pub mod windows;
 pub mod translate;
 pub mod keys;
 
-pub use backend::{Backend, BackendTarget, Frame, Prefer, Software, WindowHandles};
+pub use backend::{Backend, BackendFactory, BackendTarget, Frame, Prefer, Software, WindowHandles};
 pub use clipboard::Clipboard;
 pub use dialog::Dialogs;
 #[cfg(feature = "gpu")]
@@ -275,53 +275,65 @@ fn suspend_backend(images: &mut Option<Box<dyn lumen_static::ImageSource>>, mut 
 /// still takes it, because the person asked. [`choose_backend`] is the
 /// decision.
 ///
-/// Without the `gpu` feature this is always the software canvas, and
-/// `prefer` only decides whether to say so.
+/// **A program's own factory is asked first** (`Program::backend_with`,
+/// M83/T83.2), **in both `cfg` branches**: without the `gpu` feature the
+/// GPU constructor answers `None` (and says why when the GPU was asked
+/// for), so a factory still runs in a build with no GPU code at all.
 ///
 /// Every constructor is handed the same [`BackendTarget`], which
 /// `resumed_impl` builds from the window once (M83/T83.1); the GPU's is
 /// told `accept_cpu` by [`choose_backend`].
-fn pick_backend(target: &BackendTarget, prefer: Prefer) -> Box<dyn Backend> {
+fn pick_backend(target: &BackendTarget, prefer: Prefer, custom: Option<&mut BackendFactory>) -> Box<dyn Backend> {
+    let custom = |_accept_cpu: bool| custom.and_then(|f| f(target));
     #[cfg(feature = "gpu")]
-    {
-        choose_backend(
-            prefer,
-            |accept_cpu| {
-                gpu::GpuBackend::new(&BackendTarget { accept_cpu, ..target.clone() })
-                    .map(|g| Box::new(g) as Box<dyn Backend>)
-            },
-            || Box::new(Software::new(target)),
-        )
-    }
+    let gpu = |accept_cpu: bool| {
+        let g = gpu::GpuBackend::new(&BackendTarget { accept_cpu, ..target.clone() })
+            .map(|g| Box::new(g) as Box<dyn Backend>);
+        if g.is_none() {
+            eprintln!("no usable GPU adapter — falling back to the software canvas");
+        }
+        g
+    };
     #[cfg(not(feature = "gpu"))]
-    {
-        if prefer == Prefer::Gpu {
+    let gpu = |accept_cpu: bool| {
+        // `accept_cpu` is `prefer == Prefer::Gpu`: the GPU was asked for.
+        if accept_cpu {
             eprintln!("gpu requested, but this binary was built without the `gpu` feature");
         }
-        Box::new(Software::new(target))
-    }
+        None
+    };
+    choose_backend(prefer, custom, gpu, || Box::new(Software::new(target)))
 }
 
 /// Which backend `prefer` yields — [`pick_backend`]'s decision, with the
-/// two constructors passed in so it can be tested without a window.
+/// three constructors passed in so it can be tested without a window.
 ///
-/// `gpu` is called with **whether a CPU adapter is acceptable**, which is
-/// `true` for [`Prefer::Gpu`] only (M51/T51.2, R9-F6): under
-/// [`Prefer::Auto`] a machine whose only adapter is Mesa's llvmpipe keeps
-/// the software canvas, which the review measured 3.3× faster at 1080p
-/// and 160 MB lighter (`docs/results-gpu.md` §6). It is not called at all
-/// for [`Prefer::Software`]. `None` from it falls back, with one line
-/// saying so.
+/// - **`custom` first** (`Program::backend_with`, M83/T83.2), called
+///   with `accept_cpu` as the GPU would be; `Some` wins.
+/// - **Then `gpu`**, called with **whether a CPU adapter is acceptable**,
+///   which is `true` for [`Prefer::Gpu`] only (M51/T51.2, R9-F6): under
+///   [`Prefer::Auto`] a machine whose only adapter is Mesa's llvmpipe
+///   keeps the software canvas, which the review measured 3.3× faster at
+///   1080p and 160 MB lighter (`docs/results-gpu.md` §6).
+/// - **Then `software`**, which cannot fail.
+///
+/// Neither `custom` nor `gpu` is called for [`Prefer::Software`]: the
+/// escape hatch skips a program's factory too. The constructors print
+/// their own line on `None`, since only they know why.
 #[doc(hidden)]
 pub fn choose_backend<B>(
     prefer: Prefer,
+    custom: impl FnOnce(bool) -> Option<B>,
     gpu: impl FnOnce(bool) -> Option<B>,
     software: impl FnOnce() -> B,
 ) -> B {
     if prefer != Prefer::Software {
-        match gpu(prefer == Prefer::Gpu) {
-            Some(g) => return g,
-            None => eprintln!("no usable GPU adapter — falling back to the software canvas"),
+        let accept_cpu = prefer == Prefer::Gpu;
+        if let Some(c) = custom(accept_cpu) {
+            return c;
+        }
+        if let Some(g) = gpu(accept_cpu) {
+            return g;
         }
     }
     software()
@@ -358,6 +370,12 @@ pub struct Config {
     /// and a second `resumed` got none (R15-F6). A `None` here is not an
     /// error: `ImageSource` already says a missing asset draws nothing.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
+    /// A program's own backend constructor (`Program::backend_with`,
+    /// M83/T83.2), **asked on every `resumed`** before the built-in
+    /// choice; `None` there falls through to it. Moved here once by
+    /// `run_program`; a hot swap never reads it, so a hot library's is
+    /// ignored. Skipped under [`Prefer::Software`].
+    pub backend_with: Option<BackendFactory>,
     /// Where to serve the agent endpoint, with `--features agent`.
     ///
     /// `Some("127.0.0.1:7654")` opens a JSON-RPC socket that drives this
@@ -406,6 +424,7 @@ impl Default for Config {
             backend: Prefer::Auto,
             palette: lumen_static::style::Palette::LIGHT,
             images: None,
+            backend_with: None,
             agent: None,
             accessible: cfg!(feature = "a11y"),
         }
@@ -1380,7 +1399,8 @@ impl Win {
             font: self.font.clone(),
             accept_cpu: prefer == Prefer::Gpu,
         };
-        let backend = resume_backend(&mut self.config.images, || pick_backend(&target, prefer));
+        let custom = self.config.backend_with.as_mut();
+        let backend = resume_backend(&mut self.config.images, || pick_backend(&target, prefer, custom));
         eprintln!("lumen-static: {}", backend.name());
         self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
@@ -1644,6 +1664,9 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
         backend: program.backend,
         palette: program.palette,
         images: program.images.take(),
+        // M83/T83.2: taken once, here, from the static binary's program;
+        // called on every `resumed` (`pick_backend`).
+        backend_with: program.backend_with.take(),
         agent: program.agent.take(),
         accessible: program.accessible,
     };

@@ -10,6 +10,17 @@ import base64, io, json, socket, sys, time
 from PIL import Image
 
 port, leg, resume = int(sys.argv[1]), sys.argv[2], sys.argv[3] == "resume"
+# M83/T83.2: the `custom-resume` leg runs glasswall's `custom-backend`
+# build, whose window backend comes from `Program::backend_with`: a
+# counter around `Software` named `counting (software) #n`.
+custom = leg.startswith("custom")
+# A pixel glasswall's wallpaper covers and no panel does (the gap between
+# the status bar and the first row of icons, between the first two
+# columns), in the window's 460 x 997 physical pixels, and the page colour
+# (`PAGE`) the window clears to -- what that pixel shows if the backend
+# dropped the image source.
+WALL_PX = (112, 105)
+PAGE = (0x08, 0x0A, 0x12)
 # `canvas` asks the agent for what the renderer drew; `xwd` reads the
 # window back off the X server, for a backend that cannot hand its
 # pixels back (the GPU one answers "does not render" to `ui.screenshot`).
@@ -59,6 +70,20 @@ def xwd_shot():
 t0 = time.time()
 time.sleep(2.0)  # the first frame, and a margin
 a = shot()
+
+if custom:
+    log = open(f"target/live/resume-drive-{leg}.log", errors="replace").read()
+    first = sum(1 for l in log.splitlines() if "counting (software)" in l)
+    print(f"  ..  setup: factory backends before the resume {first} (want >= 1)")
+    if first < 1:
+        sys.exit(f"resume-drive[{leg}]: setup: the program's factory made no backend before the resume")
+    # The "before" frame must hold the images, or a counter that drops the
+    # source loses the wallpaper from both captures and the diff reads 0.
+    wall = a.getpixel(WALL_PX)
+    print(f"  ..  setup: wallpaper pixel {WALL_PX} is {wall}, page colour {PAGE}")
+    if max(abs(x - y) for x, y in zip(wall, PAGE)) <= 8:
+        sys.exit(f"resume-drive[{leg}]: setup: the first capture shows the page colour at {WALL_PX} "
+                 f"-- the factory's backend drew no wallpaper (set_images dropped?)")
 # The hook fires at LUMEN_TEST_RESUME (4000 ms after the window starts);
 # the second read comes well after the frame the resume asks for.
 time.sleep(max(0.0, 7.0 - (time.time() - t0)))
@@ -75,6 +100,15 @@ print(f"  ..  round trips {hooks} (want {int(resume)}), backends made {backends}
       f"(want {1 + int(resume)})")
 if (hooks, backends) != (int(resume), 1 + int(resume)):
     sys.exit(f"resume-drive[{leg}]: setup: the round trip did not happen as asked")
+if custom:
+    named = [l.split("lumen-static: ", 1)[1] for l in log.splitlines()
+             if l.startswith("lumen-static: ") and "(" in l and "LUMEN_TEST_RESUME" not in l]
+    counted = [n for n in named if n.startswith("counting (software)")]
+    second = named[1] if len(named) > 1 else None
+    print(f"  ..  factory backends {len(counted)} (bound: exactly 2); backend #2 is {second!r}")
+    if len(counted) != 2 or second != "counting (software) #2":
+        sys.exit(f"resume-drive[{leg}]: the program's factory made {len(counted)} backends (want 2, "
+                 f"one per resumed), and backend #2 is {second!r}")
 
 if a.size != b.size:
     sys.exit(f"resume-drive[{leg}]: the window changed size {a.size} -> {b.size}")

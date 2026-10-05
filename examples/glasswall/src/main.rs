@@ -734,9 +734,73 @@ fn main() {
         _ => {
             // Built `--features agent`, the endpoint is `LUMEN_AGENT_ADDR`,
             // read by the window (M48/T48.11); inert otherwise (M47/T47.7).
-            program(W, H).title("glasswall").images(Wallpaper::new()).run()
+            let program = program(W, H).title("glasswall").images(Wallpaper::new());
+            #[cfg(feature = "custom-backend")]
+            let program = program.backend_with(counting::factory());
+            program.run()
         }
     }
+}
+
+/// **A program's own backend** — M83/T83.2, `--features custom-backend`.
+///
+/// The smallest real one: `Software`, wrapped in a counter whose name says
+/// which backend of the run it is. The window prints `name()` on every
+/// `resumed`, so `just resume-drive`'s `custom-resume` leg counts the
+/// factory's backends in the log. It forwards **every** method, because
+/// `Backend` makes each one that acts on what it holds required: a wrapper
+/// that inherited `set_images` would drop the wallpaper in silence.
+#[cfg(feature = "custom-backend")]
+mod counting {
+    // ANCHOR: factory
+    use lumen_static::display::Color;
+    use lumen_static_shell::session::FrameSource;
+    use lumen_static_shell::text::FontStack;
+    use lumen_static_winit::{Backend, BackendTarget, Frame, Software};
+
+    /// `Software`, under a name that counts.
+    pub struct Counting {
+        inner: Software,
+        name: String,
+    }
+
+    /// The factory: a closure, so it keeps its count across resumes.
+    pub fn factory() -> impl FnMut(&BackendTarget) -> Option<Box<dyn Backend>> {
+        let mut made = 0;
+        move |target| {
+            made += 1;
+            let name = format!("counting (software) #{made}");
+            Some(Box::new(Counting { inner: Software::new(target), name }))
+        }
+    }
+
+    impl Backend for Counting {
+        fn resize(&mut self, width: u32, height: u32) -> bool {
+            self.inner.resize(width, height)
+        }
+        fn present(&mut self, src: &mut dyn FrameSource, page: Color, start: std::time::Instant) -> Frame {
+            self.inner.present(src, page, start)
+        }
+        fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+            self.inner.fetch_rgba()
+        }
+        fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+            self.inner.set_images(images)
+        }
+        fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+            self.inner.take_images()
+        }
+        fn set_font(&mut self, font: FontStack) {
+            self.inner.set_font(font)
+        }
+        fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+            self.inner.frame_rgba()
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
+    }
+    // ANCHOR_END: factory
 }
 
 /// **The program, described once** — M32 (`docs/plan-program.md`). The

@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. M83a building: T83.0 and T83.1 landed 2026-10-06
+> its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
 > (`docs/results-shader.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
@@ -1127,6 +1127,23 @@ task and is recorded in `docs/results-shader.md` with the number).
   plan's "full run" is not needed for the injection to show (30,453
   bytes differ on all three legs), and the full catalogue drive stays
   the coordinator's `just ci`.
+
+- T83.2: **the "no usable GPU adapter" line moved from `choose_backend`
+  into the GPU constructor.** Asking `choose_backend` from the `not(gpu)`
+  branch with a constructor that answers `None` would otherwise print
+  that line on every start of a build with no GPU code, which is not
+  what happened; each constructor now prints its own reason (the
+  `not(gpu)` one keeps "built without the `gpu` feature" when the GPU was
+  asked for), and `choose_backend` is the decision alone. The
+  `cpu_adapter.rs` row `(Auto, custom Some, gpu absent)` models that
+  constructor in the decision; that `pick_backend` really calls it is the
+  live leg's `not(gpu)` injection (count 0).
+- T83.2: **the custom leg's wallpaper pixel is (112, 105)** in the
+  460 × 997 window: the gap below the status bar between the first two
+  icon columns, read off a `--shot` at the window's size.
+- M83a closes: **folded into T83.2's commit**, because its remaining
+  steps (`just ci-verify`, the AGENT.md entry) are the coordinator's; the
+  K83d rows are `docs/results-shader.md` "M83a closes".
 
 **What the review found (M83).**
 

@@ -11,6 +11,8 @@
 #
 # Legs: software, with the round trip; the same with no round trip (the
 # comparison must read 0 there, or it is sensitive to something else);
+# a program's own backend from `Program::backend_with` (M83/T83.2), which
+# must be made twice, keep the wallpaper and answer `ui.screenshot`;
 # and the GPU backend with the round trip, read back with `xwd` because
 # the GPU backend cannot answer `ui.screenshot`.
 #
@@ -31,6 +33,18 @@ for leg in software-resume software-still; do
         --expect-strategy Boundaries --expect-features "" \
         -- python3 scripts/resume_drive.py {port} "$leg" "$mode"
 done
+
+# M83/T83.2: a program's own backend (`Program::backend_with`), built
+# without `gpu`, so `pick_backend`'s `not(gpu)` branch is the one that asks
+# the factory. `LUMEN_BACKEND=auto` because `software` skips a factory.
+# One leg, not one per strategy: the factory runs in `resumed` before the
+# session's first frame, where the host's strategy cannot reach.
+echo "== custom-resume =="
+cargo build -q -p glasswall --features agent,custom-backend
+$LAUNCH --leg custom-resume --exe target/debug/glasswall \
+    --env LUMEN_BACKEND=auto --env LUMEN_TEST_RESUME=4000 \
+    --expect-strategy Boundaries --expect-features "" \
+    -- python3 scripts/resume_drive.py {port} custom-resume resume
 
 echo "== gpu-resume =="
 cargo build -q -p glasswall --features agent,gpu
