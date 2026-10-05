@@ -23,7 +23,15 @@
 //!   8 px wide (a quad per flattened segment and a disc per vertex).
 //!
 //! Each asserts one path command with elements in the store before
-//! timing. T82.8 adds the vector-text arm.
+//! timing.
+//!
+//! M82/T82.8 adds K82e's arm, built with `--features vector-text`: a
+//! 24-glyph `VectorText` at 32 px, turned 30°, a whole frame each time —
+//! layout (its outline memoised, as in a window), paint, and the software
+//! canvas rasterising the path from its elements, which nothing caches
+//! (`uncached`) — and the same with the memo missing every frame (`cold`:
+//! the measurer's outline as well). Each asserts one path with elements
+//! before timing; without the feature the arm says it was not built.
 
 use std::time::Instant;
 
@@ -115,4 +123,67 @@ fn main() {
         let (min, median) = time(&mut canvas, &list);
         println!("{name:>16} {min:>14.0} {median:>14.0}");
     }
+
+    vector_text();
+}
+
+/// K82e's arm (M82/T82.8): a whole `VectorText` frame, in µs.
+#[cfg(feature = "vector-text")]
+fn vector_text() {
+    use lumen_static::widget::{Node, Widget};
+    use lumen_static::{Constraints, LayoutCx, NodeState, Style};
+    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use lumen_static_widgets::VectorText;
+
+    const RUN: &str = "Vector text, turned 30°!";
+    assert_eq!(RUN.chars().count(), 24, "setup: K82e's run is 24 glyphs");
+    let stack = FontStack::system().expect("K82e needs a system face");
+    let styles = [Style { font_size: 32.0, ..<VectorText as Widget>::type_defaults() }];
+    let view = Constraints { min_w: 0.0, max_w: 512.0, min_h: 0.0, max_h: 512.0 };
+    let mut canvas = Canvas::new(512, 512);
+    let frame = |w: &mut VectorText, m: &mut FontMetrics, canvas: &mut Canvas| -> (f64, usize) {
+        let mut st = [NodeState::default()];
+        let t = Instant::now();
+        {
+            let mut cx = LayoutCx::new(m);
+            Node::layout(w, &mut cx, view, &styles, &mut st, 0);
+        }
+        Node::place(w, Point { x: 8.0, y: 8.0 }, &styles, &mut st, 0);
+        let mut list = DisplayList::new();
+        Node::paint(w, &st, 0, &mut list);
+        canvas.render(&list, 512, 512);
+        let us = t.elapsed().as_nanos() as f64 / 1e3;
+        let n = list.cmds.iter().filter(|c| matches!(c, Cmd::Path { .. })).count();
+        assert_eq!(n, 1, "setup: a VectorText frame holds one path (the measurer had no outlines?)");
+        (us, list.paths.len())
+    };
+    println!("\nvector text: a 24-glyph VectorText at 32 px, turned 30 deg, one whole frame on a 512x512 canvas, {RUNS} frames\n");
+    println!("{:>16} {:>14} {:>14} {:>10}", "arm", "min us", "median us", "elements");
+    for cold in [false, true] {
+        let mut w = VectorText::new(RUN, 30.0);
+        let mut m = FontMetrics::new(stack.clone());
+        let _ = frame(&mut w, &mut m, &mut canvas);
+        let mut els = 0;
+        let mut us: Vec<f64> = (0..RUNS)
+            .map(|_| {
+                if cold {
+                    // A new generation: the memo misses and asks again.
+                    m.set_stack(stack.clone());
+                }
+                canvas.clear(Color(255, 255, 255, 255));
+                let (t, n) = frame(&mut w, &mut m, &mut canvas);
+                els = n;
+                t
+            })
+            .collect();
+        assert!(els > 0, "setup: the outline has no elements");
+        us.sort_by(|a, b| a.total_cmp(b));
+        let name = if cold { "cold" } else { "uncached" };
+        println!("{name:>16} {:>14.1} {:>14.1} {els:>10}", us[0], us[RUNS / 2]);
+    }
+}
+
+#[cfg(not(feature = "vector-text"))]
+fn vector_text() {
+    println!("\nvector text: not built -- K82e's arm needs `--features vector-text`");
 }

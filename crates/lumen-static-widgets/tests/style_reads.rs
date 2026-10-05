@@ -340,6 +340,10 @@ kinds! {
     // M80/T80.3: the other kind that reads `overflow`; its title is long
     // enough to be cut at either base's width, or the probe changes nothing.
     PAppBar: AppBar<String> = [|r| r.w = AppBar::new(LONG.to_owned())];
+    // M82/T82.8: under the stand-in measurer it paints its fallback run, so
+    // the fields its outline path reads (the colour, the size and weight)
+    // are the ones measured here too.
+    PVector: VectorText<String> = [|r| r.w = VectorText::new("turned".to_owned(), 30.0)];
 }
 
 /// A label and bar text that does not fit one line at 400 px.

@@ -48,9 +48,10 @@ span is a word: it never wraps inside itself.
 fills and strokes moves, lines and quadratic and cubic Béziers under a
 per-path transform, with round joins and caps, on the software canvas
 (and the GPU backend draws them since M82/T82.6, as coverage masks in
-its glyph atlas). What did not ship is the
-rest of SVG: miter joins, dashes, even-odd fill, `clip-path`, a transform
-for any command but a path, and SVG import. The drawing vocabulary is the
+its glyph atlas). Text turns too, since M82/T82.8: a `VectorText` paints
+its run's outlines as one path (see [Text](./text.md)). What did not ship
+is the rest of SVG: miter joins, dashes, even-odd fill, `clip-path`, a
+transform for any command but a path, and SVG import. The drawing vocabulary is the
 `Cmd` enum in `crates/lumen-static/src/display.rs`, and its box commands
 stay small enough for an embedded target to implement.
 

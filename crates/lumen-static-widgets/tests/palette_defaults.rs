@@ -89,6 +89,8 @@ fn kinds() -> Vec<Kind> {
         k(<Divider as Widget>::SEEDS, &[]),
         k(<Skeleton as Widget>::SEEDS, &[]),
         k(<PaintBox as Widget>::SEEDS, &[]),
+        // M82/T82.8: its run is text, whether drawn as outlines or not.
+        k(<VectorText as Widget>::SEEDS, &[(F::Fg, F::Page, TEXT, "the run on the page")]),
         k(<BarChart as Widget>::SEEDS, &[
             (F::Fg, F::Page, UI, "the default series colour"),
             (F::Border, F::Page, TEXT, "the axes' labels (M57/B30)"),

@@ -374,3 +374,47 @@ owner (`docs/results-embedded.md` M82/T82.7). Under `shaping` and
 `vector-text` together a `Complex` stack holds a face's bytes twice — the
 shaper's interned copy and this feature's — which is recorded, not
 deduplicated.
+
+## T82.8 — `VectorText` (2026-10-06)
+
+`VectorText<S>` in `lumen-static-widgets` (`alloc`): a run at an angle
+(clockwise degrees), measured once into its outline
+(`TextMeasure::outline`) and memoised on (a hash of the text, size,
+weight, scale, the measurer's generation); painted as one `Painter::path`
+whose `Affine` turns the run about its centre in the middle of the node.
+Its box is the turned run box (the measured line box grown to the ink), so
+the ink stays inside it; with no outlines it paints the string level, in a
+box its own size. It publishes `Role::Label` with the run as its value.
+The showcase's entry turns one run three ways (0°, 30°, 90°), with the
+window's `vector-text` on. Gates: `lumen-static-shell/tests/vector_text.rs`
+`mod widget` (the pinned face) unless named.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| rotated, "Vertical" at 32 px | 0°: **139** elements, ink 121.64 × 24.77 (w/h **4.9117**) in node `[10, 20, 135, 58]`; 90°: ink 24.77 × 121.64 (w/h **0.2036**) in node `[10, 20, 48, 145]`; w/h at 90° × w/h at 0° = 1.0000 | > 0 elements; 1%; ink inside the node | paint ignores the angle: the 90° ink `[-33.25, 70.19, 88.39, 94.95]` leaves the node `[10, 20, 48, 145]`, red by name; the box sized from the unrotated run: the 90° ink `[60.05, -23.25, 84.81, 98.39]` leaves `[10, 20, 135, 58]` |
+| memo, a counting measurer that forwards `outline` | outline calls: still **0**, text changed **1**, generation bumped **1** (setup: the first layout 1) | 0 / 1 / 1 | the key omits the generation: the bump asks **0** times — a stale outline served (M45/T45.2's shape) |
+| fallback, `BlockMetrics` at 90° | **1** `Cmd::Text`, **0** `Path`; the box the level run's (`[10, 20, 138, 52]`) | 1 / 0 | the fallback removed: **0** `Text`, red |
+| speaks, `lumen-static-widgets/tests/a11y_roles.rs` (`--features a11y`) | `VectorText role=Label`; rows checked 65, `Node` impls 49 (49 covered) | every impl a row | the row deleted: `Node impls with no row in the table: ["VectorText"]` |
+| speaks, `scripts/check_observe.sh` / `check_drive_coverage.sh` (`just static`) | "every widget speaks or is listed"; widgets exported 78, driven 46, allowed 32, missing 0 | 0 missing | `observe` removed: `no observe: crates/lumen-static-widgets/src/vector.rs: VectorText` |
+| masks, `lumen-static-widgets/tests/style_reads.rs` | `vectortext` measured = declared: width, height, padding, cursor, visible, color, background, radius, font_size, font_weight, pressed_dim, hover_dim, border, background_fill | equal | — (the lint test's own) |
+| palette, `tests/palette_defaults.rs` | the run on the page **17.85**:1 light, **15.53**:1 dark | 4.5 | — |
+| D4, showcase `every_demo_text_reads_in_both_palettes`, now reading path ink at 3:1 | VectorText's three paths **15.93**:1 light, **13.38**:1 dark (6 judged; 10 paths in all, PaintBox's star and arc the other 4) | 3:1; 6 VectorText paths | the run painted at 16% alpha: **1.37**:1 / **1.57**:1, red. Its first run found **PaintBox's star at 2.67:1 in the dark palette** (`#c2410c`, T82.5's), fixed to `#e14d0a` (3.99 / 3.47) |
+| book, `book/src/text.md` "Text at an angle" (`just book`) | a stand-in measurer's 80 × 20 run laid out at 90° is **20 × 80**, `is_vector()` | equal | the box sized from the unrotated run: `left: (80.0, 20.0)`, `right: (20.0, 80.0)`, the chapter's test fails |
+| live, `scripts/widget_drive.sh VectorText,PaintBox` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | "drawn rotated": the 90° run's ink **19 × 85** px (scale 2: **37 × 168**), 0 px outside its box; "it speaks its text": value `Vertical`, role `Label`, `~=Vertical` resolves to node 212, the 90° run's; D5 parity 29,760 px, 0 bytes differ (both strategies, both shapings); oracle 682 frames, none diverged; PaintBox's star with the new colour 4,180 px of 4,346 px² (96.2%), 98.1% at scale 2 | h ≥ 2w; 0 outside | paint ignores the angle (a Boundaries leg alone): ink **30 × 18** px, 65 px outside the box, FAIL by name |
+| K82d, `just gpu-parity` (now a PaintBox and a VectorText leg, RTX 4070) | VectorText's first GPU frame: **5,654** texels in 3 tiles, **0.54%** of 1024²; PaintBox's **1.49%** (unchanged); both windows worst channel delta 3, 0 px over 8 | ≤ 25%; 1% over 8 | (T82.6's: the GPU's `Path` arm skipped) |
+| firmware, `just firmware-delta 996c878 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** `.text`, **+0** `.rodata` on all four (`firmware_interactive` 63,480 B) | 0 | — |
+
+**K82e** — `benches --bin vocabulary`, built `--features vector-text`, a
+24-glyph `VectorText` ("Vector text, turned 30°!") at 32 px, one whole
+frame (layout, paint, the software canvas rasterising the path) on a
+512 × 512 canvas, 31 frames under `just bench-lock` (load1 2.99): **445**
+elements (setup > 0, one `Path` a frame).
+
+| arm | min µs | median µs |
+|---|---:|---:|
+| `uncached` (the outline memoised, the path rasterised every frame) | 108.2 | **109.4** |
+| `cold` (the memo missing every frame: the outline too) | 119.7 | 120.7 |
+
+**K82e holds**: 109.4 µs a frame against 250, so the software canvas does
+not get the GPU's `MaskKey` cache. The outline itself is about 11 µs of a
+frame (the `cold` arm's difference), which the memo saves.

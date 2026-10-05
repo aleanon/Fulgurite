@@ -23,6 +23,10 @@ threads = ["lumen-static-shell/threads"]
 # M81/T81.1: the shell's default-off shaper, so K3's arms can be run with
 # it compiled in and `Basic` selected, and T81.3's `--shaping` rows built.
 shaping = ["lumen-static-shell/shaping"]
+# M82/T82.8: K82e's arm of `--bin vocabulary` -- a `VectorText` drawn from
+# outlines, which the shell's measurer answers only under its default-off
+# `vector-text`. Off by default, so K3's arms build as before.
+vector-text = ["lumen-static-shell/vector-text"]
 # **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
 # It was unconditional, so no bench here could be built without the
 # widgets' observability compiled in — and `--bin grid` could not say what

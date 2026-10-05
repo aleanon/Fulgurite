@@ -12,11 +12,12 @@
   "M80/T80.4 added Selectable: a drag across the first line, then app.copy (copied and clipboard equal); a double click copies one word. A press outside clears it (both isolates).",
   "M81/T81.6 added TextInput RTL (`שלום world 123`, driven by the +shaping legs): a click at the visual left end, then a character, appends at the logical end; a press above it types nowhere (the isolate).",
   "M82/T82.3 added Card's static fill check: its centre and side pixels differ by at least 16 levels (a radial, by role) and its corner pixel is the stage behind it (rounded).",
-  "M82/T82.5 added PaintBox's static path check: the star the callback fills with Painter::path covers at least 90% of its analytic outline in its colour, and none of that colour is outside the box."
+  "M82/T82.5 added PaintBox's static path check: the star the callback fills with Painter::path covers at least 90% of its analytic outline in its colour, and none of that colour is outside the box.",
+  "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to."
  ],
  "counts": {
-  "entries": 46,
-  "actions": 148,
+  "entries": 47,
+  "actions": 150,
   "landed_checked": 119,
   "isolated": 62
  },
@@ -260,6 +261,10 @@
    "a press on the scrim asks to dismiss",
    "it does not close itself",
    "the control on the panel still reaches the application"
+  ],
+  "VectorText": [
+   "drawn rotated",
+   "it speaks its text, and ~= finds it"
   ]
  },
  "static": [
@@ -291,6 +296,8 @@
   "Card/the content is inset by the card's padding",
   "Card/the card's fill is a rounded radial",
   "Toast/it shrinks to its text rather than filling the window",
-  "Toast/it paints a ground, so its light text is readable"
+  "Toast/it paints a ground, so its light text is readable",
+  "VectorText/drawn rotated",
+  "VectorText/it speaks its text, and ~= finds it"
  ]
 }

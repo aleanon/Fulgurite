@@ -196,10 +196,15 @@ fn paths(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
 /// The star's centre (a fraction of the box's width; it is centred
 /// vertically), its outer radius (a fraction of the box's shorter side),
 /// its inner radius (a fraction of the outer) and its colour.
+///
+/// **The colour reads at 3:1 on both palettes' ground** — M82/T82.8. It was
+/// `#c2410c`, 5.18:1 on the light ground and **2.67:1** on the dark one,
+/// which nothing judged until the D4 walk (`every_demo_text_reads_in_both_palettes`)
+/// learned to read path ink; `#e14d0a` is 3.99:1 and 3.47:1.
 const STAR_X: f32 = 0.78;
 const STAR_RADIUS: f32 = 0.38;
 const STAR_INNER: f32 = 0.4;
-const STAR_INK: lumen_static::Color = lumen_static::Color(0xc2, 0x41, 0x0c, 0xff);
+const STAR_INK: lumen_static::Color = lumen_static::Color(0xe1, 0x4d, 0x0a, 0xff);
 
 /// What M27/T27.11's file picker lists.
 const FILES: [&str; 7] = [
@@ -464,6 +469,15 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::PaintBox(DPaintBox { a: PaintBox::new(sparkline) })),
         none),
+    // ANCHOR: vectortext
+    entry!("Text", "VectorText", "Text drawn as outlines, at any angle.",
+        false,
+        |s| on(s, Demo::VectorText(DVectorText {
+            a: VectorText::new("Level", 0.0),
+            b: VectorText::new("Tilted", 30.0),
+            c: VectorText::new("Vertical", 90.0) })),
+        none),
+    // ANCHOR_END: vectortext
     entry!("Input", "Button", "Three of them, all wired to one counter.",
         false,
         |s| on(s, Demo::Button(DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") })),

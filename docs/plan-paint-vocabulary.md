@@ -4,7 +4,7 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M82a (T82.0–T82.4) built 2026-10-04 and closes on
 > `just ci-verify` of its T82.4 commit (S5), cited in AGENT.md; M82b
-> (T82.5–T82.9) building: T82.5 landed 2026-10-05, T82.6 and T82.7
+> (T82.5–T82.9) building: T82.5 landed 2026-10-05, T82.6–T82.8
 > 2026-10-06 (`docs/results-paint-vocabulary.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
@@ -1191,6 +1191,29 @@ crosses.*
 - T82.7: under `shaping` and `vector-text` together a `Complex` stack holds
   a face's bytes twice (the shaper's interned copy and this feature's);
   recorded in `docs/results-paint-vocabulary.md` T82.7, not deduplicated.
+- T82.8: **the D4 walk, taught to read path ink, found T82.5's star at
+  2.67:1** in the dark palette (`#c2410c` on the dark PaintBox ground; 5.18
+  in light). Nothing had judged path ink before. The star is `#e14d0a`
+  now (3.99 / 3.47), in the catalogue and `rich.py`'s `STAR_INK` together,
+  and `scripts/widget_drive.sh` ran PaintBox beside VectorText to hold it.
+- T82.8: **`VectorText`'s text is a plain field keyed by its hash**, as
+  `Button`'s label is (`FoldedText`'s rule), not a `Dirty` the way
+  `Label`'s is: a `#[bind]` and a reload both write it directly. It
+  overrides `Node::probe` under `observe` so the agent's audit, whose
+  measurer has another generation, does not throw the frame's outline away
+  twice a frame. Its trigonometry is its own (`sin_cos_deg`), exact at
+  every quarter turn: the `alloc` tier's `core` has none.
+- T82.8: **"`~=` finds it" is a second static action of the live drive**
+  ("it speaks its text, and ~= finds it"), beside "drawn rotated": the
+  selector grammar is the agent's, and the drive is where it is asked.
+- T82.8: the showcase's `every_entry_paints_a_demo` exempts `VectorText`
+  as it does `Label`, `RichText` and `Selectable`: it pumps `BlockMetrics`,
+  so the demo paints its level fallback there. `VECTORTEXT` stays in
+  `scripts/doc-identifiers.allow` (a Python name the scan does not read,
+  as `PAINTBOX` does); `VectorText` left it. `just gpu-parity`'s path leg
+  loops over PaintBox and VectorText, so K82d reads both entries' first
+  frames. K82e's arm needs `benches --features vector-text`, so K3's arms
+  build without the feature as before.
 
 **What the review found (M82).**
 

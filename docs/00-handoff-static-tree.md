@@ -1284,6 +1284,18 @@ remains** — which is why §10 Step 1 is the kill criterion.
    `clip-path`, dashes, miter joins, even-odd, skew of other commands and
    SVG import stay out. **Reopen** a transform stack when a second command
    kind needs one. Numbers in `docs/results-paint-vocabulary.md` T82.5.
+
+   **Vectorial text is DECIDED — `VectorText`, M82/T82.7–T82.8,
+   2026-10-06** (`docs/plan-paint-vocabulary.md`, "Vector text is outlines
+   from the measurer"). Text under a rotation is not a glyph command and
+   not a transform of `Cmd::Text`: the measurer answers a run's outlines
+   (`TextMeasure::outline`, provided, `false` by default; `FontMetrics`
+   answers under the shell's default-off `vector-text`, from ttf-parser at
+   the pens it measures with), and the `VectorText` widget paints them as
+   one `Cmd::Path` whose `Affine` is its rotation, sized to the turned run
+   so its ink stays inside its box. A measurer with no outlines gets the
+   string drawn level. Numbers in `docs/results-paint-vocabulary.md`
+   T82.7 and T82.8.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

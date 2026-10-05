@@ -110,6 +110,77 @@ PAINTBOX = ("PaintBox", "#d_paintbox_a", [
 ])
 
 
+# M82/T82.8: the showcase's VectorText demo is one run at 0°, 30° and 90°
+# (`examples/showcase/src/catalog.rs`, anchor `vectortext`); this drives
+# the 90° one, whose text is "Vertical".
+VECTORTEXT = ("VectorText", "#d_vectortext_c", [
+    Action(
+        name="drawn rotated",
+        needs="a run turned 90° with a measurer that has outlines (the window's vector-text)",
+        do=lambda c: c.hover(),
+        expect=lambda c: _turned(c),
+        static=True,
+        injection="VectorText::paint ignores the angle (the run is drawn level)",
+    ),
+    Action(
+        name="it speaks its text, and ~= finds it",
+        needs="a VectorText whose run is \"Vertical\"",
+        do=lambda c: c.hover(),
+        expect=lambda c: _speaks(c),
+        static=True,
+        injection="VectorText::observe removed, or its value left unset",
+    ),
+])
+
+
+def _turned(c):
+    """The ink's bounding box, from the screenshot: taller than twice its
+    width for a run turned on its side, and none of it outside the box.
+
+    **Pixels, because the angle is a claim about the frame.** The ground
+    is read at the box's top-left pixel, and ink is anything 64 levels off
+    it in some channel: the run's colour follows the palette, so it is not
+    named here. A run drawn level would be about five times wider than
+    tall; the fallback (no outlines) is level too.
+    """
+    shot = c.c.rpc("ui.screenshot")
+    png = base64_decode(shot["image_base64"])
+    w, h, px = _decode(png)
+    sc = shot.get("scale", 1.0)
+    b = [v * sc for v in c.box()]
+    gx, gy = int(b[0]) + 1, int(b[1]) + 1
+    ground = px[(gy * w + gx) * 4:(gy * w + gx) * 4 + 3]
+    x0, y0, x1, y1 = w, h, -1, -1
+    outside = 0
+    for y in range(max(0, int(b[1]) - 6), min(h, int(b[3]) + 6)):
+        for x in range(max(0, int(b[0]) - 6), min(w, int(b[2]) + 6)):
+            p = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
+            if max(abs(p[k] - ground[k]) for k in range(3)) < 64:
+                continue
+            if x + 1 <= b[0] or x >= b[2] or y + 1 <= b[1] or y >= b[3]:
+                outside += 1
+                continue
+            x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+    iw, ih = x1 - x0 + 1, y1 - y0 + 1
+    return (
+        x1 >= 0 and ih >= 2 * iw and outside == 0,
+        f"ink box {iw} x {ih} px (bound h >= 2 w = {2 * iw}), {outside} px "
+        f"of ink outside the box (bound 0), scale {sc}",
+    )
+
+
+def _speaks(c):
+    """The node publishes its run as its value, and the exact-text
+    selector finds that node and no other."""
+    me = c.c.rpc("ui.resolve", selector=c.sel)
+    found = c.c.rpc("ui.resolve", selector="~=Vertical")
+    return (
+        me.get("value") == "Vertical" and found.get("index") == me.get("index"),
+        f"value {me.get('value')!r}, role {me.get('role')}; `~=Vertical` "
+        f"resolves to node {found.get('index')} (the 90° run is {me.get('index')})",
+    )
+
+
 def _ink_inside(c):
     """Count the callback's own colour inside the box and just outside.
 
@@ -161,7 +232,7 @@ def _ink_inside(c):
 # radius a fraction of the box's shorter side, its inner one a fraction of
 # that, and its colour. The two files move together.
 STAR_X, STAR_RADIUS, STAR_INNER = 0.78, 0.38, 0.4
-STAR_INK = (0xC2, 0x41, 0x0C)
+STAR_INK = (0xE1, 0x4D, 0x0A)
 
 
 def _star_filled(c):
@@ -277,4 +348,4 @@ def _decode(png: bytes):
     return w, h, bytes(out)
 
 
-ALL = [RICHTEXT, MARKDOWN, EDITOR, PAINTBOX]
+ALL = [RICHTEXT, MARKDOWN, EDITOR, PAINTBOX, VECTORTEXT]

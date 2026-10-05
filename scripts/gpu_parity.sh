@@ -99,27 +99,33 @@ PY
 # atlas's starting size (bound 25%) -- and the leg requires the line: a
 # window that drew no path mask has no number to give.
 cargo build --release -p showcase --features gpu
-entry=$(python3 - <<'PY'
-import re
+# M82/T82.8: and the VectorText entry (one run at 0, 30 and 90 degrees, its
+# outlines one path each), whose first frame is K82d's second reading.
+for name in PaintBox VectorText; do
+entry=$(NAME="$name" python3 - <<'PY'
+import os, re
 src = open("examples/showcase/src/catalog.rs").read()
 names = re.findall(r'entry!\("[^"]*", "([^"]*)"', src[src.index("pub static CATALOG"):])
-print(names.index("PaintBox"))
+print(names.index(os.environ["NAME"]))
 PY
 )
+leg=$(echo "$name" | tr '[:upper:]' '[:lower:]')
 sgrab() {
     $LAUNCH --no-agent --settle 3 --leg "$1" --exe target/release/showcase --arg "$entry" ${3:+--env "$3"} \
         -- bash -c "xwd -name showcase -out '$2' 2>/dev/null || true"
 }
-sgrab paintbox-gpu "$tmp/pb-gpu.xwd"
-sgrab paintbox-software "$tmp/pb-cpu.xwd" "LUMEN_BACKEND=software"
-k82d=$(grep -m1 '^lumen-static: path masks' target/live/gpu-parity-paintbox-gpu.log || true)
+sgrab "$leg-gpu" "$tmp/pb-gpu.xwd"
+sgrab "$leg-software" "$tmp/pb-cpu.xwd" "LUMEN_BACKEND=software"
+k82d=$(grep -m1 '^lumen-static: path masks' "target/live/gpu-parity-$leg-gpu.log" || true)
 if [ -z "$k82d" ]; then
-    echo "gpu-parity: the PaintBox window (entry $entry) logged no path-mask line -- the GPU drew no path" >&2
+    echo "gpu-parity: the $name window (entry $entry) logged no path-mask line -- the GPU drew no path" >&2
     exit 1
 fi
-echo "gpu-parity: PaintBox (entry $entry): ${k82d#lumen-static: }"
-python3 - "$tmp/pb-gpu.xwd" "$tmp/pb-cpu.xwd" "$k82d" <<'PY'
+echo "gpu-parity: $name (entry $entry): ${k82d#lumen-static: }"
+python3 - "$tmp/pb-gpu.xwd" "$tmp/pb-cpu.xwd" "$k82d" "$name" <<'PY'
 import re, struct, sys
+
+name = sys.argv[4]
 
 def load(path):
     d = open(path, 'rb').read()
@@ -131,19 +137,20 @@ def load(path):
 w, h, a = load(sys.argv[1])
 _, _, b = load(sys.argv[2])
 if len(a) != len(b):
-    sys.exit("gpu-parity: the two PaintBox windows are different sizes")
+    sys.exit(f"gpu-parity: the two {name} windows are different sizes")
 worst, over = 0, 0
 for pa, pb in zip(a, b):
     d = max(abs(x - y) for x, y in zip(pa, pb))
     worst = max(worst, d)
     over += d > 8
-print(f"gpu-parity: PaintBox {w}x{h}, worst channel delta {worst}, {over} px ({over / len(a) * 100:.3f}%) over 8 (bound 1%)")
+print(f"gpu-parity: {name} {w}x{h}, worst channel delta {worst}, {over} px ({over / len(a) * 100:.3f}%) over 8 (bound 1%)")
 if over / len(a) > 0.01:
-    sys.exit(f"gpu-parity: the backends disagree on {over / len(a) * 100:.2f}% of the PaintBox window")
+    sys.exit(f"gpu-parity: the backends disagree on {over / len(a) * 100:.2f}% of the {name} window")
 share = float(re.search(r'([0-9.]+)% of the glyph atlas', sys.argv[3]).group(1))
 if share > 25.0:
     sys.exit(f"gpu-parity: K82d fires: path masks take {share}% of the glyph atlas's start (bound 25%)")
 PY
+done
 
 # ---- M47/T47.0 (R7-F7): a dropped present on an IDLE window ------------
 # `Gpu::present` swallowed Outdated/Lost and returned nothing, and the

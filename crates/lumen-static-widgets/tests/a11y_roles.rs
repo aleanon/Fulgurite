@@ -116,6 +116,8 @@ const ROWS: &[Row] = &[
     row("Markdown", "Markdown", Role::Paragraph, false),
     row("RichTextEditor", "RichTextEditor", Role::TextInput, false),
     row("PaintBox", "PaintBox", Role::Canvas, false),
+    // M82/T82.8: text at an angle is still text a reader hears.
+    row("VectorText", "VectorText", Role::Label, false),
     row("Divider", "Divider", Role::GenericContainer, false),
     row("Badge", "Badge", Role::Label, false),
     row("Chip", "Chip", Role::Label, false),

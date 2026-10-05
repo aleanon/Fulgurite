@@ -19,6 +19,19 @@
 //!   `Placed.x`; the bearing is applied twice and the gate names the glyph.
 //!   The same gate against `ComplexText`; injection: its override deleted,
 //!   so it answers `false`.
+//!
+//! And `VectorText` (M82/T82.8), the widget that paints them:
+//!
+//! - **Rotated**: at 90° its ink box's w/h is the inverse of 0°'s, and the
+//!   ink stays inside the node's box (setup: elements above 0, or the
+//!   fallback would pass vacuously). Injections: paint ignores the angle;
+//!   the box is sized from the unrotated run.
+//! - **Memo**: re-layout with nothing changed asks for no outline, a text
+//!   change asks once, a generation bump with the text unchanged asks
+//!   once. Injection: the key omits the generation; that case asks 0
+//!   times and serves a stale outline.
+//! - **Fallback**: with `BlockMetrics`, exactly one `Cmd::Text` and no
+//!   `Path`. Injection: the fallback removed; nothing is painted.
 #![cfg(feature = "vector-text")]
 
 use lumen_static::cx::{BlockMetrics, PathSink, TextMeasure};
@@ -199,5 +212,136 @@ mod complex {
             println!("ComplexText id {id}: pen {pen:.4}, outline xmin {got:.4}, pen + bbox xmin {want:.4} (bound 1/64)");
             assert!((got - want).abs() <= 1.0 / 64.0, "glyph {id}: outline xmin {got} is not {want}");
         }
+    }
+}
+
+// ---- VectorText (M82/T82.8) -------------------------------------------
+
+mod widget {
+    use super::*;
+    use core::cell::Cell;
+    use lumen_static::display::{Cmd, DisplayList};
+    use lumen_static::widget::{Node, Widget};
+    use lumen_static::{Constraints, LayoutCx, NodeState, Point, Size, Style};
+    use lumen_static_widgets::VectorText;
+
+    const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 800.0 };
+
+    fn style() -> Style {
+        Style { font_size: PX, ..<VectorText as Widget>::type_defaults() }
+    }
+
+    /// Lay `w` out and paint it: (its node box, the list).
+    fn frame(w: &mut VectorText, m: &mut dyn TextMeasure) -> ([f32; 4], DisplayList) {
+        let styles = [style()];
+        let mut st = [NodeState::default()];
+        {
+            let mut cx = LayoutCx::new(m);
+            Node::layout(w, &mut cx, VIEW, &styles, &mut st, 0);
+        }
+        Node::place(w, Point { x: 10.0, y: 20.0 }, &styles, &mut st, 0);
+        let mut list = DisplayList::new();
+        Node::paint(w, &st, 0, &mut list);
+        let s = st[0];
+        ([s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h], list)
+    }
+
+    fn ink(list: &DisplayList) -> Option<([f32; 4], usize)> {
+        list.cmds.iter().find_map(|c| match c {
+            Cmd::Path { rect, els, .. } => Some((*rect, els.1 as usize)),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_turned_run_turns_its_ink_and_keeps_it_in_its_box() {
+        let mut m = metrics();
+        let mut ratio = [0.0f32; 2];
+        for (k, angle) in [0.0f32, 90.0].into_iter().enumerate() {
+            let mut w = VectorText::new("Vertical", angle);
+            let (node, list) = frame(&mut w, &mut m);
+            let (ink, n) = ink(&list).expect("setup: no Path painted -- the fallback drew text");
+            assert!(n > 0, "setup: the path has no elements");
+            let (iw, ih) = (ink[2] - ink[0], ink[3] - ink[1]);
+            ratio[k] = iw / ih;
+            println!("{angle}°: {n} elements, ink {ink:?} ({iw:.2} x {ih:.2}, w/h {:.4}), node {node:?}", ratio[k]);
+            for e in 0..2 {
+                assert!(ink[e] >= node[e] - 0.01, "{angle}°: the ink {ink:?} leaves the node's box {node:?} (edge {e})");
+                assert!(ink[e + 2] <= node[e + 2] + 0.01, "{angle}°: the ink {ink:?} leaves the node's box {node:?} (edge {})", e + 2);
+            }
+        }
+        println!("w/h at 90° {:.4} against 1 / (w/h at 0°) {:.4} (bound 1%)", ratio[1], 1.0 / ratio[0]);
+        assert!(ratio[0] > 2.0, "setup: the run is not wider than tall at 0°");
+        assert!(
+            (ratio[1] * ratio[0] - 1.0).abs() < 0.01,
+            "the ink at 90° ({:.4}) is not 0°'s turned ({:.4})",
+            ratio[1],
+            1.0 / ratio[0]
+        );
+    }
+
+    /// Counts outline calls, and reports a generation the test sets.
+    struct Counting {
+        inner: FontMetrics,
+        calls: Cell<u32>,
+        generation: u32,
+    }
+
+    impl TextMeasure for Counting {
+        fn measure(&mut self, t: &str, size: f32, max_w: f32) -> Size {
+            self.inner.measure(t, size, max_w)
+        }
+        fn measure_weighted(&mut self, t: &str, size: f32, weight: f32, max_w: f32) -> Size {
+            self.inner.measure_weighted(t, size, weight, max_w)
+        }
+        fn generation(&self) -> u32 {
+            self.generation
+        }
+        // A wrapper forwards it (the trait's rustdoc).
+        fn outline(&mut self, t: &str, size: f32, weight: f32, sink: &mut dyn PathSink) -> bool {
+            self.calls.set(self.calls.get() + 1);
+            self.inner.outline(t, size, weight, sink)
+        }
+    }
+
+    #[test]
+    fn the_outline_is_memoised_on_text_and_generation() {
+        let mut m = Counting { inner: metrics(), calls: Cell::new(0), generation: 7 };
+        let mut w = VectorText::<String>::new("memo".into(), 30.0);
+        let lay = |w: &mut VectorText<String>, m: &mut Counting| {
+            let styles = [style()];
+            let mut st = [NodeState::default()];
+            let mut cx = LayoutCx::new(m);
+            Node::layout(w, &mut cx, VIEW, &styles, &mut st, 0);
+        };
+        lay(&mut w, &mut m);
+        assert_eq!(m.calls.get(), 1, "setup: the first layout outlined once");
+        assert!(w.is_vector(), "setup: the measurer had outlines");
+        let asked = |m: &mut Counting, w: &mut VectorText<String>| {
+            let before = m.calls.get();
+            lay(w, m);
+            m.calls.get() - before
+        };
+        let still = asked(&mut m, &mut w);
+        w.text = "memo!".into();
+        let changed = asked(&mut m, &mut w);
+        m.generation = 8;
+        let bumped = asked(&mut m, &mut w);
+        println!("outline calls: still {still} (bound 0), text changed {changed} (bound 1), generation bumped {bumped} (bound 1)");
+        assert_eq!(still, 0, "a still re-layout asked for the outline again");
+        assert_eq!(changed, 1, "a text change was served the old outline");
+        assert_eq!(bumped, 1, "a new generation was served the old outline (M45/T45.2's shape)");
+    }
+
+    #[test]
+    fn without_outlines_it_paints_axis_aligned_text() {
+        let mut w = VectorText::new("Fallback", 90.0);
+        let (node, list) = frame(&mut w, &mut BlockMetrics);
+        let texts = list.cmds.iter().filter(|c| matches!(c, Cmd::Text { .. })).count();
+        let paths = list.cmds.iter().filter(|c| matches!(c, Cmd::Path { .. })).count();
+        println!("BlockMetrics: {texts} Text (bound 1), {paths} Path (bound 0), node {node:?}");
+        assert!(!w.is_vector());
+        assert_eq!((texts, paths), (1, 0), "the fallback is one axis-aligned run and no path");
+        assert!(node[2] - node[0] > node[3] - node[1], "the fallback's box is the run's own, not turned");
     }
 }

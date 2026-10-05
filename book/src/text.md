@@ -99,6 +99,74 @@ cluster list is a `Vec`), so the leaf firmware does not link it; what it
 costs, and why its highlight is lighter than a field's, is in
 `docs/results-text.md` (M80/T80.4).
 
+## Text at an angle
+
+A glyph bitmap sits on the pixel grid, so a `Label` cannot turn. A
+`VectorText` asks the measurer for its run's **outlines** instead
+(`TextMeasure::outline`) and paints them as one path whose transform is
+its rotation — on the software canvas and the GPU alike. Its box is the
+turned run, so its ink stays inside it at every angle, and hit testing
+stays on that box. The showcase turns one run three ways:
+
+```text
+{{#include ../../examples/showcase/src/catalog.rs:vectortext}}
+```
+
+The outlines come from the measurer, so any measurer can supply them.
+This stand-in draws each character as a 10 × 20 px box, and the run
+turned on its side is laid out in the turned box:
+
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_widgets;
+use lumen_static::cx::{PathSink, TextMeasure};
+use lumen_static::display::PathEl;
+use lumen_static::widget::{Node, Widget};
+use lumen_static::{Constraints, LayoutCx, NodeState, Point, Size};
+use lumen_static_widgets::VectorText;
+
+/// A measurer whose glyphs are boxes, 10 px a character and 20 px tall.
+struct Boxes;
+
+impl TextMeasure for Boxes {
+    fn measure(&mut self, text: &str, _size: f32, _max_w: f32) -> Size {
+        Size { w: 10.0 * text.chars().count() as f32, h: 20.0 }
+    }
+    // The run's frame: its top-left at the origin, y down.
+    fn outline(&mut self, text: &str, _size: f32, _weight: f32, sink: &mut dyn PathSink) -> bool {
+        for k in 0..text.chars().count() {
+            let x = 10.0 * k as f32;
+            sink.el(PathEl::Move(Point { x: x + 1.0, y: 2.0 }));
+            sink.el(PathEl::Line(Point { x: x + 9.0, y: 2.0 }));
+            sink.el(PathEl::Line(Point { x: x + 9.0, y: 18.0 }));
+            sink.el(PathEl::Close);
+        }
+        true
+    }
+}
+
+fn main() {
+    let mut run = VectorText::new("Vertical", 90.0);
+    let style = [<VectorText as Widget>::type_defaults()];
+    let mut st = [NodeState::default()];
+    let limits = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
+    let mut boxes = Boxes;
+    let size = Node::layout(&mut run, &mut LayoutCx::new(&mut boxes), limits, &style, &mut st, 0);
+    // Eight characters, 80 x 20, on their side.
+    assert_eq!((size.w, size.h), (20.0, 80.0));
+    assert!(run.is_vector());
+}
+```
+
+A measurer with no outlines — the block stand-in, a baked face — answers
+`false`, and the widget paints its string level in a box its own size:
+visible beats faithful. The window's `FontMetrics` answers from the
+font's own outlines only with the window crate's `vector-text` feature,
+off by default because the font stack then keeps its faces' bytes; what
+that costs, and what an uncached frame of turned text costs on the
+software canvas, is in `docs/results-paint-vocabulary.md` (M82/T82.7,
+M82/T82.8).
+
 ## Complex scripts are a crate, not a feature
 
 `lumen-static-text` is separate on purpose. That is the M15 gating

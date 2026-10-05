@@ -109,6 +109,18 @@ pub struct DPaintBox {
     pub a: PaintBox,
 }
 
+/// M82/T82.8: one run at 0°, 30° and 90°, drawn as outlines.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 24.0)]
+pub struct DVectorText {
+    #[widget_id("d_vectortext_a")]
+    pub a: VectorText,
+    #[widget_id("d_vectortext_b")]
+    pub b: VectorText,
+    #[widget_id("d_vectortext_c")]
+    pub c: VectorText,
+}
+
 /// M27/T27.11's four. Each is a trigger and a popup of cells, and the
 /// only thing that differs is what a cell says — which is why they are
 /// one type with a `KIND` and four demos rather than four widgets.
@@ -809,6 +821,7 @@ demos! {
     Markdown(DMarkdown),
     RichTextEditor(DRichTextEditor),
     PaintBox(DPaintBox),
+    VectorText(DVectorText),
     ColorPicker(DColorPicker),
     DatePicker(DDatePicker),
     TimePicker(DTimePicker),
@@ -829,4 +842,5 @@ impl Default for Demo {
 // The branch's 52 (M56/M57), main's TextArea and ScrollView (M44,
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
-pub const DEMOS: usize = 56;
+// M82/T82.8's VectorText.
+pub const DEMOS: usize = 57;

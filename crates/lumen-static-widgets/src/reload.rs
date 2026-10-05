@@ -504,6 +504,9 @@ stateless! {
     [] crate::rich::Markdown,
     [] crate::rich::RichText,
     [] crate::rich::PaintBox,
+    // M82/T82.8: its text and angle are code; its outline is a memo keyed
+    // on the text and the measurer, so a swap re-measures by itself.
+    [S: TextStorage] crate::vector::VectorText<S>,
     [] crate::choose::OptionList,
     [] crate::image::Image,
     [S: 'static] crate::select::Select<S>,

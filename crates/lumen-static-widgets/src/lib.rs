@@ -135,6 +135,10 @@ pub mod pick;
 pub mod rich;
 pub mod split;
 pub mod surface;
+// M82/T82.8: a run drawn as outlines keeps them in a `Vec`, so it is behind
+// `alloc` with `RichText`, and the leaf firmware links none of it.
+#[cfg(feature = "alloc")]
+pub mod vector;
 mod trim;
 mod veil;
 
@@ -177,6 +181,8 @@ pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tab
 pub use indicator::{ProgressBar, Skeleton, Spinner};
 pub use split::{Collapsible, PaneGrid, SplitPane, VSplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
+#[cfg(feature = "alloc")]
+pub use vector::VectorText;
 pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
@@ -203,6 +209,6 @@ pub mod prelude {
     pub use crate::{
         Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, Markdown, Menu,
         NumberInput, OptionList, PaintBox, Pagination, PickList, RangeSlider, RichText,
-        RichTextEditor, SearchField, TimePicker, Tree,
+        RichTextEditor, SearchField, TimePicker, Tree, VectorText,
     };
 }

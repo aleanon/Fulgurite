@@ -2388,11 +2388,14 @@ mod tests {
         let mut failed = Vec::new();
         let mut checked = 0usize;
         let mut on_gradient = 0usize;
+        let (mut paths, mut vector_paths) = (0usize, 0usize);
+        let mut m_found = false;
         for (name, p, c) in [("light", SHOW_LIGHT, CHROME_LIGHT), ("dark", SHOW_DARK, CHROME_DARK)] {
             let mut h = host(0, false);
             h.set_palette(p);
             h.set_stylesheet(&stylesheet_with(c));
             let mut m = FontStack::system().map(FontMetrics::new);
+            m_found = m.is_some();
             for (e, entry) in CATALOG.iter().enumerate() {
                 choose(&mut h.app.store, e);
                 for _ in 0..2 {
@@ -2457,6 +2460,39 @@ mod tests {
                         ));
                     }
                 }
+                // **And path ink, at 3:1** — M82/T82.8. `VectorText`
+                // paints its run as one filled path, which no `Cmd::Text`
+                // walk sees, and `PaintBox` draws its star and arc as paths;
+                // a path is non-text ink (and VectorText's run is display
+                // size), so WCAG's 3:1. Its colour is the fill, or the
+                // stroke where there is no fill, against the opaque fills
+                // painted before it at the centre of its ink.
+                for (k, cmd) in h.list.cmds.iter().enumerate() {
+                    let Cmd::Path { rect, fill, stroke, .. } = cmd else { continue };
+                    let color = if fill.3 > 0 { *fill } else { *stroke };
+                    if rect[0] <= sx || rect[1] <= sy || color.3 == 0 {
+                        continue;
+                    }
+                    let (cx, cy) = ((rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0);
+                    let mut ground = p.surface;
+                    for prev in &h.list.cmds[..k] {
+                        if let Cmd::Rect { rect: r, color: f } | Cmd::RoundedRect { rect: r, color: f, .. } = prev {
+                            if f.3 > 0 && inside(r, cx, cy) {
+                                ground = over(*f, f.3, ground);
+                            }
+                        }
+                    }
+                    let fg = over(color, color.3, ground);
+                    let r = contrast(fg, ground);
+                    paths += 1;
+                    if entry.name == "VectorText" {
+                        vector_paths += 1;
+                        println!("  {name} VectorText: path ink {r:.2}:1 ({fg:?} on {ground:?}) (bound 3)");
+                    }
+                    if r < 3.0 {
+                        failed.push(format!("{name} {}: path ink is {r:.2}:1 ({fg:?} on {ground:?}), under 3", entry.name));
+                    }
+                }
             }
         }
         println!("  {checked} text runs checked across both palettes; {} under their bound", failed.len());
@@ -2469,6 +2505,13 @@ mod tests {
         // gradient would judge them on the stage instead.
         println!("  {on_gradient} text runs judged on a gradient (want >= 4: the Card's two, both palettes)");
         assert!(on_gradient >= 4, "setup: the Card's text was not judged on its fill");
+        // M82/T82.8: VectorText's three runs, in both palettes, are judged
+        // as path ink -- which they are only with outlines, so a system
+        // face is the setup (without one the demo paints text, judged above).
+        println!("  {paths} paths judged at 3:1, {vector_paths} of them VectorText's (want 6 with a system face)");
+        if m_found {
+            assert_eq!(vector_paths, 6, "setup: VectorText's runs were not judged as path ink");
+        }
         assert!(failed.is_empty(), "{} demo text runs under their bound", failed.len());
     }
 
@@ -2575,7 +2618,12 @@ mod tests {
             // selection, placed from shaped clusters, and this pumps the
             // `BlockMetrics` stand-in, which reports none — so it draws
             // the text alone here, as a label does.
-            if e.name != "Label" && e.name != "RichText" && e.name != "Selectable" {
+            //
+            // And `VectorText` (M82/T82.8), for the same reason: the
+            // stand-in has no outlines either, so it paints its fallback,
+            // the axis-aligned string. Its turned outlines are held by
+            // `lumen-static-shell/tests/vector_text.rs` and its live drive.
+            if e.name != "Label" && e.name != "RichText" && e.name != "Selectable" && e.name != "VectorText" {
                 let shapes = h
                     .list
                     .cmds

@@ -43,6 +43,8 @@ ROLES = {
     "Markdown": "Paragraph",
     "RichTextEditor": "TextInput",
     "PaintBox": "Canvas",
+    # M82/T82.8: text at an angle is still a label to a reader.
+    "VectorText": "Label",
     "Select": "ComboBox",
     "ScrollView": "ScrollView",
     "Card": "Group",

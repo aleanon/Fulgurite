@@ -10,7 +10,11 @@ lumen-static = { path = "../../crates/lumen-static" }
 lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 # `a11y` (M54/T54.2): the showcase asks for the screen-reader adapter,
 # which the window crate leaves off by default (its manifest says why).
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["a11y"] }
+# `vector-text` (M82/T82.8): the `VectorText` demo draws outlines, which
+# the window's measurer answers only with the feature; without it the demo
+# paints its fallback, axis-aligned. Its price is in the window crate's
+# manifest (docs/results-paint-vocabulary.md T82.7).
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["a11y", "vector-text"] }
 lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
 
 [features]

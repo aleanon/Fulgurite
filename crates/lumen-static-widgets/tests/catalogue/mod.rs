@@ -161,6 +161,11 @@ pub struct Ui {
     // over its tint.
     #[widget_id("Selectable")]
     pub selectable: Selectable<String>,
+    // M82/T82.8: a run drawn as outlines at an angle; under the catalogue's
+    // stand-in measurer it paints its axis-aligned fallback, which the
+    // contrast harness reads as text.
+    #[widget_id("VectorText")]
+    pub vector: VectorText<String>,
 }
 
 fn bind_row(l: &mut Label<String>, i: usize) {
@@ -242,6 +247,7 @@ pub fn build() -> Ui {
     ui.avatar.set("AB".into());
     ui.selectable = Selectable::new("selectable text".into());
     ui.selectable.select_all();
+    ui.vector = VectorText::new("turned".into(), 30.0);
     ui
 }
 
