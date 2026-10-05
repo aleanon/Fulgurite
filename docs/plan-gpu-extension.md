@@ -2,7 +2,8 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Not started.** The shared byte inventory, seams (S1,
+> its own file. M83a building: T83.0 landed 2026-10-06
+> (`docs/results-shader.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1085,6 +1086,36 @@ task and is recorded in `docs/results-shader.md` with the number).
   - **When it fires.** T83.1 stops. A new crate means
     `raw-window-handle` came in with a feature set that pulls more,
     and it is pinned to `std` only.
+
+**What building found (M83).**
+
+- T83.0: **an exhaustive match alone does not force a sample.**
+  `contrast_names_every_command` (in
+  `lumen-static-shell/tests/contrast_commands.rs`) states each command's
+  ground in a match with no wildcard, so a new variant does not compile
+  until it has a row; but a row for a variant no sample builds compiles
+  and never runs. So the test also keeps a `KINDS` count (12 at landing:
+  `Path` is M82's) asserted against the distinct kinds its samples built,
+  the `tests/parity.rs` pattern; T83.3 adds two samples and moves it to
+  14 under `cfg(lumen_shader)`. Dropping the `Image` sample reads "kinds
+  11 built of 12", red by name. Opaque fills and a sampled gradient are
+  one row shape, "measured against this colour"; a miss is told apart by
+  measuring against a page colour no sample uses.
+- T83.0: **`check_shell_headless.sh` meets a stale lock first, as the
+  second review predicted.** With `winit = "0.30"` added and no lock
+  update, `cargo tree --locked` refuses to run and the script reports
+  "cargo tree failed for the default build -- not a pass", exit 1; only
+  after `cargo update --workspace --offline` does it go red naming
+  `winit v0.30.13` in both builds. The accept run (`raw-window-handle`
+  optional under `truetype`, with its lock update) read 8 crates default
+  and 16 → 17 under `truetype`: the +1 the Decisions predict, in the
+  `truetype` run only.
+- T83.0: **AGENT.md's `just static` list is not edited here.** The task
+  says to add the script's name to it; AGENT.md says "the recipe is the
+  list" and is the coordinator's, so the script is in the `static`
+  recipe with its M83/T83.0 comment, and the coordinator is told. It has
+  no `scripts/selftest/` plant, as `check_fill_paint.sh` (M82/T82.3) has
+  none; its red and accept runs are in `docs/results-shader.md` T83.0.
 
 **What the review found (M83).**
 
