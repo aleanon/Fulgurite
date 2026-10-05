@@ -5,7 +5,9 @@
 //! than the software renderer's problem, not better. The atlas is what
 //! turns "rasterise every glyph every frame" into "rasterise every glyph
 //! once" — `FontStack::place_run` shapes each frame, `FontStack::rasterize`
-//! runs only on a miss.
+//! runs only on a miss. Since M82/T82.6 the glyph atlas also holds path
+//! masks, rasterised by the software canvas's `rasterize_path` on a miss
+//! and keyed by [`crate::MaskKey`].
 //!
 //! **Shelves, not a general packer.** Glyphs at one size are all about
 //! one height, so a row-based packer wastes almost nothing on the input
@@ -74,6 +76,14 @@ impl<K: Eq + Hash> Atlas<K> {
 
     pub fn get(&self, key: &K) -> Option<Slot> {
         self.map.get(key).copied()
+    }
+
+    /// The texels held by entries whose key satisfies `keep` — how the
+    /// renderer measures what path masks take of the glyph atlas they
+    /// share (M82/T82.6, K82d). Counted from the entries, so a reset
+    /// needs no bookkeeping to forget them.
+    pub fn texels_where(&self, keep: impl Fn(&K) -> bool) -> u64 {
+        self.map.iter().filter(|(k, _)| keep(k)).map(|(_, s)| s.w as u64 * s.h as u64).sum()
     }
 
     /// Forget everything. The caller must re-upload whatever it still

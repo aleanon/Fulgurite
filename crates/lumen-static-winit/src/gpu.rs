@@ -22,6 +22,11 @@ use crate::surface::Frame;
 pub struct GpuBackend {
     gpu: Gpu,
     name: String,
+    /// Whether K82d's line has been logged: the first frame that holds a
+    /// path mask says what share of the glyph atlas's starting size path
+    /// masks take (M82/T82.6, `docs/plan-paint-vocabulary.md`), once per
+    /// window; `just gpu-parity`'s PaintBox leg reads it.
+    masks_logged: bool,
 }
 
 impl GpuBackend {
@@ -43,7 +48,7 @@ impl GpuBackend {
             gpu.set_font(f);
         }
         let name = format!("gpu ({})", gpu.adapter());
-        Some(GpuBackend { gpu, name })
+        Some(GpuBackend { gpu, name, masks_logged: false })
     }
 
     pub fn gpu_mut(&mut self) -> &mut Gpu {
@@ -112,6 +117,19 @@ impl Backend for GpuBackend {
         let presented = self.gpu.present();
         let present_ns = t.elapsed().as_nanos() as u64;
 
+        let stats = self.gpu.atlas_stats();
+        if !self.masks_logged && stats.path_texels > 0 {
+            self.masks_logged = true;
+            let start = lumen_static_wgpu::GLYPH_ATLAS as u64 * lumen_static_wgpu::GLYPH_ATLAS as u64;
+            eprintln!(
+                "lumen-static: path masks {} texels in {} tile(s), {:.2}% of the glyph atlas's start ({}²) -- K82d, bound 25%",
+                stats.path_texels,
+                stats.path_masks,
+                stats.path_texels as f64 / start as f64 * 100.0,
+                lumen_static_wgpu::GLYPH_ATLAS
+            );
+        }
+
         Frame {
             layout_ns,
             paint_ns,
@@ -130,7 +148,7 @@ impl Backend for GpuBackend {
             // M47/T47.4: the window asks for another frame on this.
             dropped: !presented,
             // M51/T51.1: reported through `app.perf` as `atlas_give_ups`.
-            atlas_give_ups: Some(self.gpu.atlas_stats().give_ups),
+            atlas_give_ups: Some(stats.give_ups),
         }
     }
 

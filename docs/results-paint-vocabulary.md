@@ -304,3 +304,33 @@ below the parent's minimum on arms that paint no path is not one. The
 two slower rows were on arms T82.5 does not run (`textarea`,
 `cascade_deep`), and runs 4 and 5 held on a quiet machine. K82c stays
 two-sided as a measurement and is read one-sided as a stop.
+
+## T82.6 — GPU path masks (2026-10-06)
+
+`Cmd::Path` on `lumen-static-wgpu`: each non-transparent paint is an R8
+coverage mask in the **glyph** atlas (`Atlas<MaskKey>`; no stencil, no
+new pipeline, binding or texture), rasterised on a miss by the software
+canvas's `rasterize_path` from the same device-space elements and at the
+same origin (x from the ink's left floor, y absolute), uploaded and drawn
+as `KIND_GLYPH` quads in `PATH_TILE` (256 px) tiles. `MaskKey::Path {
+hash, paint, frac, tile }`: `hash` is FNV-1a over the elements less the
+ink box's integer floor, so a whole-pixel scroll hits; `paint` is `Fill`
+or `Stroke(width bits)`, one key per paint. `AtlasStats` gains
+`path_masks` (tiles rasterised) and `path_texels` (resident, counted from
+the atlas). The window's GPU backend logs K82d's line once. Gates:
+`lumen-static-wgpu/tests/parity.rs` (`just gpu`) on the RTX 4070
+(Vulkan, `DiscreteGpu`) and llvmpipe (lavapipe, `Cpu`) unless named.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| parity, each paint alone over the page (`paths_agree_across_backends`: star fill 2,764 px, circle fill 4,198, circle stroke 948, rotated bar stroke 618) | worst channel delta **1** on every paint, both adapters | 1 | one key for both paints: the circle's stroke drawn from its fill's mask, worst **230** over 4,399 px, red by name ("a paint's mask disagrees"); the mask rasterised at the integer origin without the fractional offset: worst **34 / 145 / 230 / 106** |
+| parity, the whole scene (7,922 px inked on both) | RTX worst **1** (838 px differ, 0 over 1); llvmpipe worst **2** (31 px over 1, all on the circle's stroke edge over its translucent fill) | 2, one per blend | as above: worst **230** |
+| masks for a filled and stroked path | **2** | 2 | — (the one-key injection reads 3 for the scene's 4 paints) |
+| frame region "path" (`every_region_is_within_its_own_bound`, a filled and stroked triangle) | **0** px over 8, both adapters; `KINDS` 12, the `Path` row now `None` ("in the frame") | 2 | one key: **356** px over 8 |
+| cache (`path_masks_are_cached_and_survive_a_whole_pixel_scroll`) | first frame 1, idle **0**, changed path **1**, moved 1 px **0**; the moved frame is the original shifted 1 px at 0 differing px (setup) | 0 / 1 / 0 | the key hashes absolute position: moved 1 px **1**, red by name |
+| tiles (`a_wide_path_is_drawn_in_tiles_without_a_reset`, 2,000 × 100 px on a 2048 × 128 target) | **8** tiles, 200,000 texels; resets **0**, growths **0**, atlas 1024²; inked at x = 30 and 2,010 (setup) | 0, 0 | `PATH_TILE` = 4096 (one slot): 1 tile, resets **1**, growths **1**, atlas 2048² |
+| T82.5's pin, re-run against this code | software 6,400 px, the GPU **6,400** px: "the GPU drew a path", red by name — the inversion | — | — |
+| live, `just gpu-parity`'s PaintBox leg (showcase entry 10, 1120×760, RTX) | worst channel delta **3**, 0 px over 8; the minimal leg unchanged (worst 1) | 1% over 8 | the GPU's `Path` arm skipped: "the PaintBox window (entry 10) logged no path-mask line -- the GPU drew no path", exit 1 |
+| K82d, the PaintBox entry's first GPU frame | **15,580** texels in 2 tiles, **1.49%** of 1024² | ≤ 25% | holds; read again with VectorText at T82.8 |
+| resume (`just resume-drive`) | masks are atlas contents, no new GPU resource: gpu-resume leg 0 / 458,620 px differ after a suspend/resume round trip (2 backends made) | 0.1% | — (the drive's own) |
+| firmware, `just firmware-delta a10ecec firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** `.text`, **+0** `.rodata` on all four (`firmware_interactive` 63,472 B) | 0 | — |

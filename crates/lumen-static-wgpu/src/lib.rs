@@ -70,6 +70,58 @@ const KIND_IMAGE: u32 = 5;
 const KIND_BLUR: u32 = 6;
 const KIND_GLASS: u32 = 7;
 const KIND_STROKE: u32 = 8;
+/// The edge of one path-mask tile, in texels — M82/T82.6.
+///
+/// A path's mask is uploaded in tiles of at most this square, each its
+/// own atlas entry, so a path as wide as the window never needs one
+/// oversized slot: a 2,000 px path is eight 256 px entries in the 1024²
+/// atlas the frame already has, not a 2,000 px entry that forces the
+/// atlas to grow (`tests/parity.rs`, `a_wide_path_is_drawn_in_tiles_without_a_reset`).
+pub const PATH_TILE: u32 = 256;
+
+/// What one entry of the glyph atlas holds — M82/T82.6
+/// (`docs/plan-paint-vocabulary.md`, Decisions, "The GPU draws path
+/// masks, not a stencil").
+///
+/// **A path is an R8 coverage mask in the glyph atlas**, drawn by the
+/// `KIND_GLYPH` quads text already uses: there is no stencil attachment
+/// on this backend and no new pipeline, binding or texture. The coverage
+/// is rasterised on a miss by the software canvas's own
+/// `lumen_static_shell::software::rasterize_path`, from the same
+/// device-space elements and at the same mask origin, so the two
+/// backends differ only in how a coverage byte is blended
+/// (`tests/parity.rs`, `paths_agree_across_backends`).
+///
+/// - `hash` is a content hash of the path's elements **moved to its ink
+///   box's integer-floor origin**, so a path scrolled by whole pixels
+///   hashes the same and is an atlas hit. A path translated by a
+///   fraction is a different mask, which `frac` says too: the
+///   fractional part of the ink origin, in 1/256 px.
+/// - `paint` is which coverage the mask is. A `KIND_GLYPH` quad draws one
+///   texel times one colour, so a filled and stroked path is **two
+///   masks under two keys**, never one key for both.
+/// - `tile` is the mask's [`PATH_TILE`] column and row.
+///
+/// Masks reset with the atlas, as glyphs do; [`Gpu::atlas_stats`] counts
+/// what was rasterised ([`AtlasStats::path_masks`]) and what is resident
+/// ([`AtlasStats::path_texels`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaskKey {
+    /// One glyph bitmap, as since T15.12.
+    Glyph(GlyphId),
+    /// One tile of one paint of one path.
+    Path { hash: u64, paint: MaskPaint, frac: [u8; 2], tile: [u16; 2] },
+}
+
+/// Which of a path's two coverages a [`MaskKey::Path`] holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaskPaint {
+    /// The non-zero fill.
+    Fill,
+    /// The stroke, at this width in device px (its `f32` bits).
+    Stroke(u32),
+}
+
 /// `software::LIGHT_Z` / `LIGHT_XY`.
 const LIGHT_Z: f32 = 0.62;
 const LIGHT_XY: f32 = 0.784_599_3;
@@ -83,7 +135,7 @@ const LIGHT_XY: f32 = 0.784_599_3;
 /// Since M51/T51.1 the atlas doubles when that happens, up to the
 /// device's limit, and [`Gpu::atlas_stats`] counts what it did
 /// (`docs/results-gpu.md` §4).
-const GLYPH_ATLAS: u32 = 1024;
+pub const GLYPH_ATLAS: u32 = 1024;
 /// Image atlas edge. **Allocated on the first image command**, so an
 /// application with no images pays nothing for the capability. The blur
 /// scratch follows the same rule since M51/T51.5 ([`Gpu::scratch_bytes`]).
@@ -235,7 +287,8 @@ pub struct Gpu {
     linear: wgpu::Sampler,
 
     glyph_tex: wgpu::Texture,
-    glyph_atlas: Atlas<GlyphId>,
+    /// Glyphs and, since M82/T82.6, path masks ([`MaskKey`]).
+    glyph_atlas: Atlas<MaskKey>,
     image_tex: wgpu::Texture,
     image_atlas: Atlas<ImageId>,
     /// Rebuild [`Gpu::bind`] before the next draw — a texture or the
@@ -279,6 +332,8 @@ struct FrameScratch {
     splits: Vec<Split>,
     clip: Vec<Rect>,
     shape: lumen_static_shell::text::ShapeScratch,
+    /// `rasterize_path`'s buffers, for a path-mask miss (M82/T82.6).
+    path: lumen_static_shell::software::PathScratch,
 }
 
 /// How often the atlases ran out of room, and what was done about it —
@@ -303,6 +358,14 @@ pub struct AtlasStats {
     /// The glyph atlas's edge, in texels, now. It never shrinks within a
     /// renderer's life.
     pub glyph_size: u32,
+    /// Path-mask tiles rasterised since this renderer was made — one per
+    /// miss, so an idle frame adds 0 and a changed path adds one per tile
+    /// per paint (M82/T82.6).
+    pub path_masks: u64,
+    /// Texels path masks hold in the glyph atlas now: what K82d measures
+    /// as a share of the atlas's starting edge, [`GLYPH_ATLAS`] squared
+    /// (`docs/plan-paint-vocabulary.md`).
+    pub path_texels: u64,
 }
 
 /// Which texture group 1 names for a pass — M22/T22.6.
@@ -726,7 +789,8 @@ impl Gpu {
     /// atlas's edge — M51/T51.1 (R9-F1). A non-zero `give_ups` means a
     /// frame was drawn with glyphs or images missing.
     pub fn atlas_stats(&self) -> AtlasStats {
-        self.atlas_stats
+        let path_texels = self.glyph_atlas.texels_where(|k| matches!(k, MaskKey::Path { .. }));
+        AtlasStats { path_texels, ..self.atlas_stats }
     }
 
     /// Bytes held by the backdrop filter's two scratch targets —
@@ -1003,7 +1067,7 @@ impl Gpu {
         damage: Option<Rect>,
         fr: &mut FrameScratch,
     ) -> Result<(), Overflow> {
-        let FrameScratch { quads: out, grads, mats, splits, clip, shape: shaping } = fr;
+        let FrameScratch { quads: out, grads, mats, splits, clip, shape: shaping, path } = fr;
         // Taken for the pass and put back at the end, like the software
         // canvas does: the source is a field and the atlas needs
         // `&mut self`.
@@ -1269,12 +1333,27 @@ impl Gpu {
                         }
                     }
                 }
-                // **Not drawn on this backend yet** (M82/T82.5): T82.6
-                // rasterises path masks through the software canvas's
-                // `rasterize_path` into the glyph atlas. Until then the
-                // arm is empty on purpose, and `tests/parity.rs`'s path pin
-                // asserts a path leaves the GPU frame the page.
-                Cmd::Path { .. } => {}
+                // **Masks in the glyph atlas** (M82/T82.6): each
+                // non-transparent paint is its own mask, rasterised on a
+                // miss by the software canvas's `rasterize_path` and drawn
+                // as `KIND_GLYPH` tiles ([`MaskKey`]). The paints are
+                // skipped exactly as `Canvas::path_within` skips them.
+                Cmd::Path { rect, els, fill, stroke, width } => {
+                    let Some(area) = clipped(*rect, clip) else { continue };
+                    // A range outside the store draws nothing, as on the
+                    // software canvas.
+                    let (at, n) = (els.0 as usize, els.1 as usize);
+                    let Some(els) = list.paths.get(at..at + n) else { continue };
+                    use lumen_static_shell::software::PathCoverage;
+                    for (paint, cover) in [(*fill, PathCoverage::Fill), (*stroke, PathCoverage::Stroke(*width))] {
+                        if paint.3 == 0 || matches!(cover, PathCoverage::Stroke(v) if v.is_nan() || v <= 0.0) {
+                            continue;
+                        }
+                        if self.path_mask(els, *rect, area, paint, cover, path, out).is_err() {
+                            result = Err(Overflow::Glyph);
+                        }
+                    }
+                }
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => {
                     // Never pop the damage scope; an unbalanced list
@@ -1318,11 +1397,11 @@ impl Gpu {
             let (gx, gy) = (pen.x, (rect[1] + g.y).round());
             let dst = [gx, gy, gx + pen.w as f32, gy + g.h as f32];
             let Some(r) = clipped(dst, clip) else { continue };
-            let uv = match self.glyph_atlas.get(&pen.id) {
+            let uv = match self.glyph_atlas.get(&MaskKey::Glyph(pen.id)) {
                 Some(slot) => slot.uv(self.glyph_atlas.size()),
                 None => {
                     let Some((w, h, cov)) = font.rasterize(pen.id) else { continue };
-                    let Some(slot) = self.glyph_atlas.insert(pen.id, w, h) else {
+                    let Some(slot) = self.glyph_atlas.insert(MaskKey::Glyph(pen.id), w, h) else {
                         return Err(Overflow::Glyph);
                     };
                     write_texture(&self.queue, &self.glyph_tex, slot, &cov, 1);
@@ -1338,6 +1417,76 @@ impl Gpu {
                 kind: KIND_GLYPH,
                 _pad: [0; 3],
             });
+        }
+        Ok(())
+    }
+
+    /// One paint of one path, as [`PATH_TILE`] tiles of R8 coverage in
+    /// the glyph atlas — M82/T82.6 ([`MaskKey`]).
+    ///
+    /// **The mask is the software canvas's.** Its pixel `(0, 0)` is the
+    /// device pixel at the ink box's integer floor, the origin
+    /// `Canvas::path_within` gives `rasterize_path` (x from the ink's
+    /// left edge, y absolute), and it is rasterised from the same
+    /// device-space elements, so a tile's bytes are the bytes the
+    /// software canvas blends there. `area` is the ink box already
+    /// clipped; only tiles that meet it are looked up, and only a miss
+    /// rasterises.
+    #[allow(clippy::too_many_arguments)]
+    fn path_mask(
+        &mut self,
+        els: &[lumen_static::display::PathEl],
+        ink: Rect,
+        area: Rect,
+        color: Color,
+        cover: lumen_static_shell::software::PathCoverage,
+        scratch: &mut lumen_static_shell::software::PathScratch,
+        out: &mut Vec<Quad>,
+    ) -> Result<(), Overflow> {
+        use lumen_static_shell::software::{rasterize_path, PathCoverage};
+        let (ix, iy) = (ink[0].floor(), ink[1].floor());
+        let w = (ink[2].ceil() - ix).max(0.0) as u32;
+        let h = (ink[3].ceil() - iy).max(0.0) as u32;
+        if w == 0 || h == 0 || !(ix.is_finite() && iy.is_finite()) {
+            return Ok(());
+        }
+        let hash = mask_hash(els, ix, iy);
+        let paint = match cover {
+            PathCoverage::Fill => MaskPaint::Fill,
+            PathCoverage::Stroke(v) => MaskPaint::Stroke(v.to_bits()),
+        };
+        let frac = [((ink[0] - ix) * 256.0) as u8, ((ink[1] - iy) * 256.0) as u8];
+        let col = linear(color);
+        let cell = snap_out(area);
+        for ty in 0..h.div_ceil(PATH_TILE) {
+            for tx in 0..w.div_ceil(PATH_TILE) {
+                let (x0, y0) = (tx * PATH_TILE, ty * PATH_TILE);
+                let (tw, th) = (PATH_TILE.min(w - x0), PATH_TILE.min(h - y0));
+                let dst = [ix + x0 as f32, iy + y0 as f32, ix + (x0 + tw) as f32, iy + (y0 + th) as f32];
+                // The software canvas writes whole pixels from the floor to
+                // the ceiling of the clipped ink, so the quad's hard clip is
+                // that box, not the fractional one: a pixel the ink's edge
+                // only grazes still has coverage to blend.
+                let r = [dst[0].max(cell[0]), dst[1].max(cell[1]), dst[2].min(cell[2]), dst[3].min(cell[3])];
+                if r[2] <= r[0] || r[3] <= r[1] {
+                    continue;
+                }
+                let key = MaskKey::Path { hash, paint, frac, tile: [tx as u16, ty as u16] };
+                let uv = match self.glyph_atlas.get(&key) {
+                    Some(slot) => slot.uv(self.glyph_atlas.size()),
+                    None => {
+                        let Some(slot) = self.glyph_atlas.insert(key, tw, th) else {
+                            return Err(Overflow::Glyph);
+                        };
+                        let origin = [ix as i32 + x0 as i32, iy as i32 + y0 as i32];
+                        let mask = rasterize_path(els, cover, origin, tw as usize, th as usize, scratch);
+                        self.atlas_stats.path_masks += 1;
+                        write_texture(&self.queue, &self.glyph_tex, slot, mask, 1);
+                        slot.uv(self.glyph_atlas.size())
+                    }
+                };
+                out.push(Quad { rect: dst, clip: r, color: col, params: [0.0; 4], uv, kind: KIND_GLYPH, _pad: [0; 3] });
+            }
         }
         Ok(())
     }
@@ -1701,6 +1850,33 @@ fn blocks(rect: &Rect, s: &str, size: f32, color: Color, clip: &[Rect], out: &mu
             out.push(shape(g, r, color, 0.0, KIND_ROUNDED));
         }
     }
+}
+
+/// [`MaskKey::Path`]'s `hash`: FNV-1a over the element count and, per
+/// element, its tag and its points **less the integer origin
+/// `(ix, iy)`** — so the same path scrolled by whole pixels hashes the
+/// same (M82/T82.6). Subtracting a whole number below the point is exact
+/// in `f32` wherever the point's magnitude leaves room for its fraction,
+/// which is every UI coordinate; a path whose points round differently
+/// after a translate is a miss, never a wrong hit.
+fn mask_hash(els: &[lumen_static::display::PathEl], ix: f32, iy: f32) -> u64 {
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut word = |v: u32| {
+        for b in v.to_le_bytes() {
+            h = (h ^ b as u64).wrapping_mul(PRIME);
+        }
+    };
+    word(els.len() as u32);
+    for e in els {
+        word(e.tag() as u32);
+        let (n, ps) = e.points();
+        for p in &ps[..n] {
+            word((p.x - ix).to_bits());
+            word((p.y - iy).to_bits());
+        }
+    }
+    h
 }
 
 fn grad_of(s: Stops) -> Grad {

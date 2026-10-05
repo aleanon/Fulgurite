@@ -2661,10 +2661,10 @@ pub struct PathScratch {
 /// the cells it crosses, a running sum along each row turns that into
 /// winding, and the coverage is `min(|sum|, 1)` — non-zero winding,
 /// analytic rather than sampled, and no `unsafe`. The software canvas
-/// draws [`lumen_static::Cmd::Path`] through it, and the GPU backend is
-/// meant to rasterise its path masks through the same function
-/// (`docs/plan-paint-vocabulary.md`, T82.6), so the two can only differ
-/// in how the mask is blended.
+/// draws [`lumen_static::Cmd::Path`] through it, and since M82/T82.6 the
+/// GPU backend rasterises its path masks through the same function, at
+/// the same origin, into its glyph atlas (`lumen_static_wgpu::MaskKey`),
+/// so the two can only differ in how the mask is blended.
 ///
 /// Curves are flattened at [`FLATTEN_TOLERANCE`] by Wang's bound. A
 /// stroke is the non-zero union of one quad per flattened segment and a

@@ -135,9 +135,7 @@ TRANSITION                     # proposed by ?
 TextSource                     # proposed by M80
 GlyphRuns                      # proposed by M81
 TRACKED                        # proposed by M81
-MaskKey                        # proposed by M82
 PAINTBOX                       # proposed by M82
-PATH_TILE                      # proposed by M82
 PathSink                       # proposed by M82
 PopTransform                   # proposed by M82
 PushTransform                  # proposed by M82

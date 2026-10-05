@@ -171,7 +171,7 @@ through lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
 Each gate's first line names the adapter and its device type.
 
 `tests/parity.rs` `every_region_is_within_its_own_bound`: the frame is
-ten named shapes in disjoint boxes, each counted alone (pixels over 8
+ten named shapes (eleven since M82/T82.6 added a path) in disjoint boxes, each counted alone (pixels over 8
 levels) against `2 × b + 2`, where `b` is the larger of the two
 adapters' baselines — twice, so a doubled baseline is green and a shape
 that moved a pixel is not; plus two, so a zero baseline is not a bound
@@ -193,6 +193,7 @@ names the file that does (glass: `tests/glass_parity.rs`).
 | translucent rect | 0 | 0 | 2 |
 | image (16×16 card at 2×) | 0 | 0 | 2 |
 | border | 0 | 0 | 2 |
+| path, filled and stroked (M82/T82.6) | 0 | 0 | 2 |
 | page, outside every box | 0 | 0 | 0 |
 | whole frame, for the record | 58 (0.13%) | 0 | — |
 | hairlines through `Scaled`, 1.25 and 1.5 (M40's arm) | 0, 0 | 0, 0 | 2 |
@@ -388,6 +389,29 @@ already exceptional.
 > carried no atlas count`, and `protocol.rs`
 > `perf_reports_the_atlas_give_up_count` fails `app.perf lost the
 > renderer's give-up count`.
+
+> **Path masks, since M82/T82.6 (2026-10-06).** A `Cmd::Path` is drawn
+> as R8 coverage in the **glyph** atlas, not by stencil-then-cover: the
+> backend has no stencil attachment and runs at one sample. Each
+> non-transparent paint of a path is its own mask under its own
+> `MaskKey::Path` (a filled and stroked path is two), rasterised on a
+> miss by the software canvas's `rasterize_path` at the canvas's own
+> origin and drawn by the `KIND_GLYPH` quads text uses, in `PATH_TILE`
+> (256 px) tiles. The key hashes the path at its ink box's integer floor,
+> so a whole-pixel scroll is an atlas hit. `tests/parity.rs`, RTX 4070
+> and llvmpipe:
+>
+> | gate | RTX 4070 | llvmpipe | bound |
+> |---|---|---|---|
+> | each paint alone over the page (star fill, circle fill and stroke, rotated bar stroke), worst channel delta | 1, 1, 1, 1 | 1, 1, 1, 1 | 1 |
+> | the whole scene (the circle's stroke over its translucent fill) | worst **1**, 0 px over 1 | worst **2**, 31 px over 1 | 2 (one per blend) |
+> | masks rasterised: first frame / idle / changed path / moved 1 px | 1 / 0 / 1 / 0 | 1 / 0 / 1 / 0 | – / 0 / 1 / 0 |
+> | a 2,000 × 100 px path: tiles, resets, growths | 8, 0, 0 | 8, 0, 0 | –, 0, 0 |
+> | live, `just gpu-parity`'s PaintBox leg (1120×760) | worst **3**, 0 px over 8 | — | 1% over 8 |
+> | K82d, PaintBox's first GPU frame | **15,580** texels in 2 tiles, **1.49%** of 1024² | — | 25% |
+>
+> The injections and their red numbers are in
+> `docs/results-paint-vocabulary.md` T82.6.
 
 ## 5. What it costs, and why the CPU is still the default
 

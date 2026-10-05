@@ -1131,6 +1131,38 @@ crosses.*
   median is not a cost, and the slower rows were on arms T82.5 does not
   run (`docs/results-paint-vocabulary.md` T82.5).
 
+- T82.6: **the parity bound is one blend's rounding per paint, not per
+  frame.** The masks are the software canvas's bytes, but where a
+  translucent fill and a stroke over it both cover a pixel there are two
+  blends, each free to round by one: llvmpipe reads 2 on 31 px of the
+  circle's stroke edge (the RTX 4070 reads 1). The gate holds each paint
+  alone over the opaque page to ≤ 1 (all four read 1 on both adapters)
+  and the whole scene to ≤ 2; both injections are red on the per-paint
+  half (230 and up to 230).
+- T82.6: **the plan's third parity injection ("transform applied on
+  software only") has no site.** Since T82.5 the transform is applied in
+  `DisplayList::path`, before either backend, and a renderer never sees an
+  `Affine`. The rotated bar is in the parity scene, so a GPU that drew
+  its mask from anything but the list's elements would fail the per-paint
+  bound; the two injections that break the GPU's own mechanism (one key
+  for both paints, the mask without its fractional offset) are run
+  instead.
+- T82.6: **the key carries a tile index**, `MaskKey::Path { hash, paint,
+  frac, tile }`: a `PATH_TILE` tile is its own atlas entry, and the
+  plan's key had no field to tell two tiles of one path apart. Tiles are
+  rasterised one at a time (`rasterize_path` with the tile's origin), so a
+  path wider than the window costs one tile's buffer, not the whole mask.
+- T82.6: **a tile's hard clip is the clipped ink snapped out to whole
+  pixels**, not the fractional ink: the shader clips at pixel centres,
+  and a pixel the ink's edge only grazes holds coverage the software
+  canvas blends (it writes from the floor to the ceiling of the clipped
+  ink).
+- T82.6: **K82d is printed by the window**, not by an agent method: the
+  GPU backend logs one line on its first frame holding a path mask, and
+  `just gpu-parity`'s PaintBox leg requires it (1.49% on the PaintBox
+  entry). `AtlasStats` carries `path_masks` and `path_texels` for the
+  headless gates.
+
 **What the review found (M82).**
 
 - **C1** → adopted, changed. `Stops` offsets become u8 (36 → 21 B), so

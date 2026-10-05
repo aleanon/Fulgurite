@@ -87,6 +87,64 @@ if frac > 0.01:
     sys.exit(f"gpu-parity: the two backends disagree on {frac * 100:.2f}% of the window")
 PY
 
+# ---- M82/T82.6: paths, through the whole stack -------------------------
+# The showcase opened on its PaintBox entry (a filled star and a stroked
+# arc, `examples/showcase/src/catalog.rs`) on each backend, read back off the
+# X server and compared as above. The GPU draws a path as R8 masks in the
+# glyph atlas, rasterised by the software canvas's own `rasterize_path`, so
+# the headless gate (`tests/parity.rs`, `paths_agree_across_backends`) holds
+# them to one blend's rounding; this leg holds the presented window to the
+# minimal leg's 1% over 8 and prints the worst channel delta. The GPU
+# window logs K82d's number once -- path-mask texels as a share of the glyph
+# atlas's starting size (bound 25%) -- and the leg requires the line: a
+# window that drew no path mask has no number to give.
+cargo build --release -p showcase --features gpu
+entry=$(python3 - <<'PY'
+import re
+src = open("examples/showcase/src/catalog.rs").read()
+names = re.findall(r'entry!\("[^"]*", "([^"]*)"', src[src.index("pub static CATALOG"):])
+print(names.index("PaintBox"))
+PY
+)
+sgrab() {
+    $LAUNCH --no-agent --settle 3 --leg "$1" --exe target/release/showcase --arg "$entry" ${3:+--env "$3"} \
+        -- bash -c "xwd -name showcase -out '$2' 2>/dev/null || true"
+}
+sgrab paintbox-gpu "$tmp/pb-gpu.xwd"
+sgrab paintbox-software "$tmp/pb-cpu.xwd" "LUMEN_BACKEND=software"
+k82d=$(grep -m1 '^lumen-static: path masks' target/live/gpu-parity-paintbox-gpu.log || true)
+if [ -z "$k82d" ]; then
+    echo "gpu-parity: the PaintBox window (entry $entry) logged no path-mask line -- the GPU drew no path" >&2
+    exit 1
+fi
+echo "gpu-parity: PaintBox (entry $entry): ${k82d#lumen-static: }"
+python3 - "$tmp/pb-gpu.xwd" "$tmp/pb-cpu.xwd" "$k82d" <<'PY'
+import re, struct, sys
+
+def load(path):
+    d = open(path, 'rb').read()
+    h = struct.unpack('>25I', d[:100])
+    hdr, w, ht, bpp, bpl, ncolors = h[0], h[4], h[5], h[11], h[12], h[19]
+    px, step = d[hdr + ncolors * 12:], bpp // 8
+    return w, ht, [tuple(px[y * bpl + x * step:y * bpl + x * step + 3]) for y in range(ht) for x in range(w)]
+
+w, h, a = load(sys.argv[1])
+_, _, b = load(sys.argv[2])
+if len(a) != len(b):
+    sys.exit("gpu-parity: the two PaintBox windows are different sizes")
+worst, over = 0, 0
+for pa, pb in zip(a, b):
+    d = max(abs(x - y) for x, y in zip(pa, pb))
+    worst = max(worst, d)
+    over += d > 8
+print(f"gpu-parity: PaintBox {w}x{h}, worst channel delta {worst}, {over} px ({over / len(a) * 100:.3f}%) over 8 (bound 1%)")
+if over / len(a) > 0.01:
+    sys.exit(f"gpu-parity: the backends disagree on {over / len(a) * 100:.2f}% of the PaintBox window")
+share = float(re.search(r'([0-9.]+)% of the glyph atlas', sys.argv[3]).group(1))
+if share > 25.0:
+    sys.exit(f"gpu-parity: K82d fires: path masks take {share}% of the glyph atlas's start (bound 25%)")
+PY
+
 # ---- M47/T47.0 (R7-F7): a dropped present on an IDLE window ------------
 # `Gpu::present` swallowed Outdated/Lost and returned nothing, and the
 # window asks for another frame only while something animates, so an idle

@@ -66,9 +66,10 @@ fn kind(c: &Cmd) -> (usize, &'static str, Option<&'static str>) {
         Cmd::Glass { .. } => (8, "Glass", Some("tests/glass_parity.rs")),
         Cmd::PushClip { .. } => (9, "PushClip", None),
         Cmd::PopClip => (10, "PopClip", None),
-        // M82/T82.5: the GPU arm is empty until T82.6, which draws paths in
-        // this frame and sets this field to `None`.
-        Cmd::Path { .. } => (11, "Path", Some("tests/parity.rs: path pin, until T82.6")),
+        // M82/T82.6: in the frame since the GPU draws path masks; the
+        // tolerance, cache and tile gates are `paths_agree_across_backends`
+        // and the two after it.
+        Cmd::Path { .. } => (11, "Path", None),
     }
 }
 
@@ -94,7 +95,7 @@ struct Region {
     bbox: [u32; 4],
 }
 
-const REGIONS: [Region; 10] = [
+const REGIONS: [Region; 11] = [
     Region { name: "rect", bbox: [8, 8, 62, 42] },
     Region { name: "rounded rect", bbox: [68, 8, 132, 47] },
     Region { name: "clip scope", bbox: [138, 2, 232, 58] },
@@ -105,6 +106,7 @@ const REGIONS: [Region; 10] = [
     Region { name: "translucent rect", bbox: [8, 138, 72, 172] },
     Region { name: "image", bbox: [86, 138, 126, 176] },
     Region { name: "border", bbox: [150, 123, 234, 172] },
+    Region { name: "path", bbox: [128, 132, 150, 176] },
 ];
 
 /// Per-region baselines, pixels over 8, in [`REGIONS`]' order — measured
@@ -122,8 +124,8 @@ const REGIONS: [Region; 10] = [
 /// is llvmpipe's 56-px whole-frame baseline in the review). The row it
 /// decides is below the card, so it shows; `docs/results-gpu.md` §2 has
 /// the rest.
-const BASE_DISCRETE: [usize; 10] = [0, 0, 0, 0, 54, 4, 0, 0, 0, 0];
-const BASE_CPU: [usize; 10] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const BASE_DISCRETE: [usize; 11] = [0, 0, 0, 0, 54, 4, 0, 0, 0, 0, 0];
+const BASE_CPU: [usize; 11] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 fn bound(i: usize) -> usize {
     2 * BASE_DISCRETE[i].max(BASE_CPU[i]) + 2
@@ -164,6 +166,14 @@ fn frame() -> DisplayList {
     // into `software::rr_cov` -- and the border region's own bound is what
     // holds them to it.
     l.stroked_rect([160.0, 125.0, 230.0, 170.0], Color(220, 40, 40, 255), 8.0, 3.0);
+    // A filled and stroked path (M82/T82.6): two masks in the glyph
+    // atlas on the GPU, `rasterize_path`'s coverage on both.
+    {
+        use lumen_static::display::{PathEl, PathPaint, AFFINE_IDENTITY};
+        let p = |x: f32, y: f32| Point { x, y };
+        let els = [PathEl::Move(p(132.0, 136.0)), PathEl::Line(p(146.0, 136.0)), PathEl::Line(p(139.0, 172.0)), PathEl::Close];
+        l.path(&els, AFFINE_IDENTITY, PathPaint { fill: Color(60, 140, 220, 255), stroke: Color(20, 30, 60, 255), width: 2.0 });
+    }
     l
 }
 
@@ -218,7 +228,7 @@ fn canvas() -> Canvas {
 
 /// Which baseline row applies to the adapter that ran, from the device
 /// type the adapter line carries (M51 §0 rule 1).
-fn baseline_for(adapter: &str) -> (&'static str, Option<&'static [usize; 10]>) {
+fn baseline_for(adapter: &str) -> (&'static str, Option<&'static [usize; 11]>) {
     if adapter.contains("DiscreteGpu") {
         ("discrete", Some(&BASE_DISCRETE))
     } else if adapter.contains("Cpu") {
@@ -959,36 +969,226 @@ fn images_agree_across_the_backends() {
     }
 }
 
-/// **M82/T82.5's pin: the GPU backend draws no path yet**, and T82.6
-/// inverts this (`docs/plan-paint-vocabulary.md`). A filled square is
-/// rendered on both backends; the software canvas inks it (the setup: the
-/// scene puts a path where the GPU must not draw) and the GPU frame stays
-/// the page, pixel for pixel. Printed beside each other so the inversion
-/// reads as a number.
-#[test]
-fn path_pin_the_gpu_draws_no_path_until_t82_6() {
-    use lumen_static::display::{PathEl, PathPaint, AFFINE_IDENTITY};
-    let p = |x: f32, y: f32| Point { x, y };
-    let els = [
-        PathEl::Move(p(40.0, 40.0)),
-        PathEl::Line(p(120.0, 40.0)),
-        PathEl::Line(p(120.0, 120.0)),
-        PathEl::Line(p(40.0, 120.0)),
+/// A circle of radius `r` about `(cx, cy)` as four cubics (κ = 0.5523).
+fn circle(cx: f32, cy: f32, r: f32) -> Vec<lumen_static::display::PathEl> {
+    use lumen_static::display::PathEl;
+    let k = 0.552_284_8 * r;
+    let p = |x: f32, y: f32| Point { x: cx + x, y: cy + y };
+    vec![
+        PathEl::Move(p(r, 0.0)),
+        PathEl::Cubic(p(r, k), p(k, r), p(0.0, r)),
+        PathEl::Cubic(p(-k, r), p(-r, k), p(-r, 0.0)),
+        PathEl::Cubic(p(-r, -k), p(-k, -r), p(0.0, -r)),
+        PathEl::Cubic(p(k, -r), p(r, -k), p(r, 0.0)),
         PathEl::Close,
-    ];
+    ]
+}
+
+/// A ten-vertex star (not a pentagram: T82.5's "What building found").
+fn star(cx: f32, cy: f32, outer: f32, inner: f32) -> Vec<lumen_static::display::PathEl> {
+    use lumen_static::display::PathEl;
+    let mut v = Vec::new();
+    for i in 0..10 {
+        let a = -std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::PI / 5.0;
+        let r = if i % 2 == 0 { outer } else { inner };
+        let q = Point { x: cx + r * a.cos(), y: cy + r * a.sin() };
+        v.push(if i == 0 { PathEl::Move(q) } else { PathEl::Line(q) });
+    }
+    v.push(PathEl::Close);
+    v
+}
+
+/// The paths' parity scene: a filled star (lines), a filled **and
+/// stroked** circle (cubics) at a fractional origin, and a stroked bar
+/// rotated 30° by its transform.
+fn path_scene() -> DisplayList {
+    use lumen_static::display::{PathPaint, AFFINE_IDENTITY};
     let mut l = DisplayList::new();
-    l.path(&els, AFFINE_IDENTITY, PathPaint { fill: Color(200, 40, 40, 255), stroke: Color(0, 0, 0, 0), width: 0.0 });
-    assert!(matches!(l.cmds[..], [Cmd::Path { .. }]), "setup: the list must hold exactly one path");
-    let inked = |px: &[u8]| px.chunks_exact(4).filter(|q| q[0] != PAGE.0 || q[1] != PAGE.1 || q[2] != PAGE.2).count();
+    let none = Color(0, 0, 0, 0);
+    l.path(&star(60.0, 60.0, 44.0, 20.0), AFFINE_IDENTITY, PathPaint { fill: Color(220, 60, 40, 255), stroke: none, width: 0.0 });
+    l.path(
+        &circle(160.375, 62.625, 36.0),
+        AFFINE_IDENTITY,
+        PathPaint { fill: Color(40, 120, 220, 200), stroke: Color(20, 30, 60, 255), width: 3.0 },
+    );
+    let (s, c) = (30f32.to_radians().sin(), 30f32.to_radians().cos());
+    let bar = [
+        lumen_static::display::PathEl::Move(Point { x: -40.0, y: 0.0 }),
+        lumen_static::display::PathEl::Line(Point { x: 40.0, y: 0.0 }),
+    ];
+    l.path(&bar, [c, s, -s, c, 120.0, 140.0], PathPaint { fill: none, stroke: Color(30, 150, 80, 255), width: 6.0 });
+    l
+}
+
+fn inked(px: &[u8]) -> usize {
+    px.chunks_exact(4).filter(|q| q[0] != PAGE.0 || q[1] != PAGE.1 || q[2] != PAGE.2).count()
+}
+
+/// **Paths on both backends** — M82/T82.6 (`docs/plan-paint-vocabulary.md`;
+/// it inverts T82.5's pin, under which the GPU drew 0 px of a path the
+/// software canvas inked 6,400 px of).
+///
+/// The GPU rasterises each paint's mask with the software canvas's own
+/// `rasterize_path`, at the origin the canvas uses, so the coverage is the
+/// same bytes and only the blend may round differently: **max channel
+/// delta ≤ 1 for each paint alone over the opaque page** (four paints:
+/// the star's fill, the circle's fill and stroke, the bar's stroke), and
+/// ≤ 2 over the whole scene, where the circle's stroke blends over its
+/// translucent fill and each of the two blends may round by one
+/// (`docs/plan-paint-vocabulary.md`, "What building found", T82.6: 31 px
+/// at 2 on llvmpipe, 0 on the RTX 4070). The inked pixel count is printed
+/// (setup: both backends ink, the GPU at least half the software
+/// count). The filled-and-stroked circle rasterises exactly 2 masks.
+///
+/// Injections (T82.6's commit): one key for both paints (the stroke draws
+/// the fill's mask); the mask rasterised at the integer origin, without
+/// the fractional offset.
+#[test]
+fn paths_agree_across_backends() {
+    let l = path_scene();
+    let paths = l.cmds.iter().filter(|c| matches!(c, Cmd::Path { .. })).count();
+    assert_eq!(paths, 3, "setup: the scene must hold three paths");
     let mut c = canvas();
     c.clear(PAGE);
     c.render(&l, W, H);
-    let soft = inked(&c.pixels);
-    assert!(soft > 0, "setup: the software canvas must draw the path (inked {soft})");
     let Some(mut g) = gpu() else { return };
     g.clear(PAGE);
     g.render(&l, W, H);
-    let gpu = inked(&g.read_rgba());
-    println!("path pin: software inks {soft} px, the GPU {gpu} px (pinned at 0 until T82.6)");
-    assert_eq!(gpu, 0, "the GPU drew a path: T82.6 has landed, so invert this pin");
+    let gp = g.read_rgba();
+    let (si, gi) = (inked(&c.pixels), inked(&gp));
+    let (worst, over) = compare(&c.pixels, &gp, 1);
+    let (_, differ) = compare(&c.pixels, &gp, 0);
+    println!(
+        "path parity: inked software {si} px, gpu {gi} px; {differ} px differ at all, {over} by more than 1; \
+         worst channel delta {worst} (bound 2, one per blend); masks rasterised {}",
+        g.atlas_stats().path_masks
+    );
+    assert!(si > 4000 && gi > si / 2, "setup: both backends must ink the scene ({si} / {gi})");
+
+    // Each paint alone, over the opaque page: one blend, one rounding.
+    let none = Color(0, 0, 0, 0);
+    let mut alone = Vec::new();
+    for cmd in &l.cmds {
+        let Cmd::Path { fill, stroke, .. } = *cmd else { continue };
+        for (name, keep_fill) in [("fill", true), ("stroke", false)] {
+            if (if keep_fill { fill } else { stroke }).3 == 0 {
+                continue;
+            }
+            let mut one = DisplayList::new();
+            one.paths = l.paths.clone();
+            let mut c1 = *cmd;
+            if let Cmd::Path { fill, stroke, .. } = &mut c1 {
+                if keep_fill { *stroke = none } else { *fill = none }
+            }
+            one.cmds.push(c1);
+            let mut cc = canvas();
+            cc.clear(PAGE);
+            cc.render(&one, W, H);
+            g.clear(PAGE);
+            g.render(&one, W, H);
+            let gg = g.read_rgba();
+            let (w1, o1) = compare(&cc.pixels, &gg, 1);
+            alone.push((name, inked(&cc.pixels), w1, o1));
+        }
+    }
+    println!("each paint alone (name, inked px, worst, px over 1; bound worst 1): {alone:?}");
+    assert_eq!(alone.len(), 4, "setup: four paints in the scene");
+    assert!(alone.iter().all(|a| a.1 > 200), "setup: every paint inks on its own: {alone:?}");
+    assert!(alone.iter().all(|a| a.2 <= 1), "a paint's mask disagrees across backends: {alone:?}");
+    assert!(worst <= 2, "the backends disagree on the scene: worst channel delta {worst} over {over} px (bound 2)");
+
+    // The filled-and-stroked circle alone: two masks under two keys.
+    let mut one = DisplayList::new();
+    let both = l.cmds.iter().position(|c| matches!(c, Cmd::Path { fill, stroke, .. } if fill.3 != 0 && stroke.3 != 0)).expect("a filled and stroked path");
+    one.paths = l.paths.clone();
+    one.cmds.push(l.cmds[both]);
+    let mut g = gpu().expect("the adapter above");
+    g.clear(PAGE);
+    g.render(&one, W, H);
+    let n = g.atlas_stats().path_masks;
+    println!("a filled and stroked path rasterises {n} masks (want 2)");
+    assert_eq!(n, 2, "one mask per paint");
+}
+
+/// **The mask cache** — M82/T82.6. An idle second frame rasterises 0
+/// masks; a changed path rasterises exactly 1; the same path moved by an
+/// integer 1 px rasterises 0, because the key hashes the path at its
+/// integer-floor origin. Each count is printed beside its bound, and the
+/// moved frame's ink is asserted to have moved (setup).
+///
+/// Injection (T82.6's commit): the key hashes absolute position; the 1 px
+/// case prints 1.
+#[test]
+fn path_masks_are_cached_and_survive_a_whole_pixel_scroll() {
+    use lumen_static::display::PathPaint;
+    let paint = PathPaint { fill: Color(220, 60, 40, 255), stroke: Color(0, 0, 0, 0), width: 0.0 };
+    let at = |dx: f32, outer: f32| {
+        let mut l = DisplayList::new();
+        l.path(&star(60.25, 60.5, outer, 20.0), [1.0, 0.0, 0.0, 1.0, dx, 0.0], paint);
+        l
+    };
+    let Some(mut g) = gpu() else { return };
+    let frame = |g: &mut Gpu, l: &DisplayList| {
+        let before = g.atlas_stats().path_masks;
+        g.clear(PAGE);
+        g.render(l, W, H);
+        (g.atlas_stats().path_masks - before, g.read_rgba())
+    };
+    let (first, a) = frame(&mut g, &at(0.0, 44.0));
+    let (idle, _) = frame(&mut g, &at(0.0, 44.0));
+    let (changed, _) = frame(&mut g, &at(0.0, 40.0));
+    let (moved, b) = frame(&mut g, &at(1.0, 40.0));
+    let (_, c0) = frame(&mut g, &at(0.0, 40.0));
+    // Setup: the moved frame is the unmoved one shifted one pixel right.
+    let shifted = (0..H)
+        .flat_map(|y| (1..W).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            let (i, j) = (((y * W + x) * 4) as usize, ((y * W + x - 1) * 4) as usize);
+            b[i..i + 3] != c0[j..j + 3]
+        })
+        .count();
+    println!(
+        "path masks: first frame {first}, idle frame {idle} (bound 0), changed path {changed} (want 1), \
+         moved 1 px {moved} (bound 0); the moved frame differs from the shifted original at {shifted} px (want 0)"
+    );
+    assert!(first >= 1 && inked(&a) > 1000, "setup: the first frame must rasterise and ink ({first}, {})", inked(&a));
+    assert_eq!(shifted, 0, "setup: the 1 px move did not move the ink by 1 px");
+    assert_eq!(idle, 0, "an idle frame rasterised a mask");
+    assert_eq!(changed, 1, "a changed path must rasterise exactly one mask");
+    assert_eq!(moved, 0, "an integer scroll rasterised a mask: the key is not origin-relative");
+}
+
+/// **A wide path is drawn in tiles** — M82/T82.6. A 2,000 × 100 px filled
+/// path is cut into [`lumen_static_wgpu::PATH_TILE`] tiles, each its own
+/// slot in the starting 1024² atlas, so the frame draws with **0 atlas
+/// resets** and 0 growths; the tile count is printed, and pixels near
+/// both ends are inked (setup).
+///
+/// Injection (T82.6's commit): `PATH_TILE` set to 4096, so the mask is
+/// one 2,000 px slot; the frame resets and grows the atlas.
+#[test]
+fn a_wide_path_is_drawn_in_tiles_without_a_reset() {
+    use lumen_static::display::{PathEl, PathPaint, AFFINE_IDENTITY};
+    let (w, h) = (2048u32, 128u32);
+    let p = |x: f32, y: f32| Point { x, y };
+    let els = [PathEl::Move(p(20.0, 10.0)), PathEl::Line(p(2020.0, 10.0)), PathEl::Line(p(2020.0, 110.0)), PathEl::Line(p(20.0, 110.0)), PathEl::Close];
+    let mut l = DisplayList::new();
+    l.path(&els, AFFINE_IDENTITY, PathPaint { fill: Color(40, 120, 220, 255), stroke: Color(0, 0, 0, 0), width: 0.0 });
+    let Some(mut g) = gpu_sized(w, h) else { return };
+    g.clear(PAGE);
+    g.render(&l, w, h);
+    let px = g.read_rgba();
+    let s = g.atlas_stats();
+    let at = |x: u32, y: u32| {
+        let i = ((y * w + x) * 4) as usize;
+        Color(px[i], px[i + 1], px[i + 2], 255)
+    };
+    println!(
+        "wide path: {} tile(s) rasterised, {} texels resident; atlas resets {} (bound 0), growths {} (bound 0), \
+         edge {}²; (30, 60) {:?}, (2010, 60) {:?}",
+        s.path_masks, s.path_texels, s.resets, s.growths, s.glyph_size, at(30, 60), at(2010, 60)
+    );
+    let blue = Color(40, 120, 220, 255);
+    assert!(at(30, 60) == blue && at(2010, 60) == blue, "setup: the path must be drawn end to end");
+    assert_eq!((s.resets, s.growths), (0, 0), "the wide path did not fit the atlas in tiles");
 }

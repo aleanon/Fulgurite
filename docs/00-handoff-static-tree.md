@@ -1279,7 +1279,8 @@ remains** — which is why §10 Step 1 is the kill criterion.
    stack** — so no other command needs a rule for a rotated context and
    hit testing stays axis-aligned. Filled non-zero and stroked with round
    joins and caps by signed-area accumulation on the software canvas
-   (`rasterize_path`); the GPU draws nothing for it until M82/T82.6.
+   (`rasterize_path`); since M82/T82.6 the GPU draws the same coverage as
+   R8 masks in its glyph atlas (`MaskKey`), with no stencil attachment.
    `clip-path`, dashes, miter joins, even-odd, skew of other commands and
    SVG import stay out. **Reopen** a transform stack when a second command
    kind needs one. Numbers in `docs/results-paint-vocabulary.md` T82.5.
