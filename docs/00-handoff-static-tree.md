@@ -698,6 +698,23 @@ worker, in the build that spawned it. Until T88.1 a job streaming
 10,000 values through `send` lost 9,744 of them and its last
 (`docs/results-tasks.md`, M88 baseline).
 
+**DECIDED 2026-10-06 (M88/T88.3, seam S1, `docs/plan-platform-requests.md`,
+`docs/results-tasks.md` T88.3):** a **third queue, out to the window**:
+`request::Requests`, beside the outbox. A screenshot or a clipboard
+request is work only the window can do, so it is not a job: a handler,
+an `apply` or the boot pushes a `Copy` `Request` carrying the
+application's tag (`App::requests`); the window drains it through the
+required `Session::take_requests` in `redraw` after the present-or-skip
+decision and after every agent call, and answers through
+`Session::answer`. The answer is converted by `App::answered` **in the
+build loaded when it arrives** and applied inside that call, so nothing
+converted is pending at a swap (`request_across_a_swap`,
+`answer_then_swap`); a change it reports reaches the next pump as the
+drains' own change flag and asks for the frame that shows it. A
+clipboard write's bytes come from `App::clip_for` at the drain, never
+from the request. A screenshot answers from `Backend::frame_rgba`;
+clipboard requests are refused as unsupported until M88/T88.4.
+
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
 required, and `suspended` takes the source back before the backend is

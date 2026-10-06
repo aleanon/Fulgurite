@@ -958,6 +958,14 @@ pub mod hot {
         fn shaders(&self) -> lumen_static_shell::shader::ShaderTable<'_> {
             self.s().shaders()
         }
+        // M88/T88.3: the request seam. A request is drained from, and its
+        // answer applied to, the session loaded now.
+        fn take_requests(&mut self) -> Vec<lumen_static_shell::request::Outgoing> {
+            self.m().take_requests()
+        }
+        fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>) {
+            self.m().answer(tag, a)
+        }
     }
 }
 

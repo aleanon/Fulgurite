@@ -949,3 +949,40 @@ section replaces that design.*
 - **T88.2, the resume gate's own injection.** The plan named none for
   the canvas-against-`xwd` comparison. A readback that copies rows at the
   unpadded stride (`Gpu::read_rgba`) reads delta 255 on 457,176 px.
+- **T88.3, Everything's presents.** The redraw-path count is 3 presented
+  and 3 skipped under both strategies, not "presented + skipped is 4"
+  under `Everything`: a tick is a job, so each tick's deadline frame
+  spawns it and presents nothing before its result lands. `Everything`'s
+  numbers are printed, as the plan says; `Boundaries`' bound holds.
+- **T88.3, the redraw path's log.** The final label alone cannot see the
+  before-present injection: tick 2's answer reads tick 1's frame either
+  way, so `shot 2` with tick 1's colour passes. `tasks-demo` keeps every
+  answer's colour in `#shot-log`, and the drive requires both of the
+  timer's answers to be tick 1's; the injection reads the colour before
+  tick 1 on the first and is named. A third tick already in flight when
+  the second cancelled the timer asks nothing.
+- **T88.3, the GPU leg on a sleeping display.** With the reference
+  machine's monitor off (DPMS), a FIFO present blocks about a second, so
+  no read can land before tick 1. The GPU leg checks the answers after a
+  6 s unobserved wait and prints the presents bound as not checkable when
+  the click took over 250 ms; the software legs carry the bound.
+- **T88.3, the firmware gate.** The `nm` count's injection cannot fire:
+  `Requests::push` inlines into the embedded handler and leaves no
+  symbol, while the same injection moves `.text` by +128 to +136 B. The
+  strict `just firmware-delta`, 0 on all four, is the gate; the count is
+  printed beside it.
+- **T88.3, `chain-app`.** `Msg` becomes an enum (a step's value, or an
+  answer's text), and `Work` is now nested with per-field modes —
+  everything fresh but `asked`, which is kept — instead of
+  `#[reload(fresh)]` whole. The three buttons take a third of the top
+  60 px each, so `reload-host` clicks at x = 40, 120 and 200.
+- **T88.3, `panic-app`.** Site 11 is `App::answered`; `JOB_PANIC` moves
+  to 12. The window grows to 480 px wide, because `#arm11` was laid out
+  past a 420 px window's edge and its click landed on nothing — which the
+  drive did not check, so it reported "site 11 never failed". The arming
+  click must now be handled or have raised the screen already.
+- **T88.3, the screenshot row.** `docs/competitive-feature-gaps.md` had
+  no screenshot row to close; one is added under iced, closed.
+- **T88.3, `ClipFormat` and `Clip`** carry `Text` and `Html` only: T88.5
+  appends `Image` with its feature. `Answer::Image` exists now, for
+  screenshots.

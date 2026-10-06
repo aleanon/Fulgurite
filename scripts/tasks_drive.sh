@@ -27,6 +27,15 @@
 # stay "not checkable" there. The GPU leg exits 77 with no adapter, as
 # `just gpu-parity` does.
 #
+# M88/T88.3 adds screenshot REQUESTS on every leg, one per drain site:
+# `#shot` pushes one from its handler (answered after the agent call that
+# clicked it; the label must name this click's colour), and `#shot-timer`
+# from two timer ticks (answered by the redraw drain alone, tick 2's on a
+# frame that presented nothing; one read after an unobserved 1.5 s, both
+# answers tick 1's colour, and under Boundaries exactly 3 presented and
+# >= 1 skipped). On a GPU leg whose display is asleep the presents bound
+# is printed as not checkable (the answers still are).
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`, which refuses a port that already answers and
 # checks the socket's owner and the process's own `app.diagnostics`

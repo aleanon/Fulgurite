@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use lumen_static::display::Cmd;
+use lumen_static::request::{Answer, ClipFormat, ClipKind, Request};
 use lumen_static::Event;
 use lumen_static_reload::hot::{Build, Hot, Outcome, Reloader};
 use lumen_static_shell::session::{FrameSource, Session};
@@ -22,10 +23,11 @@ const W: u32 = 240;
 const H: u32 = 120;
 /// The button fills the window's width and the top 60 px.
 const AT: (f32, f32) = (120.0, 30.0);
-/// `chain-app`'s two buttons share the top 60 px since M88/T88.1:
-/// `#start` on the left half, `#sip` on the right.
-const CHAIN_AT: (f32, f32) = (60.0, 30.0);
-const SIP_AT: (f32, f32) = (180.0, 30.0);
+/// `chain-app`'s buttons share the top 60 px — two since M88/T88.1,
+/// three since M88/T88.3, a third each: `#start`, `#sip`, `#ask`.
+const CHAIN_AT: (f32, f32) = (40.0, 30.0);
+const SIP_AT: (f32, f32) = (120.0, 30.0);
+const ASK_AT: (f32, f32) = (200.0, 30.0);
 
 fn text(s: &Hot) -> String {
     let l = s.list();
@@ -262,6 +264,8 @@ fn main() {
 
     chain_across_a_swap(&args[6], &args[7]);
     sipper_across_a_swap(&args[6], &args[7]);
+    request_across_a_swap(&args[6], &args[7]);
+    answer_then_swap(&args[6], &args[7]);
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }
@@ -391,7 +395,7 @@ fn frame_until(s: &mut dyn Session, ms: u64, pred: impl Fn(&str) -> bool) -> Str
 /// carries its descriptor, v2 re-issues it through its own `job_for`
 /// (M49/T49.10), and the label must end at v2's `sip 10099` — not v1's
 /// `sip 9999`, which only a slot read across the swap could show, and
-/// not `sip -`, which is what a dropped re-issue leaves (`Work` is
+/// not `sip -`, which is what a dropped re-issue leaves (`Work::sip` is
 /// `#[reload(fresh)]`, so v2 starts with no value, and v1's worker
 /// streams on into a slot nobody reads).
 fn sipper_across_a_swap(v1_path: &str, v2_path: &str) {
@@ -445,4 +449,106 @@ fn sipper_across_a_swap(v1_path: &str, v2_path: &str) {
     );
     assert!(left.is_empty(), "the finished sipper left work listed after the swap: {left:?}");
     println!("  ok: a sipper in flight at the swap finished under v2");
+}
+
+/// `chain-app`'s `#asked` label: the last text run, which is its last
+/// widget.
+fn asked_of(s: &dyn Session) -> String {
+    text_of(s).rsplit(" | ").next().unwrap_or("").to_string()
+}
+
+/// Click `#ask` and take its request — the window's half, which this
+/// loader stands in for. The setup: exactly one `ClipboardRead { tag: 7 }`.
+fn ask(s: &mut dyn Session, who: &str) {
+    s.frame(0.0, W, H);
+    s.post(Event::down(ASK_AT.0, ASK_AT.1));
+    s.post(Event::up(ASK_AT.0, ASK_AT.1));
+    s.frame(16.0, W, H);
+    let taken = s.take_requests();
+    println!("request, {who}: #ask clicked, took {} request(s) (want 1) {:?}", taken.len(), taken.iter().map(|o| o.request).collect::<Vec<_>>());
+    let want = Request::ClipboardRead { tag: 7, kind: ClipKind::Clipboard, format: ClipFormat::Text };
+    assert!(
+        taken.len() == 1 && taken[0].request == want,
+        "setup: the click on #ask did not ask for the clipboard ({} taken)",
+        taken.len()
+    );
+}
+
+/// **M88/T88.3: an answer is read by whatever build is loaded** — the
+/// property M89's pending requests rely on.
+///
+/// v1 is clicked and its `ClipboardRead { tag: 7 }` taken; the session is
+/// swapped to v2, and the answer goes to the **current** session: the
+/// label must read `v2:x`, because `App::answered` runs in the build
+/// loaded when the answer arrives and the window holds only the tag.
+fn request_across_a_swap(v1_path: &str, v2_path: &str) {
+    // Accept: with no swap, v1 converts it.
+    let v1 = open(v1_path);
+    let mut d: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    ask(&mut *d, "v1, no swap");
+    d.answer(7, Answer::Text("x"));
+    d.frame(16.0, W, H);
+    let direct = asked_of(&*d);
+    println!("request, v1 with no swap: `{direct}` (want `v1:x`)");
+    assert_eq!(direct, "v1:x", "accept: v1 answered with no swap");
+
+    let mut r = Reloader::new();
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    ask(&mut *cur, "v1");
+    r.outcome(Outcome::Built(std::path::PathBuf::from(v2_path)));
+    assert!(r.swap(&mut cur, |s: &mut dyn Session| { s.frame(0.0, W, H); }), "chain v2 must swap");
+    let before = asked_of(&*cur);
+    // The window holds only the tag; the answer goes to the session
+    // loaded now.
+    cur.answer(7, Answer::Text("x"));
+    cur.frame(16.0, W, H);
+    let after = asked_of(&*cur);
+    println!("request, swapped to v2 then answered: `{before}` -> `{after}` (want `v2:x`)");
+    assert_eq!(
+        after, "v2:x",
+        "the answer was not converted by the build loaded when it arrived -- `v2:` with no text is an answer \
+         given to another session (answered to v1)"
+    );
+    println!("  ok: a request taken from v1 and answered after the swap is read by v2");
+}
+
+/// **M88/T88.3 (second review A1): an answer applied before a swap is
+/// kept state, not a message lost with the old build.**
+///
+/// v1 is clicked, its request taken and answered on v1's session, and the
+/// swap to v2 happens **before any pump**. `Host::answer` applied the
+/// message inside the call, so v1's `answered` converted it and the kept
+/// field already holds `v1:x`; after v2's first frame the label reads
+/// `v1:x`. A host that parked the message for its next pump would lose
+/// it at the swap, which `hot::save` cannot carry, and read `v2:`.
+fn answer_then_swap(v1_path: &str, v2_path: &str) {
+    let v1 = open(v1_path);
+    // Accept: with no swap, one pump shows it.
+    let mut d: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    ask(&mut *d, "v1, no swap");
+    d.answer(7, Answer::Text("x"));
+    d.frame(16.0, W, H);
+    let direct = asked_of(&*d);
+    println!("answer-then-swap, v1 with no swap, one pump: `{direct}` (want `v1:x`)");
+    assert_eq!(direct, "v1:x", "accept: v1's answer after one pump");
+
+    let mut r = Reloader::new();
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    ask(&mut *cur, "v1");
+    cur.answer(7, Answer::Text("x"));
+    // Setup landed: v1's kept field holds the answer before the swap, read
+    // from what the swap will carry.
+    let saved: serde_json::Value = serde_json::from_slice(&cur.save()).expect("a session saves JSON");
+    let kept = saved.to_string();
+    println!("answer-then-swap: v1's saved state right after answer, before any pump: {kept}");
+    r.outcome(Outcome::Built(std::path::PathBuf::from(v2_path)));
+    assert!(r.swap(&mut cur, |s: &mut dyn Session| { s.frame(0.0, W, H); }), "chain v2 must swap");
+    cur.frame(16.0, W, H);
+    let after = asked_of(&*cur);
+    println!("answer-then-swap: after v2's first frame `{after}` (want `v1:x`)");
+    // The claim before the setup check, so a parked answer fails by the
+    // claim's name (the setup check would see the same cause first).
+    assert_eq!(after, "v1:x", "answer lost at the swap: v2 shows `{after}`, not the answer v1 applied");
+    assert!(kept.contains("v1:x"), "setup: v1's kept `asked` does not hold `v1:x` right after answer: {kept}");
+    println!("  ok: an answer applied before the swap survived it as kept state");
 }

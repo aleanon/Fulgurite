@@ -823,6 +823,71 @@ fn a_pump_that_applies_results_allocates_nothing() {
     );
 }
 
+/// **Taking an empty request queue allocates nothing** — M88/T88.3
+/// (`docs/plan-platform-requests.md`). The window calls
+/// `Session::take_requests` on every frame, so on an application whose
+/// `Requests` is empty it must answer `Vec::new()`, which does not
+/// allocate. Setup landed: the arm's `requests()` is `Some`.
+/// Injection (T88.3's commit): `take_requests` always calling
+/// `Vec::with_capacity(Requests::CAPACITY)` reads 1 alloc and 1 free per
+/// frame.
+#[test]
+fn a_frame_that_takes_an_empty_request_queue_allocates_nothing() {
+    use lumen_static::event::App;
+    use lumen_static::request::Requests;
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct AskUi {
+        a: Fixed,
+    }
+
+    #[derive(Default)]
+    struct Ask {
+        ui: AskUi,
+        requests: Requests,
+    }
+
+    impl App for Ask {
+        type State = Self;
+        fn state_mut(&mut self) -> &mut Self::State {
+            self
+        }
+        type Tree = AskUi;
+        type Msg = lumen_static::event::Never;
+        fn tree(&self) -> &AskUi {
+            &self.ui
+        }
+        fn tree_mut(&mut self) -> &mut AskUi {
+            &mut self.ui
+        }
+        fn requests(&mut self) -> Option<&mut Requests> {
+            Some(&mut self.requests)
+        }
+        fn apply(_: &mut Self, m: lumen_static::event::Never) -> bool {
+            match m {}
+        }
+    }
+
+    let mut host: Host<Ask, Incremental> = Host::new(Ask::default(), 320, 200);
+    assert!(host.app.requests().is_some(), "setup: the arm's requests() is None");
+    for _ in 0..5 {
+        host.pump();
+        let _ = host.take_requests();
+    }
+    let n = 100;
+    let mut taken = 0;
+    let before = counters();
+    for _ in 0..n {
+        host.pump();
+        taken += host.take_requests().len();
+    }
+    let after = counters();
+    let (a, f) = ((after.0 - before.0) as f64 / n as f64, (after.1 - before.1) as f64 / n as f64);
+    println!("{n} frames, each pump + take_requests on an empty queue: {a:.2} allocs/frame, {f:.2} frees/frame (bound 0); taken {taken}");
+    assert_eq!((a, f), (0.0, 0.0), "taking an empty request queue touched the allocator: {a:.2} allocs, {f:.2} frees per frame");
+}
+
 /// **The pixel buffer grows exactly and gives memory back** — M50/T50.0,
 /// for R8-F7.
 ///

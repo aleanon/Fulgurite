@@ -44,6 +44,11 @@ pub mod lss;
 pub mod profile;
 /// M32: `application(boot)` — the program described once.
 pub mod program;
+// M88/T88.3: a platform request on its way out to the window -- the
+// owned `Outgoing` and `Payload` that `Host::take_requests` returns and
+// `Session::take_requests` carries across the seam. A line comment, as
+// `image`'s is: an outer doc joins the module's own and breaks its links.
+pub mod request;
 /// M36: a panic's report, and the host's recovery from it.
 #[cfg(panic = "unwind")]
 pub mod recover;
@@ -198,6 +203,13 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// M28/T28.2. A shell asks for another frame rather than the host
     /// raising the cap.
     more_deferred: bool,
+    /// An answer applied by [`Host::answer`] changed something —
+    /// M88/T88.3. The next pump ORs it into the drains' change flag
+    /// before the idle-skip check, and [`Host::more_deferred`] reports
+    /// it, so the window asks for the frame that shows it.
+    answer_changed: bool,
+    /// Answers [`App::answered`] did not model (`None`). Monotonic.
+    unmodelled_answers: usize,
     /// The overlay focus was last moved into, and where it came from —
     /// M57/A12. `None` when focus is not held by an overlay.
     overlay_focus: Option<(u32, Option<u32>)>,
@@ -876,6 +888,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             app,
             inbox: lumen_static::inbox::Inbox::new(),
             more_deferred: false,
+            answer_changed: false,
+            unmodelled_answers: 0,
             overlay_focus: None,
             focus_owed: false,
             scroll_end: None,
@@ -1375,8 +1389,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// A shell that sees `true` asks for another frame. The alternative,
     /// raising the cap until the queue empties, is what turns a burst of
     /// completions into one long frame.
+    ///
+    /// **And an answer applied since the last pump** (M88/T88.3): the
+    /// window answers a request after its frame, so the frame that shows
+    /// the answer is one it must ask for.
     pub fn more_deferred(&self) -> bool {
-        self.more_deferred || self.focus_owed
+        self.more_deferred || self.focus_owed || self.answer_changed
     }
 
     /// **Focus into an overlay that opened, and back when it closes** —
@@ -1731,6 +1749,82 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.inbox.unmodelled()
     }
 
+    /// **Take this application's platform requests** — M88/T88.3
+    /// (`lumen_static::request`, seam S1).
+    ///
+    /// Drains [`App::requests`] to empty. A clipboard write's payload is
+    /// asked of [`App::clip_for`] here, synchronously and in the build
+    /// loaded now, and copied; a `None` is answered
+    /// [`Refused(Empty)`](lumen_static::request::Refusal::Empty) at once,
+    /// through [`Host::answer`], and not returned. The caller answers
+    /// every request it is handed before it returns ([`Host::answer`]);
+    /// a headless host answers nothing by itself.
+    ///
+    /// An application with no queue, or an empty one, gets `Vec::new()`,
+    /// which does not allocate (`tests/alloc_gate.rs`).
+    pub fn take_requests(&mut self) -> Vec<request::Outgoing> {
+        use lumen_static::request::{Answer, Refusal, Request, Requests};
+        let mut taken = [Request::Screenshot { tag: 0 }; Requests::CAPACITY];
+        let n = match self.app.requests() {
+            Some(q) if !q.is_empty() => q.drain_into(&mut taken),
+            _ => return Vec::new(),
+        };
+        let mut out = Vec::with_capacity(n);
+        for &r in &taken[..n] {
+            let payload = match r {
+                Request::ClipboardWrite { tag, .. } => match self.app.clip_for(tag).map(request::Payload::from) {
+                    Some(p) => p,
+                    None => {
+                        self.answer(tag, Answer::Refused(Refusal::Empty));
+                        continue;
+                    }
+                },
+                _ => request::Payload::None,
+            };
+            out.push(request::Outgoing { request: r, payload });
+        }
+        out
+    }
+
+    /// **Answer request `tag`, and apply what it means now** — M88/T88.3.
+    ///
+    /// [`App::answered`] turns the answer into a message **in the build
+    /// loaded at this call**, and the message is applied here, with
+    /// [`App::apply`] on the state — not parked for the next pump, which
+    /// a swap landing first would replace with a message `hot::save`
+    /// cannot carry (`docs/plan-platform-requests.md`, second review A1),
+    /// and not posted to the inbox, whose refusal at capacity would drop
+    /// an answer the platform has already acted on. What it changed is
+    /// ordinary state: kept across a swap exactly when its field is
+    /// `#[reload(keep)]`. A change sets `answer_changed`, which the next
+    /// pump honours as the drains' own change flag and
+    /// [`Host::more_deferred`] reports. `None` from `answered` is counted
+    /// ([`Host::unmodelled_answers`]).
+    ///
+    /// Application code, unguarded here: `Local::answer` runs it inside
+    /// the session's guard (M36).
+    pub fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>) {
+        match A::answered(tag, a) {
+            Some(m) => {
+                if A::apply(self.app.state_mut(), m) {
+                    self.answer_changed = true;
+                }
+            }
+            None => self.unmodelled_answers += 1,
+        }
+    }
+
+    /// Answers [`App::answered`] answered `None` for — M88/T88.3.
+    pub fn unmodelled_answers(&self) -> usize {
+        self.unmodelled_answers
+    }
+
+    /// Whether an answer applied since the last pump changed something
+    /// (M88/T88.3); the next pump takes it.
+    pub fn answer_changed(&self) -> bool {
+        self.answer_changed
+    }
+
     /// A sender for deferred work, already carrying this host's waker.
     ///
     /// The one way an application gets one, so a sender minted before
@@ -2041,7 +2135,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // difference between skipping the tree and walking it. An
         // application that defers nothing has `Msg = Never`, and this is
         // a `try_recv` on a queue nothing can write to.
-        let mut applied_changed = false;
+        // **An answer applied since the last pump** — M88/T88.3. It was
+        // applied inside `Host::answer`, between frames, so its change
+        // flag is taken here as the drains' own: it is the only route to
+        // `mark_all` for an unsplit application and past the idle skip
+        // below (second review A2).
+        let mut applied_changed = core::mem::take(&mut self.answer_changed);
         // **Progress slots first** — M88/T88.1. One value per job in
         // flight, the newest each job reported; a job's last value is
         // never lost, because it stays in the ledger until this takes

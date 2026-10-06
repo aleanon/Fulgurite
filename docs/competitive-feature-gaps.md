@@ -155,6 +155,11 @@ is roughly 3× lumen-static's. Present in `iced_widget` and absent here:
   is the signal there — M85/T85.3, T85.4.)
 - A **theme system** with light/dark palettes and per-widget style
   functions.
+- **A screenshot as a task** (`window::screenshot`). Closed by
+  M88/T88.3: an application pushes `request::Request::Screenshot` and the
+  window answers it with what the renderer drew, on the software canvas
+  and, since M88/T88.2, the GPU (`docs/plan-platform-requests.md`,
+  `docs/results-tasks.md` T88.3).
 
 ## Xilem / masonry 0.4
 

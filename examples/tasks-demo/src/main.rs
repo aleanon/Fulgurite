@@ -12,7 +12,11 @@
 //! `Sender::progress`. Since M88/T88.2 a 16×16 **swatch** sits at the
 //! origin, and `#swatch` recolours it: the one control whose click
 //! changes pixels, so `just tasks-drive`'s GPU leg can prove that
-//! `ui.screenshot` reads the GPU back per call. Every one is driven by a click, and
+//! `ui.screenshot` reads the GPU back per call. Since M88/T88.3 it also
+//! **asks the window for a screenshot** (`lumen_static::request`): `#shot`
+//! recolours the swatch and pushes a `Screenshot` request from its
+//! handler, `#shot-timer` does it from a timer tick, and `answered`
+//! shows the pixel the answer holds at the swatch. Every one is driven by a click, and
 //! every one puts its consequence on screen where
 //! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
 //!
@@ -35,6 +39,11 @@ const KIND_CHAIN: u64 = 3;
 const KIND_SLOW: u64 = 4;
 const KIND_SUB: u64 = 5;
 const KIND_SIP: u64 = 6;
+const KIND_SHOT: u64 = 7;
+
+/// The tags this application's screenshot requests carry (M88/T88.3).
+const TAG_SHOT: u64 = 1;
+const TAG_SHOT_TIMER: u64 = 2;
 
 /// A message is data. Nothing here is a callback, and nothing crossing
 /// the frame boundary holds a code reference.
@@ -48,6 +57,13 @@ enum Msg {
     /// One value of the sipper's stream (M88/T88.1), reported through
     /// `Sender::progress`.
     Sip(u64),
+    /// A tick of `#shot-timer`'s timer (M88/T88.3).
+    ShotTick,
+    /// A screenshot's answer, as `answered` read it: its size and the
+    /// pixel at physical (4, 4), inside the swatch.
+    Shot { w: u32, h: u32, rgb: [u8; 3] },
+    /// A screenshot the window refused.
+    ShotRefused,
     Failed(u64, Failure),
 }
 
@@ -75,6 +91,14 @@ struct Ui {
     sip: Button<Tasks>,
     #[widget_id("swatch")]
     swatch: Button<Tasks>,
+    #[widget_id("shot")]
+    shot: Button<Tasks>,
+    #[widget_id("shot-timer")]
+    shot_timer: Button<Tasks>,
+    #[widget_id("shot-value")]
+    shot_value: Label<String>,
+    #[widget_id("shot-log")]
+    shot_log: Label<String>,
     #[widget_id("sip-value")]
     sip_value: Label<String>,
     #[widget_id("status")]
@@ -117,9 +141,21 @@ struct Tasks {
     sub_on: bool,
     /// The sipper's latest value shown, `None` before the first.
     sip: Option<u64>,
-    /// How many times `#swatch` was clicked; the swatch's colour is
-    /// derived from it ([`swatch_color`]).
+    /// How many times the swatch was recoloured — by `#swatch`, `#shot`
+    /// and `#shot-timer`'s first tick; its colour is derived from it
+    /// ([`swatch_color`]).
     swatch_clicks: u32,
+    /// The platform requests out to the window (M88/T88.3).
+    requests: lumen_static::request::Requests,
+    /// `#shot-timer`'s ticks since it was armed.
+    shot_ticks: u32,
+    /// Screenshot answers applied, and what the last one showed:
+    /// `shot N WxH #rrggbb`, `shot pending` before the first.
+    shots: u32,
+    shot_value: String,
+    /// Every answer's swatch colour, oldest first: the drive reads which
+    /// frame each answer came from.
+    shot_log: String,
 }
 
 // ---- the swatch (M88/T88.2) ------------------------------------------
@@ -230,6 +266,9 @@ fn slow(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::Tick(d.payload));
 }
+fn shot_tick(_: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    let _ = tx.send(Msg::ShotTick);
+}
 
 // ANCHOR: sip
 /// **A sipper** — M88/T88.1. Ten thousand values, each reported with
@@ -270,6 +309,29 @@ impl App for Demo {
     fn timers(&mut self) -> Option<&mut Timers> {
         Some(&mut self.state.timers)
     }
+    fn requests(&mut self) -> Option<&mut lumen_static::request::Requests> {
+        Some(&mut self.state.requests)
+    }
+
+    // ANCHOR: shot
+    /// **A screenshot's answer, in the build loaded now** — M88/T88.3.
+    /// The window answered `Screenshot` from what its renderer drew; this
+    /// reads the pixel at physical (4, 4), inside the 16×16 swatch, and
+    /// the message is applied inside the same call (`Host::answer`), so
+    /// nothing converted waits for a frame a swap could pre-empt.
+    fn answered(tag: u64, a: lumen_static::request::Answer<'_>) -> Option<Msg> {
+        use lumen_static::request::Answer;
+        match (tag, a) {
+            (TAG_SHOT | TAG_SHOT_TIMER, Answer::Image { width, height, rgba, .. }) => {
+                let i = ((4 * width + 4) * 4) as usize;
+                let px = rgba.get(i..i + 3)?;
+                Some(Msg::Shot { w: width, h: height, rgb: [px[0], px[1], px[2]] })
+            }
+            (TAG_SHOT | TAG_SHOT_TIMER, Answer::Refused(_)) => Some(Msg::ShotRefused),
+            _ => None,
+        }
+    }
+    // ANCHOR_END: shot
 
     fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
         match (d.kind, d.step) {
@@ -281,6 +343,7 @@ impl App for Demo {
             (KIND_SLOW, 0) => Some(slow),
             (KIND_SUB, 0) => Some(tick),
             (KIND_SIP, 0) => Some(sip),
+            (KIND_SHOT, 0) => Some(shot_tick),
             _ => None,
         }
     }
@@ -329,6 +392,36 @@ impl App for Demo {
                 this.last = format!("tick={k}");
             }
             Msg::Sip(v) => this.sip = Some(v),
+            // The first tick recolours the swatch and asks for a
+            // screenshot; the second asks again and changes nothing, so its
+            // frame has no damage and presents nothing — the request is
+            // answered from the frame still on screen — then stops.
+            Msg::ShotTick => {
+                this.shot_ticks += 1;
+                // A tick already in flight when the second cancelled the
+                // timer — a window whose presents are slow — asks nothing.
+                if this.shot_ticks > 2 {
+                    return false;
+                }
+                this.requests.push(lumen_static::request::Request::Screenshot { tag: TAG_SHOT_TIMER });
+                if this.shot_ticks == 1 {
+                    this.swatch_clicks += 1;
+                } else {
+                    this.timers.cancel(KIND_SHOT, 1);
+                    return false;
+                }
+            }
+            Msg::Shot { w, h, rgb } => {
+                this.shots += 1;
+                let c = format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]);
+                this.shot_value = format!("shot {} {w}x{h} {c}", this.shots);
+                this.shot_log.push(' ');
+                this.shot_log.push_str(&c);
+            }
+            Msg::ShotRefused => {
+                this.shots += 1;
+                this.shot_value = format!("shot {} refused", this.shots);
+            }
             Msg::Failed(kind, why) => {
                 this.failures += 1;
                 this.last = format!("failed kind={kind} why={why:?}");
@@ -369,7 +462,12 @@ impl App for Demo {
         let want = swatch_color(s.swatch_clicks);
         let d = self.ui.swatch_box.color != want;
         self.ui.swatch_box.color = want;
-        a | b | c | d
+        let e = match s.shots {
+            0 => lumen_static::bind::format_into(&mut self.ui.shot_value, format_args!("shot pending")),
+            _ => lumen_static::bind::set_if_changed(&mut self.ui.shot_value, &s.shot_value),
+        };
+        let f = lumen_static::bind::format_into(&mut self.ui.shot_log, format_args!("log{}", s.shot_log));
+        a | b | c | d | e | f
     }
 }
 
@@ -409,6 +507,22 @@ fn on_swatch(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.swatch_clicks += 1;
 }
 
+/// M88/T88.3: recolour the swatch and ask the window for a screenshot.
+/// The click arrives through the agent in a drive, so the window answers
+/// it after that call, from the frame the call presented.
+fn on_shot(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    s.swatch_clicks += 1;
+    s.requests.push(lumen_static::request::Request::Screenshot { tag: TAG_SHOT });
+}
+
+/// M88/T88.3: arm a 500 ms timer whose ticks ask for screenshots — so the
+/// window answers from its redraw, with no agent call in flight.
+fn on_shot_timer(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    s.shot_ticks = 0;
+    s.timers.cancel(KIND_SHOT, 1);
+    s.timers.every(KIND_SHOT, 1, 500.0);
+}
+
 fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.sub_on = !s.sub_on;
     s.subs.clear();
@@ -442,6 +556,10 @@ fn build() -> Demo {
     app.ui.sip.on_click = on_sip;
     app.ui.swatch.label = "recolour swatch";
     app.ui.swatch.on_click = on_swatch;
+    app.ui.shot.label = "screenshot";
+    app.ui.shot.on_click = on_shot;
+    app.ui.shot_timer.label = "screenshot by timer";
+    app.ui.shot_timer.on_click = on_shot_timer;
     app
 }
 
@@ -467,7 +585,7 @@ fn stylesheet() -> Vec<Rule> {
 /// **The program, described once** — M32 (`docs/plan-program.md`). The
 /// window and `--shot` are both built from it.
 fn program() -> Program<Demo> {
-    application(build).title("tasks-demo").size(520, 500).style(|_: &Demo| stylesheet())
+    application(build).title("tasks-demo").size(520, 640).style(|_: &Demo| stylesheet())
 }
 
 fn main() {

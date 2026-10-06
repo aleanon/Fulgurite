@@ -148,10 +148,6 @@ KEYS                           # built by M87/T87.3 in scripts/drive/keys.py, a 
 LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as VECTORTEXT)
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
-ClipFormat                     # proposed by M88
-ClipKind                       # proposed by M88
-ClipboardRead                  # proposed by M88
-ClipboardWrite                 # proposed by M88
 CloseWindow                    # proposed by M88
 GetExtLinux                    # proposed by M88
 ImageData                      # proposed by M88

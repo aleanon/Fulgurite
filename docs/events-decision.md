@@ -103,6 +103,24 @@ completes (`chain -`). With the continuation held as the old build's fn
 pointer, it answers with v1's value (`chain 50` against `chain 1040`).
 `docs/results-tasks.md` T49.10 has the output.
 
+### The request case, 2026-10-06 (M88/T88.3)
+
+A platform request — a screenshot, a clipboard read — is work in flight
+too, but not a job: only the window can do it. The same rule decides its
+shape. What travels is a `Copy` `Request` holding the application's
+**tag**, never a callback; the window keeps only that tag, and the answer
+is turned into a message by `App::answered` **in the build loaded when
+the answer arrives**, then applied inside the same call (`Host::answer`).
+Parking the converted message for the next pump — the plan's first
+draft — would put a message from the old build in flight across a swap
+that `hot::save` cannot carry. `just window-reload-demo` checks both
+halves on a real swap: a request taken from v1 and answered after the
+swap reads `v2:x` (`request_across_a_swap`; answering the pre-swap
+session instead leaves `v2:`), and an answer applied on v1 before the
+swap survives it as kept state, `v1:x` (`answer_then_swap`; the parked
+draft reads `v2:`, "answer lost at the swap"). `docs/results-tasks.md`
+T88.3 has the output.
+
 ## What is given up, priced
 
 - **Introspectable actions.** `Msg::Save` names itself; an `fn` pointer
@@ -125,7 +143,10 @@ pointer, it answers with v1's value (`chain 50` against `chain 1040`).
 - Handler fields are code: `restore` never writes them, and they must
   never be marked `keep` (already a compile error).
 - Nothing that outlives the frame may hold a code reference — the inbox
-  is the only legal way for deferred work to re-enter the app.
+  (and since M88 its progress slot) is the only legal way for deferred
+  work to re-enter the app, and `Host::answer` the only way for a
+  platform request's answer to: by tag, converted and applied in the
+  build loaded when it arrives (M88/T88.3).
 - **A continuation is an index, not a function** (M28/T28.6, T28.7). A
   chain's next step is a `step` field in a descriptor, resolved by the
   loaded build; the rule above forbids the closure form, and

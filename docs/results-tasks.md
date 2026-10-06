@@ -1254,3 +1254,58 @@ application defers nothing (`Msg` uninhabited), so the slot drain's
 `Some(m)` is unreachable and the compiler removes it with the
 `ledger.is_empty()` guard; no timing can separate identical code, so K88b
 is not engaged at T88.1.
+
+## M88/T88.3 — the request seam (S1) and screenshot requests
+
+`docs/plan-platform-requests.md` T88.3. An application pushes a `Copy`
+`request::Request` onto its `Requests` (capacity 8); the window drains
+it through `Session::take_requests` in `redraw` after the
+present-or-skip decision and after every agent call, and answers through
+`Session::answer`, which converts with `App::answered` in the build
+loaded then and applies inside the call. `Request` is 16 B (asserted).
+Clipboard requests are answered `Refused(Unsupported)` until T88.4.
+
+| gate | measured | bound |
+|---|---|---|
+| `tests/requests.rs`: a click's request taken, then taken again | 1, then 0 | 1, 0 |
+| answer applied inside the call | `shots` 1 before any pump; the next pump shows `shot 1 2x2` | 1 |
+| unsplit app, `Boundaries<256>`, `answer(7, Text("x"))` + one pump | label `0` → `x` | `x` |
+| unmodelled tag | `unmodelled_answers` 1 | 1 |
+| ninth push | 8 queued, 1 refused | 1 |
+| clipboard write, `clip_for` → `None` | answered `Refused(Empty)` at once, 0 handed out | 0 |
+| no `requests()` | `Vec::new()`, capacity 0 | 0 |
+| `alloc_gate.rs`: pump + empty `take_requests`, 100 frames | 0.00 allocs, 0.00 frees per frame | 0 |
+| winit `serve_requests`: screenshot / write / read | `image 2x2 @1 16` / `Refused(Unsupported)` / `Refused(Unsupported)`; a blind backend's screenshot `Refused(Unsupported)` | as listed |
+| `just window-reload-demo`, `request_across_a_swap` | `v2:` → `v2:x`; accept, no swap: `v1:x` | `v2:x` |
+| `answer_then_swap` | kept `asked` `v1:x` before the swap; after v2's first frame `v1:x`; accept: `v1:x` after one pump | `v1:x` |
+| `just tasks-drive`, agent path (`#shot`), every leg | `shot 1 520x640 #ae60da`, this click's colour (previous `#6bddbd`) | this click's |
+| redraw path (`#shot-timer`), software, both strategies and the oracle leg | `shot 3`, both answers tick 1's `#f1e3f7` (before: `#ae60da`); presented **3**, skipped **3** | exactly 3, ≥ 1 |
+| redraw path, GPU leg (RTX 4070) | `shot 3`, both answers `#f1e3f7`; presents bound not checkable on the day (below) | |
+| `just panic-drive`, site 11 (`App::answered`) | `fixtures/panic-app/src/lib.rs:326`, screen drawn, retried; `--expect-panics` 11 → **12** | |
+| firmware `nm`, `request::|Requests|answered` | 0 in each of the four binaries; 13 in the `requests` test binary | 0; > 0 |
+
+**Everything's sum is 6, not 4.** The plan predicted presented + skipped
+= 4 under `Everything`; it is 3 + 3 on both strategies. Each tick is a
+job: the timer's deadline frame spawns it and presents nothing, and its
+result lands in a second frame, so the two ticks bring two spawn frames
+beside the four the plan counted.
+
+**The GPU leg's presents bound could not be checked on 2026-10-06**: the
+reference machine's display was asleep (`xset q`: "Monitor is Off"), and
+a FIFO present on a sleeping display blocks about a second, so the
+`#shot-timer` click itself returned after tick 1 was due (855 ms against
+the leg's 250 ms) and no read could land before it. The answers were
+checked after a 6 s unobserved wait; the bound is printed, not asserted,
+on that leg only, and the software legs carry it.
+
+**The `nm` count cannot see an inlined push.** Its plan injection —
+`Requests` ungated and pushed from the embedded fixture's handler —
+left all four counts at 0, because `push` inlines into the handler and
+leaves no symbol. The same injection moves `.text` by +136 / +132 / +128
+/ +132 B (`just firmware-delta`), so the strict delta, 0 on all four, is
+this task's firmware gate and the `nm` count is printed beside it.
+
+**K88b at T88.3** is not engaged, as at T88.1: the frame arm's release
+binary is byte-identical before and after (`cmp`). Its application has
+no `requests()`, and `Host::answer` is never called, so the
+`answer_changed` take folds away.

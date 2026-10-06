@@ -10,7 +10,7 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--window") {
         use lumen_static_winit::{application, Run};
         // The endpoint is `LUMEN_AGENT_ADDR`, read by the window (M48/T48.11).
-        let program = application(panic_app::build_window).title("panic-app").size(420, 220);
+        let program = application(panic_app::build_window).title("panic-app").size(480, 220);
         // M55/T55.4: the strategy is this application's choice.
         #[cfg(feature = "everything")]
         let program = program.invalidation::<lumen_static::Everything>();
@@ -35,6 +35,11 @@ fn main() {
         let _ = h.caret_rect();
         let _ = h.next_deadline_ms();
         let _ = lumen_static::event::App::images(&h.app).is_some();
+        // And the requests a window answers after a frame (M88/T88.3):
+        // site 11.
+        for o in h.take_requests() {
+            h.answer(o.request.tag(), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+        }
     }
     println!("no panic");
 }

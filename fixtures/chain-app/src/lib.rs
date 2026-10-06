@@ -24,15 +24,23 @@
 //! `Sender::progress`, shown as `sip N`. v1 reports `p`, and **blocks
 //! after reporting `p = 5`** until the loader calls
 //! `chain_app_release_sip`; v2 reports `p + 100`. So v2 throughout ends
-//! at `sip 10099`, and v1's own stream would end at `sip 9999`. The two
-//! buttons share the top 60 px, `#start` on the left half and `#sip` on
-//! the right. The sipper has its own release, because `reload-host`'s
+//! at `sip 10099`, and v1's own stream would end at `sip 9999`. The
+//! sipper has its own release, because `reload-host`'s
 //! chain gate releases v1's step 0 and the same library stays loaded.
+//!
+//! **And a platform request, since M88/T88.3**: `#ask` pushes
+//! `ClipboardRead { tag: 7, .. }`, and `answered` labels the text with
+//! the build that converted it — `v1:x` or `v2:x`. The answer lands on
+//! `Work::asked`, which the swap **keeps**, so an answer applied before a
+//! swap is still shown after it; before any answer the label reads the
+//! loaded build's bare prefix (`v1:` or `v2:`). The three buttons share
+//! the top 60 px, a third each: `#start`, `#sip`, `#ask`.
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use lumen_static::event::{App, EventCtx};
 use lumen_static::inbox::Sender;
+use lumen_static::request::{Answer, ClipFormat, ClipKind, Request, Requests};
 use lumen_static::spawn::{Descriptor, JobFn, Outbox};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
 use lumen_static::{Reloadable as DeriveReloadable, StaticTree};
@@ -44,7 +52,13 @@ const KIND: u64 = 9;
 /// The sipper's kind (M88/T88.1). Its values carry step 2 in `pack`.
 const KIND_SIP: u64 = 10;
 
-/// The two buttons, side by side across the top 60 px.
+/// This build's name, as `answered` labels an answer with it.
+#[cfg(not(feature = "v2"))]
+const BUILD: &str = "v1";
+#[cfg(feature = "v2")]
+const BUILD: &str = "v2";
+
+/// The three buttons, side by side across the top 60 px.
 #[derive(StaticTree, Default, DeriveReloadable)]
 #[widget(row, spacing = 0.0)]
 pub struct Buttons {
@@ -52,6 +66,8 @@ pub struct Buttons {
     pub start: Button<Work>,
     #[widget_id("sip")]
     pub sip: Button<Work>,
+    #[widget_id("ask")]
+    pub ask: Button<Work>,
 }
 
 #[derive(StaticTree, Default, DeriveReloadable)]
@@ -62,15 +78,36 @@ pub struct Ui {
     pub result: Label<String>,
     #[widget_id("sip-value")]
     pub sip_value: Label<String>,
+    #[widget_id("asked")]
+    pub asked: Label<String>,
 }
 
-/// What a handler and `apply` may touch (M33). Not kept: the outbox is
-/// the host's plumbing and the result is shown from the chain itself.
-#[derive(Default)]
+/// What a handler and `apply` may touch (M33). Fresh but for `asked`:
+/// the outbox and the request queue are the host's plumbing, and the
+/// chain and the sipper are shown from their own streams (a sipper's
+/// value is fresh, so a dropped re-issue reads `sip -` — M88/T88.1).
+/// `asked` is **kept** (M88/T88.3): an answer's effect is ordinary state,
+/// and this is what shows it survives the swap.
+#[derive(Default, DeriveReloadable)]
 pub struct Work {
+    #[reload(fresh)]
     outbox: Outbox,
+    #[reload(fresh)]
+    requests: Requests,
+    #[reload(fresh)]
     result: Option<u64>,
+    #[reload(fresh)]
     sip: Option<u64>,
+    #[reload(keep)]
+    asked: Option<String>,
+}
+
+/// A message: a step's or a sipper's packed value, or an answer
+/// converted by the build loaded when it arrived (M88/T88.3).
+#[derive(Debug)]
+pub enum Msg {
+    Step(u64),
+    Asked(String),
 }
 
 /// Hand-written `App`, because the derive cannot express a real `Msg`
@@ -80,7 +117,6 @@ pub struct Work {
 #[derive(DeriveReloadable)]
 pub struct Chain {
     pub ui: Ui,
-    #[reload(fresh)]
     pub work: Work,
 }
 
@@ -98,7 +134,7 @@ static RELEASED: AtomicBool = AtomicBool::new(false);
 /// on it after reporting 5.
 static SIP_RELEASED: AtomicBool = AtomicBool::new(false);
 
-fn step0(d: Descriptor, tx: &Sender<u64>) {
+fn step0(d: Descriptor, tx: &Sender<Msg>) {
     #[cfg(not(feature = "v2"))]
     {
         // Bounded, so a gate that never releases does not hang a worker
@@ -107,25 +143,25 @@ fn step0(d: Descriptor, tx: &Sender<u64>) {
         while !RELEASED.load(Ordering::Acquire) && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        let _ = tx.send(pack(0, d.payload + 1));
+        let _ = tx.send(Msg::Step(pack(0, d.payload + 1)));
     }
     #[cfg(feature = "v2")]
     {
         let _ = &RELEASED;
-        let _ = tx.send(pack(0, d.payload + 100));
+        let _ = tx.send(Msg::Step(pack(0, d.payload + 100)));
     }
 }
 
-fn step1(d: Descriptor, tx: &Sender<u64>) {
-    let _ = tx.send(pack(1, d.payload * 10));
+fn step1(d: Descriptor, tx: &Sender<Msg>) {
+    let _ = tx.send(Msg::Step(pack(1, d.payload * 10)));
 }
 
 /// The sipper: `0..payload` through `progress`, v1 as `p`, v2 as `p + 100`.
-fn sipper(d: Descriptor, tx: &Sender<u64>) {
+fn sipper(d: Descriptor, tx: &Sender<Msg>) {
     for p in 0..d.payload {
         #[cfg(not(feature = "v2"))]
         {
-            tx.progress(pack(2, p));
+            tx.progress(Msg::Step(pack(2, p)));
             if p == 5 {
                 // Bounded, as step 0's wait is.
                 let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -137,7 +173,7 @@ fn sipper(d: Descriptor, tx: &Sender<u64>) {
         #[cfg(feature = "v2")]
         {
             let _ = &SIP_RELEASED;
-            tx.progress(pack(2, p + 100));
+            tx.progress(Msg::Step(pack(2, p + 100)));
         }
     }
 }
@@ -149,7 +185,7 @@ impl App for Chain {
     }
     const STATE_IS_SPLIT: bool = true;
     type Tree = Ui;
-    type Msg = u64;
+    type Msg = Msg;
     fn tree(&self) -> &Ui {
         &self.ui
     }
@@ -159,7 +195,18 @@ impl App for Chain {
     fn outbox(&mut self) -> Option<&mut Outbox> {
         Some(&mut self.work.outbox)
     }
-    fn job_for(d: Descriptor) -> Option<JobFn<u64>> {
+    fn requests(&mut self) -> Option<&mut Requests> {
+        Some(&mut self.work.requests)
+    }
+    /// **An answer, converted by this build** — M88/T88.3. Labelled with
+    /// the build, so the label says which one was loaded when it arrived.
+    fn answered(tag: u64, a: Answer<'_>) -> Option<Msg> {
+        match (tag, a) {
+            (7, Answer::Text(t)) => Some(Msg::Asked(format!("{BUILD}:{t}"))),
+            _ => None,
+        }
+    }
+    fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
         match (d.kind, d.step) {
             (KIND, 0) => Some(step0),
             (KIND, 1) => Some(step1),
@@ -168,7 +215,14 @@ impl App for Chain {
         }
     }
     /// The step function, in the currently loaded build.
-    fn apply(w: &mut Work, m: u64) -> bool {
+    fn apply(w: &mut Work, m: Msg) -> bool {
+        let m = match m {
+            Msg::Step(m) => m,
+            Msg::Asked(t) => {
+                w.asked = Some(t);
+                return true;
+            }
+        };
         let (step, v) = (m >> 32, m & 0xffff_ffff);
         match step {
             0 => {
@@ -188,7 +242,11 @@ impl App for Chain {
             Some(v) => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
             None => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
         };
-        a | b
+        let c = match &self.work.asked {
+            Some(t) => lumen_static::bind::set_if_changed(&mut self.ui.asked, t),
+            None => lumen_static::bind::format_into(&mut self.ui.asked, format_args!("{BUILD}:")),
+        };
+        a | b | c
     }
 }
 
@@ -200,12 +258,20 @@ fn on_sip(w: &mut Work, _: &EventCtx) {
     w.outbox.push(Descriptor::new(KIND_SIP, 10_000));
 }
 
+/// M88/T88.3: ask for the clipboard's text. The loader stands in for the
+/// window: it takes the request and answers tag 7.
+fn on_ask(w: &mut Work, _: &EventCtx) {
+    w.requests.push(Request::ClipboardRead { tag: 7, kind: ClipKind::Clipboard, format: ClipFormat::Text });
+}
+
 fn boot() -> Chain {
     let mut c = Chain { ui: Ui::default(), work: Work::default() };
     c.ui.buttons.start.label = "start";
     c.ui.buttons.start.on_click = on_start;
     c.ui.buttons.sip.label = "sip";
     c.ui.buttons.sip.on_click = on_sip;
+    c.ui.buttons.ask.label = "ask";
+    c.ui.buttons.ask.on_click = on_ask;
     c
 }
 
@@ -216,6 +282,7 @@ pub fn program() -> Program<Chain> {
             Rule::new(Selector::Kind("Buttons"), Patch::new().padding(Edges::all(0.0))),
             Rule::new(Selector::Id("start"), Patch::new().width(Length::FILL).height(Length::Fixed(60.0))),
             Rule::new(Selector::Id("sip"), Patch::new().width(Length::FILL).height(Length::Fixed(60.0))),
+            Rule::new(Selector::Id("ask"), Patch::new().width(Length::FILL).height(Length::Fixed(60.0))),
         ]
     })
 }

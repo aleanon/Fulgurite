@@ -1,7 +1,7 @@
 //! **Capture and host recovery, headless** — M36/T36.1
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! For each of the ten sites: the guarded entry catches the panic; the
+//! For each of the eleven sites: the guarded entry catches the panic; the
 //! report's location is the site's marker line (site 7: inside the
 //! framework, with the *application* frame at the fixture's calling
 //! line); the retried frame is full damage and byte-identical to a host
@@ -56,6 +56,16 @@ fn session(h: &mut Host<Fx>, site: u8) {
         // And the store the renderer reads, guarded as `Local`'s frame
         // asks it (M84/T84.6).
         if h.guard(|h| lumen_static::event::App::images(&h.app).is_some()).is_none() {
+            return;
+        }
+        // And the requests, answered guarded as `Local` answers them
+        // (M88/T88.3): site 11.
+        let answered = h.guard(|h| {
+            for o in h.take_requests() {
+                h.answer(o.request.tag(), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+            }
+        });
+        if answered.is_none() {
             return;
         }
     }

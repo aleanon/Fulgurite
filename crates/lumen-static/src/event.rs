@@ -1172,6 +1172,57 @@ pub trait App: Sized {
         None
     }
 
+    /// This application's queue of **platform requests** out to the
+    /// window — M88/T88.3 (`crate::request`, seam S1).
+    ///
+    /// A handler, an `apply` or the boot pushes a
+    /// [`Request`](crate::request::Request) here — a screenshot, a
+    /// clipboard write or read — because none of them can reach the host;
+    /// this is the only route, as [`App::outbox`] is for jobs. The window
+    /// drains it on every frame and after every agent call, and answers
+    /// each by tag through [`App::answered`].
+    ///
+    /// `None` by default: an application that asks for nothing carries
+    /// no field and pays one inlined `None` per drain.
+    #[cfg(feature = "std")]
+    fn requests(&mut self) -> Option<&mut crate::request::Requests> {
+        None
+    }
+
+    /// **What to put on the clipboard for `tag`** — M88/T88.3. Asked by
+    /// the host while it drains a
+    /// [`Request::ClipboardWrite`](crate::request::Request::ClipboardWrite),
+    /// synchronously and in the build loaded then; the bytes are copied
+    /// before the drain returns, so they never live in the request.
+    ///
+    /// `None` — the default — is answered
+    /// [`Refused(Empty)`](crate::request::Refusal::Empty) at once, and the
+    /// window is not asked.
+    #[cfg(feature = "std")]
+    fn clip_for(&mut self, _tag: u64) -> Option<crate::request::Clip<'_>> {
+        None
+    }
+
+    /// **Turn the answer to request `tag` into one of this application's
+    /// messages** — M88/T88.3.
+    ///
+    /// An associated fn, like [`App::failed`], called **when the answer
+    /// arrives, in the build loaded then** — and the message it returns is
+    /// applied inside that same call (`Host::answer`), not queued for a
+    /// later pump, so a swap can never land between the two and drop it
+    /// (`docs/plan-platform-requests.md`, second review A1). The answer is
+    /// borrowed for this call only: copy what the message keeps.
+    ///
+    /// `None` — the default — means this application does not model the
+    /// answer; the host counts it (`Host::unmodelled_answers`).
+    #[cfg(feature = "std")]
+    fn answered(_tag: u64, _answer: crate::request::Answer<'_>) -> Option<Self::Msg>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Refresh the tree's *presentation copies* from the state they are
     /// derived from. Called by the frame loop after input is drained and
     /// before layout, so a handler that changes state cannot leave a

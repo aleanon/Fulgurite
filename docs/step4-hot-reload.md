@@ -312,6 +312,18 @@ crosses; `every_crossing_type_is_defined_in_a_hashed_crate` checks that
 claim against `type_name`). *Injection:* the source lines left out of
 the stamp, and the reordered library is accepted again.
 
+**Two crossing types since M88/T88.3**: `Session::take_requests` returns
+`Vec<lumen_static_shell::request::Outgoing>`, each a core `Request` with an
+owned `Payload` (`None`, or a clipboard write's text or HTML, copied out of
+the application at the drain), and `Session::answer` takes a core
+`request::Answer<'_>` that borrows the window's pixels or text for the call.
+Both cross by value or by borrow as `copy`'s `String` and `save`'s
+`Vec<u8>` already do, and both are defined in source-hashed crates, so an
+edit to either refuses the next build as any framework edit does. No
+request is pending at a swap: the window answers every one before the
+drain that took it returns, and the answer is applied inside `answer`
+(`docs/plan-platform-requests.md`).
+
 What it deliberately does not cover, and why:
 
 - **Any edit to the three crates refuses every later build** until the

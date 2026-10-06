@@ -175,6 +175,10 @@ pub mod num;
 // Threads and the inbox both, so `std` for the same reason (M13/T13.1).
 #[cfg(feature = "std")]
 pub mod spawn;
+// Platform requests out to the window (M88/T88.3, S1): the queue sits
+// beside the outbox and, like it, is not an embedded concern.
+#[cfg(feature = "std")]
+pub mod request;
 // The accessibility tree (`a11y`, M54/T54.1); its JSON view for agents
 // is the `observe` half inside the module.
 #[cfg(feature = "a11y")]

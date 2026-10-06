@@ -1,13 +1,15 @@
 """M36/T36.3 (docs/plan-panic-recovery.md): the panic screen, live.
 
-For each of panic-app's ten sites, over the agent endpoint:
+For each of panic-app's eleven sites, over the agent endpoint:
   1. arm the site (and press #go where the site needs a click, or focus
      #fuse for site 8, whose panic is the window asking the focused
      field's caret for its IME area -- M80/T80.5; site 9's is the window
      asking App::wake_in_ms for its next deadline after the arming
      click's own frame -- M84/T84.3; site 10's is App::images, which the
      arming click's own frame asks inside its guarded entry before the
-     present reads the store -- M84/T84.6);
+     present reads the store -- M84/T84.6; site 11's is App::answered,
+     which the window reaches answering the screenshot request #go
+     pushed, after that agent call -- M88/T88.3);
   2. wait for app.failure, and assert its file and line are the site's;
   3. check a screenshot pixel is the panic screen's page, not the app's;
   4. assert input.* is refused, and app.imeArea is null, while the screen
@@ -76,8 +78,8 @@ def corner():
 src = open("fixtures/panic-app/src/lib.rs").read().splitlines()
 line_of = {int(m.group(1)): i + 1 for i, l in enumerate(src) for m in [re.search(r"// SITE (\d+)$", l.rstrip())] if m}
 SITES = sorted(line_of)
-assert SITES == list(range(1, 11)), f"panic-drive: the fixture's SITE markers are {SITES}, not 1..10"
-print(f"  ..  {len(SITES)} sites in fixtures/panic-app/src/lib.rs (ten since M84/T84.6's App::images)")
+assert SITES == list(range(1, 12)), f"panic-drive: the fixture's SITE markers are {SITES}, not 1..11"
+print(f"  ..  {len(SITES)} sites in fixtures/panic-app/src/lib.rs (eleven since M88/T88.3's App::answered)")
 
 PANIC_PAGE = (0x1b, 0x1f, 0x2a)
 first = call("app.failure")
@@ -94,8 +96,16 @@ assert ime is not None, f"panic-drive [{strategy}]: setup: focusing #fuse placed
 print(f"  ..  site 8 setup: #fuse focused, app.imeArea {ime}")
 
 for site in SITES:
-    call("input.click", {"selector": f"#arm{site}"})
-    if site in (1, 2, 7):
+    # The arming click must land: an arm button laid out past the window's
+    # edge takes nothing (site 11's did at 420 px, M88/T88.3). Sites 3-5
+    # and 9-10 panic inside the arming click's own pump, which then reports
+    # it unhandled -- so "landed" is handled, or a failure already up.
+    armed = call("input.click", {"selector": f"#arm{site}"})
+    if armed.get("handled") is not True:
+        assert call("app.failure")["failure"], \
+            f"panic-drive [{strategy}]: setup: the click on #arm{site} was not handled: {armed!r}"
+
+    if site in (1, 2, 7, 11):
         r = rpc("input.click", {"selector": "#go"})
     if site == 8:
         # A press on the field: the frame focuses it and the window asks

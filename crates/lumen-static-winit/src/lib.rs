@@ -1048,6 +1048,16 @@ impl Win {
             self.ime_area = None;
             return;
         }
+        // **The application's platform requests** — M88/T88.3, the
+        // redraw site. On every frame, **after** the present-or-skip
+        // decision, so a screenshot is the frame on screen — the one just
+        // presented, or on a skipped frame the last one, still showing —
+        // and a request pushed on a frame with no damage is not left
+        // waiting for an unrelated present. After the `failed()` return,
+        // so nothing is drained while M36's screen is up; and before
+        // `next_frame` reads `more_deferred`, which an applied answer
+        // sets.
+        Self::serve_requests(&mut *self.session, &mut **backend);
         self.place_ime(&window);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
@@ -1373,6 +1383,10 @@ impl Win {
             self.input_at.get_or_insert_with(Instant::now);
         }
         let text = self.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
+        // **The requests the call left** — M88/T88.3, the agent site: an
+        // `input.*` pumps and presents inside the request, so a handler's
+        // request is answered here, from the frame that call presented.
+        Self::serve_requests(&mut *self.session, &mut *backend);
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
@@ -1395,6 +1409,36 @@ impl Win {
 }
 
 impl Win {
+    /// **Answer every request the session holds** — M88/T88.3, seam S1
+    /// (`docs/plan-platform-requests.md`). Called in two places: in
+    /// `redraw` after the present-or-skip decision, and after every
+    /// `Session::agent` call. Every request is answered before this
+    /// returns, so none is pending at a swap.
+    ///
+    /// | request | answered from |
+    /// |---|---|
+    /// | `Screenshot` | `Backend::frame_rgba` — what the renderer drew, the frame on screen; `Refused(Unsupported)` from a backend that cannot read back |
+    /// | `ClipboardWrite`, `ClipboardRead` | `Refused(Unsupported)` until M88/T88.4 |
+    ///
+    /// The answers go to the same session that drained them.
+    fn serve_requests(session: &mut dyn Session, backend: &mut dyn Backend) {
+        use lumen_static::request::{Answer, Refusal, Request};
+        for out in session.take_requests() {
+            match out.request {
+                Request::Screenshot { tag } => {
+                    let scale = session.scale();
+                    match backend.frame_rgba() {
+                        Some((width, height, rgba)) => session.answer(tag, Answer::Image { width, height, scale, rgba }),
+                        None => session.answer(tag, Answer::Refused(Refusal::Unsupported)),
+                    }
+                }
+                Request::ClipboardWrite { tag, .. } | Request::ClipboardRead { tag, .. } => {
+                    session.answer(tag, Answer::Refused(Refusal::Unsupported));
+                }
+            }
+        }
+    }
+
     fn title_now(&self) -> String {
         let t = self.session.title();
         let t = if t.is_empty() { self.config.title.to_string() } else { t };
@@ -2155,6 +2199,120 @@ mod tests {
     /// `resume_backend` calls `Backend::set_shaders` on each one it makes,
     /// so the second resume's backend compiles the program's shaders as the
     /// first did. Printed as the backends that were handed it.
+    /// **M88/T88.3: what `Win::serve_requests` answers, and to whom.**
+    /// A screenshot from the backend's `frame_rgba` (its size, the
+    /// session's scale), or `Refused(Unsupported)` from a backend that
+    /// cannot read back; **both clipboard requests `Refused(Unsupported)`
+    /// until T88.4** — the pin T88.4 flips; and the queue empty after one
+    /// call. Setup landed: three requests were queued.
+    #[test]
+    fn serve_requests_answers_screenshots_and_refuses_the_clipboard_until_t88_4() {
+        use lumen_static::prelude::*;
+        use lumen_static::request::{Answer, Clip, ClipFormat, ClipKind, Refusal, Request, Requests};
+        use lumen_static_widgets::prelude::*;
+
+        #[derive(StaticTree, Default)]
+        #[widget(column, spacing = 0.0)]
+        struct AskUi {
+            a: Fixed,
+        }
+        #[derive(Default)]
+        struct Ask {
+            ui: AskUi,
+            requests: Requests,
+            got: Vec<(u64, String)>,
+        }
+        impl App for Ask {
+            type State = Self;
+            fn state_mut(&mut self) -> &mut Self {
+                self
+            }
+            type Tree = AskUi;
+            type Msg = (u64, String);
+            fn tree(&self) -> &AskUi {
+                &self.ui
+            }
+            fn tree_mut(&mut self) -> &mut AskUi {
+                &mut self.ui
+            }
+            fn requests(&mut self) -> Option<&mut Requests> {
+                Some(&mut self.requests)
+            }
+            fn clip_for(&mut self, _tag: u64) -> Option<Clip<'_>> {
+                Some(Clip::Text("A"))
+            }
+            fn answered(tag: u64, a: Answer<'_>) -> Option<(u64, String)> {
+                Some((
+                    tag,
+                    match a {
+                        Answer::Image { width, height, scale, rgba } => format!("image {width}x{height} @{scale} {}", rgba.len()),
+                        other => format!("{other:?}"),
+                    },
+                ))
+            }
+            fn apply(this: &mut Self, m: (u64, String)) -> bool {
+                this.got.push(m);
+                true
+            }
+        }
+        struct Drawn([u8; 16]);
+        impl Backend for Drawn {
+            fn resize(&mut self, _w: u32, _h: u32) -> bool {
+                false
+            }
+            fn present(&mut self, _s: &mut dyn lumen_static_shell::session::FrameSource, _p: Color, _t: Instant) -> Frame {
+                Frame::default()
+            }
+            fn set_images(&mut self, _images: Box<dyn lumen_static::ImageSource>) {}
+            fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+                None
+            }
+            fn invalidate_images(&mut self) {}
+            fn set_font(&mut self, _font: FontStack) {}
+            fn set_shaders(&mut self, _table: ShaderTable<'_>) -> usize {
+                0
+            }
+            fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+                None
+            }
+            fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
+                Some((2, 2, &self.0))
+            }
+            fn name(&self) -> &str {
+                "drawn"
+            }
+        }
+
+        let ask = |backend: &mut dyn Backend| {
+            let host: Host<Ask, Ret> = Host::new(Ask::default(), 40, 40);
+            let mut s = Local::from_host(host, "ask", Color(255, 255, 255, 255), Policy);
+            for r in [
+                Request::Screenshot { tag: 1 },
+                Request::ClipboardWrite { tag: 2, kind: ClipKind::Clipboard },
+                Request::ClipboardRead { tag: 3, kind: ClipKind::Primary, format: ClipFormat::Text },
+            ] {
+                assert!(s.host.app.requests.push(r), "setup: a request was refused");
+            }
+            Win::serve_requests(&mut s, backend);
+            let left = s.host.app.requests.len();
+            (std::mem::take(&mut s.host.app.got), left)
+        };
+        let unsupported = format!("{:?}", Answer::Refused(Refusal::Unsupported));
+        let (got, left) = ask(&mut Drawn([7; 16]));
+        println!("drawn backend: {got:?}; left on the queue {left} (want 0)");
+        assert_eq!(
+            got,
+            vec![(1, "image 2x2 @1 16".to_string()), (2, unsupported.clone()), (3, unsupported.clone())],
+            "a screenshot from frame_rgba, and the clipboard Refused(Unsupported) until T88.4"
+        );
+        assert_eq!(left, 0, "serve_requests left a request on the queue");
+        let shaders = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut blind = Fake { id: 0, log: std::rc::Rc::default(), shaders, images: None };
+        let (got, _) = ask(&mut blind);
+        println!("backend that cannot read back: {:?}", got.first());
+        assert_eq!(got.first(), Some(&(1, unsupported)), "a screenshot from a blind backend must be refused, not dropped");
+    }
+
     #[test]
     fn a_second_resume_still_has_the_images() {
         let mut images: Option<Box<dyn lumen_static::ImageSource>> = Some(Box::new(OnePixel));

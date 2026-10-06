@@ -1,5 +1,5 @@
 """M28/T28.12's assertions. See scripts/tasks_drive.sh."""
-import base64, hashlib, io, json, socket, sys, time
+import base64, hashlib, io, json, re, socket, sys, time
 
 port, strategy = int(sys.argv[1]), sys.argv[2]
 # M88/T88.2: `gpu` runs only the phases that read pixels, on a window
@@ -149,6 +149,99 @@ def swatch_phase():
     print(f"  ok  swatch: a click changed the screenshot ({h1['hash']} -> {h2['hash']})")
 
 
+def hexrgb(px):
+    return "#%02x%02x%02x" % tuple(px[:3])
+
+
+def shot_label():
+    """`#shot-value` parsed: (count, colour) -- `shot N WxH #rrggbb`."""
+    t = text_of("shot-value")
+    m = re.match(r"shot (\d+) (\d+)x(\d+) (#[0-9a-f]{6})$", t)
+    return (int(m.group(1)), m.group(4), t) if m else (0, None, t)
+
+
+def shot_agent_phase():
+    """M88/T88.3, the agent path: `#shot` recolours the swatch and pushes
+    a `Screenshot` from its handler. The click arrives through the agent,
+    so the window answers after that call, from the frame it presented.
+    One read after an UNOBSERVED 1 s: the label must name this click's
+    colour, not the previous click's."""
+    _, prev = screenshot_px(4, 4)
+    n0, _, t0 = shot_label()
+    r = call("input.click", {"selector": "#shot"})
+    if r.get("handled") is not True:
+        sys.exit(f"tasks-drive[{leg}]: setup: the click on #shot was not handled: {r}")
+    time.sleep(1.0)  # unobserved: every agent reply asks for a redraw
+    n1, got, t1 = shot_label()
+    _, now = screenshot_px(4, 4)
+    print(f"  ..  #shot (agent path): label {t0!r} -> {t1!r}; this click's colour {hexrgb(now)}, "
+          f"the previous click's {hexrgb(prev)}")
+    if now == prev:
+        sys.exit(f"tasks-drive[{leg}]: setup: #shot did not recolour the swatch ({hexrgb(now)})")
+    if n1 != n0 + 1 or got != hexrgb(now):
+        named = "the previous click's" if got == hexrgb(prev) else "neither click's"
+        sys.exit(f"tasks-drive[{leg}]: after #shot the label reads {t1!r}: {named} colour, want "
+                 f"shot {n0 + 1} with {hexrgb(now)} -- the answer is not this click's frame")
+    print(f"  ok  agent path: shot {n1} shows this click's {got}")
+
+
+def shot_redraw_phase():
+    """M88/T88.3, the redraw path: `#shot-timer`'s ticks push `Screenshot`
+    from `apply`, in a pump a timer wake ran, with no agent call in flight
+    -- so only the redraw drain can answer them. Tick 1 recolours the
+    swatch; tick 2 changes nothing (no damage: the skipped present) and
+    asks again. One read after an UNOBSERVED 1.5 s."""
+    _, before_px = screenshot_px(4, 4)
+    n0, _, t0 = shot_label()
+    log0 = text_of("shot-log").split()[1:]
+    t_click = time.time()
+    r = call("input.click", {"selector": "#shot-timer"})
+    click_ms = (time.time() - t_click) * 1000
+    if r.get("handled") is not True:
+        sys.exit(f"tasks-drive[{leg}]: setup: the click on #shot-timer was not handled: {r}")
+    # A GPU window on a display that is asleep (DPMS off) blocks each
+    # FIFO present for about a second, so the click -- which presents
+    # inside the request -- returns after the first tick is due, and no
+    # read can land before it. The answers are still checked, after a
+    # longer unobserved wait; the presents bound then cannot be (printed).
+    slow = backend == "gpu" and click_ms > 250
+    w = call("ui.waitSettled")
+    p0 = call("app.presents")
+    t_p0 = time.time()
+    time.sleep(6.0 if slow else 1.5)  # unobserved: the ticks land at 500 and 1000 ms
+    p1 = call("app.presents")
+    n1, got, t1 = shot_label()
+    log1 = text_of("shot-log").split()[1:]
+    _, tick1_px = screenshot_px(4, 4)
+    presented, skipped = p1["presents"] - p0["presents"], p1["skipped"] - p0["skipped"]
+    new = log1[len(log0):]
+    print(f"  ..  #shot-timer (redraw path): waitSettled settled={w.get('settled')}; label {t0!r} -> {t1!r}; "
+          f"answers' colours {new}; tick 1's colour {hexrgb(tick1_px)}, the colour before {hexrgb(before_px)}")
+    print(f"  ..  presents across {(time.time() - t_p0) * 1000:.0f} ms: presented {presented}, skipped {skipped} "
+          f"({'bound: exactly 3 presented, >= 1 skipped' if strategy == 'boundaries' else 'Everything: printed'})")
+    if tick1_px == before_px:
+        sys.exit(f"tasks-drive[{leg}]: setup: tick 1 did not recolour the swatch")
+    if n1 == n0 + 1:
+        sys.exit(f"tasks-drive[{leg}]: the label reads {t1!r} (shot {n1}): tick 2's request, pushed on a frame "
+                 f"that presented nothing, was not answered -- skipped frame not drained, or the answer "
+                 f"never asked for the frame that shows it")
+    if n1 != n0 + 2:
+        sys.exit(f"tasks-drive[{leg}]: the label reads {t1!r}, want shot {n0 + 2}: an answer applied after "
+                 f"the frame did not ask for another (more_deferred), or a request was never drained")
+    if hexrgb(before_px) in new:
+        sys.exit(f"tasks-drive[{leg}]: an answer shows the colour before tick 1 ({hexrgb(before_px)}; answers "
+                 f"{new}): the redraw drain answered before the frame was presented -- the previous frame's pixels")
+    if new != [hexrgb(tick1_px)] * 2 or got != hexrgb(tick1_px):
+        sys.exit(f"tasks-drive[{leg}]: the answers show {new}, want tick 1's {hexrgb(tick1_px)} twice")
+    if slow:
+        print(f"  --  presents bound NOT CHECKED on this leg: the click took {click_ms:.0f} ms (bound 250) -- "
+              f"the GPU's presents block (is the display asleep? `xset q`), so P0 could not be read before tick 1")
+    elif strategy == "boundaries" and (presented != 3 or skipped < 1):
+        sys.exit(f"tasks-drive[{leg}]: presented {presented} (bound exactly 3: tick 1, answer 1, answer 2) and "
+                 f"skipped {skipped} (bound >= 1: tick 2)")
+    print(f"  ok  redraw path: shot {n1}, both answers tick 1's {got}; presented {presented}, skipped {skipped}")
+
+
 if backend == "gpu":
     # The surface is still "not checkable" on the GPU (`gpu.rs`,
     # `fetch_rgba`): the target is what was rendered, not what was
@@ -163,7 +256,9 @@ if backend == "gpu":
                  f"is not the present (gpu.rs, fetch_rgba)")
     print("  ok  surface: not checkable on the GPU, as recorded")
     swatch_phase()
-    print(f"  ok  {leg}: the GPU answers ui.screenshot per call")
+    shot_agent_phase()
+    shot_redraw_phase()
+    print(f"  ok  {leg}: the GPU answers ui.screenshot per call, and screenshot requests on both paths")
     sys.exit(0)
 
 
@@ -183,6 +278,9 @@ print(f"  ok  clean start {base}")
 
 # ---- 0. the swatch: a screenshot per call (M88/T88.2) -----------------
 swatch_phase()
+# ---- 0b. screenshot requests, both drain sites (M88/T88.3) -------------
+shot_agent_phase()
+shot_redraw_phase()
 
 # ---- 1. spawn one ----------------------------------------------------
 click("spawn-one")

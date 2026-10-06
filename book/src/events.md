@@ -169,6 +169,7 @@ value pushed into one:
 |---|---|---|
 | into the frame | `inbox::Inbox<A::Msg>` | results, applied by `App::apply` |
 | out of the frame | `spawn::Outbox` | requests, as `Descriptor { kind, step, payload }` |
+| out to the window | `request::Requests` | platform requests (a screenshot, a clipboard read or write), each carrying the application's tag |
 
 The host drains the outbox *after* dispatch, so a descriptor a handler
 pushed this frame is spawned on this frame, and pairs each one with a
@@ -269,6 +270,33 @@ asks for one when it wakes there. Until M47 it did not, and a 120 ms
 timer on an idle window ticked once in three seconds while the live
 gate stayed green (`docs/results-tasks.md` T28.12 has the figures and
 why the gate could not see it).
+
+### A platform request is answered by tag
+
+Some work only the window can do: a screenshot needs the renderer, a
+clipboard read the platform. Neither is a job, because no job body on a
+worker can reach either, so they are the third row of the table above.
+A handler, an `apply` or the boot pushes a `Request` holding a tag the
+application chooses onto its `request::Requests` (`App::requests`). The
+window drains the queue on every frame, after it has decided whether to
+present, and after every agent call, and answers each request before it
+returns (M88/T88.3).
+
+An answer comes back by tag through `App::answered`, **in the build
+loaded when it arrives**, and the message it returns is applied inside
+that same call, not queued for a later frame. So a hot swap never meets
+a converted answer in flight: a request taken from the old build and
+answered after the swap is read by the new one, and an answer applied
+before the swap is kept state like anything a handler wrote
+(`just window-reload-demo`, `docs/results-tasks.md` T88.3). A screenshot
+answers with what the renderer drew, the frame on screen:
+
+```text
+{{#include ../../examples/tasks-demo/src/main.rs:shot}}
+```
+
+A request is not a job: a cancel drops results in flight, but it does
+not withdraw a request the window has already taken.
 
 ### Failure is a result too
 

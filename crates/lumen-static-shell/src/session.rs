@@ -342,6 +342,28 @@ pub trait Session: FrameSource {
     /// it or not compile. Not guarded: it reads a field and runs no
     /// application code.
     fn shaders(&self) -> crate::shader::ShaderTable<'_>;
+    /// **The application's platform requests, drained** — M88/T88.3,
+    /// seam S1 (`Host::take_requests`). The window answers every one
+    /// through [`Session::answer`] before the call that drained them
+    /// returns: in `redraw` on every frame after the present-or-skip
+    /// decision (skipped while M36's screen is up), and after every
+    /// [`Session::agent`] call. `Vec::new()` — no allocation — when there
+    /// are none.
+    ///
+    /// **Guarded**: a clipboard write asks `App::clip_for`, application
+    /// code. A failed session answers empty without asking, so a request
+    /// pushed before a panic waits on its queue until a retry.
+    /// **Required**, like every method here: `Hot` forwards it or does not
+    /// compile.
+    fn take_requests(&mut self) -> Vec<crate::request::Outgoing>;
+    /// **Answer request `tag`** (`Host::answer`) — M88/T88.3. The answer
+    /// is turned into a message by `App::answered` in the build loaded
+    /// now, and applied inside this call, so nothing converted is pending
+    /// at a swap. A session's requests are answered to that same session.
+    /// **Guarded**: `answered` and `apply` are application code. Borrowed
+    /// for the call: the pixels or the text are copied by whoever keeps
+    /// them.
+    fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>);
 }
 
 /// An accessibility tree crossing the session seam — M54/T54.2. Holds
@@ -992,6 +1014,18 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
 
     fn shaders(&self) -> crate::shader::ShaderTable<'_> {
         self.host.shaders()
+    }
+
+    fn take_requests(&mut self) -> Vec<crate::request::Outgoing> {
+        // Guarded (M36): `App::clip_for` runs here. A failed host answers
+        // `None` without asking, and the queue keeps what it holds.
+        self.guarded(|h, _| h.take_requests()).unwrap_or_default()
+    }
+
+    fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>) {
+        // Guarded (M36): `App::answered` and `App::apply` run here, the
+        // entry `frame` uses, so a panic in either raises the screen.
+        let _ = self.guarded(|h, _| h.answer(tag, a));
     }
 }
 
