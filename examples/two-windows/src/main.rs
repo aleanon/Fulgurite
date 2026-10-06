@@ -16,6 +16,13 @@
 //! 2. `#send` posts again to the last window opened, so a post can reach a
 //! detail that is open and idle.
 //!
+//! **A request is answered by the window it came from** (M89/T89.5):
+//! `#detail-shot` asks for a screenshot, which the window answers from
+//! *this* window's renderer, and the detail puts the pixels' hash in its
+//! **title** — the one place a drive can read that is not in the pixels
+//! being hashed. `#field` is a text field, whose caret is where *this*
+//! window's input method opens.
+//!
 //! The detail also lays its right-to-left label out `Shaping::Complex`
 //! while the list stays `Basic`, so each window must render with its own
 //! program's stack; and it sets an agent address that the window ignores,
@@ -183,6 +190,12 @@ pub struct DetailUi {
     /// Which window posted it.
     #[widget_id("from")]
     pub from: Label<String>,
+    /// A text field: its caret is this window's IME area (T89.5).
+    #[widget_id("field")]
+    pub field: lumen_static_widgets::input::TextInput,
+    /// Asks the window for a screenshot of this window (T89.5).
+    #[widget_id("detail-shot")]
+    pub shot: Button<Detail>,
     #[widget_id("detail-bump")]
     pub bump: Button<Detail>,
     #[widget_id("detail-close")]
@@ -199,6 +212,18 @@ pub struct Detail {
     pub ui: DetailUi,
     requests: Requests,
     count: u32,
+    /// The last screenshot's answer, as the title shows it: its width by height and the
+    /// pixels' FNV-1a hash, or "refused".
+    shot: Option<String>,
+}
+
+/// The screenshot request's tag.
+pub const SHOT: u64 = 1;
+
+/// FNV-1a over a screenshot's RGBA bytes — what the title shows, so the
+/// drive compares it with `ui.screenshot`'s pixels hashed the same way.
+fn pixel_hash(rgba: &[u8]) -> u64 {
+    rgba.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
 }
 
 impl App for Detail {
@@ -223,6 +248,10 @@ impl App for Detail {
     fn answered(_tag: u64, a: Answer<'_>) -> Option<DetailMsg> {
         match a {
             Answer::Posted { from, desc } if desc.kind == ITEM => Some(DetailMsg::Item { from, item: desc.payload }),
+            Answer::Image { width, height, rgba, .. } if _tag == SHOT => {
+                Some(DetailMsg::Shot(format!("{width}x{height} {:016x}", pixel_hash(rgba))))
+            }
+            Answer::Refused(_) if _tag == SHOT => Some(DetailMsg::Shot("refused".into())),
             _ => None,
         }
     }
@@ -233,6 +262,9 @@ impl App for Detail {
                 this.ui.item.set(format!("item {item}"));
                 this.ui.from.set(format!("from {from}"));
             }
+            // The title only: a label would change the pixels the next
+            // screenshot hashes.
+            DetailMsg::Shot(shot) => this.shot = Some(shot),
         }
         true
     }
@@ -242,6 +274,8 @@ impl App for Detail {
 pub enum DetailMsg {
     /// Window `from` posted item `item` here.
     Item { from: u32, item: u64 },
+    /// A screenshot answered: `WxH hash`, or "refused".
+    Shot(String),
 }
 
 fn detail_state() -> Detail {
@@ -255,6 +289,10 @@ fn detail_state() -> Detail {
         d.count += 1;
         d.ui.count.set(format!("{}", d.count));
     };
+    d.ui.shot.label = "screenshot";
+    d.ui.shot.on_click = |d, _| {
+        d.requests.push(Request::Screenshot { tag: SHOT });
+    };
     d.ui.close.label = "close";
     d.ui.close.on_click = |d, _| {
         d.requests.push(Request::Close);
@@ -263,6 +301,15 @@ fn detail_state() -> Detail {
     d.ui.panic.on_click = |_, _| panic!("the detail window panicked on purpose");
     d.ui.rtl.set("مرحبا بالعالم");
     d
+}
+
+/// The detail's title: its name, and the last screenshot's answer once
+/// there is one (T89.5).
+fn detail_title(d: &Detail) -> String {
+    match &d.shot {
+        None => "two-windows — detail".into(),
+        Some(shot) => format!("two-windows — detail · shot {shot}"),
+    }
 }
 
 /// Escape closes the detail: `KeyOutcome::Quit` closes the window it came
@@ -280,8 +327,8 @@ fn detail_keys(_: &mut Detail, key: lumen_static::Key, _: lumen_static::Mods) ->
 /// addresses every window.
 pub fn detail() -> Program<Detail> {
     application(detail_state)
-        .title("two-windows — detail")
-        .size(300, 300)
+        .title(detail_title)
+        .size(300, 400)
         .page(PAGE)
         .on_key(detail_keys)
         .shaping(lumen_static_shell::text::Shaping::Complex)

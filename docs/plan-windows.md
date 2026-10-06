@@ -975,4 +975,23 @@ the first review's findings of the same name.
   queue for the list's next drain — its next frame, which the answer
   asked for — and reaches the detail within 0–4 ms of the click's reply.
   Phase 3 (a) polls `#item` with a 3 s bound and prints the time.
+- **T89.5, both producers had landed and nothing was missing.** M88's
+  `Screenshot` and clipboard requests and M80/T80.5's IME area are all
+  built, and both drain sites already pass the draining slot's session
+  with **that slot's** backend (T89.1), as `app.imeArea` already reads
+  the slot the request names (T89.2). So the task is its gates, which
+  hold that in place, and the rustdoc on the screenshot and clipboard
+  variants; no code changed in the window crate.
+- **T89.5, the screenshot's answer is shown in the title.** The detail
+  hashes the answered pixels (FNV-1a, as `examples/tasks-demo` does) and
+  the drive compares that with `ui.screenshot`'s. A label carrying the
+  hash would change the very pixels the next `ui.screenshot` hashes, so
+  the detail's title is a function of its state and carries it instead;
+  `app.windows` reports each window's title.
+- **T89.5, the IME gate uses the harness's caret rule.** "±1 px of the
+  physical caret rect" is read the way `scripts/drive/harness.py`'s
+  `_ime_check` reads it: the caret column found in window 2's screenshot
+  against the area's centre, never `caret_rect` compared with itself.
+  Its injection is checked for equality before nullness, so it fails by
+  the name the plan gives it ("window 2's answer equals window 1's").
 

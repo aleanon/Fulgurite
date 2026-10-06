@@ -24,6 +24,11 @@
 # reaches an idle detail and is drawn on its next frame with no input to
 # it, and a post to a closed window is dropped and counted.
 #
+# Phase 4 (T89.5) is examples/two-windows again, under both strategies: a
+# request is answered by the window it was drained from -- the detail's
+# screenshot is the detail's pixels, not the list's, and `app.imeArea`
+# answers each window's own caret.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`. Needs a display; skips with exit 77 without
 # one (M43 §2). Opens one window per leg (scripts/drive_window.sh places
@@ -82,4 +87,19 @@ for leg in everything boundaries; do
         -- python3 scripts/windows_drive.py {port} 3
 done
 
-echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close); phase 3 passed under both (posts: the clicked row, an idle target, a closed target)"
+for leg in everything boundaries; do
+    echo "== phase 4: two-windows, per-window answers, $leg =="
+    case "$leg" in
+    everything)
+        cargo build --release -q -p two-windows --features reload,everything
+        strategy=Everything ;;
+    boundaries)
+        cargo build --release -q -p two-windows --features reload
+        strategy=Boundaries ;;
+    esac
+    $LAUNCH --leg "phase4-$leg" --exe target/release/two-windows \
+        --expect-strategy "$strategy" --expect-features shaping,reload --stop quit \
+        -- python3 scripts/windows_drive.py {port} 4
+done
+
+echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close); phase 3 passed under both (posts: the clicked row, an idle target, a closed target); phase 4 passed under both (a screenshot and an IME area answered by their own window)"

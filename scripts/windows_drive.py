@@ -75,6 +75,22 @@ times out with `#item` at its boot text "no item"; no redraw request on
 the target slot, and (b)'s present count and region hash do not move.
 The launcher stops the process with `app.quit` (`--stop quit`).
 
+Phase 4 (T89.5) is `examples/two-windows` again, under both strategies: a
+request is answered by the window whose session it was drained from.
+
+  (a) `#detail-shot` on window 2 pushes a `Screenshot`; the detail puts
+      the answer's size and FNV-1a hash in its title (not in its pixels,
+      which the hash covers). That hash equals `ui.screenshot` with
+      `"window": 2` hashed the same way, and differs from window 1's
+  (b) `#field` focused in window 2: `app.imeArea` with `"window": 2` is
+      the detail field's caret -- its centre within 1 physical px of the
+      caret column found in window 2's screenshot -- and `"window": 1`
+      answers the list's, `null` (the list has no field)
+
+Its injections: answer every request from slot 0's backend, and (a)'s
+hashes are window 1's; `app.imeArea` reads slot 0's area for every
+window, and (b)'s window 2 answers window 1's `null`.
+
 Every check prints the quantity it read beside what it wanted.
 """
 import base64
@@ -623,7 +639,124 @@ def phase3():
     print("  ok  (c) a post to a closed window is dropped and counted")
 
 
-PHASES = {"1": phase1, "2": phase2, "3": phase3}
+def fnv(data):
+    h = 0xcbf29ce484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def shot_hash(window):
+    """`ui.screenshot` (the canvas) of `window`: (WxH, FNV-1a of its RGBA
+    bytes, the decoded image, scale) -- the bytes `frame_rgba` answers."""
+    shot = result("ui.screenshot", {}, window=window)
+    w, h, bpp, rows = png_rows(shot["image_base64"])
+    if bpp != 4:
+        fail(f"ui.screenshot of window {window} is not RGBA (bpp {bpp}): its hash cannot match frame_rgba's")
+    return f"{w}x{h}", fnv(b"".join(bytes(r) for r in rows)), (w, h, bpp, rows), shot.get("scale", 1.0)
+
+
+def title_of(window):
+    return next(w["title"] for w in result("app.windows")["windows"] if w["key"] == window)
+
+
+def caret_column(img, b, pad, k):
+    """The painted caret's centre column in physical px, inside the field's
+    padded box: the column with the longest unbroken run of ink, ink being
+    a pixel more than 40% of the way from the box's commonest colour to the
+    farthest one (`scripts/drive/harness.py`'s `_ime_check`, the same rule)."""
+    w, h, bpp, rows = img
+    px = lambda x, y: tuple(rows[y][x * bpp:x * bpp + 3])
+    x0, x1 = int((b[0] + pad[0]) * k), min(int((b[2] - pad[2] + 1) * k + 0.999), w)
+    y0, y1 = int((b[1] + 2) * k), min(int((b[3] - 2) * k + 0.999), h)
+    bx0, bx1 = int(b[0] * k), min(int(b[2] * k + 0.999), w)
+    box = [px(x, y) for x in range(bx0, bx1) for y in range(y0, y1)]
+    ground = max(set(box), key=box.count)
+    dist = lambda p: sum(abs(a - g) for a, g in zip(p, ground))
+    far = max(dist(p) for p in box) or 1
+    runs = []
+    for x in range(x0, x1):
+        best = cur = 0
+        for y in range(y0, y1):
+            cur = cur + 1 if dist(px(x, y)) > 0.4 * far else 0
+            best = max(best, cur)
+        runs.append(best)
+    top = max(runs) if runs else 0
+    if top == 0:
+        return None, 0
+    peak = runs.index(top)
+    lo = hi = peak
+    while lo > 0 and runs[lo - 1] * 5 >= top * 4:
+        lo -= 1
+    while hi + 1 < len(runs) and runs[hi + 1] * 5 >= top * 4:
+        hi += 1
+    wsum = sum(runs[lo:hi + 1])
+    return sum((x0 + j + 0.5) * runs[j] for j in range(lo, hi + 1)) / wsum, top
+
+
+def phase4():
+    print("== phase 4 (T89.5): a request is answered by the window it came from ==")
+    if keys() != [1]:
+        fail(f"setup: app.windows {keys()} at start, want [1]")
+    open_row(2, 2, "setup")
+
+    # (a) the detail's own screenshot.
+    t0 = title_of(2)
+    click("#detail-shot", 2, "(a)")
+    t, ms = t0, 0.0
+    start = time.monotonic()
+    while "shot " not in t and time.monotonic() - start < 3.0:
+        time.sleep(0.02)
+        t = title_of(2)
+    ms = (time.monotonic() - start) * 1000
+    time.sleep(0.3)  # the frame the answer asked for: pixel-identical, the title is not drawn
+    answered = t.split("shot ", 1)[1] if "shot " in t else None
+    size2, h2, _, _ = shot_hash(2)
+    size1, h1, _, _ = shot_hash(1)
+    agent2, agent1 = f"{size2} {h2:016x}", f"{size1} {h1:016x}"
+    print(f"  ..  (a) window 2's title {t0!r} -> {t!r} after {ms:.0f} ms (bound 3000)")
+    print(f"  ..  (a) the detail's Screenshot answered {answered!r}; ui.screenshot window 2 {agent2!r} "
+          f"(want equal); window 1 {agent1!r} (want different)")
+    if answered is None:
+        fail("(a) setup: the detail's title never showed a screenshot answer -- was the request answered?")
+    if answered == "refused":
+        fail("(a) the detail's Screenshot was refused -- its window's renderer cannot read back")
+    if answered == agent1:
+        fail(f"(a) the detail's Screenshot answered window 1's pixels ({answered}) -- answered from another "
+             f"window's backend, not the slot it was drained from")
+    if answered != agent2:
+        fail(f"(a) the detail's Screenshot answered {answered}, ui.screenshot of window 2 hashes {agent2}")
+    if agent1 == agent2:
+        fail("(a) windows 1 and 2 hash alike -- the comparison cannot tell them apart")
+    print("  ok  (a) the detail's screenshot is window 2's, not window 1's")
+
+    # (b) the IME area is the window's own.
+    click("#field", 2, "(b)")
+    st = result("ui.getAppliedStyles", {"selector": "#field"}, window=2)
+    if not st["state"]["focused"]:
+        fail("(b) setup: #field is not focused after the click on window 2")
+    area2 = result("app.imeArea", window=2)["area"]
+    area1 = result("app.imeArea", window=1)["area"]
+    b = result("ui.resolve", {"selector": "#field"}, window=2)["bounds"]
+    _, _, img, k = shot_hash(2)
+    painted, run = caret_column(img, b, st["padding"], k)
+    centre = (area2[0] + area2[2]) / 2 if area2 else None
+    d = abs(centre - painted) if (centre is not None and painted is not None) else None
+    print(f"  ..  (b) app.imeArea window 2 {area2} (centre {centre}); painted caret column {painted} "
+          f"(run {run} px), |d| {d} physical px (bound 1.00, scale {k}); window 1 {area1} (want null)")
+    if area2 == area1:
+        fail(f"(b) app.imeArea answers {area2} for window 2 and window 1 alike, with window 2's field "
+             f"focused -- both read from one slot")
+    if area2 is None:
+        fail("(b) window 2's field is focused and app.imeArea for window 2 is null")
+    if area1 is not None:
+        fail(f"(b) app.imeArea for window 1 is {area1}: the list has no field")
+    if painted is None or d > 1.0:
+        fail(f"(b) window 2's IME area centre {centre} is {d} px from its painted caret {painted}")
+    print("  ok  (b) window 2's IME area is its own field's caret; window 1's is null")
+
+
+PHASES = {"1": phase1, "2": phase2, "3": phase3, "4": phase4}
 if phase not in PHASES:
     fail(f"no phase {phase!r}; have {sorted(PHASES)}")
 try:

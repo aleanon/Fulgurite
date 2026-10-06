@@ -1709,7 +1709,11 @@ impl Win {
     /// A clipboard the build has but the machine did not give it
     /// ([`Clipboard::is_open`] false) answers `Refused(Failed)`.
     ///
-    /// The answers go to the same session that drained them.
+    /// **The answers go to the same session that drained them, from that
+    /// window's own renderer** (M89/T89.5): both drain sites pass the
+    /// slot's session with the slot's backend, so a screenshot asked by a
+    /// detail window is the detail's frame, never the primary's
+    /// (`just windows-drive` phase 4). The clipboard is the process's one.
     ///
     /// **The window requests are returned, not answered** (M89/T89.3):
     /// `OpenWindow`, `CloseWindow`, `Close`, `Quit` and (T89.4) `Post` act

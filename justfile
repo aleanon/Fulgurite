@@ -988,7 +988,9 @@ observe-inlining *args:
 
 # M89 (docs/plan-windows.md): more than one window through ONE agent port,
 # phase by phase (scripts/windows_drive.py). T89.2's phase 1 addresses
-# counter-window's one window by key under both strategies. Needs a display.
+# counter-window's one window by key under both strategies; phases 2-4 drive
+# examples/two-windows: open and close (T89.3), posts between windows (T89.4)
+# and per-window answers (T89.5). Needs a display.
 windows-drive:
     ./scripts/windows_drive.sh
 

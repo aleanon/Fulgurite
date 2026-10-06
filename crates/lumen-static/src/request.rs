@@ -72,13 +72,19 @@ pub enum ClipFormat {
 pub enum Request {
     /// What the renderer drew, answered [`Answer::Image`] in physical
     /// pixels — the window's `Backend::frame_rgba`, after the frame's
-    /// present-or-skip decision, so it is the frame on screen.
+    /// present-or-skip decision, so it is the frame on screen. **The
+    /// window is the one this application runs in**: with several open,
+    /// the request is answered from the renderer of the window whose
+    /// session it was drained from, never another's (M89/T89.5).
     Screenshot { tag: u64 },
     /// Put what [`App::clip_for`](crate::event::App::clip_for) answers
     /// for `tag` on `kind`. Answered [`Answer::Written`], or refused.
+    /// The clipboard is the process's, one for every window; the answer
+    /// goes to the window that asked (M89/T89.5).
     ClipboardWrite { tag: u64, kind: ClipKind },
     /// Read `kind` as `format`. Answered [`Answer::Text`],
-    /// [`Answer::Html`] or [`Answer::Image`], or refused.
+    /// [`Answer::Html`] or [`Answer::Image`], or refused. The process's
+    /// one clipboard, answered to the window that asked (M89/T89.5).
     ClipboardRead { tag: u64, kind: ClipKind, format: ClipFormat },
     /// **Open a window on program `program`** of this program's window
     /// table (M89/T89.3, `docs/plan-windows.md`): 1 and up are the table's

@@ -148,3 +148,28 @@ Under "no redraw request on the target slot" the present count stays
 reads the new text — `Session::answer` applies the message at once, so the
 tree is ahead of the pixels; only the pixels and the present count can
 see a missing redraw.
+
+## T89.5 — per-window answers (2026-10-06)
+
+Both producers had landed (M88's screenshot and clipboard requests,
+M80/T80.5's IME area), and **no code was missing**: since T89.1 both
+drain sites pass the draining slot's session with that slot's backend,
+and since T89.2 `app.imeArea` reads the slot the request names. T89.5 is
+the gate that holds them there, and the rustdoc that says so. The
+clipboard is the process's one.
+
+**The live gates** (`just windows-drive` phase 4, `examples/two-windows`,
+release with `reload`; Everything and Boundaries<256> read alike; Xephyr):
+
+| gate | read | bound |
+|---|---|---|
+| the detail's `Screenshot`, as its title shows it | `300x400 1c067c9134d0487a` | = window 2's `ui.screenshot` |
+| `ui.screenshot` with `"window": 2`, FNV-1a of its RGBA | `300x400 1c067c9134d0487a` | equal |
+| `ui.screenshot` with `"window": 1` | `340x440 73833b4fd5595075` | different |
+| `#field` focused in window 2: `app.imeArea` `"window": 2` | `[8.0, 126.0, 9.0, 147.8]`, centre 8.5 | non-null |
+| its painted caret column (window 2's screenshot) | 8.5, \|Δ\| 0.0 physical px | ≤ 1.0 |
+| `app.imeArea` `"window": 1` | `null` (the list has no field) | `null`, ≠ window 2's |
+
+Under "answer every request from slot 0's backend" the detail's
+screenshot reads `340x440 73833b4fd5595075`, window 1's; under
+"`app.imeArea` reads slot 0's area" window 2 answers `null`, window 1's.
