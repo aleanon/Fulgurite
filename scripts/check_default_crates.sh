@@ -40,9 +40,16 @@ MANIFESTS=(':(glob)**/Cargo.toml' 'Cargo.toml' 'Cargo.lock')
 
 if [ $# -ge 1 ]; then
     BASE=$1
-elif git diff --quiet HEAD -- "${MANIFESTS[@]}"; then
+elif git diff --quiet HEAD -- "${MANIFESTS[@]}" && git rev-parse --verify -q 'HEAD^' >/dev/null; then
     BASE=HEAD^
 else
+    # A clean tree whose HEAD has no parent -- the selftest harness's
+    # scratch copy is a fresh one-commit repository (scripts/selftest/
+    # run.sh) -- has nothing older to compare with, so HEAD is the base:
+    # the graphs are then identical by construction and the delta is 0,
+    # printed, rather than the script refusing its own baseline
+    # (M84 fix, after `just ci 553ac3c`).
+    git diff --quiet HEAD -- "${MANIFESTS[@]}" && echo "check_default_crates: HEAD has no parent; comparing the work tree with HEAD"
     BASE=HEAD
 fi
 SHA=$(git rev-parse --verify -q "$BASE^{commit}") || {
