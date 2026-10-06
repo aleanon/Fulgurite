@@ -936,7 +936,21 @@ impl Win {
             self.last_frame = None;
             ControlFlow::Wait
         } else {
-            control_flow_for(start, self.session.next_deadline_ms())
+            let wait = control_flow_for(start, self.session.next_deadline_ms());
+            // **The deadline asks the application** (M84/T84.3): its
+            // `App::wake_in_ms`, guarded inside the session. A panic there
+            // raised M36's screen after this frame ran, so nothing here
+            // drew it: wait for nothing, drop the clock, and ask for the
+            // frame that draws the screen, as `place_ime` does for a caret
+            // that panicked.
+            if self.session.failed() {
+                self.last_frame = None;
+                self.own_redraw = true;
+                window.request_redraw();
+                ControlFlow::Wait
+            } else {
+                wait
+            }
         };
         #[cfg(feature = "hot")]
         let barred = match self.hot.as_mut() {

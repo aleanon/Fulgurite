@@ -1,9 +1,11 @@
 //! **An application that panics where you ask it to** — M36/T36.0
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! Eight sites, each a place a frame runs application code — the eighth,
+//! Nine sites, each a place a frame runs application code — the eighth,
 //! a focused field's `caret_rect`, is asked after the frame, by the
-//! window placing its IME area (M80/T80.5). Each panic
+//! window placing its IME area (M80/T80.5), and the ninth,
+//! `App::wake_in_ms`, by the window computing its next deadline
+//! (M84/T84.3). Each panic
 //! line carries a `// SITE n` marker, and [`site_line`] finds it by
 //! scanning this file's own source — so a test compares a report's line
 //! with the real one and nobody copies a number. (The first version
@@ -20,7 +22,7 @@ use lumen_static::{Constraints, NodeState, Painter};
 use lumen_static_widgets::prelude::*;
 
 /// Where each site's panic is raised.
-pub const SITES: [(u8, &str); 8] = [
+pub const SITES: [(u8, &str); 9] = [
     (1, "a click handler"),
     (2, "an applied message"),
     (3, "update (a binding's source)"),
@@ -29,6 +31,7 @@ pub const SITES: [(u8, &str); 8] = [
     (6, "App::tick"),
     (7, "the framework, called wrongly by a handler"),
     (8, "a focused field's caret_rect (the IME area)"),
+    (9, "App::wake_in_ms (the window's next deadline)"),
 ];
 
 /// The node a site's session presses: `#fuse` for site 8, whose panic
@@ -161,6 +164,8 @@ pub struct Arms {
     pub a7: Button<Fx>,
     #[widget_id("arm8")]
     pub a8: Button<Fx>,
+    #[widget_id("arm9")]
+    pub a9: Button<Fx>,
 }
 
 /// A 120 ms timer and its count — M47/T47.1's panic-path step: a retry
@@ -216,6 +221,10 @@ pub struct Fx {
     /// The timer behind `#timer`, and how many times it has landed.
     pub timers: lumen_static::spawn::Timers,
     pub ticks: u32,
+    /// Site 9's arm (M84/T84.3): a `Cell`, because `wake_in_ms` takes
+    /// `&self`. `update` sets it and the wake disarms it as it fires, as
+    /// `Fuse` does for site 8.
+    pub wake_arm: core::cell::Cell<bool>,
 }
 
 /// The trigger for `bad_job`: a job's panic, which is the spawner's and
@@ -303,6 +312,14 @@ impl App for Fx {
         }
         false
     }
+    /// Asked after every frame, by the window's deadline (M84/T84.3),
+    /// through the session's guard.
+    fn wake_in_ms(&self) -> Option<f32> {
+        if self.wake_arm.replace(false) {
+            panic!("site 9: App::wake_in_ms"); // SITE 9
+        }
+        None
+    }
     fn update(&mut self) -> bool {
         let shown = Shown(self.armed);
         let bomb = if matches!(self.armed, 4 | 5) { self.armed } else { 0 };
@@ -312,6 +329,11 @@ impl App for Fx {
         // Site 8: arm the field, which disarms itself when it fires.
         if self.armed == 8 {
             self.ui.fuse.arm.set(true);
+            self.fire();
+        }
+        // Site 9: arm the wake, which disarms itself when it fires.
+        if self.armed == 9 {
+            self.wake_arm.set(true);
             self.fire();
         }
         let text = format!("{shown}");
@@ -328,7 +350,7 @@ pub fn build() -> Fx {
     f.ui.go.label = "go";
     f.ui.go.on_click = on_go;
     type Arm<'a> = (&'a mut Button<Fx>, &'static str, fn(&mut Fx, &EventCtx));
-    let arms: [Arm<'_>; 8] = [
+    let arms: [Arm<'_>; 9] = [
         (&mut f.ui.arms.a1, "1", |s, _| s.armed = 1),
         (&mut f.ui.arms.a2, "2", |s, _| s.armed = 2),
         (&mut f.ui.arms.a3, "3", |s, _| s.armed = 3),
@@ -337,6 +359,7 @@ pub fn build() -> Fx {
         (&mut f.ui.arms.a6, "6", |s, _| s.armed = 6),
         (&mut f.ui.arms.a7, "7", |s, _| s.armed = 7),
         (&mut f.ui.arms.a8, "8", |s, _| s.armed = 8),
+        (&mut f.ui.arms.a9, "9", |s, _| s.armed = 9),
     ];
     for (b, label, h) in arms {
         b.label = label;

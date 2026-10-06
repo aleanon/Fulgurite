@@ -66,3 +66,44 @@ does](./frame.md).
 That is the property that lets an idle animated interface cost nothing:
 "animating" and "changing this frame" are different questions, and only
 the second one costs anything.
+
+## An animated image
+
+An animated GIF is the case where "animating" and "changing this frame"
+come furthest apart: ten changes a second, against a display that would
+happily draw sixty. M84/T84.3 keeps the clock in the application and the
+frame index on the widget, so there is still no animation pass and no
+second image widget — an animated image is an `Image` whose `frame`
+moves. The clock is `Playback`, beside `Animated<T>`, behind `alloc`
+because its delays are a `Vec`:
+
+```text
+{{#include ../../crates/lumen-static/src/anim.rs:playback}}
+```
+
+Two of its answers carry the design. `tick` answers a frame **only when
+the frame changes**, so an application's tick that forwards it reports
+`true` ten times a second and not sixty — `App::tick`'s contract, and the
+reason the whole-tree mark a reporting tick costs is paid at the image's
+rate. And `next_change_ms` says when the next change is due, which is
+what `App::wake_in_ms` answers: the window sleeps until that instant
+rather than ticking at vsync, and a paused image answers `None` and
+presents nothing at all. The showcase's Image entry is the whole shape —
+the tick:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:image_tick}}
+```
+
+and the wake, which a derived application supplies with
+`#[app(wake = f)]`:
+
+```text
+{{#include ../../examples/showcase/src/main.rs:image_wake}}
+```
+
+The pixels for every frame are the host's: the showcase decodes its GIF
+once into an `ImageStore` and hands it to the window, and each frame's
+command names the frame it draws. What one frame costs, and what the
+whole-tree mark per animated frame costs, are in
+`docs/results-images.md` (T84.3).

@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. M84a building: T84.0, T84.1 and T84.2 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> its own file. M84a building: T84.0, T84.1, T84.2 and T84.3 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -889,6 +889,73 @@ task and is recorded with its number in `docs/results-images.md`):
 - **T84.2: no `Markdown` call site.** M87/T87.4 owns it (Decisions), and
   `lumen-static-widgets` has no other `Painter::image` caller than
   `Image`.
+- **T84.3: the wake is asked through `Local::guarded`, not `caught`.**
+  `caught` answers its fallback and records nothing, so a panicking
+  `wake_in_ms` would never raise M36's screen or report through
+  `app.failure`, which the panic drive's site asserts. Since
+  `Session::next_deadline_ms` takes `&mut self`, the session can use the
+  guard every other `&mut` entry uses: `Local::next_deadline_ms` asks
+  `h.app.wake_in_ms()` guarded and passes the answer to
+  `Host::next_deadline_with`, as planned. Run with `caught` in its place,
+  `image_wake.rs`'s panic test reads `failed false` and fails by name. The
+  agent's `ui.waitSettled` (`Live::settled`) asks it the same guarded way.
+  `next_deadline_with` still asks the application one thing, its timers'
+  accessor (`App::timers`), as `next_deadline_ms` always did.
+- **T84.3: the window asks for the frame that draws the screen.** The
+  deadline is asked after the frame's own guarded entry, so a panic there
+  raised the failure with nothing left to draw it: `Win::redraw` now
+  waits for nothing, drops the clock and requests a redraw when the
+  session failed during the deadline query, as `place_ime` does for site
+  8's caret.
+- **T84.3: `AnimatedImage` stays in `scripts/doc-identifiers.allow`.**
+  The plan asked for its removal, but this plan names it three times as
+  the type not built, and the checker reads plan files: removed, the
+  check fails on it as dead. Its reason now says "decided against".
+- **T84.3: `book/src/gaps.md` never listed animated images.** Its
+  absences are from the code, and images were never among them; the
+  `docs/competitive-feature-gaps.md` table's Images row did say "animated
+  frames: M84", and now says what shipped.
+- **T84.3: every live action ends paused.** The scale-2 leg compares each
+  action's damaged frame with a full repaint (M57/D6), which a moving
+  frame fails for no defect. "Time advances" therefore starts paused
+  (its setup), resumes, watches a second, and pauses again on a frame
+  other than the one it started on; its isolate is the same second
+  paused. "Pause holds" isolates with the same two presses outside the
+  button. The pause button has a fixed 96 px width: its label flips
+  between "Pause" and "Play", and a shrinking button re-centred the row
+  and moved the image.
+- **T84.3: K84c is read per presented frame.** `app.perf`'s ring p50
+  mixes the animated frames with the re-check redraws between them, so
+  the drive's K84c action polls `app.presents` (which draws nothing) and
+  reads `app.perf`'s `last` the moment a present lands, keeping frames
+  with damaged pixels, until it has 50.
+- **T84.3: the drive runs six legs, not four.** `scripts/widget_drive.sh`
+  has had two `+shaping` legs since M81/T81.6; the Image inventory runs
+  under all six.
+- **T84.3: the showcase's image id is `catalog::SPIN`, `ImageId(1)`**,
+  which M87/T87.4's Markdown image names. The entry is flagged animating,
+  so M57's D5 parity skips it (its frame is the clock's), and the
+  headless frames (`--shot`, `--demo`) hand their canvas the same store,
+  so a shot draws what the window draws.
+- **T84.3: the live injection's shape is the plan's, once the read was
+  fixed.** A tick that writes the frame and answers `false` holds the
+  picture on the `Boundaries` legs (presents Δ 0, skipped Δ 10: the
+  deadline wakes the window and nothing is marked) and stays green under
+  `Everything` (presents Δ 10, pixels moved). Its first run read red under
+  `Everything` too, and that was the read below, not the window: the
+  picture was back on its first frame after twelve changes.
+- **T84.3: the first count read one present too many.** An agent request
+  is answered before the redraw it asks for, so the drive's own hash
+  request landed a redraw inside the counted second (Δ 11 on all six
+  legs); the count now opens 30 ms after it. And one hash read either
+  side of a second cannot say the picture moved: four frames round, the
+  image can be back on its first frame (the next full run read "held" on
+  five legs at Δ 10), so a still-equal read is followed by one more,
+  150 ms later.
+- **T84.3: a short GIF delay plays at 100 ms.** `DecodedImage::delays_ms`
+  reports delays as encoded (T84.1), and a zero delay played as zero would
+  never leave its frame; `Playback::new` plays a delay of 10 ms or less
+  at `Playback::SHORT_DELAY_MS`, as browsers do.
 
 **What the review found (M84).**
 

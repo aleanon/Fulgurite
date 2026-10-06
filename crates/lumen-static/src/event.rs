@@ -1227,9 +1227,43 @@ pub trait App: Sized {
     ///
     /// Writing state here and presenting it through `update`'s bindings
     /// is always safe: the bindings mark what they write.
+    ///
+    /// **A tick that answers `false` is not woken again by itself.** The
+    /// window idles until input, a timer or [`App::wake_in_ms`]'s
+    /// instant; an animation that changes at its own rate (an animated
+    /// image's `Playback`, in [`crate::anim`] behind `alloc`) answers `true`
+    /// only on a change and says through `wake_in_ms` when the next one is
+    /// due — M84/T84.3.
     fn tick(&mut self, dt_ms: f32) -> bool {
         let _ = dt_ms;
         false
+    }
+
+    /// **When this application next needs a frame**, in milliseconds from
+    /// the last tick, or `None` — M84/T84.3
+    /// (`docs/plan-images-in-motion.md`, `docs/results-images.md`).
+    ///
+    /// A window waits on the soonest of this, the application's timers and
+    /// the host's own deadlines (`Host::next_deadline_ms` in the shell),
+    /// and draws a frame at that instant, whose [`App::tick`] then sees the
+    /// time that passed. An animated image answers its `Playback`'s
+    /// `next_change_ms`: the window wakes ten times a second for a
+    /// ten-frame-a-second image, not at vsync, and a paused one answers
+    /// `None` and presents nothing.
+    ///
+    /// Without it a tick answering `false` idles the window for good; a
+    /// tick answering `true` on every frame instead would mark the whole
+    /// tree at the display's rate (M34/T34.0) for a handful of changes.
+    ///
+    /// **Application code, asked after every frame**, so a session asks it
+    /// guarded (`Local::next_deadline_ms` in the shell): a panic here raises
+    /// M36's screen rather than unwinding into the window's loop. A derived
+    /// application supplies it with `#[app(wake = f)]`.
+    ///
+    /// The default is `None`: an application that never asks for a frame
+    /// is woken by input and timers only, which is today's behaviour.
+    fn wake_in_ms(&self) -> Option<f32> {
+        None
     }
 }
 

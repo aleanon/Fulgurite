@@ -155,3 +155,74 @@ Not named by K3, printed: `ALL rows: layout` 1,159.15 → 1,160.20 (inside
 (full)` 132.20 → 131.30, 0.1 µs *under* the base's minimum of 131.4 — a
 faster median on a row K3 does not name, read one-sided as M82's K82c
 ruling reads it.
+
+## T84.3 — animated images: `Playback`, `App::wake_in_ms`, the showcase entry (2026-10-06)
+
+`Playback` (core `anim`, behind `alloc`) holds the delays, the frame and
+`playing`, and answers a new frame only when it changes; `App::wake_in_ms`
+(provided, `None`; `#[app(wake = f)]` in the derive) is folded into
+`Host::next_deadline_ms` through `Host::next_deadline_with`, and asked
+guarded by `Local::next_deadline_ms` (and by `ui.waitSettled`). The
+showcase's **Image** entry is the committed `examples/showcase/assets/spin.gif`
+(four 96 px frames at 100 ms), decoded at boot into the `ImageStore` handed
+to `Program::images` under `catalog::SPIN` (`ImageId(1)`), with a pause
+button that flips `playing`.
+
+**Gates, headless:**
+
+| gate | green | injection → red |
+|---|---|---|
+| timing (`anim.rs` `playback_tests`): `[100; 4]` | starts at 0; `tick(0)` → `None`; four `tick(100)` → 1, 2, 3, 0; eight `tick(50)` answer `[1, 2, 3, 0]` | `tick` answers `Some` on every positive `dt`: eight `tick(50)` answer `[0, 1, 1, 2, 2, 3, 3, 0]`, "a frame was answered twice" |
+| deadline (`shell/tests/image_wake.rs`) | 30 ms into a 100 ms frame: `Host::next_deadline_ms` **70.0** = `next_change_ms` 70.0 (bound ±0.01), `Local::next_deadline_ms` 70.0; paused: `None`, `None` | the fold drops the wake: `None` while playing, "the wake is not folded in" |
+| a panicking wake (same file, `Recovering`) | deadline `None`, `failed` **true**; after retry the wake answers 100.0 | wake asked outside the guard: the panic escapes the call and the test dies on it; asked through `caught` (the plan's design): `failed false`, "the wake's panic was not recorded" |
+| allocation (`alloc_gate.rs` `an_animated_image_allocates_nothing`) | 100 ticks, **100** frame changes (setup), 1 image command; **0** allocs, **0** frees (bound 0, 0) | `ImageStore::image` clones the frame: **100** allocs, 100 frees (1.00/frame) |
+| the showcase wiring (`the_image_demo_plays_at_its_own_rate_and_its_button_flips_it`) | `tick(60)` → false, wake 40.0; `tick(40)` → true, frame 1; a press: label "Play", wake `None`; a second: "Pause", playing | the handler sets `playing = false`: the second press leaves "Play", paused, by name |
+
+**Panic guard** (`just panic-drive`, both strategies): **nine** sites
+(site 9, `App::wake_in_ms`, at `fixtures/panic-app/src/lib.rs:319`),
+`--expect-panics` **10** (was 9); site 9 caught, the screen drawn, input
+refused, retried, on both legs; the release build without `reload` still
+dies. Injection, `Local::next_deadline_ms` asks the wake outside the guard:
+the process dies at site 9 (exit 101, 9 panics against 10), the leg fails.
+
+**Gates, live** (`scripts/widget_drive.sh Image`, all six legs green:
+`Everything`, `Boundaries`, `Boundaries+oracle`, `Boundaries+scale2`,
+`Everything+shaping`, `Boundaries+shaping`):
+
+| action | green, every leg | injection → red |
+|---|---|---|
+| time advances the frame | over 1,000 ms the pixels moved; `presents` Δ **10** (bound 10 ± 1), `skipped` Δ **0** (bound ≤ 11); the damage region over the image **1.00×** its 9,216 px² box; isolate, paused: Δ **0**, pixels held | the tick writes the frame and answers `false`: `Boundaries` presents Δ **0**, skipped Δ 10, pixels held, red; `Everything` stays **green** (presents Δ 10, pixels moved) — the shape the four legs exist for. `next_deadline_ms` ignores the wake (`Boundaries`): presents Δ **0** while playing, pixels held |
+| pause holds the frame | the frame held 500 ms after the press; the second press resumed it; the button's pixels changed; isolate (both presses outside): never resumed | the handler sets `playing = false`: "setup: the Image demo is not playing after its button" (the first action resumes first), and the keyboard pass's Enter reads paused → paused |
+
+The first full runs read `presents` Δ 11 on every leg (the drive's own
+hash request's redraw fell inside the count, which now opens 30 ms after
+it) and then "held" on five legs at Δ 10 (twelve changes counting the gaps
+either side, back on the first of four frames; a still-equal read is now
+followed by one more 150 ms later). The figures above and below are the
+final run's. The GPU half is not agent-observable (`ui.regionHash` reads
+the software frame); it is T84.2's `lumen-static-wgpu` test under `just
+gpu`, and re-running this drive on the GPU after M88/T88.2 is the reopen
+condition.
+
+**K84c — does not fire.** `app.perf`'s `layout_ns` on each presented
+animated frame of the Image entry, the median of 50 (release, the
+showcase's 1120 × 760 window):
+
+| leg | median | p10 | max |
+|---|---:|---:|---:|
+| `Everything` | 29.73 µs | 27.20 | 118.24 |
+| `Boundaries` | 28.47 µs | 23.83 | 49.21 |
+| `Boundaries+oracle` | 32.31 µs | 21.23 | 49.09 |
+| `Boundaries+scale2` | 25.72 µs | 12.96 | 45.43 |
+| `Everything+shaping` | 28.96 µs | 15.19 | 52.12 |
+| `Boundaries+shaping` | 31.91 µs | 16.57 | 50.19 |
+
+Bound **100 µs** (about 4× `just grid`'s 2,227-node `mark_all` layout row,
+23.15–23.60 µs, `docs/results-damage-precision.md`). The whole-tree mark
+per animated frame is accepted as priced; `App::tick_marked` is not built.
+
+**Firmware (K4).** `just firmware-delta a1ee7d6 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** `.text`
+and **0** `.rodata` on all four (`firmware_interactive` 63,480 / 21,886 B).
+`Playback` is behind `alloc` and `App::wake_in_ms` is a provided method no
+firmware calls; `docs/results-embedded.md`'s table does not move.

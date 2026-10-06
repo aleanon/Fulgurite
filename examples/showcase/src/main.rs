@@ -253,7 +253,7 @@ pub struct Screen {
 }
 
 #[derive(DeriveApp, Default)]
-#[app(tick = advance, after_update = refresh)]
+#[app(tick = advance, after_update = refresh, wake = wake)]
 pub struct Show {
     #[tree]
     ui: Screen,
@@ -338,6 +338,11 @@ pub struct Store {
     /// The grid's active cell, `(row, column)`, as its last selection
     /// left it.
     grid_cell: Option<(usize, usize)>,
+    /// **The Image demo's clock** (M84/T84.3): the GIF's delays, its
+    /// frame and whether it plays. The pause button flips `playing`,
+    /// `advance` writes its frame into the image, and `wake` answers its
+    /// next change.
+    spin: lumen_static::Playback,
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -484,6 +489,15 @@ fn refresh(s: &mut Show) -> bool {
             changed = true;
         }
     }
+    // **The Image demo's pause button says what it will do** (M84/T84.3):
+    // a `&'static str`, compared first, so an unchanged frame writes nothing.
+    if let Demo::Image(d) = &mut s.ui.main.stage.row.demo {
+        let want = if s.store.spin.playing { "Pause" } else { "Play" };
+        if d.pause.label != want {
+            d.pause.label = want;
+            changed = true;
+        }
+    }
     // **A pull that fired is a refresh** (M57/B40): taken once, counted,
     // so the readout shows the widget doing what it is for.
     if let Demo::Pull(d) = &mut s.ui.main.stage.row.demo {
@@ -549,6 +563,22 @@ fn refresh(s: &mut Show) -> bool {
 /// moving — `App::tick`'s contract, which the frame loop relies on to
 /// decide whether to ask for another frame.
 fn advance(s: &mut Show, dt_ms: f32) -> bool {
+    // **An animated image, at its own rate** (M84/T84.3): the frame is
+    // written only when the `Playback` answers a new one, so the tick
+    // answers `true` (and the tree is marked) ten times a second for a
+    // ten-frame-a-second GIF, and `wake` says when the next is due. A zero
+    // `dt` answers `None`: nothing moves and nothing is reported.
+    // ANCHOR: image_tick
+    if let Demo::Image(d) = &mut s.ui.main.stage.row.demo {
+        return match s.store.spin.tick(dt_ms) {
+            Some(f) => {
+                d.a.frame = f;
+                true
+            }
+            None => false,
+        };
+    }
+    // ANCHOR_END: image_tick
     // A toast's countdown runs on this clock, animated entry or not: a
     // widget has none of its own (M57/B34, `Toast::tick`).
     if let Demo::Toast(d) = &mut s.ui.main.stage.row.demo {
@@ -569,6 +599,20 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
     }
     true
 }
+
+/// **When the next frame is due** — `App::wake_in_ms`, through
+/// `#[app(wake = wake)]` (M84/T84.3): the Image demo's next frame change
+/// while it plays, and nothing otherwise. A paused image, and every other
+/// demo, asks for no frame; the per-frame demos answer `true` from
+/// `advance` instead.
+// ANCHOR: image_wake
+fn wake(s: &Show) -> Option<f32> {
+    match &s.ui.main.stage.row.demo {
+        Demo::Image(_) => s.store.spin.next_change_ms(),
+        _ => None,
+    }
+}
+// ANCHOR_END: image_wake
 
 /// Put the selected entry on the stage and bring the header into step.
 fn rebuild(s: &mut Show) {
@@ -641,6 +685,8 @@ fn build(entry: usize, open: bool) -> Show {
     // empty bar and an unlit spinner — which reads as a broken widget
     // rather than as a starting state.
     app.store.phase = 0.35;
+    // The Image demo's clock, from the decoded GIF's own delays (M84/T84.3).
+    app.store.spin = lumen_static::Playback::new(&catalog::spin().delays_ms);
     rebuild(&mut app);
     app
 }
@@ -674,6 +720,8 @@ fn shot(path: &str, entry: usize, open: bool) {
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
+    // The window's images, so the shot draws what the window draws.
+    c.images = Some(Box::new(catalog::images()));
     c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
     // M50/T50.2: the glyph cache on a real screen. A second, warm frame
@@ -832,6 +880,8 @@ fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host
         Some(f) => Canvas::with_font(W, H, f),
         None => Canvas::new(W, H),
     };
+    // The window's images (M84/T84.3), as `shot` hands them.
+    c.images = Some(Box::new(catalog::images()));
     c.clear(palette().page);
     lumen_static::Renderer::render(&mut c, &host.list, W, H);
 
@@ -1080,7 +1130,9 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         // height or a one-line ellipsis on the demo's label — style fields
         // restyled at run time, which is what `Program::style_by` is for.
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
-        .shaping(SHAPING);
+        .shaping(SHAPING)
+        // M84/T84.3: the Image demo's GIF, decoded once (`catalog::SPIN`).
+        .images(catalog::images());
     // M83/T83.6: the `ShaderView` demo's shader, with the `shader` feature.
     #[cfg(feature = "shader")]
     let p = p.shaders(&catalog::SHADERS);
@@ -1399,6 +1451,11 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // "clicking does nothing" (`docs/plan-widgets-gallery.md` §3b).
         StyleRule::new(Selector::Id("d_card_go"), btn().background_role(Role::Accent)
             .color_role(Role::OnAccent)),
+        // M84/T84.3: the Image demo's pause button, the same ground, and
+        // a fixed width: its label flips between "Pause" and "Play", and a
+        // shrinking button would re-centre the row and move the image.
+        StyleRule::new(Selector::Id("d_image_pause"), btn().background_role(Role::Accent)
+            .color_role(Role::OnAccent).width(Length::Fixed(96.0))),
         StyleRule::new(
             Selector::Id(lumen_static_widgets::surface::PART_CONTENT),
             btn().background_role(Role::Accent).color_role(Role::OnAccent),
@@ -2744,6 +2801,61 @@ mod tests {
             })
             .any(|t| t == "presses: 1");
         assert!(shown, "the readout did not follow the press");
+    }
+
+    /// **The Image demo plays at its own rate, and its button flips it** —
+    /// M84/T84.3. A tick short of the GIF's 100 ms delay changes nothing
+    /// and reports nothing; the tick at the delay writes frame 1 into the
+    /// image and reports it; `wake_in_ms` answers what is left of the
+    /// frame. A press on the button pauses (no wake, label "Play"), and a
+    /// second press resumes: the button *flips* `playing`. *Injection:* the
+    /// handler sets `playing = false` instead of flipping it -- the second
+    /// press leaves it paused, by name.
+    #[test]
+    fn the_image_demo_plays_at_its_own_rate_and_its_button_flips_it() {
+        use lumen_static::event::App as _;
+        let entry = CATALOG.iter().position(|e| e.name == "Image").expect("an Image entry");
+        let mut h = host(entry, false);
+        let frame = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+            Demo::Image(d) => d.a.frame,
+            _ => panic!("setup: the Image demo is not on the stage"),
+        };
+        let g = catalog::spin();
+        println!("the GIF: {}x{}, {} frames, delays {:?} ms", g.w, g.h, g.frames.len(), g.delays_ms);
+        assert_eq!((g.frames.len(), &g.delays_ms[..]), (4, &[100u32; 4][..]), "setup: assets/spin.gif is four 100 ms frames");
+        assert_eq!(frame(&h), 0, "setup: the demo starts at frame 0");
+        let short = h.tick(60.0);
+        let left = h.app.wake_in_ms();
+        let at = h.tick(40.0);
+        println!("tick(60) -> {short}, wake then {left:?} ms; tick(40) -> {at}, frame {}", frame(&h));
+        assert!(!short, "a tick short of the delay reported a change");
+        assert!(left.is_some_and(|l| (l - 40.0).abs() < 0.01), "wake_in_ms is {left:?}, want 40");
+        assert!(at && frame(&h) == 1, "the tick at the delay did not write frame 1 and report it");
+
+        let press = |h: &mut lumen_static_shell::Host<Show>| {
+            let i = lumen_static::style::index_of_wid(
+                <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE,
+                "d_image_pause",
+            )
+            .expect("the pause button has an id");
+            let s = h.states[i];
+            let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+            h.post(Event::down(x, y));
+            h.post(Event::up(x, y));
+            h.pump();
+            match &h.app.ui.main.stage.row.demo {
+                Demo::Image(d) => d.pause.label,
+                _ => "",
+            }
+        };
+        let label = press(&mut h);
+        let (wake, ticked) = (h.app.wake_in_ms(), h.tick(500.0));
+        println!("paused: label {label:?}, wake {wake:?}, tick(500) -> {ticked}, frame {}", frame(&h));
+        assert_eq!((label, wake, ticked), ("Play", None, false), "the first press did not pause the image");
+        let label = press(&mut h);
+        let resumed = h.app.store.spin.playing;
+        println!("second press: label {label:?}, playing {resumed}, wake {:?}", h.app.wake_in_ms());
+        assert!(resumed && label == "Pause", "the second press did not resume the image: the button does not flip `playing`");
     }
 
     /// **A `Dyn` island routes a handler into its content** — M23.

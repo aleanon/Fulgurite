@@ -15,7 +15,10 @@ lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 # paints its fallback, axis-aligned. Its price is in the window crate's
 # manifest (docs/results-paint-vocabulary.md T82.7).
 lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["a11y", "vector-text"] }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+# `image` (M84/T84.3): the Image demo's GIF is decoded at boot
+# (`catalog::spin`). Default-off in the shell, so this asks for it; the
+# window crate's default count does not move (docs/results-images.md T84.1).
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "image"] }
 
 [features]
 default = []

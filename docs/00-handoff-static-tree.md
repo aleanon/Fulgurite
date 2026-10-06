@@ -1385,6 +1385,19 @@ remains** — which is why §10 Step 1 is the kill criterion.
    draw takes a side slot. `wire::VERSION` is 5. Numbers, including the
    100-change loop's zero resets (K84d), in `docs/results-images.md`
    T84.2.
+
+   **Animated images are DECIDED — app-driven, M84/T84.3, 2026-10-06**
+   (`docs/plan-images-in-motion.md`). There is no `Node::tick` and no
+   second image widget: the clock is `Playback` (core `anim`, behind
+   `alloc`), which holds the delays, the frame and `playing`, and answers
+   a new frame only when it changes; the application's `App::tick` writes
+   it into an `Image`'s `frame`, so pixel damage is the image's rect. The
+   window wakes at the next change through `App::wake_in_ms`
+   (`#[app(wake = f)]`), folded into `Host::next_deadline_ms` and asked
+   guarded by the session, so a playing ten-frame-a-second GIF presents
+   ten frames a second and a paused one presents none. The whole-tree mark
+   a reporting tick costs is accepted and priced (K84c, not fired).
+   Numbers in `docs/results-images.md` T84.3.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

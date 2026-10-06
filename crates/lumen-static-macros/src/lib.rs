@@ -2137,6 +2137,7 @@ impl syn::parse::Parse for BindSpec {
 /// #[derive(App, Default)]
 /// #[app(after_update = recompute)]     // optional, fn(&mut Self) -> bool
 /// // #[app(tick = advance)]             // optional, fn(&mut Self, f32) -> bool
+/// // #[app(wake = next_frame)]          // optional, fn(&Self) -> Option<f32>
 /// struct Counter {
 ///     #[tree]
 ///     ui: Ui,
@@ -2183,9 +2184,11 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         return Err(syn::Error::new_spanned(name, "App needs named fields"));
     };
 
-    // Struct-level `#[app(after_update = path)]` and `#[app(tick = path)]`.
+    // Struct-level `#[app(after_update = path)]`, `#[app(tick = path)]`
+    // and `#[app(wake = path)]` (M84/T84.3).
     let mut after_update: Option<syn::Path> = None;
     let mut tick: Option<syn::Path> = None;
+    let mut wake: Option<syn::Path> = None;
     for attr in &input.attrs {
         if !attr.path().is_ident("app") {
             continue;
@@ -2197,11 +2200,19 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 &mut after_update
             } else if meta.path.is_ident("tick") {
                 &mut tick
+            } else if meta.path.is_ident("wake") {
+                &mut wake
             } else {
-                return Err(meta.error("expected `after_update = path` or `tick = path`"));
+                return Err(meta.error("expected `after_update = path`, `tick = path` or `wake = path`"));
             };
             if slot.is_some() {
-                let key = if meta.path.is_ident("tick") { "tick" } else { "after_update" };
+                let key = if meta.path.is_ident("tick") {
+                    "tick"
+                } else if meta.path.is_ident("wake") {
+                    "wake"
+                } else {
+                    "after_update"
+                };
                 return Err(meta.error(format!("`#[app({key} = ..)]` given twice")));
             }
             *slot = Some(meta.value()?.parse()?);
@@ -2386,6 +2397,21 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         }
     });
 
+    // **M84/T84.3.** `App::wake_in_ms` for a derived application: when
+    // it next needs a frame. An animated image's tick answers `true` only
+    // on a change, so without this its window would idle after the first
+    // frame; with it, the window sleeps until the next change is due.
+    let wake_fn = wake.map(|p| {
+        quote! {
+            fn wake_in_ms(&self) -> ::core::option::Option<f32> {
+                // Typed through a binding so a wrong signature is
+                // reported at the hook, not at the call.
+                let #hook: fn(&Self) -> ::core::option::Option<f32> = #p;
+                #hook(self)
+            }
+        }
+    });
+
     // **`#[state]` names what a handler may touch** — M33
     // (`docs/plan-state-split.md`).
     //
@@ -2491,6 +2517,8 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             }
 
             #tick_fn
+
+            #wake_fn
         }
     })
 }

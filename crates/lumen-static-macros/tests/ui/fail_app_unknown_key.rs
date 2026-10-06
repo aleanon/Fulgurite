@@ -1,4 +1,4 @@
-//! M55/T55.2 (R16-F4): an unknown `#[app]` key names the two it accepts.
+//! M55/T55.2 (R16-F4): an unknown `#[app]` key names the keys it accepts (three since M84/T84.3).
 use lumen_static::{App, StaticTree};
 use lumen_static_widgets::ops::Label;
 

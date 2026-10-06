@@ -91,4 +91,6 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     # D3's table was written.
     "TextArea": ("#d_textarea_a", [KeyAction("typing edits it", ["text:x"])]),
     "ScrollView": ("#d_scroll_first", [KeyAction("PageDown scrolls the view", ["PageDown"])]),
+    # M84/T84.3: the Image demo's pause button; the readout says playing or paused.
+    "Image": ("#d_image_pause", [KeyAction("Enter pauses or resumes it", ["Enter"])]),
 }

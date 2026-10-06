@@ -199,6 +199,9 @@ pub trait Session: FrameSource {
     fn retry(&mut self) -> bool;
     fn title(&self) -> String;
     fn cursor(&self) -> Cursor;
+    /// What the window waits on after a frame: the host's soonest
+    /// deadline, the application's `App::wake_in_ms` among them, asked
+    /// guarded (M84/T84.3). `None` waits for input.
     fn next_deadline_ms(&mut self) -> Option<f32>;
     fn more_deferred(&self) -> bool;
     /// Wake the window's loop from a worker (M28/T28.1).
@@ -549,6 +552,24 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
         let _ = (w, h);
     }
 
+    /// The host's next deadline, with the application's wake asked
+    /// **guarded** — M84/T84.3 (second review A3,
+    /// `docs/plan-images-in-motion.md`).
+    ///
+    /// `Host::next_deadline_ms` read host state only until
+    /// [`App::wake_in_ms`] folded in, which made it application code
+    /// asked after every frame. Through [`Local::guarded`], not
+    /// `caught`: a panicking wake must *record* the failure, so M36's
+    /// screen goes up and `app.failure` reports the site; `caught`
+    /// answers its fallback and records nothing, which would leave the
+    /// panic invisible and the image silently still. A failed host
+    /// answers `None` without asking, and the host's own deadlines still
+    /// fold in ([`Host::next_deadline_with`]).
+    fn deadline(&mut self) -> Option<f32> {
+        let wake = self.guarded(|h, _| h.app.wake_in_ms()).flatten();
+        self.host.next_deadline_with(wake)
+    }
+
     fn pump_now(h: &mut Host<A, Ret, I>, m: &mut Option<FontMetrics>) -> bool {
         match m.as_mut() {
             Some(m) => h.pump_with(m),
@@ -741,7 +762,7 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
     }
 
     fn next_deadline_ms(&mut self) -> Option<f32> {
-        self.host.next_deadline_ms()
+        self.deadline()
     }
 
     fn more_deferred(&self) -> bool {
@@ -1092,7 +1113,10 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
     /// frame (`docs/plan-agent-truth.md` §2.2). Subscriptions are
     /// excluded and counted: a recurring timer would never settle.
     fn settled(&mut self) -> Option<serde_json::Value> {
-        let deadline = self.host.next_deadline_ms();
+        // The application's wake asked guarded, as `Local::next_deadline_ms`
+        // asks it (M84/T84.3): it is application code.
+        let wake = run_guarded::<A, P, I, _>(self.host, |h| h.app.wake_in_ms()).flatten();
+        let deadline = self.host.next_deadline_with(wake);
         let more = self.host.more_deferred();
         // M47/T47.3's ledger: a job is listed from spawn until its body
         // returned and every result it sent was drained -- so a result

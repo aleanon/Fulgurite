@@ -61,6 +61,7 @@
 //! | `#[bind(ui.value, with = f)]` | an `App` field | a `fn(&mut Target, &Source)` projection; it cannot say whether it wrote, so it marks everything |
 //! | `#[app(after_update = f)]` | an `App` struct | `fn(&mut Self) -> bool`, run after the bindings; the `bool` says whether it changed anything |
 //! | `#[app(tick = f)]` | an `App` struct | `fn(&mut Self, f32) -> bool`, called each frame with the elapsed ms; the `bool` says whether anything is still moving (M22/T22.4) |
+//! | `#[app(wake = f)]` | an `App` struct | `fn(&Self) -> Option<f32>`, `App::wake_in_ms`: the ms until this application next needs a frame, which the window waits on; `None` waits for input (M84/T84.3) |
 //!
 //! **Each key once, and nothing ignored** (M55/T55.2). A repeated key —
 //! two container modes, `spacing` twice, a second `#[widget_id]` on a
@@ -292,6 +293,8 @@ macro_rules! __reloadable {
 }
 pub use overlay::{NoOverlays, OverlaySink, Overlays};
 pub use anim::{Animated, Easing, Lerp};
+#[cfg(feature = "alloc")]
+pub use anim::Playback;
 pub use drag::{Drag, DragPhase};
 pub use i18n::{Catalogue, Direction};
 pub use widget::{Node, Widget};

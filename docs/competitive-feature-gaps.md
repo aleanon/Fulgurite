@@ -44,7 +44,7 @@ sections below are still the 2026-09-06 survey.
 
 | capability | status at `553fa5e` |
 |---|---|
-| **Images** | Shipped: `Cmd::Image`, the `Image` widget, `ImageSource`. Decoding and animated frames: `docs/plan-images-in-motion.md` (M84). |
+| **Images** | Shipped: `Cmd::Image`, the `Image` widget, `ImageSource`; PNG and GIF decoding behind the shell's `image` (M84/T84.1) and animated images — a `Playback` writing an `Image`'s `frame`, the window woken by `App::wake_in_ms` (M84/T84.3, `docs/results-images.md`). Video: `docs/plan-images-in-motion.md` (M84b). |
 | **Vector drawing** | Lines and linear gradients shipped (`Cmd::Line`, `Cmd::Gradient`). Paths, radial and style gradients, vector text: `docs/plan-paint-vocabulary.md` (M82). |
 | **Animation** | Shipped: `Animated<T>`, `Easing`, `App::tick`, timers (M28). Built-in widget transitions: `docs/plan-transitions.md` (M86). |
 | **Overlays and z-order** | Shipped: popups, menus, tooltips, modals, toasts, nested overlays (M15, M27). Arbitrary z-order stays rejected (`docs/plan-capabilities.md`). |

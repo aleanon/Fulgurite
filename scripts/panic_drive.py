@@ -1,9 +1,11 @@
 """M36/T36.3 (docs/plan-panic-recovery.md): the panic screen, live.
 
-For each of panic-app's eight sites, over the agent endpoint:
+For each of panic-app's nine sites, over the agent endpoint:
   1. arm the site (and press #go where the site needs a click, or focus
      #fuse for site 8, whose panic is the window asking the focused
-     field's caret for its IME area -- M80/T80.5);
+     field's caret for its IME area -- M80/T80.5; site 9's is the window
+     asking App::wake_in_ms for its next deadline after the arming
+     click's own frame -- M84/T84.3);
   2. wait for app.failure, and assert its file and line are the site's;
   3. check a screenshot pixel is the panic screen's page, not the app's;
   4. assert input.* is refused, and app.imeArea is null, while the screen
@@ -71,6 +73,9 @@ def corner():
 # The site lines, from the fixture's own `// SITE n` markers.
 src = open("fixtures/panic-app/src/lib.rs").read().splitlines()
 line_of = {int(m.group(1)): i + 1 for i, l in enumerate(src) for m in [re.search(r"// SITE (\d)$", l.rstrip())] if m}
+SITES = sorted(line_of)
+assert SITES == list(range(1, 10)), f"panic-drive: the fixture's SITE markers are {SITES}, not 1..9"
+print(f"  ..  {len(SITES)} sites in fixtures/panic-app/src/lib.rs (nine since M84/T84.3's wake_in_ms)")
 
 PANIC_PAGE = (0x1b, 0x1f, 0x2a)
 first = call("app.failure")
@@ -86,7 +91,7 @@ ime = call("app.imeArea")["area"]
 assert ime is not None, f"panic-drive [{strategy}]: setup: focusing #fuse placed no IME area"
 print(f"  ..  site 8 setup: #fuse focused, app.imeArea {ime}")
 
-for site in range(1, 9):
+for site in SITES:
     call("input.click", {"selector": f"#arm{site}"})
     if site in (1, 2, 7):
         r = rpc("input.click", {"selector": "#go"})
@@ -193,4 +198,4 @@ assert added <= 2, (f"panic-drive [{strategy}]: the retry's first frame fired {a
                     f"(bound 2): it was handed the time the panic screen was up")
 call("input.click", {"selector": "#timer"})
 print(f"  ok  retry: the timer resumed from dt 0 ({added} extra, bound 2)")
-print(f"panic-drive [{strategy}]: all eight sites caught, shown and recovered")
+print(f"panic-drive [{strategy}]: all {len(SITES)} sites caught, shown and recovered")

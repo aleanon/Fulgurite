@@ -761,7 +761,65 @@ pub static CATALOG: &[Entry] = &[
             Some((r, c)) => format!("selected: file-{r:03}.rs, cell {}{}", (b'A' + c as u8) as char, r + 1),
             None => "selected: none".into(),
         }),
+    // M84/T84.3: an animated image. `true` for "animates": its frame
+    // depends on the clock, so M57's D5 parity skips it, and `advance`
+    // takes it before the per-frame path -- it wakes at the GIF's own rate
+    // through `wake`, not at vsync.
+    entry!("Media", "Image", "A decoded GIF, played at its own frame rate; pause it.",
+        true,
+        |s| on(s, Demo::Image(DImage { a: spin_image(s.store.spin.frame()), pause: pause_button() })),
+        |s| (if s.store.spin.playing { "playing" } else { "paused" }).into()),
 ];
+
+/// **The showcase's image id** — M84/T84.3: the committed GIF
+/// (`examples/showcase/assets/spin.gif`, four 96 px frames at 100 ms),
+/// decoded once and registered with `Program::images` under this id.
+/// M87/T87.4's Markdown image names it too (`docs/plan-markdown.md`).
+pub const SPIN: lumen_static::display::ImageId = lumen_static::display::ImageId(1);
+
+/// The GIF's bytes, in the binary: a showcase that opens on its Image entry
+/// needs no file beside it.
+const SPIN_GIF: &[u8] = include_bytes!("../assets/spin.gif");
+
+/// The decoded GIF, once: `program()` registers its frames and `build()`
+/// reads its delays for the `Playback` (M84/T84.3).
+pub fn spin() -> &'static lumen_static_shell::image::DecodedImage {
+    static ONCE: std::sync::OnceLock<lumen_static_shell::image::DecodedImage> = std::sync::OnceLock::new();
+    ONCE.get_or_init(|| lumen_static_shell::image::decode_gif(SPIN_GIF).expect("assets/spin.gif decodes"))
+}
+
+/// The program's image store: [`SPIN`]'s frames. The window reads it once
+/// (`Program::images`); the headless frames (`--shot`, `--demo`, the tests)
+/// hand a copy to their canvas, so they draw what the window draws.
+pub fn images() -> lumen_static_shell::image::ImageStore {
+    let mut store = lumen_static_shell::image::ImageStore::new();
+    let ok = store.insert_decoded(SPIN, spin().clone());
+    debug_assert!(ok, "the decoded GIF is refused by the store");
+    store
+}
+
+/// The Image demo's picture at `frame`, at the GIF's own size, named for a
+/// screen reader.
+fn spin_image(frame: u32) -> Image {
+    let g = spin();
+    let mut img = Image::new(SPIN, lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 });
+    img.frame = frame;
+    img.set_alt("A ring of four segments, one lit, turning");
+    img
+}
+
+/// The Image demo's pause button. **It flips** the store's `playing`: a
+/// second press resumes. `refresh` keeps its label in step.
+fn pause_button() -> Button<Store> {
+    let mut b = Button::<Store>::default();
+    b.label = "Pause";
+    b.on_click = toggle_spin;
+    b
+}
+
+fn toggle_spin(s: &mut Store, _: &EventCtx) {
+    s.spin.playing = !s.spin.playing;
+}
 
 /// The series the charts share, so the three demos are comparable.
 pub static SAMPLE: &[f32] = &[3.0, 7.0, 4.0, 9.0, 6.0, 8.0, 5.0, 10.0, 7.5, 4.5];

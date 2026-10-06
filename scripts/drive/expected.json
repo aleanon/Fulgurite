@@ -13,13 +13,14 @@
   "M81/T81.6 added TextInput RTL (`שלום world 123`, driven by the +shaping legs): a click at the visual left end, then a character, appends at the logical end; a press above it types nowhere (the isolate).",
   "M82/T82.3 added Card's static fill check: its centre and side pixels differ by at least 16 levels (a radial, by role) and its corner pixel is the stage behind it (rounded).",
   "M82/T82.5 added PaintBox's static path check: the star the callback fills with Painter::path covers at least 90% of its analytic outline in its colour, and none of that colour is outside the box.",
-  "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to."
+  "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to.",
+  "M84/T84.3 added Image: a second of playing presents 10 ± 1 frames at 1.00x the image's box and moves its pixels (paused, the same wait presents 0); a press pauses and holds the frame, a second resumes; and K84c's static check, the median layout per animated frame against 100 µs."
  ],
  "counts": {
-  "entries": 47,
-  "actions": 150,
-  "landed_checked": 119,
-  "isolated": 62
+  "entries": 48,
+  "actions": 153,
+  "landed_checked": 121,
+  "isolated": 64
  },
  "entries": {
   "Selectable": [
@@ -265,6 +266,11 @@
   "VectorText": [
    "drawn rotated",
    "it speaks its text, and ~= finds it"
+  ],
+  "Image": [
+   "time advances the frame",
+   "pause holds the frame",
+   "K84c: the whole-tree mark per animated frame is priced"
   ]
  },
  "static": [
@@ -298,6 +304,7 @@
   "Toast/it shrinks to its text rather than filling the window",
   "Toast/it paints a ground, so its light text is readable",
   "VectorText/drawn rotated",
-  "VectorText/it speaks its text, and ~= finds it"
+  "VectorText/it speaks its text, and ~= finds it",
+  "Image/K84c: the whole-tree mark per animated frame is priced"
  ]
 }

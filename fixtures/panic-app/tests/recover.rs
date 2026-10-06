@@ -1,7 +1,7 @@
 //! **Capture and host recovery, headless** — M36/T36.1
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! For each of the eight sites: the guarded entry catches the panic; the
+//! For each of the nine sites: the guarded entry catches the panic; the
 //! report's location is the site's marker line (site 7: inside the
 //! framework, with the *application* frame at the fixture's calling
 //! line); the retried frame is full damage and byte-identical to a host
@@ -31,7 +31,8 @@ fn centre(h: &Host<Fx>, wid: &str) -> (f32, f32) {
 
 /// What every site's session does: click the site's target, then tick
 /// and pump, guarded, and ask the focused caret as a window does after a
-/// frame (`Session::caret_rect`, M80/T80.5), guarded too.
+/// frame (`Session::caret_rect`, M80/T80.5), and the next deadline
+/// (`Session::next_deadline_ms`, M84/T84.3), guarded too.
 fn session(h: &mut Host<Fx>, site: u8) {
     let (x, y) = centre(h, target(site));
     h.click(x, y);
@@ -45,6 +46,10 @@ fn session(h: &mut Host<Fx>, site: u8) {
             return;
         }
         if h.guard(|h| h.caret_rect()).is_none() {
+            return;
+        }
+        // And its next deadline, guarded as `Local` asks it (M84/T84.3).
+        if h.guard(|h| h.next_deadline_ms()).is_none() {
             return;
         }
     }

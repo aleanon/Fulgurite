@@ -287,6 +287,12 @@ required-features = ["shader", "truetype"]
 name = "image_frame"
 required-features = ["truetype"]
 
+# M84/T84.3: an animated image's deadline through `Local`, and `session`
+# is behind `truetype`.
+[[test]]
+name = "image_wake"
+required-features = ["truetype"]
+
 # M84/T84.1: the decoders exist only under `image`; `just test` runs this
 # with the feature named.
 [[test]]

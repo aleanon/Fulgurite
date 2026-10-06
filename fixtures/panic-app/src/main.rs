@@ -29,8 +29,10 @@ fn main() {
     for _ in 0..3 {
         h.tick(16.0);
         h.pump();
-        // What a window asks after each frame (M80/T80.5): site 8.
+        // What a window asks after each frame (M80/T80.5): site 8; and
+        // its next deadline (M84/T84.3): site 9.
         let _ = h.caret_rect();
+        let _ = h.next_deadline_ms();
     }
     println!("no panic");
 }

@@ -2363,14 +2363,36 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// must also draw a frame there, or the deadline passes unchecked.
     /// The figure is measured from the last tick, so the instant is that
     /// frame's start plus this, not "now" plus this.
+    ///
+    /// **The application's own wake is folded in** — M84/T84.3
+    /// (`docs/results-images.md`): [`App::wake_in_ms`], which an animated
+    /// image answers with its `Playback`'s next change. This asks it
+    /// unguarded, for headless callers; a session asks it guarded and
+    /// hands the answer to [`Host::next_deadline_with`].
     pub fn next_deadline_ms(&mut self) -> Option<f32> {
+        let wake = self.app.wake_in_ms();
+        self.next_deadline_with(wake)
+    }
+
+    /// [`Host::next_deadline_ms`] with the application's wake already
+    /// asked — M84/T84.3. `wake` is what `App::wake_in_ms` answered,
+    /// which `Local::next_deadline_ms` asks inside the session's guard so
+    /// that a panic there raises M36's screen; this asks the application
+    /// nothing else but its timers' accessor (`App::timers`). A wake that
+    /// is not finite is ignored, and a negative one is due now.
+    pub fn next_deadline_with(&mut self, wake: Option<f32>) -> Option<f32> {
         let timers = self.app.timers().and_then(|t| t.earliest());
         // A wheel gesture waiting to end is a deadline too (M57/B40).
         // So is hover intent waiting to arrive (M57/B35).
-        [timers, self.scroll_end.map(|(_, l)| l.max(0.0)), self.linger.map(|(_, l)| l.max(0.0))]
-            .into_iter()
-            .flatten()
-            .reduce(f32::min)
+        [
+            timers,
+            self.scroll_end.map(|(_, l)| l.max(0.0)),
+            self.linger.map(|(_, l)| l.max(0.0)),
+            wake.filter(|w| w.is_finite()).map(|w| w.max(0.0)),
+        ]
+        .into_iter()
+        .flatten()
+        .reduce(f32::min)
     }
 
     /// Route one composition step to the focused node — T14.8.

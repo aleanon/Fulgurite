@@ -63,6 +63,8 @@ ROLES = {
     "CheckBox": "CheckBox",
     "Switch": "Switch",
     "Radio": "RadioButton",
+    # M84/T84.3: an animated image is an `Image` whose frame moves.
+    "Image": "Image",
     "Modal": "Dialog",
     "Sheet": "Dialog",
     "Drawer": "Dialog",

@@ -131,6 +131,20 @@ pub struct DShaderView {
     pub a: lumen_static_widgets::ShaderView<16>,
 }
 
+/// M84/T84.3: an animated image -- the committed GIF `catalog::SPIN`,
+/// decoded at boot into the program's `ImageStore`, its `frame` written by
+/// `advance` from the store's `Playback` -- and a button that pauses it.
+/// The image is an `Image` whose `frame` moves; there is no second widget
+/// type for an animated one.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 16.0)]
+pub struct DImage {
+    #[widget_id("d_image")]
+    pub a: Image,
+    #[widget_id("d_image_pause")]
+    pub pause: Button<Store>,
+}
+
 /// M27/T27.11's four. Each is a trigger and a popup of cells, and the
 /// only thing that differs is what a cell says — which is why they are
 /// one type with a `KIND` and four demos rather than four widgets.
@@ -844,6 +858,7 @@ demos! {
     Tree(DTree),
     DataGrid(DDataGrid),
     Scroll(DScrollView),
+    Image(DImage),
 }
 
 impl Default for Demo {
@@ -856,5 +871,6 @@ impl Default for Demo {
 // The branch's 52 (M56/M57), main's TextArea and ScrollView (M44,
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
-// M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature.
-pub const DEMOS: usize = 57 + cfg!(feature = "shader") as usize;
+// M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
+// M84/T84.3's Image.
+pub const DEMOS: usize = 58 + cfg!(feature = "shader") as usize;

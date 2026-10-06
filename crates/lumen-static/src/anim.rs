@@ -196,3 +196,170 @@ impl<T: Lerp> Animated<T> {
         self.to
     }
 }
+
+/// **An animated image's clock** — M84/T84.3
+/// (`docs/plan-images-in-motion.md`, `docs/results-images.md`).
+///
+/// It holds each frame's delay, how far into the current frame the clock
+/// is, and whether it is playing; the frame it answers is what an
+/// application writes into an `Image`'s `frame` field from its `App::tick`.
+/// The widget holds only that index — an animated image is an `Image`
+/// whose `frame` moves, not a second widget type — and the pixels for
+/// every frame are the host's (`ImageSource::image(id, frame)`).
+///
+/// **It answers a frame only when the frame changes**, so a tick that
+/// forwards [`Playback::tick`] satisfies `App::tick`'s contract without a
+/// thought: a tick that wrote the tree answers `true`, and a zero `dt`
+/// moves nothing and answers `None`. Answering on every positive `dt`
+/// instead would mark the whole tree at the display's rate for an image
+/// that changes ten times a second.
+///
+/// **And it says when the next change is due** ([`Playback::next_change_ms`]),
+/// which is what `App::wake_in_ms` answers: the window sleeps until that
+/// instant instead of ticking at vsync, and a paused or single-frame
+/// image asks for no frame at all.
+///
+/// Behind `alloc`: the delays are a `Vec`, sized once at construction.
+/// Nothing here allocates afterwards.
+// ANCHOR: playback
+#[cfg(feature = "alloc")]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Playback {
+    /// Each frame's delay in ms, after [`Playback::new`]'s policy.
+    delays: alloc::vec::Vec<f32>,
+    /// The frame shown now.
+    frame: u32,
+    /// How far into `frame` the clock is, in ms.
+    elapsed: f32,
+    /// Whether the clock runs. A paused playback holds its frame and
+    /// answers no deadline. Written directly — a pause button flips it.
+    pub playing: bool,
+}
+
+#[cfg(feature = "alloc")]
+impl Playback {
+    /// A frame's delay, in ms, when the image asks for 10 ms or less —
+    /// what browsers show a 0 or 10 ms GIF frame for. A decoder reports
+    /// delays as encoded (`DecodedImage::delays_ms`), so the policy lives
+    /// here, with what plays the frames; and a zero delay played as zero
+    /// would never leave its frame.
+    pub const SHORT_DELAY_MS: f32 = 100.0;
+
+    /// A playback of `delays_ms.len()` frames, at frame 0, **playing**.
+    /// A delay of 10 ms or less plays as [`Playback::SHORT_DELAY_MS`].
+    pub fn new(delays_ms: &[u32]) -> Self {
+        let delays =
+            delays_ms.iter().map(|&d| if d <= 10 { Self::SHORT_DELAY_MS } else { d as f32 }).collect();
+        Playback { delays, frame: 0, elapsed: 0.0, playing: true }
+    }
+
+    /// The frame shown now: what the application writes into the image.
+    pub fn frame(&self) -> u32 {
+        self.frame
+    }
+
+    /// How many frames it cycles through.
+    pub fn len(&self) -> usize {
+        self.delays.len()
+    }
+
+    /// Whether it has no frames at all.
+    pub fn is_empty(&self) -> bool {
+        self.delays.is_empty()
+    }
+
+    /// Advance by `dt` ms; **the new frame, only when it changed**.
+    ///
+    /// `None` while paused, for fewer than two frames, for a zero,
+    /// negative or NaN `dt` (guarded as [`Animated::tick`] guards it), and
+    /// when the clock lands back on the frame it left. A stall's huge `dt`
+    /// is reduced by whole cycles first, so it costs one pass over the
+    /// delays, not one per cycle missed.
+    pub fn tick(&mut self, dt: f32) -> Option<u32> {
+        if !self.playing || self.delays.len() < 2 || dt.is_nan() || dt <= 0.0 {
+            return None;
+        }
+        let was = self.frame;
+        let cycle: f32 = self.delays.iter().sum();
+        let mut left = self.elapsed + dt;
+        if left >= cycle {
+            left %= cycle;
+        }
+        // `left` is now under one cycle, so this walks at most once round.
+        let mut k = self.frame as usize;
+        while left >= self.delays[k] {
+            left -= self.delays[k];
+            k = (k + 1) % self.delays.len();
+        }
+        self.frame = k as u32;
+        self.elapsed = left;
+        (self.frame != was).then_some(self.frame)
+    }
+
+    /// How long until the next frame change, in ms, measured from the last
+    /// [`Playback::tick`] — what `App::wake_in_ms` answers. `None` while
+    /// paused or for fewer than two frames: nothing will change, so
+    /// nothing needs a frame.
+    pub fn next_change_ms(&self) -> Option<f32> {
+        if !self.playing || self.delays.len() < 2 {
+            return None;
+        }
+        Some((self.delays[self.frame as usize] - self.elapsed).max(0.0))
+    }
+}
+// ANCHOR_END: playback
+
+#[cfg(all(test, feature = "alloc"))]
+mod playback_tests {
+    use super::Playback;
+
+    /// **Timing** — M84/T84.3's first gate. A `[100; 4]` playback starts
+    /// at frame 0; `tick(0)` answers `None` and moves nothing (the
+    /// `App::tick` contract); four `tick(100)` answer 1, 2, 3, 0 (P5).
+    /// At 50 ms steps every change is answered exactly once: the
+    /// injection that answers `Some` on every positive `dt` prints
+    /// duplicates there.
+    #[test]
+    fn a_frame_is_answered_once_when_it_changes() {
+        let mut p = Playback::new(&[100; 4]);
+        let start = p.frame();
+        let zero = p.tick(0.0);
+        let steps: [Option<u32>; 4] = core::array::from_fn(|_| p.tick(100.0));
+        println!("start {start}; tick(0) -> {zero:?}; four tick(100) -> {steps:?} (want 0; None; [1, 2, 3, 0])");
+        assert_eq!(start, 0, "setup: a playback starts at frame 0");
+        assert_eq!(zero, None, "tick(0) answered a frame: a zero dt must move nothing (App::tick's contract)");
+        assert_eq!(p.frame(), 0, "after a whole cycle the playback is back at frame 0");
+        assert_eq!(steps, [Some(1), Some(2), Some(3), Some(0)], "four 100 ms ticks over [100; 4]");
+
+        let mut q = Playback::new(&[100; 4]);
+        let halves: alloc::vec::Vec<Option<u32>> = (0..8).map(|_| q.tick(50.0)).collect();
+        let answered: alloc::vec::Vec<u32> = halves.iter().flatten().copied().collect();
+        println!("eight tick(50) -> {halves:?}; answered {answered:?} (want [1, 2, 3, 0], no duplicates)");
+        assert_eq!(answered, [1, 2, 3, 0], "at 50 ms steps a frame was answered twice, or missed");
+    }
+
+    /// A paused or single-frame playback answers no frame and no deadline;
+    /// a deadline while playing is what is left of the current frame.
+    #[test]
+    fn the_deadline_is_what_is_left_of_the_frame() {
+        let mut p = Playback::new(&[100, 40, 0]);
+        assert_eq!(p.next_change_ms(), Some(100.0));
+        assert_eq!(p.tick(30.0), None);
+        let left = p.next_change_ms();
+        println!("after 30 ms of a 100 ms frame: next change in {left:?} ms (want 70)");
+        assert_eq!(left, Some(70.0));
+        assert_eq!(p.tick(70.0), Some(1));
+        assert_eq!(p.next_change_ms(), Some(40.0));
+        // A zero delay plays as the short-delay policy, not as zero.
+        assert_eq!(p.tick(40.0), Some(2));
+        assert_eq!(p.next_change_ms(), Some(Playback::SHORT_DELAY_MS));
+        p.playing = false;
+        assert_eq!((p.tick(500.0), p.next_change_ms()), (None, None), "paused: no frame and no deadline");
+        let mut one = Playback::new(&[100]);
+        assert_eq!((one.tick(500.0), one.next_change_ms()), (None, None), "one frame never changes");
+        // A stall: 10 000.5 cycles of 240 ms lands mid-way, in one pass.
+        let mut s = Playback::new(&[100, 40, 100]);
+        assert_eq!(s.tick(240.0 * 10_000.0 + 120.0), Some(1));
+        assert!(s.tick(f32::NAN).is_none() && s.tick(-5.0).is_none(), "NaN and negative dt move nothing");
+    }
+}

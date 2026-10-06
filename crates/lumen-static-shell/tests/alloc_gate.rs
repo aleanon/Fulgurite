@@ -446,6 +446,89 @@ fn a_frame_carrying_glass_allocates_nothing() {
     );
 }
 
+/// An image whose frame a `Playback` moves — M84/T84.3.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct GifUi {
+    img: Image,
+}
+
+#[derive(DeriveApp, Default)]
+#[app(tick = gif_tick)]
+struct GifApp {
+    #[tree]
+    ui: GifUi,
+    spin: lumen_static::anim::Playback,
+}
+
+fn gif_tick(g: &mut GifApp, dt: f32) -> bool {
+    match g.spin.tick(dt) {
+        Some(f) => {
+            g.ui.img.frame = f;
+            true
+        }
+        None => false,
+    }
+}
+
+/// **An animated image allocates nothing per frame** — M84/T84.3
+/// (`docs/plan-images-in-motion.md`, `docs/results-images.md`).
+///
+/// A `Playback` advances an `Image` through 100 frame changes on the
+/// software path: tick, pump (the tick marks the tree, so layout runs),
+/// and render, which asks the `ImageStore` for each frame's pixels. The
+/// store answers a slice it holds; a source that built its answer per call
+/// would allocate once per frame. *Injection:* `ImageStore::image` clones
+/// the frame -- 100 allocations (and 100 frees), printed.
+#[test]
+fn an_animated_image_allocates_nothing() {
+    use lumen_static::display::ImageId;
+    use lumen_static::Renderer;
+    use lumen_static_shell::image::ImageStore;
+    use lumen_static_shell::software::Canvas;
+
+    const S: u32 = 32;
+    let mut store = ImageStore::new();
+    let frames: Vec<Vec<u8>> = (0..4u8)
+        .map(|k| [60 * k, 200 - 40 * k, 90, 255].iter().copied().cycle().take((S * S * 4) as usize).collect())
+        .collect();
+    assert!(store.insert(ImageId(3), S, S, frames), "setup: the store refused four 32 px frames");
+    let mut app = GifApp { spin: lumen_static::anim::Playback::new(&[100; 4]), ..Default::default() };
+    app.ui.img = Image::new(ImageId(3), lumen_static::desc::Size { w: S as f32, h: S as f32 });
+    let mut host: Host<_, Incremental> = Host::new(app, 120, 80);
+    let mut canvas = Canvas::new(120, 80);
+    canvas.images = Some(Box::new(store));
+    // Warm: two cycles, so every buffer and the store's every frame has
+    // been through the canvas once.
+    for _ in 0..8 {
+        host.tick(100.0);
+        host.pump();
+        canvas.render(&host.list, 120, 80);
+    }
+
+    let mut changes = 0;
+    let before = counters();
+    for _ in 0..100 {
+        if host.tick(100.0) {
+            changes += 1;
+        }
+        host.pump();
+        canvas.render(&host.list, 120, 80);
+    }
+    let (n, f) = (allocs() - before.0, frees() - before.1);
+    // Read after the counters, so the check's own formatting is outside.
+    let shown = host.list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Image { .. })).count();
+    println!(
+        "an animated image, 100 ticks: {changes} frame changes (setup: want 100), {shown} image \
+         command(s) in the list; {n} allocs ({:.2}/frame), {f} frees ({:.2}/frame) (bound 0, 0)",
+        n as f64 / 100.0,
+        f as f64 / 100.0
+    );
+    assert_eq!(changes, 100, "setup: the playback did not change frame on every 100 ms tick");
+    assert_eq!(shown, 1, "setup: the list does not paint the image");
+    assert_eq!((n, f), (0, 0), "an animated image's frames: {n} allocs, {f} frees over 100 frame changes");
+}
+
 /// **The free counter must be able to see a free** — M28/T28.0.
 ///
 /// A counter that never moves is indistinguishable from a counter that
