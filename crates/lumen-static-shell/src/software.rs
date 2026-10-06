@@ -55,7 +55,9 @@ pub struct Canvas {
     /// §2.1), which keeps [`crate::text::FontStack`] immutable and `Sync`.
     #[cfg(feature = "truetype")]
     text: TextState,
-    /// Where `Cmd::Image` is resolved to pixels (T15.2).
+    /// Where `Cmd::Image` is resolved to pixels (T15.2): **the window's
+    /// store**, consulted after the frame's own since M84/T84.6
+    /// ([`Canvas::render_within_from`], [`crate::image::ImageChain`]).
     ///
     /// `None` draws nothing, which is what a host that ships no images
     /// wants and costs it one `Option` check per image command — of
@@ -1738,7 +1740,21 @@ impl Canvas {
     }
 
     pub fn render_within(&mut self, list: &DisplayList, damage: [f32; 4]) {
-        self.render_impl(list, Some(damage));
+        self.render_impl(list, Some(damage), None);
+    }
+
+    /// [`Canvas::render_within`], resolving each image through `app` —
+    /// the frame's store (`FrameSource::images`) — before
+    /// [`Canvas::images`], the window's (M84/T84.6,
+    /// [`crate::image::ImageChain`]). What every present of a session's
+    /// frame calls: `Offscreen` and the window's software surface.
+    pub fn render_within_from(
+        &mut self,
+        list: &DisplayList,
+        damage: [f32; 4],
+        app: Option<&dyn lumen_static::ImageSource>,
+    ) {
+        self.render_impl(list, Some(damage), app);
     }
 
     /// Fill the whole surface.
@@ -1767,7 +1783,12 @@ impl Canvas {
         }
     }
 
-    fn render_impl(&mut self, list: &DisplayList, damage: Option<[f32; 4]>) {
+    fn render_impl(
+        &mut self,
+        list: &DisplayList,
+        damage: Option<[f32; 4]>,
+        app: Option<&dyn lumen_static::ImageSource>,
+    ) {
         #[cfg(feature = "truetype")]
         let font = self.font.clone();
         // Shape every visible run once, here, before any band draws
@@ -1782,15 +1803,19 @@ impl Canvas {
             };
             self.text.prepare(list, outer, f);
         }
-        let images = self.images.take();
+        // The frame's store first, then the window's (M84/T84.6). `None`
+        // when neither is there, so a frame without images still threads.
+        let window = self.images.take();
         {
+            let chain = crate::image::ImageChain { app, window: window.as_deref() };
+            let images: Option<&dyn lumen_static::ImageSource> = if chain.is_empty() { None } else { Some(&chain) };
             #[cfg(feature = "threads")]
             let split = self.render_banded(
                 list,
                 damage,
                 #[cfg(feature = "truetype")]
                 font.as_ref(),
-                images.as_deref(),
+                images,
             );
             #[cfg(not(feature = "threads"))]
             let split = false;
@@ -1802,11 +1827,11 @@ impl Canvas {
                     damage,
                     #[cfg(feature = "truetype")]
                     font.as_ref(),
-                    images.as_deref(),
+                    images,
                 );
             }
         }
-        self.images = images;
+        self.images = window;
     }
 
     /// Rasterise the damaged rows across threads, one band each — T17.4.
@@ -1859,10 +1884,10 @@ impl Canvas {
         images: Option<&dyn lumen_static::ImageSource>,
     ) -> bool {
         // `&dyn ImageSource` carries no `Sync` bound, so a frame with
-        // images renders on one thread. Adding the bound would change a
-        // core trait for a case nothing in this workspace exercises --
-        // `Canvas::images` has no setter outside tests -- and images are
-        // not what a large repaint is made of.
+        // images -- the window's store or, since M84/T84.6, the frame's
+        // (`ImageChain`) -- renders on one thread. Adding the bound would
+        // change a core trait, and images are not what a large repaint is
+        // made of.
         if images.is_some() {
             return false;
         }
@@ -1975,7 +2000,7 @@ impl Canvas {
 
 impl Renderer for Canvas {
     fn render(&mut self, list: &DisplayList, _w: u32, _h: u32) {
-        self.render_impl(list, None);
+        self.render_impl(list, None, None);
     }
 }
 

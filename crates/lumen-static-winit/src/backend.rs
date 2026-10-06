@@ -69,6 +69,11 @@ impl Backend for Software {
         self.canvas.images.take()
     }
 
+    /// **A no-op**: the canvas caches no image pixels — every command is
+    /// resolved through the frame's store and the window's afresh
+    /// (M84/T84.6).
+    fn invalidate_images(&mut self) {}
+
     fn set_font(&mut self, font: FontStack) {
         self.canvas.set_font(font.clone());
         self.font = Some(font);

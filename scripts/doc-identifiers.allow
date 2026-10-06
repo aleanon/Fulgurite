@@ -141,7 +141,6 @@ VECTORTEXT                     # built by M82/T82.8 in scripts/drive/widgets/ric
 RunId                          # proposed by M83
 AnimatedImage                  # decided against by M84 (an animated image is an `Image` whose frame moves; M84/T84.3 built none), and the plan says so by name
 GifFeed                        # proposed by M84
-ImageChain                     # proposed by M84
 VideoFeed                      # proposed by M84
 VideoFrame                     # proposed by M84
 CountingLeaf                   # proposed by M85

@@ -187,6 +187,28 @@ Three things can go wrong, and none of them takes the window down:
 - **The new code panics.** You get the panic screen, and the next good
   reload clears it.
 
+### A build's assets
+
+Images a new build should bring with it belong in the **application's**
+store, not the window's. `Program::images` is window-side: the window
+reads it once, at start-up, and hands it to its backend, so a swap never
+sees it. `App::images` — `#[app(images = f)]` on a derived application —
+is asked on every present, through the frame (`FrameSource::images`), and
+the window never holds what it answers. After a swap it asks the new
+build's session, whose boot filled the store, so the new pixels are on
+screen with the swap. `fixtures/hot-window`'s `#pic` is that shape: its
+store is `#[reload(fresh)]`, its colour is one line of the boot, and the
+drive edits that line.
+
+The store comes first and the window's second, so an id both hold draws
+the application's pixels. The GPU renderer caches pixels by id and frame
+on the window's side of the swap, so the window tells its backend to
+forget them when a swap lands (`Backend::invalidate_images`); otherwise an
+unchanged id at frame 0 would keep the old build's picture there. While
+the error bar is up, the bar draws over the running session's frame, so
+the store's images stay on screen under it. The numbers are in
+`docs/results-images.md` T84.6.
+
 `just hot-window-drive` does all of this to a real window, editing a
 copy of the source with `sed`. `docs/step4-hot-reload.md` has what a
 reload costs and why the boundary is borrowed rather than copied.

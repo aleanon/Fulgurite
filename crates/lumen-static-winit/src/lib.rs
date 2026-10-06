@@ -665,6 +665,11 @@ struct Win {
     /// the retry of a dropped present, whose damage was banked by the
     /// present that did not land.
     must_present: bool,
+    /// Whether the last frame ended on M36's screen, so the first frame
+    /// after a retry — by R or by `app.retry`, which the window does not
+    /// see — tells the backend to forget its cached image pixels
+    /// (M84/T84.6, `Backend::invalidate_images`).
+    was_failed: bool,
     /// Frames presented, and redraws that presented nothing because
     /// nothing changed — `app.presents` (M53/T53.4).
     presents: (u64, u64),
@@ -742,6 +747,7 @@ impl Win {
             present_drops: 0,
             own_redraw: false,
             must_present: false,
+            was_failed: false,
             presents: (0, 0),
             ime_area: None,
             #[cfg(feature = "hot")]
@@ -899,6 +905,13 @@ impl Win {
                 // lookup. From M89 this is the multi-window swap's per-slot adopt step
                 // (`docs/plan-windows.md`).
                 let _refused = backend.set_shaders(self.session.shaders());
+                // **The new build's images** — M84/T84.6 (second review
+                // A14): its application store is re-asked each present
+                // (`FrameSource::images`), but a backend that caches by
+                // `(id, frame)` — the GPU atlas, which lives on this side
+                // of the swap — would keep the old build's pixels for an
+                // unchanged pair. The swap frame repaints all anyway.
+                backend.invalidate_images();
                 // **A build may change the program's shaping** — M81/T81.4.
                 // The new session measures with its own program's mode; the
                 // backend follows it, and everything is repainted, because
@@ -913,6 +926,15 @@ impl Win {
                     eprintln!("lumen-static: the new build lays text out {wanted:?}");
                 }
             }
+        }
+
+        // **A retry since the last frame** (M36, by R or by `app.retry`):
+        // the store the screen did not draw may have been left mid-write,
+        // and a backend that cached its pixels by `(id, frame)` must ask
+        // again (M84/T84.6, second review A14).
+        let failed = self.session.failed();
+        if core::mem::replace(&mut self.was_failed, failed) && !failed {
+            backend.invalidate_images();
         }
 
         let start = Instant::now();
@@ -952,29 +974,29 @@ impl Win {
                 wait
             }
         };
+        // What the error bar says, if it is up. The bar's frame itself is
+        // built at the present below: it borrows the session for the
+        // present, to forward the session's images (M84/T84.6), and the
+        // session is still asked things between here and there.
         #[cfg(feature = "hot")]
-        let barred = match self.hot.as_mut() {
-            Some(hot) => {
-                let r = &hot.reloader;
-                let shown = match (&r.error, &r.warning) {
-                    (Some(e), _) => Some((hot::FAILED, e.clone())),
-                    (None, Some(w)) => Some((hot::RESET, w.clone())),
-                    _ => None,
-                };
-                shown.map(|(head, body)| hot::Barred::new(&mut *self.session, head, &body, w, h, &mut hot.metrics))
+        let bar = self.hot.as_ref().and_then(|hot| {
+            let r = &hot.reloader;
+            match (&r.error, &r.warning) {
+                (Some(e), _) => Some((hot::FAILED, e.clone())),
+                (None, Some(w)) => Some((hot::RESET, w.clone())),
+                _ => None,
             }
-            None => None,
-        };
+        });
         // **The bar is the window's pixels, not the session's**: on the
         // frame it goes away the session must repaint everything, in every
         // buffer, or the bar outlives its fix wherever the session's own
         // damage does not reach (found by `just hot-window-drive`).
         #[cfg(feature = "hot")]
         if let Some(hot) = self.hot.as_mut() {
-            if barred.is_none() && hot.bar_shown {
+            if bar.is_none() && hot.bar_shown {
                 self.session.repaint_all();
             }
-            hot.bar_shown = barred.is_some();
+            hot.bar_shown = bar.is_some();
         }
         // **What the frame cost is kept** (M48/T48.3): `present` fills it
         // in, and it was dropped here, so `app.perf` read 0 for every
@@ -987,7 +1009,7 @@ impl Win {
         // blit and the present. The damage is not taken, so it stays
         // pending for the next present.
         #[cfg(feature = "hot")]
-        let overlay = barred.is_some();
+        let overlay = bar.is_some();
         #[cfg(not(feature = "hot"))]
         let overlay = false;
         let skipped = !present_needed(own, self.session.failed() || overlay, self.session.damage());
@@ -1000,9 +1022,12 @@ impl Win {
         } else {
             self.presents.0 += 1;
             #[cfg(feature = "hot")]
-            let presented = match barred {
-                Some(mut b) => backend.present(&mut b, self.config.page, start),
-                None => backend.present(&mut *self.session, self.config.page, start),
+            let presented = match (bar, self.hot.as_mut()) {
+                (Some((head, body)), Some(hot)) => {
+                    let mut b = hot::Barred::new(&mut *self.session, head, &body, w, h, &mut hot.metrics);
+                    backend.present(&mut b, self.config.page, start)
+                }
+                _ => backend.present(&mut *self.session, self.config.page, start),
             };
             #[cfg(not(feature = "hot"))]
             let presented = backend.present(&mut *self.session, self.config.page, start);
@@ -1873,19 +1898,28 @@ pub mod hot {
     /// The session's frame with the error bar drawn over its foot — the
     /// last good build keeps running under it (rule 2). Copies the list,
     /// which is only while a failure is being shown.
-    pub struct Barred {
+    ///
+    /// **It keeps the session it was built from** (M84/T84.6, A13/P2):
+    /// it is not a separate screen but the running session's frame, so
+    /// its images are that session's (`FrameSource::images` forwards).
+    /// Answering `None` would blank every application-store image while
+    /// the bar is up, and the bar's whole-surface damage repaints them
+    /// all. `just hot-window-drive`'s failed-build step holds an
+    /// application image's `ui.regionHash` under the bar.
+    pub struct Barred<'a> {
         list: DisplayList,
+        session: &'a mut dyn Session,
     }
 
-    impl Barred {
+    impl<'a> Barred<'a> {
         pub fn new(
-            session: &mut dyn Session,
+            session: &'a mut dyn Session,
             head: &str,
             error: &str,
             w: u32,
             h: u32,
             metrics: &mut Option<FontMetrics>,
-        ) -> Barred {
+        ) -> Barred<'a> {
             let src = session.list();
             // **A clone, never a field-by-field literal** (M82/T82.5,
             // adopting M83/T83.3's design): a literal written before a
@@ -1922,11 +1956,11 @@ pub mod hot {
                 list.text_weighted([pad, y, pad + avail, y + lh], l, px, weight, BAR_TEXT);
                 y += lh;
             }
-            Barred { list }
+            Barred { list, session }
         }
     }
 
-    impl FrameSource for Barred {
+    impl FrameSource for Barred<'_> {
         fn list(&self) -> &DisplayList {
             &self.list
         }
@@ -1935,6 +1969,10 @@ pub mod hot {
         }
         fn timings(&self) -> (u64, u64) {
             (0, 0)
+        }
+        /// The session's own: the last good build runs under the bar.
+        fn images(&self) -> Option<&dyn lumen_static::ImageSource> {
+            self.session.images()
         }
     }
 }
@@ -2082,6 +2120,8 @@ mod tests {
         fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
             self.images.take()
         }
+        // Required since M84/T84.6; a fake caches nothing.
+        fn invalidate_images(&mut self) {}
         fn set_font(&mut self, _font: FontStack) {}
         // Required since M83/T83.4. Every call is recorded: a build
         // without `shader` hands an empty table, and being handed it is

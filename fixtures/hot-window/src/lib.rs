@@ -20,6 +20,14 @@
 //! to blue and the swap must re-send the new build's table to the backend.
 //! Without the feature it is an empty spacer in the same slot, so the tree
 //! has one shape in every build.
+//! `#pic` (M84/T84.6) is an `Image` whose pixels come from the
+//! application's own store (`#[app(images = ..)]`, `App::images`), which
+//! the renderer reads through the frame: the drive edits `EDIT pic`, the
+//! store's colour, and after the swap the region must show the new build's
+//! pixels — the loader never holds the store, it re-asks the session each
+//! present. Under a failed build's bar the region keeps its pixels: the
+//! bar's frame forwards the session's images. Like `#star` it sits above
+//! the bar's reach.
 
 use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -35,6 +43,9 @@ pub struct Ui {
     /// A filled star, painted with `Painter::path` (M82/T82.5).
     #[widget_id("star")]
     pub star: PaintBox,
+    /// An image from the application's store (M84/T84.6).
+    #[widget_id("pic")]
+    pub pic: Image,
     /// A box the program's shader draws, with `shader` ([`Swatch`]).
     #[widget_id("swatch")]
     pub swatch: Swatch,
@@ -116,7 +127,11 @@ pub struct Tally {
     pub count: i64,
 }
 
+/// `#pic`'s id in the application's store.
+pub const PIC: lumen_static::ImageId = lumen_static::ImageId(1);
+
 #[derive(DeriveApp, DeriveReloadable)]
+#[app(images = images)]
 pub struct Counter {
     #[tree]
     pub ui: Ui,
@@ -124,6 +139,20 @@ pub struct Counter {
     #[reload(keep)]
     #[bind(ui.value, count, "count {}")] // EDIT format
     pub tally: Tally,
+    /// The images this build owns: `#pic`'s pixels. Fresh on a swap — the
+    /// new build's boot fills it, which is how an edited asset arrives.
+    #[reload(fresh)]
+    pub store: lumen_static_shell::image::ImageStore,
+}
+
+/// The store the renderer reads through the frame (`App::images`).
+fn images(c: &Counter) -> Option<&dyn lumen_static::ImageSource> {
+    Some(&c.store)
+}
+
+/// `#pic`'s colour in this build: the line the drive edits.
+pub fn pic_ink() -> [u8; 4] {
+    [0x16, 0x7a, 0x3c, 0xff] // EDIT pic
 }
 
 fn on_inc(t: &mut Tally, _: &EventCtx) {
@@ -134,7 +163,12 @@ fn on_inc(t: &mut Tally, _: &EventCtx) {
 /// The boot: the one place a `Counter` is built — by `main`, by the
 /// library a reload loads, and by `Host::reload` (M49/T49.4).
 fn boot() -> Counter {
-    let mut c = Counter { ui: Ui::default(), tally: Tally::default() };
+    let mut c = Counter { ui: Ui::default(), tally: Tally::default(), store: Default::default() };
+    let ink = pic_ink();
+    c.store.insert(PIC, 8, 8, vec![ink.iter().copied().cycle().take(8 * 8 * 4).collect()]);
+    c.ui.pic = Image::new(PIC, lumen_static::desc::Size { w: 8.0, h: 8.0 });
+    c.ui.pic.fit = lumen_static_widgets::Fit::Stretch;
+    c.ui.pic.tint = lumen_static::Color(0xff, 0xff, 0xff, 0xff);
     c.ui.inc.label = "+";
     c.ui.inc.on_click = on_inc;
     c.ui.hebrew.set(HEBREW.to_owned());
@@ -172,6 +206,7 @@ pub fn program() -> Program<Counter, Strategy> {
                     Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL)),
                     Rule::new(Selector::Id("hebrew"), Patch::new().font_size(20.0)),
                     Rule::new(Selector::Id("star"), Patch::new().width(Length::FILL).height(Length::Fixed(48.0))),
+                    Rule::new(Selector::Id("pic"), Patch::new().width(Length::FILL).height(Length::Fixed(32.0))),
                 ];
                 #[cfg(feature = "shader")]
                 rules.push(Rule::new(Selector::Id("swatch"), Patch::new().width(Length::FILL).height(Length::Fixed(40.0))));

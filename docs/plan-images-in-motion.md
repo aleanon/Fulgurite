@@ -4,7 +4,7 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M84a (T84.0–T84.4) built 2026-10-06 and closes on
 > `just ci-verify` of its T84.4 commit (S5), cited in AGENT.md; M84b
-> (T84.5–T84.11) building: T84.5 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> (T84.5–T84.11) building: T84.5 and T84.6 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -989,6 +989,58 @@ task and is recorded with its number in `docs/results-images.md`):
 - **T84.5: M88/T88.1 has not landed** (`JobTrack` has no progress slot),
   so if T84.7 lands first, T88.1 carries the progress-after-stop gate
   (Decisions, M11).
+- **T84.6: the host's guard asks `App::images` in the frame, and the
+  renderer's read is caught.** `FrameSource::images` is `&self`, because a
+  renderer holds the list beside the store, and `Host::guard` takes
+  `&mut`, so the guard cannot wrap the read itself; and `Local::caught`
+  records nothing, so a panic there could not raise M36's screen (T80.5's
+  and T84.3's finding). So the frame's guarded entry (`Local`'s
+  `Session::frame`, and the agent's `Live` pump) asks `App::images` after
+  the pump, where a panic is recorded before any present asks again, and
+  `Local::images` reads it under `catch_unwind` with fallback `None` and
+  answers `None` without asking while the screen is up. The panic drive's
+  injection removed both guarded asks: the agent's present read the
+  host's store unguarded and the window died at site 10.
+- **T84.6: `Backend::invalidate_images`, required.** The plan names
+  `Gpu::invalidate_images()` and "the window's calls to it", but the window
+  holds a `Box<dyn Backend>`, so the call reaches the GPU through a new
+  required trait method: the software backend writes the no-op itself (it
+  caches nothing), and `examples/glasswall`'s forwarding `Counting`
+  forwards it.
+- **T84.6: the retry is seen as a failed-to-healthy transition.** R is a
+  window key, but `app.retry` arrives through the agent inside the session,
+  which the window never sees, so the window compares `Session::failed`
+  with the last frame's at the head of every redraw and invalidates on the
+  first healthy frame after a failed one.
+- **T84.6: `Barred` is built at the present.** It keeps the
+  `&mut dyn Session` as planned, and that borrow cannot be held across the
+  three questions the window asks the session between where `Barred` was
+  built and the present (`repaint_all`, `failed`, `damage`); the bar's
+  text is decided early and the frame built inside the present branch. The
+  bar's own damage is still the whole surface (`present_needed` forces it).
+- **T84.6: `ImageStore::replace` answers `Option<u32>`, not `u32`.** It
+  counts an id's replacements from 1 and answers the count, the frame to
+  paint; a refused frame (wrong length, a zero side) answers `None` and
+  leaves the last picture, where a bare `u32` would have had to answer
+  something for a frame it did not take.
+- **T84.6: the GPU resolves through the chain on a hit too.** The key's
+  origin is which store answered, so every image command asks the frame's
+  store first; the answer is a borrowed slice, so a hit costs a map
+  lookup and copies nothing.
+- **T84.6: the drive edits the format and `#pic` in one write**, so the
+  watcher sees one change and the counts the drive waits on (two, three,
+  four reloads) are unchanged. Step 1 asserts the first hot build's colour,
+  so a `Hot` forward answering `None` is named there, before any edit.
+- **T84.6: the swap's `invalidate_images` call is gated live now, not
+  after M88/T88.2.** The plan deferred the window's call site to
+  `hot-window-drive --gpu` once `ui.regionHash` reads the GPU, but the GPU
+  legs already read the window with `xwd` (M83/T83.8). `#pic`'s colour is
+  edited in the same write as the WGSL colour, its frame stays 0, and after
+  the swap its centre must be the new build's: with the swap's call
+  removed it read v1's colour, distance 156. The retry's call stays
+  unobserved — the panic drive has no GPU leg.
+- **T84.6: panic-app's job trigger moved to 11**, since site 10 is
+  `App::images`; the drive's `// SITE n` scan takes two digits.
 
 **What the review found (M84).**
 

@@ -205,10 +205,11 @@ fn a_store_holds_what_it_was_given_and_answers_the_frame_asked_for() {
     assert!(!s.insert(ImageId(5), 0, 2, vec![vec![]]), "a zero-width image was stored");
     assert!(!s.insert(ImageId(5), 2, 2, vec![]), "an image with no frames was stored");
     assert!(s.image(ImageId(5), 0).is_none(), "a refused insert left something behind");
-    // A stream's next picture replaces in place.
-    assert!(s.replace(ImageId(6), 1, 1, &[1, 2, 3, 4]));
-    assert!(s.replace(ImageId(6), 1, 1, &[5, 6, 7, 8]));
-    assert!(!s.replace(ImageId(6), 1, 1, &[9, 9]), "a short stream frame was taken");
+    // A stream's next picture replaces in place, and answers the frame to
+    // paint it at (M84/T84.6): 1, then 2, and a refused one moves nothing.
+    assert_eq!(s.replace(ImageId(6), 1, 1, &[1, 2, 3, 4]), Some(1));
+    assert_eq!(s.replace(ImageId(6), 1, 1, &[5, 6, 7, 8]), Some(2), "the second picture did not move the frame");
+    assert_eq!(s.replace(ImageId(6), 1, 1, &[9, 9]), None, "a short stream frame was taken");
     assert_eq!(s.image(ImageId(6), 0), Some((1, 1, &[5u8, 6, 7, 8][..])));
     // A stream's counter is not an index: one frame answers at any count.
     assert_eq!(s.image(ImageId(6), 9), Some((1, 1, &[5u8, 6, 7, 8][..])), "a stream did not answer its latest at frame 9");

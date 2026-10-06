@@ -1265,6 +1265,37 @@ pub trait App: Sized {
     fn wake_in_ms(&self) -> Option<f32> {
         None
     }
+
+    /// **The images this application owns**, which the renderer reads
+    /// through the frame — M84/T84.6 (`docs/plan-images-in-motion.md`,
+    /// `docs/results-images.md`).
+    ///
+    /// Asked on every present (through the shell's
+    /// `FrameSource::images`), so a store the application writes in
+    /// `apply` or `tick` with `&mut` is the store the next frame draws,
+    /// borrowed for the present and never held: both run on the frame
+    /// thread, so no lock and no `Arc`. A renderer resolves each
+    /// [`Cmd::Image`](crate::Cmd::Image) through this store first and the
+    /// window's own (the shell's `Program::images`, read once) second, so
+    /// the application's answer wins for an id both hold. A hot build's
+    /// store reaches the renderer because the window re-asks the session
+    /// each present, which the window-side source cannot do.
+    ///
+    /// A stream that overwrites an id's pixels must also move the frame
+    /// it paints (the shell's `ImageStore::replace` answers the next one):
+    /// a renderer may cache one `(id, frame)`'s pixels
+    /// ([`ImageSource::image`](crate::ImageSource::image)).
+    ///
+    /// **Application code, asked every frame**: a session asks it inside
+    /// its frame's guarded entry first, so a panic here raises M36's
+    /// screen, and a session showing that screen answers `None`. A
+    /// derived application supplies it with `#[app(images = f)]`.
+    ///
+    /// The default is `None`: the window's source alone, which is every
+    /// application before M84b.
+    fn images(&self) -> Option<&dyn crate::ImageSource> {
+        None
+    }
 }
 
 /// Whether `ev` ends a gesture, so that losing it would strand one —

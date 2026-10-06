@@ -11,6 +11,10 @@
 //!   application that decodes its own pixels (or generates them) uses it
 //!   with no feature at all. A stream (a video feed, M84b) overwrites an
 //!   id's pixels with [`ImageStore::replace`].
+//! - [`ImageChain`], the two-source lookup every renderer resolves a
+//!   command through since M84/T84.6: the application's store, which a
+//!   session hands over each present (`App::images`, through
+//!   `FrameSource::images`), and then the window's (`Program::images`).
 //! - Behind the shell's default-off `image` feature, `decode_png` and
 //!   `decode_gif`, which answer a `DecodedImage`: full-canvas RGBA8
 //!   frames and each frame's delay. A GIF's frames are **composited at
@@ -47,6 +51,9 @@ struct Entry {
     w: u32,
     h: u32,
     frames: Vec<Vec<u8>>,
+    /// How many times [`ImageStore::replace`] has overwritten this id:
+    /// the frame a stream's command paints next (M84/T84.6).
+    version: u32,
 }
 
 /// **Images an application owns**, by [`ImageId`] — what a renderer reads
@@ -77,28 +84,43 @@ impl ImageStore {
         if w == 0 || h == 0 || frames.is_empty() || frames.iter().any(|f| f.len() != want) {
             return false;
         }
-        self.map.insert(id, Entry { w, h, frames });
+        self.map.insert(id, Entry { w, h, frames, version: 0 });
         true
     }
 
     /// **A stream's next picture** — overwrite `id` with one frame of
-    /// `w × h`, as a video feed does per delivered frame (M84b). The
-    /// buffer is reused when the size is unchanged, so a steady stream
-    /// allocates nothing here. `false`, and the store unchanged, when the
-    /// length is not `w × h × 4` or a side is zero.
-    pub fn replace(&mut self, id: ImageId, w: u32, h: u32, pixels: &[u8]) -> bool {
+    /// `w × h`, as a video feed does per delivered frame (M84b), and
+    /// answer **the frame to paint it at** (M84/T84.6).
+    ///
+    /// The answer goes into the widget's `frame`, which is what makes the
+    /// next present repaint the image: damage is decided from the command
+    /// (`Cmd::Image` carries the frame), and the GPU atlas caches by
+    /// `(id, frame)`, so new pixels under an unchanged frame would stay
+    /// stale on both. It counts this id's replacements from 1, wrapping;
+    /// the stored entry holds one frame, so the store answers these
+    /// pixels for any frame the command carries.
+    ///
+    /// The buffer is reused when the size is unchanged, so a steady stream
+    /// allocates nothing here. `None`, and the store unchanged, when the
+    /// length is not `w × h × 4` or a side is zero: a refused frame keeps
+    /// the last picture rather than blanking the image.
+    pub fn replace(&mut self, id: ImageId, w: u32, h: u32, pixels: &[u8]) -> Option<u32> {
         if w == 0 || h == 0 || pixels.len() != w as usize * h as usize * 4 {
-            return false;
+            return None;
         }
-        match self.map.get_mut(&id) {
+        let version = match self.map.get_mut(&id) {
             Some(e) if e.w == w && e.h == h && e.frames.len() == 1 => {
-                e.frames[0].copy_from_slice(pixels)
+                e.frames[0].copy_from_slice(pixels);
+                e.version = e.version.wrapping_add(1);
+                e.version
             }
-            _ => {
-                self.map.insert(id, Entry { w, h, frames: vec![pixels.to_vec()] });
+            prev => {
+                let version = prev.map_or(0, |e| e.version).wrapping_add(1);
+                self.map.insert(id, Entry { w, h, frames: vec![pixels.to_vec()], version });
+                version
             }
-        }
-        true
+        };
+        Some(version)
     }
 
     /// Hold a decoded image under `id`. Behind the shell's `image`
@@ -136,6 +158,66 @@ impl ImageSource for ImageStore {
     /// none).
     fn image(&self, id: ImageId, frame: u32) -> Option<(u32, u32, &[u8])> {
         self.map.get(&id).map(|e| (e.w, e.h, &e.frames[frame as usize % e.frames.len()][..]))
+    }
+}
+
+/// Which store answered a command — the half of the GPU atlas's key that
+/// keeps one id in two stores apart (M84/T84.6, second review A14).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ImageOrigin {
+    /// The application's store: `App::images`, handed over by the frame.
+    App,
+    /// The window's store: `Program::images`, read once.
+    Window,
+}
+
+/// What a store answers for one `(id, frame)`: width, height, RGBA8 —
+/// [`ImageSource::image`]'s answer, named for [`ImageChain::resolve`].
+pub type Pixels<'a> = (u32, u32, &'a [u8]);
+
+/// **The two sources a renderer resolves an image through, in order** —
+/// M84/T84.6 (`docs/plan-images-in-motion.md`).
+///
+/// The application's store first (`App::images`, which a session hands
+/// over through `FrameSource::images` on every present, so a store the
+/// application writes is the store the next frame reads), then the
+/// window's (`Program::images`, read once into the backend). An id both
+/// hold draws the application's pixels; an id only the window holds still
+/// draws. `Canvas`, `Offscreen`, the window's software surface and the
+/// GPU backend all take one; nothing holds it past a present.
+///
+/// A session showing M36's panic screen hands over `None`, so its ids
+/// fall through to the window's store — which is why the GPU atlas keys a
+/// slot on [`ImageOrigin`] as well as the id: a fallen-through id misses
+/// instead of hitting the application's pixels.
+#[derive(Clone, Copy, Default)]
+pub struct ImageChain<'a> {
+    /// The frame's store: the application's.
+    pub app: Option<&'a dyn ImageSource>,
+    /// The window's store.
+    pub window: Option<&'a dyn ImageSource>,
+}
+
+impl<'a> ImageChain<'a> {
+    /// Whether neither source is present: a renderer may then skip
+    /// image commands outright (and the software canvas may thread).
+    pub fn is_empty(&self) -> bool {
+        self.app.is_none() && self.window.is_none()
+    }
+
+    /// `id` at `frame`, and which store answered it.
+    pub fn resolve(&self, id: ImageId, frame: u32) -> Option<(ImageOrigin, Pixels<'a>)> {
+        if let Some(px) = self.app.and_then(|s| s.image(id, frame)) {
+            return Some((ImageOrigin::App, px));
+        }
+        self.window.and_then(|s| s.image(id, frame)).map(|px| (ImageOrigin::Window, px))
+    }
+}
+
+impl ImageSource for ImageChain<'_> {
+    /// [`ImageChain::resolve`] without the origin.
+    fn image(&self, id: ImageId, frame: u32) -> Option<(u32, u32, &[u8])> {
+        self.resolve(id, frame).map(|(_, px)| px)
     }
 }
 

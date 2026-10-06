@@ -790,6 +790,9 @@ mod counting {
         fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
             self.inner.take_images()
         }
+        fn invalidate_images(&mut self) {
+            self.inner.invalidate_images()
+        }
         fn set_font(&mut self, font: FontStack) {
             self.inner.set_font(font)
         }

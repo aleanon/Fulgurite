@@ -838,6 +838,12 @@ pub mod hot {
         fn timings(&self) -> (u64, u64) {
             self.s().timings()
         }
+        /// The library's session's store, re-asked on every present and
+        /// never held by the loader (M84/T84.6): a swapped-in build's
+        /// assets reach the renderer through this forward.
+        fn images(&self) -> Option<&dyn lumen_static::ImageSource> {
+            self.s().images()
+        }
     }
 
     impl Session for Hot {

@@ -591,6 +591,16 @@ impl<A: App, I: Invalidation> Program<A, I> {
         self
     }
 
+    /// **The window's image store** — window-side, read **once**: `run`
+    /// moves it into the window's config and hands it to each backend it
+    /// makes (taken back on suspend, M47/T47.7). A renderer consults it
+    /// *after* the frame's store, `App::images`, which a session hands over
+    /// on every present (M84/T84.6, `crate::image::ImageChain`), so an id
+    /// both hold draws the application's pixels.
+    ///
+    /// Because it is read once, a hot build's edits to it never reach the
+    /// running window — it is the loader's. Pixels that must follow a swap,
+    /// or change while the program runs, belong in the application's store.
     pub fn images(mut self, images: impl lumen_static::ImageSource + 'static) -> Self {
         self.images = Some(Box::new(images));
         self

@@ -4,14 +4,22 @@ Over the agent, against fixtures/hot-window's copy:
   1. wait for the first hot build to replace the static application;
      read the bound label.
   2. bump the kept counter.
-  3. edit the source: the label's format string.
+  3. edit the source: the label's format string, and in the same write
+     `#pic`'s colour in the application's store (M84/T84.6).
   4. wait on app.reloads.
-  5. the label shows the NEW format and the OLD count.
+  5. the label shows the NEW format and the OLD count; `#pic` shows the
+     NEW build's colour -- its store is the application's (`App::images`),
+     which the window re-asks the swapped-in session for on every present
+     through `Hot`'s forward (step 1 already asserted the first hot
+     build's colour, so a forward answering `None` is named there).
   -. a build that fails: the window keeps running the last good build,
      shows a bar, and the fix-back clears it without a swap. While the bar
      is up, `#star` -- a paint box that fills a path -- keeps its
      ui.regionHash (M82/T82.5): the bar is drawn over a copy of the
      session's list, and a copy without the list's path store loses it.
+     And `#pic` keeps its ui.regionHash (M84/T84.6): the bar's frame
+     forwards the session's images, and one answering `None` would
+     repaint the region in the page colour.
   6. introduce a panic: M36's screen through app.failure, at the line.
   7. fix it: the next swap clears the screen, and the count survived.
   8. focus the field: app.imeArea is non-null and inside its physical box,
@@ -36,7 +44,11 @@ Usage: hot_window_drive.py PORT SRC PID HASH_EXE [--only-shaping] [--save F] [--
       premise `ShaderId` rests on), and the reload count went up by one;
       then the broken edit: while its bar is up, `#swatch`'s region reads
       the same pixels as before it (the bar draws over a clone of the
-      session's list, uniforms included).
+      session's list, uniforms included). The same write edits `#pic`'s
+      colour in the application's store (M84/T84.6): its frame stays 0, so
+      the GPU atlas would hit v1's slot -- after the swap `#pic`'s centre is
+      v2's only because the window calls `Backend::invalidate_images` on
+      the swap (second review A14).
 `--static` is the fresh launch of the edited source, a window with no hot
 reload: its `#hebrew` hash must equal the `Complex` headless render's and
 the post-swap hash SAVED, and differ from the `Basic` render's -- what
@@ -114,15 +126,21 @@ def rss_kb():
     return 0
 
 
-def edit(tag, new_line):
+def edit(tag, new_line, *more):
     """Replace the line carrying `// EDIT <tag>` with `new_line` (which
-    keeps the marker), and return that line's number."""
+    keeps the marker), and return that line's number. Further `tag,
+    new_line` pairs are edited in the SAME write, so the watcher sees one
+    change and the window swaps once."""
     lines = open(src).read().split("\n")
-    idx = next(i for i, l in enumerate(lines) if l.rstrip().endswith(f"// EDIT {tag}"))
-    indent = lines[idx][: len(lines[idx]) - len(lines[idx].lstrip())]
-    lines[idx] = f"{indent}{new_line} // EDIT {tag}"
+    pairs = [(tag, new_line)] + list(zip(more[::2], more[1::2]))
+    first = None
+    for t, nl in pairs:
+        idx = next(i for i, l in enumerate(lines) if l.rstrip().endswith(f"// EDIT {t}"))
+        indent = lines[idx][: len(lines[idx]) - len(lines[idx].lstrip())]
+        lines[idx] = f"{indent}{nl} // EDIT {t}"
+        first = idx + 1 if first is None else first
     open(src, "w").write("\n".join(lines))
-    return idx + 1
+    return first
 
 
 def png_pixel(b64, x, y):
@@ -152,6 +170,23 @@ def png_pixel(b64, x, y):
                 line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
         prev, out = line, line
     return tuple(out[x * bpp:x * bpp + 3])
+
+
+# M84/T84.6: `#pic`'s colour in the checked-in source, and the edit's.
+PIC_V1, PIC_V2 = (0x16, 0x7A, 0x3C), (0x1D, 0x4E, 0xD8)
+PAGE = (0xFF, 0xFF, 0xFF)
+
+
+def pic_pixel():
+    """`#pic`'s centre, from a screenshot (physical pixels)."""
+    b = call("ui.resolve", {"selector": "#pic"})["bounds"]
+    shot = call("ui.screenshot")
+    k = shot.get("scale", 1.0)
+    return png_pixel(shot["image_base64"], int((b[0] + b[2]) / 2 * k), int((b[1] + b[3]) / 2 * k))
+
+
+def near(a, b, tol=6):
+    return max(abs(x - y) for x, y in zip(a, b)) <= tol
 
 
 def foot_pixel():
@@ -287,8 +322,14 @@ def gpu_step():
     print(f"hot-window-drive [gpu]: #swatch {sw}, centre {pre}: distance from red {dist(pre, RED)} "
           f"(bound {COLOUR_TOL}), from the fallback's grey {dist(pre, GREY)}; window {w}x{h} = {area} px")
     assert dist(pre, RED) <= COLOUR_TOL, "setup: before the edit #swatch is not the shader's red"
+    pb = [round(v) for v in call("ui.resolve", {"selector": "#pic"})["bounds"]]
+    pcx, pcy = (pb[0] + pb[2]) // 2, (pb[1] + pb[3]) // 2
+    pic_pre = px(pcx, pcy)
+    print(f"hot-window-drive [gpu]: #pic {pb}, centre {pic_pre}: distance from v1's {PIC_V1} {dist(pic_pre, PIC_V1)} "
+          f"(bound {COLOUR_TOL})")
+    assert dist(pic_pre, PIC_V1) <= COLOUR_TOL, "setup: before the edit #pic is not the store's v1 colour on the GPU"
     n = reloads()["reloads"]
-    edit("colour", "let c = vec3(0.12, 0.30, 0.90);")
+    edit("colour", "let c = vec3(0.12, 0.30, 0.90);", "pic", "[0x1d, 0x4e, 0xd8, 0xff]")
     r, lat = wait(lambda r: r["reloads"] >= n + 1 and not r["building"], "the WGSL edit's reload")
     assert r["error"] is None, f"step 10: the WGSL edit did not build: {r['error']}"
     # The swap frame's own damage. The new session's agent starts a fresh
@@ -316,6 +357,17 @@ def gpu_step():
     assert dist(post, BLUE) <= COLOUR_TOL, ("step 10: after the swap #swatch is not the edited blue: the "
                                              "new build's shader table did not reach the backend")
     assert swap_px == area, "step 10: the swap frame was not a full repaint"
+    for _ in range(30):
+        _, _, px = xwd_shot()
+        pic_post = px(pcx, pcy)
+        if dist(pic_post, PIC_V2) <= COLOUR_TOL:
+            break
+        time.sleep(0.1)
+    print(f"hot-window-drive [gpu]: #pic centre after the swap {pic_post}: distance from v2's {PIC_V2} "
+          f"{dist(pic_post, PIC_V2)} (bound {COLOUR_TOL}), from v1's {dist(pic_post, PIC_V1)}")
+    assert dist(pic_post, PIC_V2) <= COLOUR_TOL, ("step 10: after the swap #pic is not the new build's colour on the "
+                                                   "GPU: the atlas kept v1's pixels for an unchanged (id, frame) -- "
+                                                   "the window did not call Backend::invalidate_images on the swap")
 
     # The bar keeps the shader (second review A13).
     _, _, px = xwd_shot()
@@ -361,6 +413,13 @@ if only_shaping:
 rss0 = rss_kb()
 v = value()
 assert v == "count 0", f"step 1: `{v}`"
+# M84/T84.6: the hot build's own store reaches the renderer through the
+# frame -- through `Hot`'s forward of `FrameSource::images`.
+pic1 = pic_pixel()
+print(f"hot-window-drive: #pic after the first hot build: {pic1} (want the store's {PIC_V1}; the page is {PAGE})")
+assert not near(pic1, PAGE), ("step 1: #pic shows the page colour: the swapped-in session's images did not reach "
+                              "the renderer (Hot's FrameSource::images forward)")
+assert near(pic1, PIC_V1), f"step 1: #pic is {pic1}, not the hot build's store colour {PIC_V1}"
 
 # ---- 2. bump the kept counter -----------------------------------------
 click(); click()
@@ -368,12 +427,20 @@ v = value()
 assert v == "count 2", f"step 2: the clicks did not land: `{v}`"
 
 # ---- 3-5. edit the format; the new text shows the old count -----------
-edit("format", '#[bind(ui.value, count, "clicks: {}")]')
+edit("format", '#[bind(ui.value, count, "clicks: {}")]', "pic", "[0x1d, 0x4e, 0xd8, 0xff]")
 r, lat1 = wait(lambda r: r["reloads"] >= 2 and not r["building"], "the format edit's reload")
 v = value()
-print(f"hot-window-drive: format edit -> swapped in {lat1:.2f}s; label `{v}`")
+for _ in range(20):
+    pic2 = pic_pixel()
+    if near(pic2, PIC_V2):
+        break
+    time.sleep(0.1)
+print(f"hot-window-drive: format edit -> swapped in {lat1:.2f}s; label `{v}`; #pic {pic2} "
+      f"(want v2's {PIC_V2}, not v1's {PIC_V1} or the page {PAGE})")
 assert r["error"] is None, f"step 4: {r['error']}"
 assert v == "clicks: 2", f"step 5: the label must show the new format and the old count, not `{v}`"
+assert not near(pic2, PAGE), "step 5: #pic shows the page colour after the swap: the new session's images were not forwarded"
+assert near(pic2, PIC_V2), f"step 5: #pic is {pic2} after the swap, not the new build's store colour {PIC_V2}"
 
 # ---- a build that fails ----------------------------------------------
 before_bar = foot_pixel()
@@ -386,6 +453,10 @@ assert all(abs(mid[i] - (0xC2, 0x41, 0x0C)[i]) < 24 for i in range(3)), \
     f"setup: #star's centre must be the path's colour, not {mid}"
 star_before = live_hash(star_rect)
 assert star_before["pixels"] > 0, f"setup: #star's region hashed no pixels: {star_rect}" 
+# M84/T84.6: the application-store image's region, before the bar.
+pic_rect = call("ui.resolve", {"selector": "#pic"})["bounds"]
+pic_before = live_hash(pic_rect)
+assert pic_before["pixels"] > 0, f"setup: #pic's region hashed no pixels: {pic_rect}"
 edit("handler", 'let step: i64 = "one";')
 # Stop on the error OR on any swap: a failed build that swaps clears the
 # error it should have kept, and waiting only for the error would turn
@@ -406,6 +477,11 @@ print(f"hot-window-drive: #star {star_rect} under the bar: hash {star_under['has
       f"(before the failed build {star_before['hash']})")
 assert star_under["hash"] == star_before["hash"], \
     "the path's region changed under the error bar: the bar's copy of the list lost its paths"
+pic_under = live_hash(pic_rect)
+print(f"hot-window-drive: #pic {pic_rect} under the bar: hash {pic_under['hash']} over {pic_under['pixels']} px "
+      f"(before the failed build {pic_before['hash']}); centre {pic_pixel()}")
+assert pic_under["hash"] == pic_before["hash"], \
+    "#pic's region changed under the error bar: the bar's frame did not forward the session's images (Barred::images)"
 
 edit("handler", "let step = 1;")
 r, _ = wait(lambda r: r["error"] is None and not r["building"], "the fix-back to clear the error")

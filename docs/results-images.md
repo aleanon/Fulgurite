@@ -315,3 +315,40 @@ counts iterations as well as messages.
 **Firmware (K4).** `just firmware-delta 15d4aec firmware=0
 firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** on
 all four — the task adds a test and no library code.
+
+## T84.6 — `FrameSource::images` and `App::images` (2026-10-06)
+
+The application's store reaches the renderer through the frame: `App::images`
+(provided, `None`; `#[app(images = f)]`), asked on every present through the
+required `FrameSource::images`, resolved before the window's store
+(`ImageChain`). Every gate below was run red under its injection and green
+restored in the same session.
+
+| gate | setup asserted | printed (green) | injection | printed (red) |
+|---|---|---|---|---|
+| compile: `Hot` / `Local` without `images` | — | the forward is required (S1, E0046) | — (the compiler is the gate) | — |
+| headless write (`crates/lumen-static-shell/tests/app_images.rs`): `apply` calls `ImageStore::replace`, paints the frame it answers | boot centre red; `apply` ran once; `frame` 1 → 2 | centre blue; damaged **1,600** px against the image's **1,600** px box: **1.00×** (bound 1.00×); neighbour page | the host's `FrameSource::images` answers `None` | centre the page colour `[250, 250, 250]` at boot, failed by name |
+| order (same file): id 1 in both stores, id 2 in the window's | the derived application answers a store | id 1 red (the application's), id 2 green (the window's alone still draws) | `ImageChain::resolve` asks the window's store first | id 1 blue, failed by name |
+| panic (same file): `App::images` panics once in a `Local`'s frame | a healthy session hands the store over | `failed` true; `images()` `None` while the screen is up; `Some` after the retry | (1) the frame's guarded entry does not ask `App::images`; (2) `Local::images` forwards regardless of the failure | (1) `failed` false — the present's catch swallowed it and recorded nothing; (2) `Some` while the screen is up |
+| GPU swap (`crates/lumen-static-wgpu/tests/app_images.rs`, `just gpu`): store A red, then store B blue under the same `(id 1, frame 0)`, `invalidate_images()` between | the first draw is red | blue; `image_uploads` **2** | `Gpu::invalidate_images` does nothing | red (v1's), `image_uploads` 1 |
+| GPU origin (same file, T84.2's gate carried here): id 1 red in the application's store, blue in the window's; drawn with, then without, the frame's store | the application's red wins | blue after the fall-through; `image_uploads` **2** (one slot per origin) | the key's origin is always `Window` (the id alone) | red — the application's slot hit, `image_uploads` 1 |
+| across a swap (`just hot-window-drive`, hot leg): `#pic` from `App::images`, the store's colour edited with the label's format in one write | the first hot build's colour `(22, 122, 60)` | after the swap **(29, 78, 216)**, the new build's | `Hot::images` answers `None` | `#pic` the page `(255, 255, 255)` at step 1, failed by name |
+| under the bar (same leg): `#pic`'s `ui.regionHash` before the broken edit and under the bar | the bar is shown (the drive asserts it, M37) | `90500717c9597325` both, over 10,240 px | `Barred::images` answers `None` | `a556430ac2dc4325` under the bar, centre the page colour, failed by name |
+| the window's swap call, GPU (`just hot-window-drive`, `gpu` and `gpu-everything` legs, read with `xwd`): `#pic`'s colour edited with the WGSL colour in one write; its frame stays 0 | `#pic` is v1's `(22, 122, 60)` on the GPU before the edit (distance 0, bound 6) | after the swap **(29, 78, 216)** on both legs, distance 0 from v2's | the swap branch does not call `Backend::invalidate_images` | `(22, 122, 60)` after the swap, distance 156 from v2's, failed by name |
+| stamp, accept (`just abi-stamp`): `stamp-lib --features image` under the plain shell loader | — | `accepted: 20 fields agree`; the M49 half still refuses the reordered `Cmd` | `image` added to `abi_fields`' feature list | `refused ... lumen-static-shell features is reload,truetype here and reload,truetype,image in the library` |
+| panic guard (`just panic-drive`, both strategies): site 10, `App::images`, armed by its click | ten `// SITE n` markers | site 10 at `fixtures/panic-app/src/lib.rs:335`, screen drawn, input refused, retried; **11** panics (expected 11) on each leg | neither guarded entry (the frame's, the agent pump's) asks `App::images` | the agent's present read the host's store unguarded: the app died (exit 101) at site 10, 10 of 11 panics logged |
+| resume (`just resume-drive`) | — | green on every leg: the window-side source still round-trips (gpu-resume 0 differing pixels) | — (unchanged gate, M47/T47.7) | — |
+
+**The swap's call site is gated live; the retry's is not.** The plan expected
+neither to be observable before M88/T88.2, because `ui.regionHash` cannot
+read the GPU (T84.3's note), but `just hot-window-drive`'s GPU legs already
+read the window with `xwd` (M83/T83.8), so `#pic` is read there and the
+swap's `Backend::invalidate_images` is the row above. The retry's call has
+no GPU leg: `just panic-drive` runs on the software backend, where the call
+is the no-op. Its reopen condition is a GPU leg of the panic drive.
+
+**Firmware (K4).** `just firmware-delta 18e2515 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** `.text` and
+**0** `.rodata` on all four (`firmware_interactive` 63,480 B). `App::images`
+is a provided method no firmware calls, and `App` is never a trait object;
+`docs/results-embedded.md`'s table does not move.

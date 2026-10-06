@@ -27,6 +27,11 @@ shaping = ["shell", "lumen-static-shell/shaping"]
 # `build.rs`) tells it apart; `shader` turns the shell's on as well.
 shader-core = ["shell", "lumen-static/shader"]
 shader = ["shader-core", "lumen-static-shell/shader"]
+# M84/T84.6 (review A25): the shell's `image` is NOT in the stamp -- the
+# application's store crosses only as `&dyn ImageSource`, a core trait the
+# source hash covers -- so a library built with it is ACCEPTED by a loader
+# built without (`just abi-stamp` asserts it).
+image = ["shell", "lumen-static-shell/image"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }

@@ -43,12 +43,35 @@ pub type Ret = lumen_static::retain::Incremental;
 pub use crate::program::DefaultInval;
 
 /// What a renderer reads from a frame: the list, how much of it is
-/// stale for a surface of a given age, and what it cost to build.
+/// stale for a surface of a given age, what it cost to build, and the
+/// application's images.
 pub trait FrameSource {
     fn list(&self) -> &DisplayList;
     fn take_damage_for_age(&mut self, age: u8) -> Damage;
     /// `(layout_ns, paint_ns)` of the last frame.
     fn timings(&self) -> (u64, u64);
+    /// **The application's image store**, which a renderer resolves each
+    /// `Cmd::Image` through before the window's own — M84/T84.6
+    /// (`docs/plan-images-in-motion.md`, `docs/results-images.md`).
+    ///
+    /// Asked on every present and never held: the window re-asks the
+    /// session each time, so a store the application wrote in `apply` or
+    /// `tick` is the one drawn, and a hot build's store reaches the
+    /// renderer across a swap (rule 3, `docs/plan-program.md`) — which the
+    /// window-side `Program::images`, read once, cannot do.
+    ///
+    /// | setting | side | read |
+    /// |---|---|---|
+    /// | `Program::images` | window | once, into the window's config, moved into each backend |
+    /// | [`App::images`] | session | every present, through this method |
+    ///
+    /// A [`Host`] answers [`App::images`], or `None` while it shows M36's
+    /// panic screen; a [`Local`] the same, the application asked inside its
+    /// frame's guarded entry first; the reload crate's `Hot` forwards; the
+    /// window's error-bar frame forwards to the session under it.
+    /// **Required**: a forwarding wrapper that inherited a `None` default
+    /// would blank every application image in silence.
+    fn images(&self) -> Option<&dyn lumen_static::ImageSource>;
 }
 
 impl<A: App, R: lumen_static::retain::Retention, I: lumen_static::invalidate::Invalidation> FrameSource
@@ -62,6 +85,16 @@ impl<A: App, R: lumen_static::retain::Retention, I: lumen_static::invalidate::In
     }
     fn timings(&self) -> (u64, u64) {
         Host::timings(self)
+    }
+    /// [`App::images`], unguarded — a `Host` is not a recovering session
+    /// — or `None` while a caught panic is being shown: the screen draws
+    /// no application image, and the application is not asked.
+    fn images(&self) -> Option<&dyn lumen_static::ImageSource> {
+        #[cfg(panic = "unwind")]
+        if self.failure().is_some() {
+            return None;
+        }
+        self.app.images()
     }
 }
 
@@ -123,9 +156,11 @@ impl Screen for Offscreen {
         let damage = src.take_damage_for_age(self.age);
         self.age = 1;
         let mut damaged_px = 0u64;
+        // The frame's store first, then the canvas's own (M84/T84.6).
+        let images = src.images();
         for area in damage.regions(viewport) {
             self.canvas.clear_within(area, page);
-            self.canvas.render_within(src.list(), area);
+            self.canvas.render_within_from(src.list(), area, images);
             damaged_px += ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64;
         }
         let (layout_ns, paint_ns) = src.timings();
@@ -646,6 +681,29 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> FrameSource for Local<
     fn timings(&self) -> (u64, u64) {
         self.host.timings()
     }
+    /// [`App::images`], or `None` while M36's screen is up — M84/T84.6.
+    ///
+    /// **The application was already asked under the host's guard**:
+    /// [`Session::frame`] (and the agent's pump) asks `App::images` inside
+    /// the frame's guarded entry, after the pump, so a panic there is
+    /// *recorded*: M36's screen goes up and `app.failure` reports the site
+    /// before any present asks again. This read cannot take the guard
+    /// itself — it is `&self`, because a renderer holds the list beside the
+    /// store, and the guard needs `&mut` — so it is caught instead, with
+    /// fallback `None`, and a failed session is not asked at all. A
+    /// `catch_unwind` here only answers; it records nothing, which is why
+    /// it is not the first line of defence (T80.5's and T84.3's finding).
+    fn images(&self) -> Option<&dyn lumen_static::ImageSource> {
+        if self.failed() {
+            return None;
+        }
+        #[cfg(panic = "unwind")]
+        if P::ON {
+            let host = &self.host;
+            return std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| host.app.images())).unwrap_or(None);
+        }
+        self.host.app.images()
+    }
 }
 
 impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P, I> {
@@ -719,6 +777,11 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
             // bindings the pump runs are what put that state on screen.
             h.tick(dt_ms);
             Self::pump_now(h, m);
+            // **The images the present will read, asked here first** —
+            // M84/T84.6: `App::images` is application code, and this is
+            // the frame's guarded entry, so a panic in it raises M36's
+            // screen instead of reaching the renderer's `&self` read.
+            let _ = h.app.images();
             // **Ask again, after the pump — M22/T22.4.** A press
             // dispatched during the pump starts an animation the first
             // tick could not have seen; a zero `dt` is a pure query.
@@ -1026,9 +1089,15 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> Live<'_, A, P, I> {
     /// application code there (M39/T39.5).
     fn pump_app(&mut self) -> (u64, bool) {
         let metrics = &mut *self.metrics;
-        let handled = run_guarded::<A, P, I, _>(self.host, |h| match metrics.as_mut() {
-            Some(m) => h.pump_with(m),
-            None => h.pump(),
+        let handled = run_guarded::<A, P, I, _>(self.host, |h| {
+            let handled = match metrics.as_mut() {
+                Some(m) => h.pump_with(m),
+                None => h.pump(),
+            };
+            // The present below reads `App::images`: asked here first,
+            // guarded, as `Local`'s frame does (M84/T84.6).
+            let _ = h.app.images();
+            handled
         })
         .unwrap_or(false);
         #[cfg(panic = "unwind")]

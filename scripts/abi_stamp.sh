@@ -61,6 +61,17 @@ cp target/release/stamp-host "$OUT/host-shader"
 "$OUT/host-shader-core" "$OUT/shader.so" refuse "lumen-static-shell features" shader
 "$OUT/host-shader-core" "$OUT/shader-core.so" accept
 "$OUT/host-shader" "$OUT/shader.so" accept
+
+# ---- M84/T84.6: the shell's `image` is not a stamp field -----------------
+#
+# docs/plan-images-in-motion.md, review A25: nothing `image` adds crosses
+# the seam -- the application's store crosses only as `&dyn ImageSource`,
+# a core trait under the source hash -- so a feature entry would refuse a
+# swap that is safe. The accept direction: a library built with it, under
+# the plain shell loader.
+cargo build --release -q -p stamp-lib --features image
+cp target/release/libstamp_lib.so "$OUT/image.so"
+"$OUT/host-shell" "$OUT/image.so" accept
 # The plain loader again, so the M49 checks below run the host they expect.
 cargo build --release -q -p stamp-host
 

@@ -2,8 +2,8 @@
 //! M36/T36.0 (`docs/plan-panic-recovery.md`).
 //!
 //! Every site in `panic_app::SITES` — seven at M36, the caret at M80/T80.5,
-//! `App::wake_in_ms` at M84/T84.3 — run through the unguarded headless
-//! binary.
+//! `App::wake_in_ms` at M84/T84.3, `App::images` at M84/T84.6 — run through
+//! the unguarded headless binary.
 //!
 //! The defect, shown, before anything recovers from it: the binary runs
 //! the unguarded `Host::pump`, arms one site, and must *die*, with the

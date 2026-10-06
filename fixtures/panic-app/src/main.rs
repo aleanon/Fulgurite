@@ -29,10 +29,12 @@ fn main() {
     for _ in 0..3 {
         h.tick(16.0);
         h.pump();
-        // What a window asks after each frame (M80/T80.5): site 8; and
-        // its next deadline (M84/T84.3): site 9.
+        // What a window asks after each frame (M80/T80.5): site 8; its
+        // next deadline (M84/T84.3): site 9; and the store the renderer
+        // reads (M84/T84.6): site 10.
         let _ = h.caret_rect();
         let _ = h.next_deadline_ms();
+        let _ = lumen_static::event::App::images(&h.app).is_some();
     }
     println!("no panic");
 }

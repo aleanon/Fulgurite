@@ -64,6 +64,7 @@ pub use wgpu;
 use std::collections::HashMap;
 
 use lumen_static::display::{Cmd, Color, DisplayList, ImageId, ImageSource, Renderer, Stops};
+use lumen_static_shell::image::{ImageChain, ImageOrigin};
 use lumen_static_shell::text::{FontStack, GlyphId};
 
 use atlas::Atlas;
@@ -325,14 +326,14 @@ pub struct Gpu {
     /// rather than inserted again, so an animating image costs one upload
     /// per change and never fills the atlas (K84d); a size change inserts
     /// again, and the orphaned space goes with the next reset.
-    image_frames: HashMap<ImageId, u32>,
+    image_frames: HashMap<ImageKey, u32>,
     /// The frame each id's own slot was **written or confirmed at during
     /// this draw** (P1). Every `write_texture` lands before the frame's
     /// one `submit`, so rewriting a slot a quad of this draw already
     /// samples would leave both quads showing the last upload; a second
     /// command at another frame takes [`ImageSlot::Alt`] instead. Cleared
     /// at the head of every build of the frame.
-    image_drawn: HashMap<ImageId, u32>,
+    image_drawn: HashMap<ImageKey, u32>,
     /// Rebuild [`Gpu::bind`] before the next draw — a texture or the
     /// gradient buffer was reallocated and the old group names a
     /// resource that no longer exists.
@@ -343,7 +344,9 @@ pub struct Gpu {
     /// filled with another — the bug that made the first window wrap
     /// "TALLY" to "TAL / LY".
     font: Option<FontStack>,
-    /// Where `Cmd::Image` is resolved to pixels.
+    /// Where `Cmd::Image` is resolved to pixels: **the window's store**,
+    /// consulted after the frame's own since M84/T84.6
+    /// ([`Gpu::draw_regions_from`]).
     images: Option<Box<dyn ImageSource>>,
     /// **A fault switch, debug builds only** — M47/T47.0 (R7-F7).
     /// `LUMEN_GPU_DROP_FIRST=n` makes the first `n` presents answer as if
@@ -427,15 +430,29 @@ pub struct AtlasStats {
     pub image_upload_bytes: u64,
 }
 
+/// **Whose id** — the store that answered it and the id — M84/T84.6
+/// (second review A14).
+///
+/// The application's store and the window's may both hold one id. While
+/// a session shows M36's panic screen its store is not handed over, so
+/// that id falls through to the window's: keyed on the id alone, the
+/// atlas would hit and draw the application's pixels for it. With the
+/// origin in the key it misses and asks the window's store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ImageKey {
+    origin: ImageOrigin,
+    id: ImageId,
+}
+
 /// Where an image sits in the image atlas — M84/T84.2.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ImageSlot {
-    /// The id's own slot, holding the frame `image_frames` records and
+    /// The key's own slot, holding the frame `image_frames` records and
     /// rewritten in place when a command asks for another of that size.
-    Current(ImageId),
-    /// A side slot for frame `.1` of an id this draw has already sampled
+    Current(ImageKey),
+    /// A side slot for frame `.1` of a key this draw has already sampled
     /// at another frame (P1): one list may paint one id twice.
-    Alt(ImageId, u32),
+    Alt(ImageKey, u32),
 }
 
 /// Which texture group 1 names for a pass — M22/T22.6.
@@ -907,6 +924,21 @@ impl Gpu {
         self.images.take()
     }
 
+    /// **Forget every cached image pixel** — M84/T84.6 (second review
+    /// A14): the image atlas is emptied and no slot is known to hold any
+    /// frame, so the next draw asks the stores again.
+    ///
+    /// The window calls it (through `Backend::invalidate_images`) on a
+    /// successful hot swap and on an M36 retry. This renderer lives on the
+    /// loader's side across a swap, and the swapped-in build boots a fresh
+    /// application store that can answer an unchanged `(id, frame)` with
+    /// new pixels; the atlas would hit and keep the old build's, since it
+    /// asks a store only when a command's frame moves
+    /// (`lumen_static::ImageSource::image`'s contract).
+    pub fn invalidate_images(&mut self) {
+        self.reset_images();
+    }
+
     /// Empty the image atlas and forget which frame any slot held: a slot
     /// that no longer exists cannot be rewritten in place.
     fn reset_images(&mut self) {
@@ -1003,11 +1035,28 @@ impl Gpu {
     /// encoding, which `tests/alloc.rs` subtracts as the empty frame's
     /// floor.
     pub fn draw_regions(&mut self, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
+        self.draw_regions_from(list, regions, page, None);
+    }
+
+    /// [`Gpu::draw_regions`], resolving each image through `app` — the
+    /// frame's store (`FrameSource::images`, the application's) — before
+    /// the window's ([`Gpu::set_images`]) — M84/T84.6
+    /// (`lumen_static_shell::image::ImageChain`). What the window's GPU
+    /// backend calls with the session's store on every present. A slot is
+    /// keyed on which store answered as well as the id, so one id in both
+    /// stores holds two slots and a fall-through never hits the other's.
+    pub fn draw_regions_from(
+        &mut self,
+        list: &DisplayList,
+        regions: &[Rect],
+        page: Option<Color>,
+        app: Option<&dyn ImageSource>,
+    ) {
         if regions.is_empty() {
             return;
         }
         let mut fr = std::mem::take(&mut self.frame);
-        self.draw_regions_into(&mut fr, list, regions, page);
+        self.draw_regions_into(&mut fr, list, regions, page, app);
         self.frame = fr;
     }
 
@@ -1060,7 +1109,14 @@ impl Gpu {
     }
 
     /// [`Gpu::draw_regions`], into the frame scratch it lends.
-    fn draw_regions_into(&mut self, fr: &mut FrameScratch, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
+    fn draw_regions_into(
+        &mut self,
+        fr: &mut FrameScratch,
+        list: &DisplayList,
+        regions: &[Rect],
+        page: Option<Color>,
+        app: Option<&dyn ImageSource>,
+    ) {
         // An atlas that fills is reset and the frame is built again from
         // an empty one; a glyph set that does not fit an empty glyph
         // atlas grows it and is built again, once per doubling, up to the
@@ -1108,7 +1164,7 @@ impl Gpu {
                         _pad: [0; 3],
                     });
                 }
-                outcome = self.collect(list, Some(r), fr);
+                outcome = self.collect(list, Some(r), fr, app);
                 if outcome.is_err() {
                     break;
                 }
@@ -1178,6 +1234,7 @@ impl Gpu {
         list: &DisplayList,
         damage: Option<Rect>,
         fr: &mut FrameScratch,
+        app: Option<&dyn ImageSource>,
     ) -> Result<(), Overflow> {
         let FrameScratch {
             quads: out,
@@ -1446,8 +1503,11 @@ impl Gpu {
                 }
                 Cmd::Image { rect, id, tint, frame } => {
                     let Some(r) = clipped(*rect, clip) else { continue };
-                    let Some(src) = images.as_ref() else { continue };
-                    match self.image_slot(src.as_ref(), *id, *frame) {
+                    // The frame's store first, then the window's
+                    // (M84/T84.6); the slot is keyed on which answered.
+                    let chain = ImageChain { app, window: images.as_deref() };
+                    let Some((origin, px)) = chain.resolve(*id, *frame) else { continue };
+                    match self.image_slot(ImageKey { origin, id: *id }, *frame, px) {
                         Ok(Some(uv)) => out.push(Quad {
                             rect: *rect,
                             clip: r,
@@ -1652,7 +1712,10 @@ impl Gpu {
     }
 
     /// The atlas uv for frame `frame` of an image, uploading it on a miss
-    /// — M84/T84.2.
+    /// — M84/T84.2. The pixels are the store's answer, resolved by the
+    /// caller through the frame's [`ImageChain`] (M84/T84.6), which says
+    /// which store answered: that is the key's origin. Resolving borrows a
+    /// slice and copies nothing, so asking on a hit costs a map lookup.
     ///
     /// An id's own slot ([`ImageSlot::Current`]) holds one frame
     /// (`image_frames`). A command at that frame samples it; at another
@@ -1665,9 +1728,9 @@ impl Gpu {
     /// per-key eviction.
     fn image_slot(
         &mut self,
-        src: &dyn ImageSource,
-        id: ImageId,
+        id: ImageKey,
         frame: u32,
+        (iw, ih, px): (u32, u32, &[u8]),
     ) -> Result<Option<[f32; 4]>, Overflow> {
         let key = match self.image_drawn.get(&id) {
             Some(&f) if f != frame => ImageSlot::Alt(id, frame),
@@ -1683,7 +1746,6 @@ impl Gpu {
             }
             return Ok(Some(slot.uv(self.image_atlas.size())));
         }
-        let Some((iw, ih, px)) = src.image(id, frame) else { return Ok(None) };
         if iw == 0 || ih == 0 || px.len() < iw as usize * ih as usize * 4 {
             return Ok(None);
         }

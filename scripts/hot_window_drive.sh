@@ -15,7 +15,10 @@
 # with `shaping`, which `--expect-features` names:
 #   hot         the drive above, then step 9: the copy's program is edited
 #               to `.shaping(Shaping::Complex)` and #hebrew's pixels must be
-#               the headless Complex render's after the swap;
+#               the headless Complex render's after the swap. Since
+#               M84/T84.6 it also edits `#pic`'s colour in the application's
+#               store (`App::images`): the swapped-in build's pixels must be
+#               on screen, and the failed build's bar must leave them be;
 #   static      the fresh launch of the edited source, with no reload: the
 #               same pixels, which `Win::new` taking `Session::shaping`
 #               before its first backend is what gives;

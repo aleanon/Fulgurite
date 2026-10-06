@@ -293,6 +293,12 @@ required-features = ["truetype"]
 name = "image_wake"
 required-features = ["truetype"]
 
+# M84/T84.6: the application's store through `FrameSource::images` --
+# `Offscreen` and `Local` live in `session`, behind `truetype`.
+[[test]]
+name = "app_images"
+required-features = ["truetype"]
+
 # M84/T84.1: the decoders exist only under `image`; `just test` runs this
 # with the feature named.
 [[test]]

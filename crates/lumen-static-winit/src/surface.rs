@@ -151,9 +151,11 @@ impl Surface {
         let t = Instant::now();
         let mut damaged_px = 0u64;
         let mut rendered = false;
+        // The frame's store first, then the canvas's own (M84/T84.6).
+        let images = host.images();
         for area in damage.regions(viewport) {
             canvas.clear_within(area, page);
-            canvas.render_within(host.list(), area);
+            canvas.render_within_from(host.list(), area, images);
             damaged_px +=
                 ((area[2] - area[0]) as f64 * (area[3] - area[1]) as f64).max(0.0) as u64;
             rendered = true;

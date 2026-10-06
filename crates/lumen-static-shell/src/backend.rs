@@ -185,6 +185,23 @@ pub trait Backend {
     /// holds is the defect.
     fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>>;
 
+    /// **Forget every image pixel this backend cached** — M84/T84.6
+    /// (`docs/plan-images-in-motion.md`, second review A14).
+    ///
+    /// The window calls it on a successful hot swap and when M36's screen
+    /// is retried: the backend lives on the loader's side across a swap,
+    /// and the swapped-in build boots a fresh application store
+    /// (`App::images`, read through `FrameSource::images`) that may answer
+    /// an unchanged `(id, frame)` with new pixels. A backend that caches by
+    /// that pair — the GPU atlas — would keep the old build's pixels
+    /// without this; one that resolves every command afresh — the software
+    /// canvas — writes the no-op itself.
+    ///
+    /// **Required**, for the reason every method here is: a forwarding
+    /// wrapper that inherited a no-op would keep the stale pixels and
+    /// compile.
+    fn invalidate_images(&mut self);
+
     /// **Rasterise text with `font` from the next frame on** — M81/T81.4
     /// (`docs/plan-shaped-paint.md`, "Choosing is a `Program` setting").
     /// The window calls it after a swap whose session answers a different

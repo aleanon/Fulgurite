@@ -1398,6 +1398,32 @@ remains** — which is why §10 Step 1 is the kill criterion.
    ten frames a second and a paused one presents none. The whole-tree mark
    a reporting tick costs is accepted and priced (K84c, not fired).
    Numbers in `docs/results-images.md` T84.3.
+
+   **The application's images reach the renderer through the frame —
+   DECIDED, M84/T84.6, 2026-10-06** (`docs/plan-images-in-motion.md`).
+   The application owns a mutable store (`App::images`, provided as
+   `None`; `#[app(images = f)]`), and the renderer borrows it on every
+   present through `FrameSource::images`, which is required: `Host`
+   answers it, `Local` the same (asked inside its frame's guarded entry
+   first, so a panic raises M36's screen, and `None` while that screen is
+   up), the reload crate's `Hot` forwards, and the error bar's frame
+   forwards to the session under it. Every renderer resolves a command
+   through the frame's store and then the window's (`ImageChain`), so the
+   application's answer wins. No lock and no `Arc`: `apply`/`tick` write
+   with `&mut` and the present reads with `&`, on one thread. Across a hot
+   swap the loader never holds the store, so a new build's assets arrive;
+   on the GPU the atlas is keyed on which store answered and the window
+   calls `Backend::invalidate_images` on a swap and an M36 retry. Where
+   each setting is read:
+
+   | setting | side | read |
+   |---|---|---|
+   | `Program::images` | window | once, into `Config`, moved into each backend (M47/T47.7) |
+   | `App::images` | session | every present, through `FrameSource::images` |
+   | `App::wake_in_ms` | session | every frame, through `Session::next_deadline_ms`, guarded |
+   | `ImageSource::image(id, frame)` | either | per command at render |
+
+   Numbers in `docs/results-images.md` T84.6.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

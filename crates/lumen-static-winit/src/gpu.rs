@@ -67,6 +67,13 @@ impl Backend for GpuBackend {
         self.gpu.take_images()
     }
 
+    /// `Gpu::invalidate_images`: the atlas caches by `(id, frame)`, and a
+    /// swapped-in build's store may answer an unchanged pair with new
+    /// pixels (M84/T84.6, second review A14).
+    fn invalidate_images(&mut self) {
+        self.gpu.invalidate_images();
+    }
+
     fn set_font(&mut self, font: FontStack) {
         // `Gpu::set_font` resets the glyph atlas: ids are per stack.
         self.gpu.set_font(font);
@@ -126,7 +133,8 @@ impl Backend for GpuBackend {
         let render_ns = if regions.is_empty() {
             0
         } else {
-            self.gpu.draw_regions(host.list(), &regions, Some(page));
+            // The session's store first, then the window's (M84/T84.6).
+            self.gpu.draw_regions_from(host.list(), &regions, Some(page), host.images());
             t.elapsed().as_nanos() as u64
         };
 
