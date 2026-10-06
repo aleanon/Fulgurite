@@ -124,8 +124,31 @@ const ROWS: &[Row] = &[
     row("Labelled", "Labelled", Role::Label, false),
     row("Avatar", "Avatar", Role::Image, false),
     row("Icon", "Icon", Role::Image, false),
+    // M83/T83.6: a picture a shader draws, named by its author. Only in a
+    // build with the widgets' `shader`; see FEATURE_GATED.
+    #[cfg(feature = "shader")]
+    row("ShaderView", "ShaderView", Role::Image, true),
 ];
 // ANCHOR_END: rows
+
+/// **`impl Node for` names that exist only under a feature** — M83/T83.6
+/// (`docs/plan-gpu-extension.md`, second review M4). [`node_impls`] reads
+/// source text and cannot see a `cfg`, so a gated widget's impl is counted
+/// in every build while its row exists only in the build that has it. A
+/// name here is excused from `missing` while its feature is off, and must
+/// have a row when it is on: `just test` runs this file with `a11y` alone
+/// and with `a11y,shader`, so each direction is checked.
+const FEATURE_GATED: &[(&str, &str)] = &[("ShaderView", "shader")];
+
+/// Whether this build has `feature` — every name [`FEATURE_GATED`] uses,
+/// and nothing else, so a misspelt feature is a failure rather than an
+/// excuse that never expires.
+fn feature_on(feature: &str) -> bool {
+    match feature {
+        "shader" => cfg!(feature = "shader"),
+        other => panic!("FEATURE_GATED names a feature this test does not know: {other:?}"),
+    }
+}
 
 /// The kinds that report `GenericContainer` on purpose: a box with a
 /// fixed size, a gap, a picker's cell pad (its trigger carries the
@@ -194,7 +217,11 @@ fn every_node_impl_has_a_row() {
     let impls = node_impls();
     let covered: BTreeSet<String> = ROWS.iter().map(|r| r.impl_name.to_string()).collect();
     println!("rows checked: {} / Node impls: {} ({} covered)", ROWS.len(), impls.len(), covered.len());
-    let missing: Vec<_> = impls.difference(&covered).collect();
+    // A gated impl whose feature is off has no row in this build (M83/T83.6).
+    let excused: Vec<&str> =
+        FEATURE_GATED.iter().filter(|(_, f)| !feature_on(f)).map(|(n, _)| *n).collect();
+    println!("feature-gated impls excused in this build: {excused:?} (of {:?})", FEATURE_GATED);
+    let missing: Vec<_> = impls.difference(&covered).filter(|n| !excused.contains(&n.as_str())).collect();
     let stale: Vec<_> = covered.difference(&impls).collect();
     assert!(impls.len() > 30, "setup: only {} `impl Node for` found in src/ -- the scan is broken", impls.len());
     assert!(missing.is_empty(), "Node impls with no row in the table: {missing:?}");

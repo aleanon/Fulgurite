@@ -150,7 +150,9 @@ The four properties that produce the performance, in rough order of importance:
    a registered shader** as a pass split with `LoadOp::Load`, bounded by
    a scissor of rect ∩ clips ∩ damage region, and compiles the table
    inside a validation error scope, so invalid WGSL draws the fallback
-   instead of panicking (`docs/results-shader.md` T83.5). The uniforms are hashed by
+   instead of panicking (`docs/results-shader.md` T83.5). The widget that
+   paints one is `ShaderView` (M83/T83.6, the widgets' `shader`), whose
+   uniform writes mark only its own node (`docs/results-shader.md` T83.6). The uniforms are hashed by
    content, never by offset. With the feature off neither the variants nor
    `Painter::shader`/`shader_end` exist, and every arm outside the core is
    `cfg(lumen_shader)`, which the core's `links` build script hands its

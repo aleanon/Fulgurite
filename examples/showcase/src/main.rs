@@ -1068,7 +1068,7 @@ fn main() {
 /// window's frame. The boot captures `entry` and `open`: showcase opens
 /// on an entry read from argv, which is why a boot may capture.
 fn program(entry: usize, open: bool) -> Program<Show> {
-    application(move || build(entry, open))
+    let p = application(move || build(entry, open))
         .size(W, H)
         .page(palette().page)
         .palette(palette())
@@ -1080,7 +1080,11 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         // height or a one-line ellipsis on the demo's label — style fields
         // restyled at run time, which is what `Program::style_by` is for.
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
-        .shaping(SHAPING)
+        .shaping(SHAPING);
+    // M83/T83.6: the `ShaderView` demo's shader, with the `shader` feature.
+    #[cfg(feature = "shader")]
+    let p = p.shaders(&catalog::SHADERS);
+    p
 }
 
 /// **The fill table** — M82/T82.3 (`docs/plan-paint-vocabulary.md`).
@@ -1647,7 +1651,12 @@ mod tests {
     #[test]
     fn the_lss_mirror_is_the_hand_written_sheet() {
         const LSS: &[StyleRule] = lumen_static::include_lss!(Screen, "../showcase.lss");
-        let hand = stylesheet();
+        // M83/T83.6: the `ShaderView` demo's kind rule exists only with the
+        // `shader` feature, and the mirror is the default build's sheet.
+        let hand: Vec<StyleRule> = stylesheet()
+            .into_iter()
+            .filter(|r| !(cfg!(feature = "shader") && r.selector == Selector::Kind("DShaderView")))
+            .collect();
         println!("showcase.lss: {} rules; stylesheet(): {} rules", LSS.len(), hand.len());
         let differ: Vec<String> = LSS
             .iter()
@@ -2555,6 +2564,12 @@ mod tests {
                     | Cmd::RoundedRect { rect, .. }
                     | Cmd::Text { rect, .. } => rect[0] > sx && rect[1] > sy,
                     Cmd::Line { a, .. } => a.x > sx && a.y > sy,
+                    // M83/T83.6: the `ShaderView` demo is one bracket (its
+                    // fallback a gradient, which this count does not read).
+                    // The showcase's `shader` turns the core's on, so the
+                    // variant exists whenever this arm is compiled.
+                    #[cfg(feature = "shader")]
+                    Cmd::Shader { rect, .. } => rect[0] > sx && rect[1] > sy,
                     _ => false,
                 })
                 .count();
@@ -2631,6 +2646,9 @@ mod tests {
                     .filter(|c| match c {
                         Cmd::Rect { rect, .. } | Cmd::RoundedRect { rect, .. } => rect[0] > sx && rect[1] > sy,
                         Cmd::Line { a, .. } => a.x > sx && a.y > sy,
+                        // A gradient is a shape (M83/T83.6: the
+                        // `ShaderView` demo's fallback is one).
+                        Cmd::Gradient { rect, .. } => rect[0] > sx && rect[1] > sy,
                         _ => false,
                     })
                     .count();

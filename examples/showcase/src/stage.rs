@@ -121,6 +121,16 @@ pub struct DVectorText {
     pub c: VectorText,
 }
 
+/// M83/T83.6: a box a custom shader draws -- only with the showcase's
+/// `shader` feature. The default software backend shows its fallback.
+#[cfg(feature = "shader")]
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DShaderView {
+    #[widget_id("d_shaderview_a")]
+    pub a: lumen_static_widgets::ShaderView<16>,
+}
+
 /// M27/T27.11's four. Each is a trigger and a popup of cells, and the
 /// only thing that differs is what a cell says — which is why they are
 /// one type with a `KIND` and four demos rather than four widgets.
@@ -757,18 +767,20 @@ pub struct DPieChart {
 /// Declares the enum and, beside it, the kind of every variant's
 /// struct — so the list the stylesheet walks ([`DEMO_KINDS`]) cannot
 /// drift from the enum: they are one declaration.
+/// A variant may carry `#[cfg(..)]` (M83/T83.6's `ShaderView`, behind the
+/// `shader` feature), which applies to its kind in [`DEMO_KINDS`] too.
 macro_rules! demos {
-    ($($v:ident($t:ident)),* $(,)?) => {
+    ($($(#[$m:meta])* $v:ident($t:ident)),* $(,)?) => {
         #[allow(clippy::large_enum_variant)]
         #[derive(StaticTree)]
         pub enum Demo {
-            $($v($t)),*
+            $($(#[$m])* $v($t)),*
         }
 
         /// Every demo struct's kind, in `Demo`'s order — M56. The sheet
         /// sets each to `Shrink` so the stage can centre what a demo
         /// actually draws (`stylesheet()` says why it has to).
-        pub const DEMO_KINDS: &[&str] = &[$(<$t as lumen_static::widget::Widget>::KIND),*];
+        pub const DEMO_KINDS: &[&str] = &[$($(#[$m])* <$t as lumen_static::widget::Widget>::KIND),*];
     };
 }
 
@@ -822,6 +834,8 @@ demos! {
     RichTextEditor(DRichTextEditor),
     PaintBox(DPaintBox),
     VectorText(DVectorText),
+    #[cfg(feature = "shader")]
+    ShaderView(DShaderView),
     ColorPicker(DColorPicker),
     DatePicker(DDatePicker),
     TimePicker(DTimePicker),
@@ -842,5 +856,5 @@ impl Default for Demo {
 // The branch's 52 (M56/M57), main's TextArea and ScrollView (M44,
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
-// M82/T82.8's VectorText.
-pub const DEMOS: usize = 57;
+// M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature.
+pub const DEMOS: usize = 57 + cfg!(feature = "shader") as usize;

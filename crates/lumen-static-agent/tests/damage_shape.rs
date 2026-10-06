@@ -422,3 +422,243 @@ fn a_moved_cut_does_not_report_the_next_cut_label() {
         "the second cut label reported a change it did not make -- a run's offset entered the hash: {wids:?}"
     );
 }
+
+// ---- M83/T83.6: `ShaderView`'s uniforms ----------------------------------
+
+/// **A uniform write damages its own shader and nothing else** — M83/T83.6
+/// (`docs/plan-gpu-extension.md`). Two `ShaderView`s in a container one
+/// level down (a bound node hung off the root is laid out whenever the
+/// root is, `bind_marks.rs`'s trap), each 32 B of uniforms, through a real
+/// `Host` under the `Boundaries` default and the agent's journal, as the
+/// window runs them. Only with the agent's `shader` feature (its manifest
+/// says why it is not on the dev-dependency).
+#[cfg(feature = "shader")]
+mod shader {
+    use lumen_static::display::ShaderId;
+    use lumen_static::invalidate::{Boundaries, Invalidation};
+    use lumen_static::prelude::*;
+    use lumen_static::retain::{Damage, Incremental};
+    use lumen_static::{Cmd, DisplayList, Widget};
+    use lumen_static_agent::{Agent, FrameTiming, TreeMut, TreeRef};
+    use lumen_static_shell::Host;
+    use lumen_static_widgets::ShaderView;
+    use serde_json::{json, Value};
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 8.0)]
+    struct Pair {
+        #[widget_id("first")]
+        first: ShaderView<32>,
+        #[widget_id("second")]
+        second: ShaderView<32>,
+    }
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct Ui {
+        pair: Pair,
+    }
+
+    #[derive(Default)]
+    struct Bytes {
+        a: [u8; 32],
+        b: [u8; 32],
+    }
+
+    /// The value form of `#[bind]`: each view's bytes are state, written
+    /// through `ShaderView`'s `BindValue` impl, whose answer marks it.
+    #[derive(DeriveApp, Default)]
+    struct Shaded {
+        #[tree]
+        ui: Ui,
+        #[state]
+        #[bind(ui.pair.first, a)]
+        #[bind(ui.pair.second, b)]
+        bytes: Bytes,
+    }
+
+    type H = Host<Shaded, Incremental, Boundaries<256>>;
+
+    fn colour(r: u8, g: u8, b: u8) -> [u8; 32] {
+        let mut u = [0; 32];
+        u[..4].copy_from_slice(&[r, g, b, 255]);
+        u
+    }
+
+    fn app() -> Shaded {
+        let mut s = Shaded::default();
+        s.ui.pair.first = ShaderView::new(ShaderId(0), ShaderView::<32>::solid).sized(120.0, 40.0);
+        s.ui.pair.second = ShaderView::new(ShaderId(0), ShaderView::<32>::solid).sized(120.0, 40.0);
+        s.bytes.a = colour(200, 30, 40);
+        s.bytes.b = colour(30, 60, 220);
+        s
+    }
+
+    fn index(wid: &str) -> usize {
+        lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, wid).expect(wid)
+    }
+
+    fn rect<I: Invalidation>(h: &Host<Shaded, Incremental, I>, wid: &str) -> [f32; 4] {
+        let s = h.states[index(wid)];
+        [s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h]
+    }
+
+    fn observe<I: Invalidation>(h: &mut Host<Shaded, Incremental, I>, agent: &mut Agent) {
+        let mut t = TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
+        agent.frame_done(&mut t, FrameTiming::passes(1, 1));
+    }
+
+    fn changed<I: Invalidation>(h: &Host<Shaded, Incremental, I>, agent: &Agent) -> Vec<String> {
+        let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+        let r: Value = agent.dispatch(&tree, &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": {} }));
+        r["result"]["changed"]
+            .as_array()
+            .expect("changed")
+            .iter()
+            .map(|c| c["wid"].as_str().map(str::to_owned).unwrap_or_else(|| format!("#{}", c["index"])))
+            .collect()
+    }
+
+    /// Each bracket in paint order: its rect, its uniform length, and the
+    /// first four bytes (the colour the fallback fills with).
+    fn brackets(list: &DisplayList) -> Vec<([f32; 4], u32, [u8; 4])> {
+        list.cmds
+            .iter()
+            .filter_map(|c| match c {
+                Cmd::Shader { rect, uniforms, .. } => {
+                    let u = list.uniforms_of(*uniforms);
+                    Some((*rect, uniforms.1, [u[0], u[1], u[2], u[3]]))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn overlaps(a: [f32; 4], b: [f32; 4]) -> bool {
+        a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+    }
+
+    fn settled() -> (H, Agent) {
+        let mut h: H = Host::new(app(), 320, 200);
+        let mut agent = Agent::new();
+        for _ in 0..2 {
+            h.pump();
+            observe(&mut h, &mut agent);
+        }
+        (h, agent)
+    }
+
+    #[test]
+    fn a_uniform_change_damages_only_its_shader() {
+        let (mut h, mut agent) = settled();
+        let (first, second) = (rect(&h, "first"), rect(&h, "second"));
+        assert!(!overlaps(first, second) && first[2] > first[0], "setup: the views overlap or are empty: {first:?} {second:?}");
+        assert_eq!(brackets(&h.list).len(), 2, "setup: two brackets in the host's list");
+
+        h.app.bytes.a = colour(20, 160, 60);
+        h.pump();
+        observe(&mut h, &mut agent);
+
+        let wids = changed(&h, &agent);
+        let painted = brackets(&h.list);
+        let regions: Vec<[f32; 4]> = match h.damage() {
+            Damage::Regions(r) => r.as_slice().to_vec(),
+            Damage::All => vec![[0.0, 0.0, 320.0, 200.0]],
+            Damage::None => vec![],
+        };
+        let marks = h.last_marks();
+        println!(
+            "first {first:?} second {second:?}; marks {marks:?}; damage {regions:?}; \
+             brackets {painted:?}; changed {wids:?} (bound: first reported, second not)"
+        );
+        assert_eq!(
+            painted[0].2,
+            [20, 160, 60, 255],
+            "the render is stale: the host's list still carries the first view's old bytes -- \
+             the write did not mark its node, so the frame was skipped"
+        );
+        assert!(regions.iter().any(|r| overlaps(*r, first)), "setup: the first view's write was not damaged: {regions:?}");
+        assert!(!regions.iter().any(|r| overlaps(*r, second)), "the second view was damaged by the first's uniforms: {regions:?}");
+        assert!(wids.contains(&"first".to_string()), "setup: the first view's change was not reported: {wids:?}");
+        assert!(!wids.contains(&"second".to_string()), "the second view reported a change it did not make: {wids:?}");
+    }
+
+    /// **What a `ShaderView` costs, and what it does not** — M83/T83.6. Its
+    /// id and bytes live in the widget, so `Style` and `NodeState` keep
+    /// the parent commit's sizes in a build with `shader` on (the core's
+    /// `tests/cursor.rs` and `tests/focus.rs` hold them in the default
+    /// build). The widget's own size is printed for
+    /// `docs/results-shader.md`; this build has `a11y` (the agent's), so
+    /// it includes the label.
+    #[test]
+    fn a_shader_view_grows_no_per_node_table() {
+        let (view, style, state) = (
+            core::mem::size_of::<ShaderView<16>>(),
+            core::mem::size_of::<lumen_static::Style>(),
+            core::mem::size_of::<lumen_static::NodeState>(),
+        );
+        println!("size_of: ShaderView<16> {view} B (a11y on); Style {style} B (bound 84); NodeState {state} B (bound 84)");
+        assert_eq!(style, 84, "Style changed size in a shader build");
+        assert_eq!(state, 84, "NodeState changed size in a shader build");
+    }
+
+    /// Two views with no bindings, written directly: the first's uniform
+    /// block grows from 16 to 32 bytes, as switching to a shader with a
+    /// 32 B table size does, so every bracket painted after it moves in
+    /// the list's shared uniform buffer. T83.3's shift, end to end through
+    /// the journal: the second view's bytes did not change, so it must not
+    /// report.
+    #[derive(DeriveApp, Default)]
+    struct Plain {
+        #[tree]
+        ui: Ui,
+    }
+
+    #[test]
+    fn a_uniform_shift_does_not_report_later_shaders() {
+        let mut p = Plain::default();
+        p.ui.pair.first = ShaderView::new(ShaderId(0), ShaderView::<32>::solid).sized(120.0, 40.0);
+        p.ui.pair.first.set_uniforms(&colour(200, 30, 40)[..16]);
+        p.ui.pair.second = ShaderView::new(ShaderId(0), ShaderView::<32>::solid).sized(120.0, 40.0);
+        p.ui.pair.second.set_uniforms(&colour(30, 60, 220));
+        let mut h: Host<Plain, Incremental, Boundaries<256>> = Host::new(p, 320, 200);
+        let mut agent = Agent::new();
+        let observe = |h: &mut Host<Plain, Incremental, Boundaries<256>>, agent: &mut Agent| {
+            let mut t = TreeMut::of_root(h.app.tree_mut(), &h.styles, &h.states);
+            agent.frame_done(&mut t, FrameTiming::passes(1, 1));
+        };
+        for _ in 0..2 {
+            h.pump();
+            observe(&mut h, &mut agent);
+        }
+        let offset = |list: &DisplayList| -> Vec<u32> {
+            list.cmds.iter().filter_map(|c| if let Cmd::Shader { uniforms, .. } = c { Some(uniforms.0) } else { None }).collect()
+        };
+        let before = offset(&h.list);
+
+        assert!(h.app.ui.pair.first.set_shader(ShaderId(1), 32), "setup: the switch changed nothing");
+        h.invalidate_all();
+        h.pump();
+        observe(&mut h, &mut agent);
+
+        let after = offset(&h.list);
+        let tree = TreeRef::of_root(&h.app.ui, &h.styles, &h.states);
+        let r: Value = agent.dispatch(&tree, &json!({ "jsonrpc": "2.0", "id": 1, "method": "ui.lastChange", "params": {} }));
+        let wids: Vec<String> = r["result"]["changed"]
+            .as_array()
+            .expect("changed")
+            .iter()
+            .map(|c| c["wid"].as_str().map(str::to_owned).unwrap_or_else(|| format!("#{}", c["index"])))
+            .collect();
+        println!(
+            "uniform offsets before {before:?} after {after:?}; first len {}; changed {wids:?} (bound: second absent)",
+            h.app.ui.pair.first.len()
+        );
+        assert_ne!(before[1], after[1], "setup: the second bracket's offset did not move, so this case cannot fail");
+        assert!(wids.contains(&"first".to_string()), "setup: the first view's switch was not reported: {wids:?}");
+        assert!(
+            !wids.contains(&"second".to_string()),
+            "the second view reported a change it did not make -- a bracket's uniform offset entered the hash: {wids:?}"
+        );
+    }
+}

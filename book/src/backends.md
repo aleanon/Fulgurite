@@ -122,6 +122,37 @@ needs a restart (`docs/plan-gpu-extension.md`). `just resume-drive`'s
 `custom-resume` leg counts the factory's backends across a suspend and
 resume, and checks the second one kept the wallpaper.
 
+## A custom shader: `ShaderView`
+
+A program registers WGSL as data — `Program::shaders`, a table of
+`ShaderDesc`s, each a name, a fragment entry `fs_main` and the size of its
+uniform block — and a `ShaderView` names one by its index. Everything is
+behind default-off `shader` features (the widgets', the shell's, the
+window's), so a build that does not ask links none of it.
+
+The widget never draws pixels of its own. Its `paint` is a bracket: the
+shader over its box with its uniform bytes, its *fallback* drawn with
+ordinary `Painter` calls, then the end.
+
+```text
+{{#include ../../crates/lumen-static-widgets/src/shader.rs:bracket}}
+```
+
+The GPU backend runs the shader and skips the fallback. Everything that
+cannot — the software canvas, SVG, `--shot`, every headless host, or a
+GPU handed an unknown id, WGSL that did not compile, or the wrong number of
+bytes — draws the fallback clipped to the box. One display list serves
+both, so the change journal and damage do not depend on the backend. The
+showcase's `shader` feature adds a `ShaderView` demo whose fallback is the
+shader's own blend as a gradient, so the default software window shows
+what the GPU would.
+
+`set_uniforms` compares before it stores and says whether anything
+changed, as every binding target does, so `#[bind(ui.view, bytes)]` marks
+the view and nothing else; the uniforms are hashed by content, never by
+their place in the list, so a view whose block grew does not report the
+views after it (`docs/results-shader.md` T83.6).
+
 ## What the GPU backend does and does not do
 
 It keeps a persistent target texture that damage is scissored into, so a

@@ -139,6 +139,10 @@ pub mod surface;
 // `alloc` with `RichText`, and the leaf firmware links none of it.
 #[cfg(feature = "alloc")]
 pub mod vector;
+// M83/T83.6: a node a custom shader draws, behind `shader` (owner decision
+// D3), which turns the core's bracket on.
+#[cfg(feature = "shader")]
+pub mod shader;
 mod trim;
 mod veil;
 
@@ -183,6 +187,8 @@ pub use split::{Collapsible, PaneGrid, SplitPane, VSplitPane, MAX_SPLIT_NODES};
 pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
 #[cfg(feature = "alloc")]
 pub use vector::VectorText;
+#[cfg(feature = "shader")]
+pub use shader::ShaderView;
 pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 
@@ -211,4 +217,6 @@ pub mod prelude {
         NumberInput, OptionList, PaintBox, Pagination, PickList, RangeSlider, RichText,
         RichTextEditor, SearchField, TimePicker, Tree, VectorText,
     };
+    #[cfg(feature = "shader")]
+    pub use crate::ShaderView;
 }

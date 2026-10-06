@@ -132,6 +132,48 @@ const DOC: &str = "# Markdown\n\nHeadings, **bold**, `code` and bullets \
 are the subset a user interface actually renders.\n\n- a label\n- an \
 identifier\n- a list";
 
+/// **The showcase's shader table** -- M83/T83.6, behind its `shader`
+/// feature. One entry: a vertical blend between two colours packed one per
+/// `u32` (R, G, B, A in byte order, which `unpack4x8unorm` reads), the
+/// 16-byte block below. Registered by `program()` through
+/// `Program::shaders`; the id a `ShaderView` names is its index here.
+#[cfg(feature = "shader")]
+pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] = [lumen_static_shell::shader::ShaderDesc::new(
+    "blend",
+    "struct U { top: u32, bottom: u32, _pad: vec2<u32> }
+     @group(0) @binding(1) var<uniform> u: U;
+     @fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> {
+         return mix(unpack4x8unorm(u.top), unpack4x8unorm(u.bottom), clamp(in.local.y, 0.0, 1.0));
+     }",
+    16,
+)];
+
+/// The `ShaderView` demo: `SHADERS[0]` from the stage's accent to its
+/// surface, 320 x 120. Its fallback is the same blend as a linear gradient,
+/// so the software backend shows what the GPU would.
+#[cfg(feature = "shader")]
+fn shader_view() -> lumen_static_widgets::ShaderView<16> {
+    let (top, bottom) = (Color(0x25, 0x63, 0xeb, 0xff), Color(0x93, 0xc5, 0xfd, 0xff));
+    let mut v = lumen_static_widgets::ShaderView::new(lumen_static::display::ShaderId(0), blend).sized(320.0, 120.0);
+    v.set_uniforms(&[top.0, top.1, top.2, top.3, bottom.0, bottom.1, bottom.2, bottom.3, 0, 0, 0, 0, 0, 0, 0, 0]);
+    v.set_label("A blue blend");
+    v
+}
+
+/// The demo's fallback: `SHADERS[0]`'s blend as a vertical linear gradient
+/// from the block's two packed colours.
+#[cfg(feature = "shader")]
+fn blend(out: &mut dyn lumen_static::Painter, r: [f32; 4], u: &[u8]) {
+    if let [r0, g0, b0, a0, r1, g1, b1, a1, ..] = *u {
+        out.gradient(
+            r,
+            lumen_static::display::Stops::two(Color(r0, g0, b0, a0), Color(r1, g1, b1, a1)),
+            lumen_static::display::GradShape::Linear { angle: core::f32::consts::FRAC_PI_2 },
+            0.0,
+        );
+    }
+}
+
 /// The `PaintBox` demo's callback: a `fn`, which is the whole point. A
 /// sparkline of lines and dots, then (M82/T82.5) a star and an arc drawn
 /// as paths over it.
@@ -478,6 +520,13 @@ pub static CATALOG: &[Entry] = &[
             c: VectorText::new("Vertical", 90.0) })),
         none),
     // ANCHOR_END: vectortext
+    // M83/T83.6: with the `shader` feature. The GPU runs `SHADERS[0]`; the
+    // default software backend, `--shot` and every test draw the fallback.
+    #[cfg(feature = "shader")]
+    entry!("Text", "ShaderView", "A box a custom shader draws; its fallback without one.",
+        false,
+        |s| on(s, Demo::ShaderView(DShaderView { a: shader_view() })),
+        none),
     entry!("Input", "Button", "Three of them, all wired to one counter.",
         false,
         |s| on(s, Demo::Button(DButton { a: btn("Primary"), b: btn("Default"), c: btn("Ghost") })),

@@ -166,6 +166,12 @@ pub struct Ui {
     // contrast harness reads as text.
     #[widget_id("VectorText")]
     pub vector: VectorText<String>,
+    // M83/T83.6: a node a custom shader draws, only in a build with this
+    // crate's `shader`. A headless frame has no shader table, so it paints
+    // its fallback: a solid fill from its first four uniform bytes.
+    #[cfg(feature = "shader")]
+    #[widget_id("ShaderView")]
+    pub shader: lumen_static_widgets::ShaderView<16>,
 }
 
 fn bind_row(l: &mut Label<String>, i: usize) {
@@ -248,6 +254,12 @@ pub fn build() -> Ui {
     ui.selectable = Selectable::new("selectable text".into());
     ui.selectable.select_all();
     ui.vector = VectorText::new("turned".into(), 30.0);
+    #[cfg(feature = "shader")]
+    {
+        ui.shader = lumen_static_widgets::ShaderView::default().sized(16.0, 16.0);
+        ui.shader.set_uniforms(&[0x25, 0x63, 0xeb, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        ui.shader.set_label("A blue plasma");
+    }
     ui
 }
 

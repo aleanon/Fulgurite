@@ -36,6 +36,11 @@ shadow-oracle = ["lumen-static-winit/shadow-oracle"]
 # and `--demo` alike (`program()` sets it, `stack_of` follows it). Forwards
 # the shell's default-off `shaping` (docs/plan-shaped-paint.md).
 shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
+# M83/T83.6: the `ShaderView` demo and the program's shader table
+# (`catalog::SHADERS`). The window crate's half forwards to the GPU backend
+# in a `gpu` build, which runs the shader; the default software backend,
+# `--shot` and the tests draw its fallback.
+shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert

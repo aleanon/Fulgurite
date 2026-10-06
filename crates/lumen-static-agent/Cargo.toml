@@ -53,3 +53,13 @@ lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"
 # for integration tests; no feature is asked for here, so the shell is
 # built without the oracle (plan-boundaries-repair.md §0 rule 2).
 lumen-static-shell = { path = "../lumen-static-shell" }
+
+[features]
+# **M83/T83.6: the `ShaderView` damage gates** in `tests/damage_shape.rs`
+# (`docs/plan-gpu-extension.md`). A feature of this crate rather than
+# `shader` on the widgets dev-dependency itself: a dev-dependency's
+# features are unified into every `--workspace --all-targets` build, so the
+# core's `shader` would be on in the build `dev-shape` checks with the
+# variants *absent*, and that exhaustiveness check would compare the "on"
+# build with itself. `dev-shape` runs the file with `--features shader`.
+shader = ["lumen-static-widgets/shader"]

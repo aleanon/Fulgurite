@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`). M83b: T83.3, T83.4 and T83.5 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3, T83.4, T83.5 and T83.6 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1269,6 +1269,47 @@ task and is recorded in `docs/results-shader.md` with the number).
   the RTX 4070's glass pass, M51 §0 rule 1 says a CPU rasteriser is not
   evidence about a GPU, and `Prefer::Auto` never opens one. The rule's
   adapter reads 6.30 µs (`docs/results-shader.md` T83.5).
+
+- T83.6: **the uniforms injection empties the render, not the journal.**
+  With `set_uniforms` storing and answering `false`, the frame is skipped
+  under `Boundaries` — marks 0, damage `[]`, the host's list still carries
+  the old bytes — but `ui.lastChange` still names the first view, because
+  the journal re-signs every leaf by painting it from the tree each frame,
+  whatever the host skipped. So the gate's "reported" is the render's
+  (the host's marks, damage and list bytes) as well as the journal's, and
+  it goes red at "the render is stale".
+- T83.6: **a `ShaderView` carries the length it sends.** "Switches to a
+  shader with a 32 B table size" cannot be said by a `[u8; N]` whose length
+  is fixed at `N`, and the GPU draws a shader only when the length equals
+  its entry's `uniform_size`. So the widget holds `len` (≤ `N`, `N` by
+  default), `set_uniforms(&[u8])` stores a prefix of any length up to `N`,
+  and `set_shader(id, len)` switches both; the shift gate drives
+  `set_shader(ShaderId(1), 32)` on a `ShaderView<32>` that sent 16. The
+  bind path the plan's "`#[bind]` marks the node" needs is
+  `BindValue<[u8; N]> for ShaderView<N>` (the value form). It also has an
+  intrinsic `size` (zero: the box decides, as an `Image` without a
+  source): the showcase's sheet cannot carry a rule for a feature-gated
+  demo's id, because `include_lss!` checks the `.lss` mirror against the
+  default build's tree.
+- T83.6: **the widgets dev-dependency cannot carry `shader`.** A
+  dev-dependency's features unify into every `--workspace --all-targets`
+  build: with `features = ["observe", "shader"]` on the agent's widgets
+  line, `cargo tree --workspace -e features -i lumen-static` counts
+  `lumen-static feature "shader"` **2** times (0 without), so `dev-shape`'s
+  "variants absent" exhaustiveness build (T83.3) would compare the "on"
+  build with itself. The agent crate gains its own `shader =
+  ["lumen-static-widgets/shader"]`, the gates are `cfg(feature =
+  "shader")`, and `dev-shape` runs `--features shader --test damage_shape`.
+- T83.6: **a feature-gated demo needed three showcase changes the plan did
+  not list.** `demos!` (stage.rs) accepts `#[cfg]` on a variant and applies
+  it to the variant's kind in `DEMO_KINDS`; `DEMOS` is `57 +
+  cfg!(feature = "shader")`. `every_entry_paints_a_demo` counted rects,
+  text and lines only, so it reported "put nothing on the stage" and then
+  "drew only text": it now counts a `Cmd::Shader` (under the showcase's
+  `shader`, which turns the core's on) and a `Cmd::Gradient` as a shape.
+  The `.lss` mirror test drops the `DShaderView` kind rule in a `shader`
+  build. The showcase's `shader` also turns on the shell's and the window's,
+  so `program()` registers `catalog::SHADERS` and a `gpu` build runs it.
 
 **What the review found (M83).**
 

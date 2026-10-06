@@ -56,6 +56,13 @@ observe = ["a11y", "lumen-static/observe"]
 # exactly as `lumen-static`'s is, and for the same reason: the dev
 # surface must compile to nothing in a release build.
 reload = ["std", "dep:serde_json", "lumen-static/reload"]
+# **M83/T83.6: `ShaderView`**, a node a custom shader draws
+# (`docs/plan-gpu-extension.md`, owner decision D3). Turns the core's
+# `shader` on (the `Cmd::Shader` bracket and `Painter::shader`), which is
+# all this crate needs: no exhaustive `match` over `Cmd` lives here, so its
+# own feature is sound and no `cfg(lumen_shader)` build script is needed.
+# Default-off; adds no dependency.
+shader = ["lumen-static/shader"]
 
 [dev-dependencies]
 # M54/T54.0: `tests/text_contrast.rs` measures the catalogue's painted

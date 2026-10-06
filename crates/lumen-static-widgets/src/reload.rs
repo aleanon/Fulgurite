@@ -479,7 +479,8 @@ impl Reloadable for crate::rich::RichTextEditor {
 // it is open live in the application's state.
 
 macro_rules! stateless {
-    ($([$($g:tt)*] $ty:ty),* $(,)?) => {$(
+    ($($(#[$m:meta])* [$($g:tt)*] $ty:ty),* $(,)?) => {$(
+        $(#[$m])*
         impl<$($g)*> Reloadable for $ty {
             fn save(&self) -> Value {
                 Value::Null
@@ -509,6 +510,10 @@ stateless! {
     [S: TextStorage] crate::vector::VectorText<S>,
     [] crate::choose::OptionList,
     [] crate::image::Image,
+    // M83/T83.6: its id, bytes and fallback are code, or a binding's whose
+    // source is kept state.
+    #[cfg(feature = "shader")]
+    [const N: usize] crate::shader::ShaderView<N>,
     [S: 'static] crate::select::Select<S>,
     // M80/T80.4: its text is code, as a label's is, and a selection is a
     // gesture in flight, which a swap does not keep.

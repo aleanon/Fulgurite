@@ -277,3 +277,34 @@ same numbers, `just gpu` exit 0).
 | allocation (`tests/alloc.rs`, `--features shader`) | two-shader frame **98**, wgpu's submission of the same frame **98**, difference **0**; shader passes in the frame 2 (setup); one-pass floor 61 for the record | 0 | each bracket's uniforms staged through a fresh `Vec`: 100 vs 98, difference **2**, red |
 | lint (`just gpu`): `cargo clippy -p lumen-static-wgpu --features shader --all-targets -- -D warnings`, and the feature's `cargo doc -D warnings` | clean | -D warnings | an unused binding in `Gpu::set_shaders`: the new line fails `unused variable: injected`, the `--features lumen-static/shader` line stays green (`custom.rs` is not compiled there) |
 | firmware (K83b, K4): `just firmware-delta 4700b1d firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (nothing in the firmware's graph changed: the wgpu and winit crates only) |
+
+## T83.6 — `ShaderView`, at `106d16e` + T83.6 (2026-10-06)
+
+`lumen_static_widgets::ShaderView<const N: usize>` behind the widgets'
+default-off `shader` (which turns the core's on): an id, `N` uniform bytes
+(`N` ≤ `MAX_UNIFORMS`, a compile-time assertion), the length it sends, a
+`fn` fallback and an intrinsic size. Its `paint` is the bracket — shader,
+fallback, end — and nothing else. `set_uniforms` and `set_shader` compare
+before they store and answer whether they changed anything; the value form
+of `#[bind]` writes through `BindValue<[u8; N]>`, whose answer marks the
+node. `observe`: `Role::Image`, named by the author's label. The showcase's
+`shader` feature adds the demo (Text group, after VectorText) and
+registers its one-entry table (`catalog::SHADERS`, a two-colour blend);
+its fallback is the same blend as a gradient, which `--shot` and the
+default software window draw.
+
+**Size.** `size_of::<ShaderView<16>>()` = **56 B** with `a11y` on (the
+label's 16 B included). It is the widget's own: `Style` **84 B** and
+`NodeState` **84 B** are the parent's, printed in a `shader` build by
+`a_shader_view_grows_no_per_node_table` (bound 84 each; D4 not triggered).
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| uniforms (`lumen-static-agent/tests/damage_shape.rs`, `--features shader`): `a_uniform_change_damages_only_its_shader`, two 120 × 40 views one container down, a real `Host` under `Boundaries<256>`, the bytes bound by `#[bind]` | marks `{ all: false, ranges: 1 }`; damage `[[0, 0, 120, 40]]` (the first view's box; the second's `[0, 48, 120, 88]` absent); the host's first bracket carries `[20, 160, 60, 255]`; `ui.lastChange` `["first"]` | first damaged and reported, second neither | `set_uniforms` stores and answers `false`: marks `{ all: false, ranges: 0 }`, damage `[]`, the list still carries `[200, 30, 40, 255]`, red at "the render is stale". `ui.lastChange` still names `first`, because the journal re-signs every leaf from the tree (see the plan's "What building found") |
+| shift: `a_uniform_shift_does_not_report_later_shaders`, the first view's block 16 → 32 B by `set_shader(ShaderId(1), 32)` | the second bracket's uniform offset 16 → 32 (setup: it moved); `ui.lastChange` `["first"]` | second absent | `Cmd::hash_into` folds `uniforms.0` (T83.3's offset fold): `["first", "second"]`, red |
+| `check_drive_coverage.sh` (`just static`) | exported **79**, driven 46, allowed **33**, missing 0 | 0 | the `undriven.allow` line dropped: "ShaderView: exported by lumen-static-widgets with no inventory and no undriven entry", missing 1, red |
+| `check_observe.sh` (`just static`) | "every widget speaks or is listed" | — | `observe` removed: "no observe: …/shader.rs: ShaderView", red |
+| `a11y_roles` (`lumen-static-widgets`), both builds | `a11y`: 65 rows, 50 impls, 49 covered, `ShaderView` excused by `FEATURE_GATED`; `a11y,shader`: 66 rows, 50 / 50 covered, `ShaderView role=Image label=Some("A blue plasma")` | 0 missing | the cfg'd `ROWS` entry dropped, `a11y,shader` run: "Node impls with no row in the table: [\"ShaderView\"]", red; the `FEATURE_GATED` line dropped, `a11y` run: the same, red. Accept: both green, same session |
+| showcase (`cargo test -p showcase --features shader`) | 32 passed; `every_entry_paints_a_demo` reads the demo's bracket and its gradient fallback | as before | — (the default build's tests are `just test`'s) |
+| lint (`dev-shape`): `cargo clippy -p lumen-static-widgets -p lumen-static-agent -p showcase --all-targets --features lumen-static-widgets/shader,lumen-static-agent/shader,showcase/shader -- -D warnings`, and `cargo doc -D warnings` with the widgets' `shader` | clean | -D warnings | an unused binding in `ShaderView::set_uniforms`: the new line fails `unused variable: injected`; the workspace `--features lumen-static/shader` line stays green (`shader.rs` is not compiled there) |
+| firmware (K83b, K4): `just firmware-delta 106d16e firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (the widgets' `shader` is off in every firmware build; no default-build item changed) |

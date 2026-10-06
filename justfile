@@ -122,6 +122,12 @@ dev-shape:
     # M83/T83.4: `Program::shaders` reaches `Program::host()` and
     # `Session::shaders`.
     cargo test -q -p lumen-static-shell --features truetype,shader --test shader_table
+    # M83/T83.6: `ShaderView` -- its role row in a build that has it (the
+    # `a11y`-alone run above excuses it through FEATURE_GATED), and its
+    # damage gates through a `Host` and the journal, behind the agent's
+    # `shader` (the dev-dependency cannot carry it; its manifest says why).
+    cargo test -q -p lumen-static-widgets --features a11y,shader --test a11y_roles
+    cargo test -q -p lumen-static-agent --features shader --test damage_shape
     # M83/T83.3 (owner decision D3): every `match` over `Cmd` compiler-checked
     # with the shader variants absent and present. wgpu is included: a check
     # needs no adapter. The arms outside the core are `cfg(lumen_shader)`,
@@ -134,6 +140,9 @@ dev-shape:
     # contents, `Program::shaders`, `Host::set_shaders`), which neither line
     # above turns on.
     cargo clippy -q -p lumen-static-shell -p lumen-static-winit --all-targets --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader -- -D warnings
+    # M83/T83.6: the widgets' `shader` (`ShaderView`), the agent's (its
+    # damage gates) and the showcase's (the demo and its shader table).
+    cargo clippy -q -p lumen-static-widgets -p lumen-static-agent -p showcase --all-targets --features lumen-static-widgets/shader,lumen-static-agent/shader,showcase/shader -- -D warnings
     # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
     # backend through `Program::backend_with`), linted with the feature on.
     cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
@@ -153,6 +162,7 @@ dev-shape:
     # `truetype` so `Session::shaders` is documented; T83.6 adds the widgets'.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static -p lumen-static-shell --no-deps --features lumen-static/shader,lumen-static-shell/shader
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-shell -p lumen-static-winit --no-deps --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader
+    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-widgets --no-deps --features lumen-static-widgets/shader,lumen-static-widgets/a11y
     # M48/T48.9: the core's `observe` without the widgets' must not
     # build, and the matched build must. Compiles, so not in `static`.
     ./scripts/check_feature_seam.sh

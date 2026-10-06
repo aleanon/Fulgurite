@@ -139,7 +139,6 @@ PopTransform                   # proposed by M82
 PushTransform                  # proposed by M82
 VECTORTEXT                     # built by M82/T82.8 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as PAINTBOX)
 RunId                          # proposed by M83
-ShaderView                     # proposed by M83
 AnimatedImage                  # proposed by M84
 DecodedImage                   # proposed by M84
 GifFeed                        # proposed by M84
@@ -184,7 +183,6 @@ MenuMask                       # proposed by M90
 RegisteredStatusNotifierItems  # proposed by M90
 TrayModel                      # proposed by M90
 TraySpec                       # proposed by M90
-FEATURE_GATED        # proposed by M83: the list of feature-gated items checked both ways
 NoSuchProgram        # proposed by M89: Answer variant for an unknown program index
 WindowOpened         # proposed by M89: Answer variant carrying the new window's key
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate

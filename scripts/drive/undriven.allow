@@ -27,6 +27,7 @@ Avatar | M27 | takes no input
 Badge | M27 | takes no input
 Divider | M27 | takes no input
 Icon | M27 | takes no input
+ShaderView | M83 | takes no input; examples/shader's drive owns its pixels
 
 # --- not placeable widgets: generics behind their aliases, and data -------
 Toggle | n/a | generic; driven as CheckBox, Switch and Radio
