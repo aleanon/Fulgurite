@@ -34,7 +34,10 @@
 //!
 //! **Pinned green at T85.6** (index §3.1, no `#[ignore]`): the label is
 //! damage on the steps whose count changed, and the damage outside the
-//! scroller is larger with culling than without. T85.7 flips it.
+//! scroller is larger with culling than without. T85.7 built the fix that
+//! flips it (scope ends, and `Incremental` re-synchronising at them), and
+//! K85c reverted it on its per-scope cost, so the pin stands as the
+//! record of what `List`'s cull costs retention.
 //! The figures are recorded once, in `docs/results-layout-input.md`
 //! (T85.6).
 
@@ -250,11 +253,11 @@ fn pin(name: &str, steps: &[Step]) {
     assert_eq!(label_none, 0, "{name}: the label was damage with culling off -- the uncull arm is not slot for slot");
     assert!(
         label_culled > 0,
-        "{name}: culling no longer charges the label ({label_culled} px) -- the gap this pins has closed; flip the gate (T85.7)"
+        "{name}: culling no longer charges the label ({label_culled} px) -- the gap this pins has closed; flip the gate"
     );
     assert!(
         culled > none,
-        "{name}: damage outside the scroller with culling ({culled} px) is not above without ({none} px) -- the gap this pins has closed; flip the gate (T85.7)"
+        "{name}: damage outside the scroller with culling ({culled} px) is not above without ({none} px) -- the gap this pins has closed; flip the gate"
     );
 }
 

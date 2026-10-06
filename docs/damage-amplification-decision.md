@@ -245,6 +245,19 @@ And the per-command price *fell*, because the comparison left the hot
 path: `--bin retain`'s `streaming: build + Incremental` arm, 34
 commands, **328 → 295 ns**.
 
+## Considered and measured against: re-synchronising at clip scopes — M85/T85.7, 2026-10-06
+
+`List` culls its rows against the surface, so its command count changes
+as it scrolls, and `Incremental`'s prefix-and-suffix alignment then
+charges every unchanged command between the culled range and the next
+real change after it (`crates/lumen-static-shell/tests/cull_damage.rs`:
+a label beside the scroller, 1,792 px on each shifted step). A rule was
+built and closed it — every clip scope keyed by its per-depth ordinals,
+and the two frames re-synchronised at every scope end both have — but it
+costs about 2 ns per clip scope on every frame, and `--bin retain` left
+its spread by up to 11.6%, so K85c reverted it
+(`docs/results-layout-input.md` T85.7). The gap stands, pinned.
+
 ## A fourth, on the agent's side again: a node that draws nothing — M56, 2026-09-25
 
 The journal put the old and new box of every *changed* node into

@@ -14,8 +14,10 @@
 //! cull, so the two counts are equal and the times differ only by noise.
 //! The rows in the window and in the viewport are printed beside them, so
 //! the count a culling arm should reach is visible in the same output.
-//! K85b judges the culled median against the uncull arm's spread, once
-//! there is a culled arm to judge.
+//! K85b would have judged a culled median against the uncull arm's
+//! spread; K85c decided culling against first (M85/T85.7,
+//! `docs/results-layout-input.md`), so the arm stays as the measurement a
+//! reopened cull starts from.
 //!
 //! **220 rows, not the plan's 1,000.** A `ScrollView`'s content is
 //! spliced into its own table, which holds `MAX_SCROLL_NODES` (256)

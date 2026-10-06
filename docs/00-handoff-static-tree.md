@@ -1575,3 +1575,19 @@ remains** — which is why §10 Step 1 is the kill criterion.
    second real case by T85.5's definition; its build is then its own
    plan (`docs/results-layout-input.md`, "T85.5 — the capture-phase
    survey").
+
+14. **Should derived containers and `ScrollView` cull what is off the
+   surface?** `List` already does (T16.12). Culling changes how many
+   commands a container paints from frame to frame, and retention then
+   charges a shifted count to what follows it (`docs/plan-layout-input.md`,
+   X1).
+   **DECIDED 2026-10-06 (M85/T85.7, K85c): decided against.** The fix —
+   each clip scope keyed by its per-depth ordinals and `Incremental`
+   re-synchronising at every scope end — was built and closed the gap,
+   but it costs about 2 ns per clip scope on every frame and every
+   strategy, and `--bin retain`'s clip-bearing rows left their spreads
+   (`Incremental` +11.6%), which K85c forbids. So T85.8 is not built:
+   renderers and `List` cull, derived containers and `ScrollView` do not
+   (`docs/results-layout-input.md` T85.7; the gap `List` leaves is pinned
+   by `crates/lumen-static-shell/tests/cull_damage.rs`). **Reopen** with a
+   scope mechanism that costs nothing on a frame whose length held.

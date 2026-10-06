@@ -19,14 +19,15 @@
 //! `set_bounds`, as `Host::frame` paints, once with `None` — and both
 //! lists are rendered on the software canvas.
 //!
-//! - **Derived containers**: byte-identical. They do not cull at T85.6,
-//!   and the cull T85.8 adds (ops::cull_child) must keep them identical
-//!   by culling on ink and never culling a subtree flagged
-//!   `NodeDesc::INKS_OUTSIDE`.
+//! - **Derived containers**: byte-identical. They do not cull, and since
+//!   K85c (T85.7) they are not going to; a reopened cull must keep this
+//!   identical by culling on ink and never culling a subtree whose ink
+//!   leaves its box.
 //! - **`List`**, which culls by `rect_of` today (T16.12): the two renders
 //!   of the card case **differ** — the shadow vanishes when culled. Pinned
-//!   green (index §3.1); T85.8 moves `List` onto that cull and flips
-//!   it.
+//!   green (index §3.1). T85.8 would have moved `List` onto that cull and
+//!   flipped it; K85c decided culling against at T85.7, so the pin is
+//!   the record of the shadow `List` drops.
 //!
 //! **There is no `List` variant of the menu case**, because a `Popup`
 //! inside a `List` draws no menu even unculled: it defers its arena-local
@@ -297,5 +298,5 @@ fn a_list_culls_a_shadow_from_below_the_surface_today() {
     assert!(ink > 0, "setup (List): the uncull render shows no shadow in {band:?}");
     // Pinned (T85.6): `List` culls by `rect_of`, so the shadow vanishes.
     // T85.8 flips this to byte-identical.
-    assert!(diff > 0, "a List no longer culls the card below the surface ({diff} pixels differ) -- the gap this pins has closed; flip the gate (T85.8)");
+    assert!(diff > 0, "a List no longer culls the card below the surface ({diff} pixels differ) -- the gap this pins has closed; flip the gate");
 }

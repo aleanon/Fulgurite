@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0–T85.5 landed 2026-10-06, and M85a closed on its kill rules: K85a and K85d held, K85e decided the capture phase against (`docs/results-layout-input.md`, "M85a closes"). T85.6 landed 2026-10-06.** The shared byte inventory, seams (S1,
+> the end). T85.0–T85.5 landed 2026-10-06, and M85a closed on its kill rules: K85a and K85d held, K85e decided the capture phase against (`docs/results-layout-input.md`, "M85a closes"). T85.6 landed 2026-10-06; T85.7 was built and measured, K85c fired, and culling is decided against on X1's ground (`docs/results-layout-input.md` T85.7), so T85.8 does not ship.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -667,6 +667,27 @@ that adds a `Session` method…" does not touch M85: none is added.
   it: a `Kind` rule reaches a `Repeat` inside a `List` item but not the
   `Repeat`'s rows, which is why the gate styles the menu panel and not
   its rows.
+
+- **T85.7: built, and K85c fired.** `Retention::scope_end` and the
+  `Incremental` re-sync were built as the Decisions describe and flipped
+  `cull_damage.rs` green (outside the scroller culled ≤ uncull at every
+  step, the label 0 px), with both of the plan's injections red. But
+  `--bin retain`'s rows with clips in them left their spreads —
+  `Incremental` +11.6%, `Streaming<4096>` +7.0%, `Rebuild` +4.3% at 2,000
+  commands — because computing a scope's key costs about 2 ns per scope
+  on every strategy and `Incremental`'s scope-end buffer about as much
+  again, on every frame, shifted or not
+  (`docs/results-layout-input.md` T85.7). The kill rule's response is
+  taken: T85.7 is reverted and culling is decided against on X1's ground,
+  so T85.8 does not ship. Two corrections to the Decisions found on the
+  way, kept for whoever reopens it: there are five `Retention` impls, not
+  four (`path_damage.rs`'s `Inks`, M82), and the "second `Vec`" the
+  Decisions price at +24 B per command already existed (M26/T26.11), so
+  the mechanism's heap was 16 B per clip scope per frame, twice.
+  **Reopen**, if ever: a scope mechanism with no per-scope cost on a
+  frame whose length held — for example scopes recovered from the
+  stream inside `Incremental::finish` only when the lengths differ,
+  which needs no `Retention` method at all.
 
 **What the review found (M85).**
 

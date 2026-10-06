@@ -247,3 +247,63 @@ plan's shape could not be built as written, the reason is in
 | the same file, a derived column, an open `Select` whose trigger `[0, 300, 28, 334]` is below the surface, its menu `[0, 200, 300, 300]` on it, `content_absent()` false | uncull render: **13,190** inked pixels in the menu's rect; Some vs None **0** differ (bound 0) | `Popup::paint` returns when its anchor misses `clip_bounds`: **14,270** pixels differ, fails by name | stays green (T85.8) |
 | the same file, a `List` of the two cards (the plan's pin) | uncull: **1,215** shadow pixels; Some vs None **1,171** pixels differ — `List` culls by `rect_of`, so the shadow vanishes | `List` culls nothing: **0** differ, "a List no longer culls the card below the surface … flip the gate (T85.8)" | T85.8 |
 | firmware, `just firmware-delta f5fedd9 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** on all four `.text` and `.rodata` (`firmware_interactive` 63,912 B); K85d cumulative **+432** of 1,024 against `a21135b` | — | — |
+
+## T85.7 — `Retention::scope_end`: built, measured, K85c fired (2026-10-06)
+
+Built as the plan wrote it: `Retention::scope_end(key)`, required, on
+`Rebuild`, `Incremental`, `Streaming<N>` and the two test strategies
+(`container_fill.rs`'s `Counted`, and `path_damage.rs`'s `Inks`, which
+M82 added after the plan counted four); `Recording` keeping per-depth
+ordinals (each scope's key its parent's folded with its ordinal among
+its siblings, the children's count reset when it opens) and calling
+`scope_end` after observing each pop; `Incremental` keeping each frame's
+`(key, slot index)` scope ends beside its two slot buffers, comparing
+slot for slot when the lengths and every scope end agree, and otherwise
+re-synchronising at every key both frames have (looking at most 64
+ends ahead), each segment compared as a whole frame was.
+
+**It worked**, on the gate T85.6 pinned:
+
+| gate | prints | injection (red) |
+|---|---|---|
+| `cull_damage.rs`, flipped (both strategies, identical) | at every step outside the scroller culled **≤** uncull (**407,680 = 407,680 px** over ten steps, 40,768 a step); the label **0 px** (bound 0) at every step; inside **40,000** a step where T85.6 read 41,600 on the shifted steps | the T85.6 pin against this code: "culling no longer charges the label (0 px)"; `Incremental::scope_end` a no-op: "step 2: damage outside the scroller with culling (42560 px) is above without (40768 px)"; keys from a global pop count: the same, step 2, 42,560 against 40,768 |
+
+**K85c — re-sync is free when nothing shifts.** `9c73dc9` (T85.6)
+against this tree, two release binaries each, eight interleaved runs a
+side under one `just bench-lock` (quiet; load1 2.50 before, 2.27 after,
+bound 8):
+
+| row | base median (spread) | T85.7 median | verdict |
+|---|---:|---:|---|
+| `--bin retain` 2,000 cmds, `streaming: build + Incremental` | 18,229 ns (18,089–18,397) | **20,340** | **above** (+11.6%) |
+| `--bin retain` 2,000 cmds, `streaming: build + Streaming<4096>` | 17,055 ns (16,795–17,418) | **18,241** | **above** (+7.0%) |
+| `--bin retain` 2,000 cmds, `streaming: NO list + Streaming<4096>` | 10,978 ns (10,944–11,035) | **11,923** | **above** (+8.6%) |
+| `--bin retain` 2,000 cmds, `wrapper only (Rebuild)` | 13,010 ns (12,949–13,282) | **13,568** | **above** (+4.3%) |
+| `--bin retain` 34 cmds, `streaming: build + Incremental` | 295.2 ns (293.4–303.0) | **324.2** | **above** (+9.8%) |
+| `--bin retain` 2,000 text cmds, `build + Incremental` (no clips) | 19,924 ns (19,623–20,192) | 19,678 | inside |
+| frame arm `idle (floor)` | 56.35 µs (55.7–85.2) | 61.25 | inside |
+| frame arm `+render (damage)` | 77.10 µs (73.4–86.3) | 76.75 | inside |
+| frame arm `ALL rows: layout`, `+paint`, `+render (full)`, `+paint (culled)` | — | — | inside, every one |
+
+**Attributed**, by a third binary with the keys not computed
+(`Recording` passing `0`), eight runs a side under one lock (quiet): at
+2,000 commands of which 500 are a clip push and pop (`--bin retain`'s
+stream), computing the keys costs about **1,000 ns** on every strategy
+(≈2 ns a scope: `Streaming<4096>` 16,359 → 17,464 ns), and
+`Incremental`'s scope-end buffer and its equality check about **900 ns**
+more (18,609 → 19,491). The rows with no clip in them do not move. A
+per-scope cost is paid on every frame, shifted or not, so "free when
+nothing shifts" cannot hold for any shape of this mechanism that records
+scopes as they pass; the frame arm, whose tree has few clips, cannot see
+it (inside every spread), and `--bin retain`'s quarter of clip commands
+can.
+
+**K85c fires.** Its written response: T85.7 is reverted (the code is not
+in the tree; this section and the plan's "What building found" record
+it), and container culling is decided against **on X1's ground** — so
+T85.8 is not shipped, whatever K85b would have said. T85.6's gates stay
+as pinned: `List`'s cull and its retention gap are today's behaviour,
+and `cull_damage.rs` and `cull_ink.rs` keep holding them. Firmware: docs
+and test comments only, `just firmware-delta 9c73dc9 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`, **+0** on
+all four.
