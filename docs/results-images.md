@@ -39,6 +39,56 @@ section cites them and states none of its own.
   frame failing M57's scale-2 comparison for no defect (T84.3;
   `docs/plan-images-in-motion.md`, "What building found").
 
+## M84b's headline — the application's store, stop, and `Video`, closed at T84.11 (2026-10-06)
+
+**An application now owns the pixels it shows and changes them from its
+own messages, a subscription it stops stops, and `Video` plays, pauses
+and seeks over a paced feed, for no firmware byte; the GStreamer decoder
+crate is deferred on K84b, because the reference machine lacks the
+development libraries, not because the binding failed.** The figures are
+the task sections below and the kill-rule table at the end; this section
+cites them and states none of its own.
+
+- **The store is the application's, read through the frame.**
+  `App::images` (`#[app(images = f)]`) is asked on every present through
+  the required `FrameSource::images`, and `ImageChain` resolves it before
+  the window's store; it follows a hot swap and survives the failed-build
+  bar, and the GPU atlas keys on the store that answered, invalidated on a
+  swap and an M36 retry (T84.6). `ImageStore::replace` is how a stream
+  writes a frame.
+- **A stopped subscription stops**, both halves: the body returns on
+  `Sender::is_stopped`, and the drain drops what it had sent; a stopped job
+  is no longer re-issued across a swap (T84.7, `docs/results-tasks.md`).
+  T84.5's pin is the gate T84.7 flipped.
+- **`Video` is a controlled widget, not a codec**: the application holds
+  `playing`, the position and the frame; a `VideoFeed` run by `video_job`
+  sends frames as the application's message, paced to their timestamps;
+  `GifFeed` is the feed that ships (T84.8). K84e's 1280 × 720 stream holds
+  30 frames/s on the software backend.
+- **Two framework additions the plan did not foresee** (T84.8, the plan's
+  "What building found"). `Node::take_action` (core, behind `std`) is the
+  route by which a widget hands its own handler a value, since a handler
+  is one `fn(&mut S, &EventCtx)` and a captured drag activates nothing; it
+  is a hook of the same kind as `activation_redirect` and
+  `selects_on_focus`, and it links nothing into any firmware. And the
+  derive gained `#[app(msg = T, apply = f)]`, `#[app(subscriptions = f)]`
+  and `#[app(jobs = f)]`, because a derived application's message was
+  `Never` and the showcase, which is derived, had to receive frames.
+- **The decoder crate's deferral is a measurement, not a guess** (T84.9,
+  T84.10): the binding's dependency set is far under K84b's bound and
+  safe from our side, and a probe with hand-made linker symlinks played a
+  `videotestsrc` frame; only the machine's missing `-dev` packages fire
+  K84b, and the reopen condition names that install.
+- **What the live window and CI found that the headless gates did not**
+  (the plan's "What building found"): the scrub's planned injection could
+  not fire live, and two live injections fired only once moved to where
+  the mechanism reads them (T84.8). Two defects outside M84's own code
+  surfaced while building it: the drives read the showcase's catalogue
+  from `catalog.rs`'s *text*, so T83.6's `cfg`'d entry skewed every later
+  index by one (`553ac3c`: the drives now ask the binary, `--entries`);
+  and `scripts/check_default_crates.sh` could not run on a parentless
+  `HEAD`, which is what CI's selftest copy is (`11c7aa2`).
+
 ## Thresholds, written before anything is built (copied at T84.1, 2026-10-06)
 
 M84's kill rules, copied from the plan so each later row has its
@@ -489,3 +539,39 @@ which needs no system library and so no such install.
 
 **Firmware.** No code is linked by any firmware; the one source change is
 `video.rs`'s module rustdoc, in the shell.
+
+## M84b's kill rules, at its close (T84.11, 2026-10-06)
+
+Every rule M84b could read, with its number, fired or not (S5). The
+milestone's firmware total is T84.5's base (`15d4aec`, M84a's close)
+against T84.10's head (`0bf7103`), measured directly rather than summed:
+`just firmware-delta 15d4aec firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0` prints **+0** `.text` and **+0**
+`.rodata` on all four. T84.11 changes no linked code: the same invocation
+against `0bf7103` prints **+0** on all four too.
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K84b — the GStreamer crate | ≤ 150 crates; **no** `unsafe`; the development libraries present | **58** crates (66 with build edges); **0** `unsafe` under `forbid`; libraries **absent** (runtime 1.24.2 only) (T84.9) | **fires, on its third condition only**; `lumen-static-video` deferred with its reopen condition (T84.10); `Video` ships with `VideoFeed` and `GifFeed` |
+| K84e — video on the software backend | ≥ 28 presented per second at 1280 × 720, 30 frames/s | **30.1/s** (301 in 10.00 s; 11.98 ms raster per present) (T84.8) | holds; no size limit is stated |
+| K4 — per task | Δ 0 B `.text` on all four (strict form) | T84.5 **+0**, T84.6 **+0**, T84.7 **+0**, T84.8 **+0** (ungated, the `take_action` route had cost `firmware_interactive` +488, then +320, before it went behind `std`), T84.9 **+0**, T84.10 **+0**; the two fixes landed inside M84b, `553ac3c` and `11c7aa2`, **+0** and scripts only | holds |
+| — M84b's total | recorded | **+0** on all four (`15d4aec` → `0bf7103`); `firmware_interactive` **63,480** B (headroom 18,440 B to 81,920) | recorded; `docs/results-embedded.md`'s table does not move |
+| K3 — the task's named arm | inside the parent's eight-run spread | T84.7, `benches --bin spawn -- pool`: median **2,505** ns against the parent's 1,747.70–3,064.70 (`docs/results-tasks.md` T84.7); no other M84b task names a K3 arm | holds |
+| K1 — the struct budget | `Cmd` 60; `Style`, `NodeState` +0 B | untouched by every M84b task (T84.8); `JobTrack`'s stop flag sits in existing padding, size unchanged (T84.7) | holds |
+| K2 — default-off | the default window's crate count Δ 0 | **96** against 96 at `479efa9` (T84.8, printed), and `scripts/check_default_crates.sh` in `just static` at every task | holds |
+| K84a, K84c, K84d | — | M84a's ("M84a's kill rules, at its close") | held at T84.4 |
+
+**What M84b added to the framework outside its plan's Changes lists**,
+each recorded where it was built: `Node::take_action` and the pass's
+route, in the core behind `std` (T84.8), the same kind of hook as
+`activation_redirect` and `selects_on_focus`, changing no other
+milestone and no owner decision; and the derive keys `#[app(msg = T,
+apply = f)]`, `#[app(subscriptions = f)]` and `#[app(jobs = f)]` (T84.8),
+whose three refusals are pinned by `.stderr` files.
+
+**Carried out of M84, as planned**: progress after stop (M11) is
+M88/T88.1's, since its progress slot has not landed (T84.7); the GPU
+half of the live Image drive and the retry's `Backend::invalidate_images`
+call reopen with a GPU-readable `ui.regionHash` (M88/T88.2) and a GPU leg
+of the panic drive (T84.3, T84.6); `lumen-static-video` reopens on the
+condition T84.10 writes.

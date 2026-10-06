@@ -4,7 +4,10 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M84a (T84.0–T84.4) built 2026-10-06 and closes on
 > `just ci-verify` of its T84.4 commit (S5), cited in AGENT.md; M84b
-> (T84.5–T84.11) building: T84.5–T84.8 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> (T84.5–T84.11) built 2026-10-06 and closes on `just ci-verify` of its
+> T84.11 commit (S5), cited in AGENT.md; K84b fired on its third
+> condition, so `lumen-static-video` is deferred (T84.10,
+> `docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1175,6 +1178,21 @@ task and is recorded with its number in `docs/results-images.md`):
   install, never a task's), after which T84.10's first branch is built as
   written. `lumen-static-video` is not added; `Video` ships with
   `VideoFeed` and `GifFeed`.
+- T84.11 (M84b's close): **K84e held and K84b fired, on its third
+  condition only**; K4 held at every task and M84b's total, measured
+  `15d4aec` → `0bf7103` in one invocation, is +0 on all four; K1, K2 and
+  T84.7's K3 held. The numbers are `docs/results-images.md`'s, "M84b's
+  kill rules, at its close". Nothing was built at the close. Recorded
+  there as well as above: `Node::take_action` (core, behind `std`) and the
+  derive's `msg`, `apply`, `subscriptions` and `jobs` keys are M84b's
+  additions outside its Changes lists (T84.8); the coordinator accepted the
+  hook as the same kind as `activation_redirect` and `selects_on_focus`,
+  changing no other milestone and no owner decision. Two fixes landed
+  inside M84b for defects it surfaced elsewhere: `553ac3c` (the drives read
+  the showcase's compiled catalogue through `--entries`, since T83.6's
+  `cfg`'d entry had skewed every later index read from `catalog.rs`'s text)
+  and `11c7aa2` (`scripts/check_default_crates.sh` on a parentless `HEAD`,
+  which CI's selftest copy is).
 
 **What the review found (M84).**
 
