@@ -173,3 +173,81 @@ fn three_shrink_children_are_laid_out_once_each() {
     assert_eq!(n, vec![1, 1, 1], "a Shrink child was laid out more than once");
     assert_eq!(w, vec![40.0, 50.0, 60.0]);
 }
+
+// ---- M85/T85.1: `Length::Flexible` -----------------------------------
+
+/// A two-child row: `a` at `Flexible(1)` with `a_content` px of content,
+/// and `b` styled `b_len` with `b_content`.
+fn flexible_pair(a_content: f32, b_len: Length, b_content: f32) -> (f32, Vec<Child>) {
+    let mut t = Two::default();
+    t.a.content = a_content;
+    t.b.content = b_content;
+    let sheet = [width("a", Length::Flexible(1)), width("b", b_len)];
+    lay(&mut t, &sheet, &["a", "b"], two_count)
+}
+
+fn print_pair(case: &str, row: f32, kids: &[Child], bound: &str) {
+    println!(
+        "{case}: row {row} px; a: {} layout(s), {} px; b: {} layout(s), {} px (bound: 1 each; {bound})",
+        kids[0].layouts, kids[0].w, kids[1].layouts, kids[1].w
+    );
+}
+
+/// `[CountingLeaf(Flexible(1), 80 px), CountingLeaf(FILL)]` in 300 px:
+/// the share is 150, the flexible child ends at its 80, and the fill
+/// takes the 220 it left.
+#[test]
+fn a_flexible_child_under_its_share_leaves_the_rest_to_the_fill() {
+    let (row, kids) = flexible_pair(80.0, Length::FILL, 10.0);
+    print_pair("[Flexible 80, FILL]", row, &kids, "80/220");
+    assert_eq!(row, 300.0, "setup: the row is not 300 px wide");
+    assert_eq!(kids[0].layouts, 1, "the Flexible child was laid out {} times", kids[0].layouts);
+    assert_eq!(kids[1].layouts, 1, "the FILL child was laid out {} times", kids[1].layouts);
+    assert_eq!((kids[0].w, kids[1].w), (80.0, 220.0), "[Flexible 80, FILL] did not split 80/220");
+}
+
+/// The same row with 400 px of content: the flexible child is capped at
+/// its 150 px share, and the fill gets the other 150.
+#[test]
+fn a_flexible_child_over_its_share_is_capped_at_it() {
+    let (row, kids) = flexible_pair(400.0, Length::FILL, 10.0);
+    print_pair("[Flexible 400, FILL]", row, &kids, "150/150");
+    assert_eq!(row, 300.0, "setup: the row is not 300 px wide");
+    assert_eq!((kids[0].layouts, kids[1].layouts), (1, 1), "a child was laid out more than once");
+    assert_eq!((kids[0].w, kids[1].w), (150.0, 150.0), "[Flexible 400, FILL] did not split 150/150");
+}
+
+/// **The stated limit, pinned**: two `Flexible`s never share each other's
+/// leftover, so `[Flexible 80, Flexible 400]` in 300 px reads 80/150 — not
+/// CSS's 80/220, which would need a second layout of the second child.
+/// If this ever reads 80/220, distribution grew a second round, and K85a
+/// says what that must be measured against first.
+#[test]
+fn two_flexibles_never_share_their_leftover() {
+    let (row, kids) = flexible_pair(80.0, Length::Flexible(1), 400.0);
+    print_pair("[Flexible 80, Flexible 400]", row, &kids, "80/150");
+    assert_eq!(row, 300.0, "setup: the row is not 300 px wide");
+    assert_eq!((kids[0].layouts, kids[1].layouts), (1, 1), "a child was laid out more than once");
+    assert_eq!((kids[0].w, kids[1].w), (80.0, 150.0), "[Flexible 80, Flexible 400] did not read 80/150");
+}
+
+/// `Style` and `NodeState` at the parent commit (a21135b), whatever
+/// they were: this task adds a `Length` variant and must move neither.
+const AT_PARENT: (usize, usize) = (84, 84);
+
+#[test]
+fn flexible_moves_no_struct() {
+    let l = core::mem::size_of::<Length>();
+    let (style, state) = (core::mem::size_of::<Style>(), core::mem::size_of::<NodeState>());
+    let ram = |a: usize, b: usize| (a + b) as f32 * 100.0 / 1024.0;
+    println!(
+        "Length {l} B (bound 8); Style {style} B, NodeState {state} B (parent {} / {}); \
+         {:.1} KB per 100 nodes (parent {:.1} KB, bound 24 KB)",
+        AT_PARENT.0,
+        AT_PARENT.1,
+        ram(style, state),
+        ram(AT_PARENT.0, AT_PARENT.1)
+    );
+    assert_eq!(l, 8, "Length grew past Fixed(f32)");
+    assert_eq!((style, state), AT_PARENT, "Flexible moved Style or NodeState");
+}

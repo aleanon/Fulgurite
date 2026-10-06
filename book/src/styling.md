@@ -286,8 +286,9 @@ What v1 accepts:
   `label`, `Page`), `*`, and comma lists of them. One simple selector per
   rule.
 * **Declarations**, one per `Patch` setter: `width`, `height` (`12px`,
-  `fixed(12px)`, `fill`, `fill(2)`, `shrink`), `padding` (one to four
-  lengths, in CSS order), `spacing`, `align`, `visible`, `disabled`, `cursor`,
+  `fixed(12px)`, `fill`, `fill(2)`, `flexible`, `flexible(n)`, `shrink`),
+  `padding` (one to four lengths, in CSS order), `spacing`, `align`,
+  `visible`, `disabled`, `cursor`,
   `focus-ring`, `color`, `background`, `border-width`, `border-color`,
   `border-radius`, `font-size`, `font-weight`, `box-shadow`, `hover-dim`,
   `pressed-dim`, `line-height` (a bare ratio, `1.5`), `text-overflow`

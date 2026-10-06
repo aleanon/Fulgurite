@@ -708,6 +708,12 @@ pub static CATALOG: &[Entry] = &[
             a: gbadge("1"), b: gbadge("2"), c: gbadge("3"),
             d: gbadge("4"), e: gbadge("5"), f: gbadge("6") })),
         none),
+    entry!("Layout", "Layout", "A flexible bar takes its content, up to half; the fill takes the rest.",
+        false,
+        |s| on(s, Demo::Layout(DLayout {
+            flex: Fixed { w: 80.0, h: 32.0 },
+            fill: Fixed { w: 0.0, h: 32.0 } })),
+        none),
     entry!("Layout", "SplitPane", "Drag the divider between two panes.",
         false,
         |s| on(s, Demo::Split(DSplitPane { a: SplitPane::new(lbl_of("left"), lbl_of("right")) })),

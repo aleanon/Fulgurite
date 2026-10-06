@@ -372,6 +372,19 @@ pub struct DGrid {
     pub f: Badge<String>,
 }
 
+/// `Length::Flexible` — M85/T85.1. A row of two bars: the first is
+/// `flexible(1)` with 80 px of content, the second `fill`. Each has half
+/// the row as its share, so the first stays at its 80 px and the fill
+/// takes everything it left (`docs/layout-and-storage-decisions.md` §2).
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+pub struct DLayout {
+    #[widget_id("d_layout_flex")]
+    pub flex: Fixed,
+    #[widget_id("d_layout_fill")]
+    pub fill: Fixed,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DSplitPane {
@@ -871,6 +884,7 @@ demos! {
     Scroll(DScrollView),
     Image(DImage),
     Video(DVideo),
+    Layout(DLayout),
 }
 
 impl Default for Demo {
@@ -884,5 +898,5 @@ impl Default for Demo {
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
-// M84/T84.3's Image; M84/T84.8's Video.
-pub const DEMOS: usize = 59 + cfg!(feature = "shader") as usize;
+// M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout.
+pub const DEMOS: usize = 60 + cfg!(feature = "shader") as usize;

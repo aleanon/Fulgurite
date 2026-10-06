@@ -24,6 +24,9 @@ use crate::desc::NodeDesc;
 
 /// How a node claims space along one axis — iced's model, which needs no
 /// iteration to resolve (`docs/layout-and-storage-decisions.md` §2).
+///
+/// **8 B**, set by `Fixed(f32)`; `Style` carries two, so a wider variant
+/// would grow every node (`tests/cursor.rs`, `a_length_is_eight_bytes`).
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Length {
     /// Exactly this many pixels.
@@ -34,6 +37,22 @@ pub enum Length {
     /// Share the remainder with other fills, in this ratio.
     /// `Fill` is `FillPortion(1)`.
     FillPortion(u16),
+    /// Its content size, **at most** its share of the remainder in this
+    /// ratio — M85/T85.1 (`docs/plan-layout-input.md`). A derived row or
+    /// column counts the share over its `Flexible` and `FillPortion`
+    /// children together and lays a `Flexible` child out once under that
+    /// maximum, so it ends at `min(content, share)`.
+    ///
+    /// **What it leaves goes to the `FillPortion` children, never to
+    /// another `Flexible`**, so every child is still laid out exactly
+    /// once: `[Flexible(1) 80 px, FILL]` in 300 px reads 80/220, and
+    /// `[Flexible(1) 80 px, Flexible(1) 400 px]` reads 80/150 where CSS's
+    /// freeze loop would give the second 220
+    /// (`docs/layout-and-storage-decisions.md` §2,
+    /// `crates/lumen-static/tests/flexible.rs`). On the cross axis, and in
+    /// a stack, wrap or grid — which divide nothing — it resolves as
+    /// `Shrink`. `.lss` spells it `flexible` and `flexible(n)`.
+    Flexible(u16),
 }
 
 impl Length {
@@ -50,6 +69,22 @@ impl Length {
     #[inline]
     pub fn is_fill(&self) -> bool {
         matches!(self, Length::FillPortion(_))
+    }
+
+    /// A `Flexible` length — M85/T85.1.
+    #[inline]
+    pub fn is_flexible(&self) -> bool {
+        matches!(self, Length::Flexible(_))
+    }
+
+    /// A `Flexible` length's ratio; 0 for every other case, as
+    /// [`Length::portion`] is for a non-fill.
+    #[inline]
+    pub fn flex_portion(&self) -> u16 {
+        match self {
+            Length::Flexible(k) => *k,
+            _ => 0,
+        }
     }
 }
 

@@ -1604,6 +1604,17 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // pointer that pressed it (M57/C7: 15 px up, measured).
         StyleRule::new(Selector::Kind("DAccordion"), Patch::new().height(Length::Fixed(200.0))),
         StyleRule::new(Selector::Kind("DGrid"), Patch::new().width(Length::Fixed(420.0))),
+        // M85/T85.1: `flexible(1)` beside `fill` in a 300 px row, the case
+        // `crates/lumen-static/tests/flexible.rs` gates at 80/220.
+        StyleRule::new(Selector::Kind("DLayout"), Patch::new().width(Length::Fixed(300.0))),
+        StyleRule::new(
+            Selector::Id("d_layout_flex"),
+            Patch::new().width(Length::Flexible(1)).height(Length::Fixed(32.0)).color_role(Role::Accent),
+        ),
+        StyleRule::new(
+            Selector::Id("d_layout_fill"),
+            Patch::new().width(Length::FILL).height(Length::Fixed(32.0)).color_role(Role::Muted),
+        ),
         StyleRule::new(
             Selector::Id("d_split_a"),
             Patch::new().width(Length::Fixed(360.0)).height(Length::Fixed(140.0)),

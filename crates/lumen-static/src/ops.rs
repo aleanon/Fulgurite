@@ -265,6 +265,64 @@ pub fn loose_child(
     }
 }
 
+/// One round of a derived row's or column's scan 2 — M85/T85.1
+/// (`docs/plan-layout-input.md`).
+///
+/// Scan 2 runs twice over **one** emitted body per field: first the
+/// `Flexible` children (`fills == false`), each under a loose maximum of
+/// its share, then the `FillPortion` children (`fills == true`), each
+/// tight at its share of what the first round left. Everything that
+/// differs between the two rounds is decided here, out of line, so the
+/// body the derive emits per field carries no branch on the round for
+/// the optimiser to duplicate it by: two bodies, or one body that was
+/// unrolled or split by round, cost the embedded fixture 1,528–2,040 B of
+/// firmware `.text`, over K4's 1,000 (`docs/results-layout-input.md`
+/// T85.1).
+#[doc(hidden)]
+pub struct Round {
+    pub axis: Axis,
+    pub inner: Constraints,
+    pub align: Align,
+    /// The fills' round, or the `Flexible` children's.
+    pub fills: bool,
+    /// What is left to divide.
+    pub free: f32,
+    /// The portions it is divided by: the fills' alone in their round,
+    /// `Flexible` and fill portions together in the first.
+    pub div: f32,
+}
+
+impl Round {
+    /// The limits for a child of main-axis length `l` in this round, or
+    /// `None` when the child is not this round's kind. A fill's share is
+    /// computed as `free * k / div` — the expression scan 2 always used,
+    /// so a row with no `Flexible` child divides bit for bit as before.
+    #[inline(never)]
+    pub fn limits(&self, l: Length) -> Option<Constraints> {
+        let k = match (self.fills, l) {
+            (true, Length::FillPortion(k)) | (false, Length::Flexible(k)) => k,
+            _ => return None,
+        };
+        let share = if self.div == 0.0 { 0.0 } else { self.free * k as f32 / self.div };
+        Some(if self.fills {
+            fill_child(self.axis, self.inner, share, self.align)
+        } else {
+            loose_child(self.axis, self.inner, share, self.align)
+        })
+    }
+
+    /// What a child laid out in this round leaves the fills less: its
+    /// main-axis size in the `Flexible` round, nothing in the fills'.
+    #[inline]
+    pub fn flexible_took(&self, main: f32) -> f32 {
+        if self.fills {
+            0.0
+        } else {
+            main
+        }
+    }
+}
+
 /// Tight main-axis limits for a `Fill` child's share.
 #[inline]
 #[doc(hidden)]
@@ -306,7 +364,7 @@ impl Axis {
 
 /// Resolve a container's own size from its content, honouring its own
 /// `Length`s: `Fill` takes the whole limit, `Fixed` takes its value,
-/// `Shrink` takes the content size — then clamped.
+/// `Shrink` and `Flexible` take the content size — then clamped.
 #[inline]
 pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
     // Every leaf resolves its own box here, so this is the one place a
@@ -321,15 +379,18 @@ pub fn resolve_self(limits: Constraints, style: &Style, content: Size) -> Size {
     // mean the maximum — it is infinite — so it means the content, and
     // the enclosing scroller's viewport reaches the *children* through
     // `LayoutCx::fill_extent`. Either way no infinity reaches a `Size`.
+    // `Flexible` resolves as `Shrink`: a derived row or column has
+    // already capped it at its share through the limits (M85/T85.1), and
+    // everywhere else it divides nothing.
     let w = match style.width {
         Length::Fixed(v) => v,
-        Length::Shrink => content.w,
+        Length::Shrink | Length::Flexible(_) => content.w,
         Length::FillPortion(_) if !limits.max_w.is_finite() => content.w,
         Length::FillPortion(_) => limits.max_w,
     };
     let h = match style.height {
         Length::Fixed(v) => v,
-        Length::Shrink => content.h,
+        Length::Shrink | Length::Flexible(_) => content.h,
         Length::FillPortion(_) if !limits.max_h.is_finite() => content.h,
         Length::FillPortion(_) => limits.max_h,
     };

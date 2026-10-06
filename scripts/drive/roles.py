@@ -27,6 +27,9 @@ ROLES = {
     "SearchField": "TextInput",
     "Wrap": "Label",
     "Grid": "Label",
+    # M85/T85.1: a `Fixed` bar, layout rather than content, so hidden
+    # from a reader (M57/D7); its role is the generic one it is built with.
+    "Layout": "GenericContainer",
     "SplitPane": "Splitter",
     "Accordion": "DisclosureTriangle",
     "PaneGrid": "Group",

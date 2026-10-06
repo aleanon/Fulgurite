@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
+> the end). T85.0 and T85.1 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -550,6 +550,33 @@ rotated `VectorText` case once both exist, asserting it is culled only
 by its box. The plan's §1.2 culling row becomes "renderers and `List` cull
 (T16.12); derived containers and `ScrollView` do not". §2's "Every task
 that adds a `Session` method…" does not touch M85: none is added.
+
+**What building found (M85).**
+
+- **T85.1: scan 2 is one body run in two rounds, not two scans.** The
+  Decisions' shape — 2a and 2b emitted per field, as scan 1 is — put a
+  third inlined call of every child's `layout` in every derived row and
+  column, and the embedded fixture's two rows cost **+1,616 B** of
+  `firmware_interactive` `.text` (K4: 1,000). Two cheaper spellings did
+  not help: a `for fills in [false, true]` loop over one body was unrolled
+  back into two (+1,628 B, and +2,040 with the array `black_box`ed, since
+  the trip count was still known), and a per-field body with `Style`
+  borrowed instead of copied still cost +1,580 B. Looping over the child
+  roots through `Node::node_mut` linked the whole `dyn Node` machinery
+  into the paint-only firmware (+20,026 B). What fits is one body per
+  field inside a `while` loop whose round count is `black_box(2)`, with
+  every difference between the rounds decided out of line in
+  `ops::Round::limits`, so the emitted body has no branch on the round
+  for the optimiser to split it by: **+436 B** on `firmware_interactive`
+  (`docs/results-layout-input.md` T85.1). The behaviour is the
+  Decisions' exactly — 2a before 2b, the shares over `Flexible` and fill
+  portions together, the fills' share computed as `free * k / portions`
+  as it always was, one layout per child — so this is recorded and not
+  re-decided.
+- **T85.1: "run scan 2a after 2b" reads 300 for the fill, not 150.** The
+  plan predicted the fill would read 150; run first, the fills divide all
+  of `free` among their own portions, so `[Flexible 80, FILL]` reads
+  80/300. The gate fires by name either way.
 
 **What the review found (M85).**
 

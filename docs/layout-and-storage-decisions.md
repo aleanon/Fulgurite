@@ -141,6 +141,20 @@ length modes per axis:
 | `Shrink` | content size (intrinsic) |
 | `Fill` | share the remainder equally with other `Fill`s |
 | `FillPortion(k)` | share the remainder in ratio `k` (`Fill` == `FillPortion(1)`) |
+| `Flexible(k)` | its content, at most its share of the remainder in ratio `k` (M85/T85.1) |
+
+**`Flexible(k)` keeps distribution single-round** (M85/T85.1, 2026-10-06;
+`docs/plan-layout-input.md`). A derived row or column counts a share over
+its `Flexible` and `FillPortion` portions together and lays each
+`Flexible` child out once under that share as a maximum, so it ends at
+`min(content, share)`; what it leaves goes to the `FillPortion` children,
+**never to another `Flexible`**, so every child is still laid out exactly
+once and there is no freeze loop to add. The price is stated rather than
+hidden: `[Flexible 80 px, Flexible 400 px]` in 300 px reads 80/150, where
+CSS §9.7 would give the second 220. On the cross axis, and in a stack,
+wrap or grid, it resolves as `Shrink`. Gates and counts:
+`crates/lumen-static/tests/flexible.rs`, `docs/results-layout-input.md`
+T85.1.
 
 That covers what flexbox is actually used for — toolbars, sidebars, split
 panes, forms, lists — while dropping precisely the parts that force

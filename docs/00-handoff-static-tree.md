@@ -1493,3 +1493,17 @@ remains** — which is why §10 Step 1 is the kill criterion.
    rule, so every kind's defaults were light-only
    (`docs/widget-audit.md` X6). Appearance still lives in `Style`; the
    roles only decide what goes into it.
+
+10. **A length that takes its content up to a share** — iced's roadmap
+   lists a `Flexible` length beside `FillPortion`; textbook flexbox gets
+   it with a freeze-and-redistribute loop, which §2 of
+   `docs/layout-and-storage-decisions.md` exists to avoid.
+   **DECIDED 2026-10-06 (M85/T85.1): `Length::Flexible(k)`, single-round.**
+   A derived row or column lays each `Flexible` child out once under its
+   share as a maximum, and what it leaves goes only to the fills, never
+   to another `Flexible` — so no child is laid out twice and two
+   `Flexible`s do not share each other's leftover, a limit a gate pins
+   (`docs/layout-and-storage-decisions.md` §2; numbers in
+   `docs/results-layout-input.md` T85.1). `.lss` spells it `flexible` and
+   `flexible(n)`. **Reopen** for an application that needs the second
+   round, with its layout cost measured first (K85a).

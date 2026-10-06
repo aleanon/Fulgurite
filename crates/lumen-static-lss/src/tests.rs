@@ -175,7 +175,8 @@ fn every_property_lowers_to_its_setter() {
             text-overflow: ellipsis; background-fill: 1;
          }
          #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
-         #c { width: fill(3); padding: 1px 2px 3px 4px; }",
+         #c { width: fill(3); padding: 1px 2px 3px 4px; }
+         #d { width: flexible; height: flexible(2); }",
     );
     let want_a = vec![
         set("width", Val::Length(Length::Fixed(12.0))),
@@ -216,6 +217,14 @@ fn every_property_lowers_to_its_setter() {
         vec![
             set("width", Val::Length(Length::FillPortion(3))),
             set("padding", Val::Edges(Edges { left: 4.0, right: 2.0, top: 1.0, bottom: 3.0 })),
+        ]
+    );
+    // M85/T85.1: `flexible` is `flexible(1)`, beside `fill`'s two spellings.
+    assert_eq!(
+        s.base[3].setters,
+        vec![
+            set("width", Val::Length(Length::Flexible(1))),
+            set("height", Val::Length(Length::Flexible(2))),
         ]
     );
     // Every property in the table was exercised above.

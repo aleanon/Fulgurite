@@ -45,7 +45,7 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **30,606 B** (29.9 KB) | **pass**, at 37.4% of budget; re-measured at M82/T82.7 (2026-10-06; the four-binary table below, +8 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **31,090 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at M85/T85.1 (2026-10-06; the four-binary table below, +484 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,344 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M82/T82.7, +4 B (`TextMeasure::outline`'s vtable slot) |
@@ -1027,14 +1027,30 @@ and both provided methods ungated, prints **+52 B** `.text` on `firmware`
 and **+24 B** on the other three, `.rodata` **+8** on all four (the two
 vtable slots), so the comparator sees them (K83b,
 `docs/results-shader.md` T83.3).
+Every M83 and M84 task and M85/T85.0 changed no linked code (Δ 0 on all
+four, each in its own commit and results doc). Rewritten by M85/T85.1
+(`Length::Flexible` and the derive's scan 2 as one body run in two
+rounds): **+484 B** on `firmware` and `firmware_cascade`, **+436 B** on
+`firmware_interactive` and `firmware_bind`, `.rodata` +0. By a symbol diff
+of `firmware_interactive`: `ops::Round::limits` **+300** (out of line on
+purpose, so the per-field body carries no branch on the round), the
+three-field `DeviceControls` row's `layout` **+232**, the eight-field
+`DeviceUi` column's **−48**, and −8 to −24 in four leaf `layout`s from
+code moving. It is in neither D3's nor D6's list (it is not a `Painter`
+method); it is reported to the owner here, under K4's 1,000 B cap and
+K85d's cumulative 1,024 B. Printed by `just firmware-delta a21135b` (K4's
+default) and `just firmware-delta a21135b firmware_interactive=1024`
+(K85d), with `firmware_interactive` at **18,004 B** of headroom; the
+spellings that did not fit are in `docs/plan-layout-input.md`, "What
+building found".
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 30,606 | 37.4% | 51,314 | 13,344 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 |
-| `firmware_interactive` | **63,480** | **77.5%** | **18,440** | 21,886 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** |
-| `firmware_bind` | 34,014 | 41.5% | 47,906 | 13,948 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 |
-| `firmware_cascade` | 32,694 | 39.9% | 49,226 | 14,132 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,090 | 38.0% | 50,830 | 13,344 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 |
+| `firmware_interactive` | **63,916** | **78.0%** | **18,004** | 21,886 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** |
+| `firmware_bind` | 34,450 | 42.1% | 47,470 | 13,948 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 |
+| `firmware_cascade` | 33,178 | 40.5% | 48,742 | 14,132 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

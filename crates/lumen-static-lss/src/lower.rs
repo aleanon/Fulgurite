@@ -79,6 +79,8 @@ pub enum Length {
     Fixed(f32),
     Shrink,
     FillPortion(u16),
+    /// `flexible`, `flexible(n)` — M85/T85.1.
+    Flexible(u16),
 }
 
 /// `lumen_static::style::Edges`.
@@ -170,7 +172,8 @@ mirror!(
 /// What a declaration's value must be.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Takes {
-    /// `Length`: `12px`, `fixed(12px)`, `fill`, `fill(2)`, `shrink`.
+    /// `Length`: `12px`, `fixed(12px)`, `fill`, `fill(2)`, `flexible`,
+    /// `flexible(2)`, `shrink`.
     Length,
     /// `Edges`: one to four px lengths, in CSS order.
     Edges,
@@ -196,7 +199,7 @@ pub enum Takes {
 impl Takes {
     fn describe(self) -> &'static str {
         match self {
-            Takes::Length => "a length: `12px`, `fixed(12px)`, `fill`, `fill(2)` or `shrink`",
+            Takes::Length => "a length: `12px`, `fixed(12px)`, `fill`, `fill(2)`, `flexible`, `flexible(2)` or `shrink`",
             Takes::Edges => "one to four lengths in px, in CSS order: `4px`, `4px 8px`, `4px 8px 2px 1px`",
             Takes::Px => "a length in px, like `12px`",
             Takes::Number => "a bare number, like `600` or `0.5`",
@@ -603,6 +606,11 @@ fn length(v: &Value) -> Option<Length> {
         Value::Function(f, args) if f == "fixed" && args.len() == 1 => px(&args[0]).map(Length::Fixed),
         Value::Function(f, args) if f == "fill" && args.len() == 1 => match &args[0] {
             Value::Number(n, Unit::None) => n.parse::<u16>().ok().filter(|k| *k > 0).map(Length::FillPortion),
+            _ => None,
+        },
+        Value::Keyword(k) if k == "flexible" => Some(Length::Flexible(1)),
+        Value::Function(f, args) if f == "flexible" && args.len() == 1 => match &args[0] {
+            Value::Number(n, Unit::None) => n.parse::<u16>().ok().filter(|k| *k > 0).map(Length::Flexible),
             _ => None,
         },
         _ => None,

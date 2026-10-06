@@ -15,11 +15,12 @@
   "M82/T82.5 added PaintBox's static path check: the star the callback fills with Painter::path covers at least 90% of its analytic outline in its colour, and none of that colour is outside the box.",
   "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to.",
   "M84/T84.3 added Image: a second of playing presents 10 ± 1 frames at 1.00x the image's box and moves its pixels (paused, the same wait presents 0); a press pauses and holds the frame, a second resumes; and K84c's static check, the median layout per animated frame against 100 µs.",
-  "M84/T84.8 added Video: play changes the picture within 250 ms; pause flips the button to Play and holds the picture over 500 ms; a press at 75% of the track hands on_seek 0.75 and shows frame 3 at 300 ms; a drag 25% -> 50% while playing ends at 50% with no frame from a stopped feed; and the static check that a press on the picture is not handled and changes nothing."
+  "M84/T84.8 added Video: play changes the picture within 250 ms; pause flips the button to Play and holds the picture over 500 ms; a press at 75% of the track hands on_seek 0.75 and shows frame 3 at 300 ms; a drag 25% -> 50% while playing ends at 50% with no frame from a stopped feed; and the static check that a press on the picture is not handled and changes nothing.",
+  "M85/T85.1 added Layout: a static geometry check that a flexible(1) bar with 80 px of content is min(80, row/2) wide beside a fill that takes the rest, on one line."
  ],
  "counts": {
-  "entries": 49,
-  "actions": 158,
+  "entries": 50,
+  "actions": 159,
   "landed_checked": 125,
   "isolated": 68
  },
@@ -91,6 +92,9 @@
   ],
   "Grid": [
    "six badges land on exactly two rows of three"
+  ],
+  "Layout": [
+   "a flexible bar keeps its content up to half; the fill takes the rest"
   ],
   "SplitPane": [
    "dragging the divider moves it",
@@ -293,6 +297,7 @@
   "Wrap/six chips land on more than one line",
   "Wrap/every child is inside the container it reported",
   "Grid/six badges land on exactly two rows of three",
+  "Layout/a flexible bar keeps its content up to half; the fill takes the rest",
   "Tabs/a press on the item already selected changes nothing but is taken",
   "BottomNav/a press on the item already selected changes nothing but is taken",
   "NavigationRail/a press on the item already selected changes nothing but is taken",

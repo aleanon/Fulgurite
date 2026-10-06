@@ -22,14 +22,16 @@ on `Axis` presupposes that one of width and height is the main one, and
 a stack has no main axis at all. Its children do not divide the box, they
 each get all of it.
 
-## Three lengths
+## Four lengths
 
-`Length` has exactly three cases:
+`Length` has exactly four cases:
 
 * `Fixed(px)` — exactly this many pixels.
 * `Shrink` — the node's own content size. The default for a leaf.
 * `FillPortion(k)` — share what is left, in this ratio. `Length::FILL` is
   `FillPortion(1)`.
+* `Flexible(k)` — its content size, but at most its share of what is
+  left, in this ratio. It is the next section's subject.
 
 A container is different from a leaf: **containers default to `FILL`
 width and `Shrink` height**, whether they are a row, a column or a stack.
@@ -92,6 +94,67 @@ fn main() {
 Nothing in that had to be solved iteratively, and nothing about it
 depends on what the children contain — which is the property that lets
 layout be memoised per subtree.
+
+### `Flexible`: content, up to a share
+
+A `Flexible(k)` child is measured after the others, like a fill, under
+its share of what is left as a **maximum**: shares are counted over the
+`Flexible` and `Fill` portions together, so it ends at the smaller of its
+content and its share. What it does not use goes to the `Fill` children
+— and only to them. Two `Flexible` children never hand each other their
+leftover, because that would mean laying one out a second time; CSS
+does, with a loop, and this layout has none
+(`docs/layout-and-storage-decisions.md` §2 states the price, and
+`docs/results-layout-input.md` T85.1 has the counts).
+
+```rust
+# extern crate lumen_static;
+# extern crate lumen_static_widgets;
+use lumen_static::prelude::*;
+use lumen_static_widgets::prelude::*;
+use lumen_static::pass;
+use lumen_static::style::Length;
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+struct Bar {
+    left: Fixed,
+    right: Fixed,
+}
+
+fn widths(left: f32, right: Length) -> (f32, f32) {
+    let mut ui = Bar::default();
+    ui.left = Fixed { w: left, h: 20.0 };
+    let mut sty = pass::default_styles(&ui);
+    // 0 = Bar, 1 = left, 2 = right.
+    sty[1].width = Length::Flexible(1);
+    sty[2].width = right;
+    let mut st = [NodeState::default(); Bar::NODE_COUNT];
+    let view = Constraints { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 100.0 };
+    pass::layout(&mut ui, &sty, &mut st, view);
+    assert_eq!(st[0].size.w, 300.0, "the bar takes the whole 300 px");
+    (st[1].size.w, st[2].size.w)
+}
+
+fn main() {
+    // Each has a 150 px share. 80 px of content stays 80, and the fill
+    // gets the 220 it left.
+    assert_eq!(widths(80.0, Length::FILL), (80.0, 220.0));
+    // 400 px of content is capped at its share.
+    assert_eq!(widths(400.0, Length::FILL), (150.0, 150.0));
+    // Beside another Flexible, the 70 px it left goes nowhere.
+    let mut ui = Bar::default();
+    ui.left = Fixed { w: 80.0, h: 20.0 };
+    ui.right = Fixed { w: 400.0, h: 20.0 };
+    let mut sty = pass::default_styles(&ui);
+    sty[1].width = Length::Flexible(1);
+    sty[2].width = Length::Flexible(1);
+    let mut st = [NodeState::default(); Bar::NODE_COUNT];
+    let view = Constraints { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 100.0 };
+    pass::layout(&mut ui, &sty, &mut st, view);
+    assert_eq!((st[1].size.w, st[2].size.w), (80.0, 150.0));
+}
+```
 
 ## There is no `justify-content`
 

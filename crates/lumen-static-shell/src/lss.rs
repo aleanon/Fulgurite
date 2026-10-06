@@ -127,6 +127,7 @@ fn length(l: lower::Length) -> Length {
         lower::Length::Fixed(x) => Length::Fixed(x),
         lower::Length::Shrink => Length::Shrink,
         lower::Length::FillPortion(k) => Length::FillPortion(k),
+        lower::Length::Flexible(k) => Length::Flexible(k),
     }
 }
 

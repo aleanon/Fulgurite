@@ -3,7 +3,8 @@
 `Wrap` and `Grid` are derive axes rather than widgets, so what there is
 to drive is **geometry**: a wrap's children on two lines and a grid's on
 its column count. Both are static claims and say so, which is what the
-`static` flag is for.
+`static` flag is for. `Layout` (M85/T85.1) is the same kind of claim
+about a length, `Flexible`, rather than a widget.
 """
 from harness import Action
 
@@ -61,6 +62,43 @@ GRID = ("Grid", "#d_grid_a", [
         ),
         static=True,
         injection="break the grid on width instead of on its column count",
+    ),
+])
+
+
+LAYOUT_IDS = ["#d_layout_flex", "#d_layout_fill"]
+#: The flexible bar's content width: the showcase's `Fixed { w: 80.0 }`.
+FLEX_CONTENT = 80.0
+
+
+def _flexible(c):
+    """M85/T85.1 — `Length::Flexible` beside a fill, read off the window.
+
+    The flexible bar's share is half the row, so it is
+    `min(80, row / 2)` wide and the fill is the rest of the row. The row's
+    width is read from the two boxes, so the rule holds at whatever width
+    the stage gave it."""
+    f, g = c.box("#d_layout_flex"), c.box("#d_layout_fill")
+    row = g[2] - f[0]
+    fw, gw = f[2] - f[0], g[2] - g[0]
+    want = min(FLEX_CONTENT, row / 2)
+    lines = len(_rows(c, LAYOUT_IDS))
+    ok = (abs(fw - want) <= 0.5 and abs(gw - (row - fw)) <= 0.5
+          and lines == 1 and row > 2 * FLEX_CONTENT)
+    return ok, (f"row {row:.1f} px, {lines} line(s) (bound 1): flexible {fw:.1f} px "
+                f"(bound min({FLEX_CONTENT:.0f}, {row / 2:.1f}) = {want:.1f}), "
+                f"fill {gw:.1f} px (bound {row - fw:.1f})")
+
+
+LAYOUT = ("Layout", "#d_layout_flex", [
+    Action(
+        name="a flexible bar keeps its content up to half; the fill takes the rest",
+        needs="a row wider than twice the flexible bar's 80 px of content",
+        do=lambda c: c.hover(),
+        expect=_flexible,
+        static=True,
+        injection="treat Flexible as FillPortion in the derive's scan 2 — the "
+                  "bar then reads half the row, 150 px of 300",
     ),
 ])
 
@@ -292,4 +330,4 @@ PANEGRID = ("PaneGrid", "#d_panegrid_a", [
     ),
 ])
 
-ALL = [WRAP, GRID, SPLIT, ACCORDION, PANEGRID]
+ALL = [WRAP, GRID, LAYOUT, SPLIT, ACCORDION, PANEGRID]

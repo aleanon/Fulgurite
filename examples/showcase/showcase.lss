@@ -57,6 +57,9 @@ textinput { width: 220px; height: 36px; padding: 8px 12px 8px 12px; color: $text
 DWrap { width: 260px; align: center; }
 DAccordion { height: 200px; }
 DGrid { width: 420px; }
+DLayout { width: 300px; }
+#d_layout_flex { width: flexible(1); height: 32px; color: $accent; }
+#d_layout_fill { width: fill; height: 32px; color: $muted; }
 #d_split_a { width: 360px; height: 140px; }
 DAccordion { width: 320px; }
 .veil-body { padding: 20px 20px 20px 20px; background: $surface; border-radius: 12px; box-shadow: 12px; }

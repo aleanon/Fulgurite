@@ -248,6 +248,10 @@ fn val(v: &Val) -> Ts2 {
             let l = Literal::u16_suffixed(k);
             quote!(::lumen_static::style::Length::FillPortion(#l))
         }
+        Val::Length(Length::Flexible(k)) => {
+            let l = Literal::u16_suffixed(k);
+            quote!(::lumen_static::style::Length::Flexible(#l))
+        }
         Val::Edges(Edges { left, right, top, bottom }) => {
             let [l, r, t, b] = [left, right, top, bottom].map(f32_lit);
             quote!(::lumen_static::style::Edges { left: #l, right: #r, top: #t, bottom: #b })

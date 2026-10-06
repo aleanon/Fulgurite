@@ -486,7 +486,7 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
     let layout_use = match axis {
         Axis::Row | Axis::Column => quote! {
             use ::lumen_static::ops::{
-                fill_child, inner_limits, loose_child, resolve_self, spaced, Axis,
+                inner_limits, loose_child, resolve_self, spaced, Axis,
             };
         },
         Axis::Stack => quote! {
@@ -538,11 +538,13 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         ::lumen_static::ops::is_vertical(axis),
                     );
 
-                    // Scan 1: everything that is not Fill along the main
-                    // axis. Shrink children measure their content here.
+                    // Scan 1: everything that is neither Fill nor
+                    // Flexible along the main axis. Shrink children
+                    // measure their content here.
                     let mut used = gaps;
                     let mut cross = 0.0f32;
                     let mut portions: u32 = 0;
+                    let mut flex_portions: u32 = 0;
                     let mut at = i + 1;
                     #(
                         {
@@ -550,6 +552,8 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                             let l = axis.main_len(&cs);
                             if l.is_fill() {
                                 portions += l.portion() as u32;
+                            } else if l.is_flexible() {
+                                flex_portions += l.flex_portion() as u32;
                             } else {
                                 let avail = (axis.main_of(inner) - used).max(0.0);
                                 #mut_calls
@@ -569,37 +573,68 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         }
                     )*
 
-                    // Scan 2: divide what is left among the fills. No
+                    // Scan 2, in two rounds over one emitted body (M85/T85.1).
+                    //
+                    // **2a** lays each Flexible child out once, under a
+                    // main-axis maximum of its share of what is left —
+                    // shares counted over Flexible and Fill portions
+                    // together — so it ends at min(content, share).
+                    // **2b** divides what is left after that among the
+                    // fills: what a Flexible child leaves goes to the
+                    // fills and **never to another Flexible**, so every
+                    // child is laid out exactly once (K85a). No
                     // freeze-and-redistribute loop exists, because
                     // nothing here can be squeezed below its content.
-                    // Skipped entirely when the container has no fills,
-                    // which is the common case.
-                    let free = (fill_span - used).max(0.0);
-                    let mut at = i + 1;
-                    if portions != 0 {
+                    //
+                    // One body run twice, not two bodies, with what differs
+                    // between the rounds decided out of line by
+                    // `ops::Round`: a second copy of every field's call
+                    // cost 1,616 B of firmware `.text`, over K4's 1,000
+                    // (`docs/results-layout-input.md` T85.1). A round with
+                    // no children of its kind is skipped, so a row without
+                    // Flexible divides exactly as it always did, and one
+                    // with no fills — the common case — runs neither.
+                    let mut free = (fill_span - used).max(0.0);
+                    let mut flex_used = 0.0f32;
+                    // The round count is opaque so the loop is not
+                    // unrolled back into two bodies.
+                    let rounds = ::core::hint::black_box(2u8);
+                    let mut r = 0u8;
+                    while r < rounds {
+                        let fills = r == 1;
+                        r += 1;
+                        if fills {
+                            free = (free - flex_used).max(0.0);
+                        }
+                        if (if fills { portions } else { flex_portions }) == 0 {
+                            continue;
+                        }
+                        let round = ::lumen_static::ops::Round {
+                            axis,
+                            inner,
+                            align: me.align,
+                            fills,
+                            free,
+                            div: (if fills { portions } else { portions + flex_portions }) as f32,
+                        };
+                        let mut at = i + 1;
                     #(
                         {
-                            let cs = style[at];
-                            let l = axis.main_len(&cs);
-                            if l.is_fill() {
-                                let share = if portions == 0 {
-                                    0.0
-                                } else {
-                                    free * l.portion() as f32 / portions as f32
-                                };
+                            if let Some(c) = round.limits(axis.main_len(&style[at])) {
                                 #mut_calls
                                 #opaque_stmt
-                                let s = d.layout(cx, fill_child(axis, inner, share, me.align), style, st, at);
+                                let s = d.layout(cx, c, style, st, at);
                                 used += axis.main(s);
-                                if !axis.cross_len(&cs).is_fill() {
+                                flex_used += round.flexible_took(axis.main(s));
+                                if !axis.cross_len(&style[at]).is_fill() {
                                     cross = cross.max(axis.cross(s));
                                 }
                             }
                             at += <#field_ty as ::lumen_static::widget::Widget>::NODE_COUNT;
                         }
                     )*
+                        let _ = at;
                     }
-                    let _ = at;
 
                     let content = axis.size(used, cross);
                     let padded = ::lumen_static::Size {
