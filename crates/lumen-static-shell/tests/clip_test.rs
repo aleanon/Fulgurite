@@ -160,6 +160,15 @@ fn render_cmds(cmds: &[lumen_static::Cmd], w: u32, h: u32) -> Canvas {
             | Cmd::Line { .. }
             | Cmd::Gradient { .. }
             | Cmd::Glass { .. } => list.cmds.push(*c),
+            // M83/T83.3: the range is backed by zero bytes, so the bracket's
+            // uniforms are in the list's store.
+            #[cfg(lumen_shader)]
+            Cmd::Shader { uniforms: (start, len), .. } => {
+                list.uniforms.resize(list.uniforms.len().max((start + len) as usize), 0);
+                list.cmds.push(*c);
+            }
+            #[cfg(lumen_shader)]
+            Cmd::ShaderEnd => list.cmds.push(*c),
         }
     }
     let mut c = Canvas::new(w, h);

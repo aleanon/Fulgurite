@@ -1138,4 +1138,26 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.ret.observe(h, ink);
         self.inner.path(els, xf, paint);
     }
+
+    /// Hashes the rect, the id and **the uniform bytes themselves**, and
+    /// inks the rect (M83/T83.3): a shader draws nothing outside it, and
+    /// its fallback is clipped to it. Overridden because the provided body
+    /// is a `push_clip`, which would hash only the rect — a bracket whose
+    /// only change is its uniforms would report no damage and keep the old
+    /// pixels (`tests/shader_cmd.rs`, the retention gate).
+    #[cfg(feature = "shader")]
+    fn shader(&mut self, rect: Rect, id: crate::display::ShaderId, uniforms: &[u8]) {
+        let mut h = h_rect(fold(0, 13), rect);
+        h = fold(h, id.0 as u64);
+        h = fold(h, hash_bytes(uniforms));
+        self.ret.observe(h, rect);
+        self.inner.shader(rect, id, uniforms);
+    }
+
+    /// An end has no geometry of its own, as [`Recording`]'s `pop_clip`.
+    #[cfg(feature = "shader")]
+    fn shader_end(&mut self) {
+        self.ret.observe(fold(0, 14), [0.0; 4]);
+        self.inner.shader_end();
+    }
 }

@@ -52,6 +52,13 @@ use crate::desc::Point;
 /// elements follow the text **only when the list has any**, so a list with
 /// no path encodes exactly as version 4 did and a reader from before tag
 /// 11 refuses one with a path by its tag.
+///
+/// Still 4 after M83/T83.3's shader bracket: tags 12 (`Cmd::Shader`) and
+/// 13 (`Cmd::ShaderEnd`) are appended, behind the core's `shader` feature,
+/// and the uniform bytes follow the path elements **only when the list has
+/// any** (the element section is then written even when empty, so the two
+/// trailing sections stay in order). A decoder built without `shader`
+/// meets tag 12 as unknown and refuses the buffer by its tag.
 pub const VERSION: u8 = 4;
 
 /// Append `list`'s encoding to `out`.
@@ -164,6 +171,16 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.color(stroke);
                 w.f32(width);
             }
+            #[cfg(feature = "shader")]
+            Cmd::Shader { rect, id, uniforms } => {
+                w.u8(12);
+                w.rect(rect);
+                w.0.extend_from_slice(&id.0.to_le_bytes());
+                w.u32(uniforms.0);
+                w.u32(uniforms.1);
+            }
+            #[cfg(feature = "shader")]
+            Cmd::ShaderEnd => w.u8(13),
         }
     }
     w.u32(list.text.len() as u32);
@@ -173,7 +190,14 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
     // 4, so tag 11 is an appended tag and `VERSION` does not move. A
     // reader from before it refuses a list that has one by its unknown
     // tag, before it reaches this section.
-    if !list.paths.is_empty() {
+    #[cfg(feature = "shader")]
+    let uniforms = !list.uniforms.is_empty();
+    #[cfg(not(feature = "shader"))]
+    let uniforms = false;
+    // The element section is written, possibly empty, whenever the uniform
+    // section follows it (M83/T83.3), so a reader always knows which
+    // trailing section it is in.
+    if !list.paths.is_empty() || uniforms {
         w.u32(list.paths.len() as u32);
         for e in &list.paths {
             w.u8(e.tag());
@@ -183,6 +207,13 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 w.f32(p.y);
             }
         }
+    }
+    // The uniform bytes after the elements (M83/T83.3), only when there are
+    // any, so a list with no shader encodes exactly as version 4 did.
+    #[cfg(feature = "shader")]
+    if uniforms {
+        w.u32(list.uniforms.len() as u32);
+        w.0.extend_from_slice(&list.uniforms);
     }
 }
 
@@ -194,6 +225,8 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
     list.cmds.clear();
     list.text.clear();
     list.paths.clear();
+    #[cfg(feature = "shader")]
+    list.uniforms.clear();
     let mut r = R(bytes);
     if r.u8()? != VERSION {
         return None;
@@ -279,6 +312,17 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
                 stroke: r.color()?,
                 width: r.f32()?,
             },
+            #[cfg(feature = "shader")]
+            12 => Cmd::Shader {
+                rect: r.rect()?,
+                id: crate::display::ShaderId({
+                    let b = r.take(2)?;
+                    u16::from_le_bytes([b[0], b[1]])
+                }),
+                uniforms: (r.u32()?, r.u32()?),
+            },
+            #[cfg(feature = "shader")]
+            13 => Cmd::ShaderEnd,
             _ => return None,
         };
         list.cmds.push(c);
@@ -306,6 +350,13 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
             list.paths.push(e);
         }
     }
+    // The uniform bytes, present only when the encoder had any (M83/T83.3).
+    #[cfg(feature = "shader")]
+    if !r.0.is_empty() {
+        let un = r.u32()? as usize;
+        let ub = r.take(un)?;
+        list.uniforms.extend_from_slice(ub);
+    }
     if !r.0.is_empty() {
         return None;
     }
@@ -322,6 +373,14 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
         // `DisplayList::els_of` slices with it.
         if let Cmd::Path { els: (at, len), .. } = *c {
             if at as usize + len as usize > list.paths.len() {
+                return None;
+            }
+        }
+        // And a bracket's range must name uniform bytes that are there:
+        // `DisplayList::uniforms_of` slices with it (M83/T83.3).
+        #[cfg(feature = "shader")]
+        if let Cmd::Shader { uniforms: (at, len), .. } = *c {
+            if at as usize + len as usize > list.uniforms.len() {
                 return None;
             }
         }

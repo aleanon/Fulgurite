@@ -1212,6 +1212,18 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         // and the loader its own renderers' stack. What does cross --
         // `TextMeasure`'s vtable, the `DisplayList` -- is the core's, under
         // the source hash (M49). An entry would refuse a swap that is safe.
+        //
+        // M83/T83.3: **two entries for shaders** (docs/plan-iced-roadmap.md
+        // §2.3, second review A7). `lumen_shader` is the core's variant set
+        // -- `Cmd::Shader` exists when the core's `shader` is on anywhere in
+        // the graph, read through `build.rs`'s `cfg(lumen_shader)` and not
+        // this crate's feature, which can be off while the core's is on.
+        // `shader` is this crate's own, which changes `ShaderTable`'s layout
+        // across `Session::shaders` (T83.4). Core-on/shell-off and
+        // core-on/shell-on are then told apart, and the third build (shell
+        // on, core off) cannot exist.
+        (cfg!(lumen_shader), "lumen_shader"),
+        (cfg!(feature = "shader"), "shader"),
     ] {
         if on {
             features.push(name);

@@ -657,6 +657,58 @@ fn resizing_the_canvas_grows_exactly_and_gives_memory_back() {
 #[path = "fonts/pinned.rs"]
 mod pinned;
 
+/// **A warm frame with two shader brackets allocates nothing** — M83/T83.3
+/// (`docs/plan-gpu-extension.md`, the allocation gate).
+///
+/// The uniform bytes go into the list's own `uniforms` buffer, cleared with
+/// the frame like `text`, so recording a bracket reuses its capacity. The
+/// list is re-recorded every frame, as a host's is, and rasterised; the
+/// fallback is a clipped fill. `cfg(lumen_shader)` from this crate's
+/// `build.rs`; `dev-shape` runs it with `--features truetype,shader` and
+/// counts the arm present.
+#[cfg(lumen_shader)]
+mod shader {
+    use super::{allocs, counters, frees};
+    use lumen_static::display::{Color, DisplayList, ShaderId};
+    use lumen_static::Renderer;
+    use lumen_static_shell::software::Canvas;
+
+    fn record(list: &mut DisplayList, k: u8) {
+        list.clear();
+        list.rect([0.0, 0.0, 200.0, 120.0], Color(30, 60, 90, 255));
+        for (i, x) in [20.0f32, 110.0].into_iter().enumerate() {
+            list.shader([x, 20.0, x + 70.0, 90.0], ShaderId(i as u16), &[k; 16]);
+            list.rect([x - 10.0, 10.0, x + 80.0, 100.0], Color(200, 80, 40, 255));
+            list.shader_end();
+        }
+    }
+
+    #[test]
+    fn a_frame_with_two_shader_brackets_allocates_nothing() {
+        let mut canvas = Canvas::new(200, 120);
+        let mut list = DisplayList::new();
+        for k in 0..5 {
+            record(&mut list, k);
+            canvas.render(&list, 200, 120);
+        }
+        assert_eq!(list.uniforms.len(), 32, "setup: two brackets of 16 bytes each");
+        let before = counters();
+        for k in 0..20 {
+            record(&mut list, k);
+            canvas.render(&list, 200, 120);
+        }
+        let (n, f) = (allocs() - before.0, frees() - before.1);
+        println!("20 frames with two shader brackets: {n} allocs, {f} frees (bound 0, 0)");
+        assert_eq!(
+            (n, f),
+            (0, 0),
+            "20 frames with two shader brackets: {n} allocs ({:.2}/frame), {f} frees ({:.2}/frame)",
+            n as f64 / 20.0,
+            f as f64 / 20.0
+        );
+    }
+}
+
 #[cfg(feature = "truetype")]
 mod truetype {
     use super::{allocs, counters, frees, PlainApp};

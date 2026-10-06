@@ -39,6 +39,28 @@ cp target/release/stamp-host "$OUT/host-shaping"
 "$OUT/host-shell" "$OUT/shell.so" accept
 "$OUT/host-shell" "$OUT/shaping.so" refuse "lumen-static-shell features"
 "$OUT/host-shaping" "$OUT/shaping.so" accept
+
+# ---- M83/T83.3: the two shader entries ----------------------------------
+#
+# docs/plan-iced-roadmap.md §2.3 (second review A7). `lumen_shader` is the
+# core's variant set, read through the shell's `build.rs`; `shader` is the
+# shell's own feature (`ShaderTable`'s layout across `Session::shaders`).
+# Pair 1: core on, shell off, under a loader with neither -- refused, for
+# `lumen_shader`. Pair 2: core and shell on, under a loader with the core
+# on and the shell off -- refused, for `shader`. Accept: built alike, in
+# all three builds (the plain shell pair above is the third).
+cargo build --release -q -p stamp-lib --features shader-core
+cp target/release/libstamp_lib.so "$OUT/shader-core.so"
+cargo build --release -q -p stamp-lib --features shader
+cp target/release/libstamp_lib.so "$OUT/shader.so"
+cargo build --release -q -p stamp-host --features shader-core
+cp target/release/stamp-host "$OUT/host-shader-core"
+cargo build --release -q -p stamp-host --features shader
+cp target/release/stamp-host "$OUT/host-shader"
+"$OUT/host-shell" "$OUT/shader-core.so" refuse "lumen-static-shell features" lumen_shader
+"$OUT/host-shader-core" "$OUT/shader.so" refuse "lumen-static-shell features" shader
+"$OUT/host-shader-core" "$OUT/shader-core.so" accept
+"$OUT/host-shader" "$OUT/shader.so" accept
 # The plain loader again, so the M49 checks below run the host they expect.
 cargo build --release -q -p stamp-host
 

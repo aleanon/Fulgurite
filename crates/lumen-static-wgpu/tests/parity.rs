@@ -44,7 +44,13 @@ const PAGE: Color = Color(250, 250, 250, 255);
 /// a new variant does not compile in [`kind`] until it has an index, and
 /// once it has one [`the_frame_uses_every_command`] refuses to pass until
 /// [`frame`] draws it or [`kind`] names the file that does.
+///
+/// 14 under `cfg(lumen_shader)` (M83/T83.3): the shader bracket's two
+/// variants exist only when the core's `shader` is on in the graph.
+#[cfg(not(lumen_shader))]
 const KINDS: usize = 12;
+#[cfg(lumen_shader)]
+const KINDS: usize = 14;
 
 /// A stable index per command kind, from an **exhaustive** match with no
 /// wildcard arm — M51/T51.1, as `lumen-static-shell/tests/svg.rs` does
@@ -70,6 +76,13 @@ fn kind(c: &Cmd) -> (usize, &'static str, Option<&'static str>) {
         // tolerance, cache and tile gates are `paths_agree_across_backends`
         // and the two after it.
         Cmd::Path { .. } => (11, "Path", None),
+        // M83/T83.3: in the frame, as the bracket around the clip scope.
+        // Both backends draw a bracket as a clip until T83.5 gives the GPU
+        // its pass split, so the clip scope's region compares them.
+        #[cfg(lumen_shader)]
+        Cmd::Shader { .. } => (12, "Shader", None),
+        #[cfg(lumen_shader)]
+        Cmd::ShaderEnd => (13, "ShaderEnd", None),
     }
 }
 
@@ -145,9 +158,18 @@ fn frame() -> DisplayList {
     l.rounded_rect([70.0, 10.0, 130.0, 45.0], Color(40, 90, 200, 255), 10.0);
     // A clip scope with something escaping it on every side, so the clip
     // stack is exercised on both backends.
+    //
+    // M83/T83.3: in a `lumen_shader` build the scope sits inside a shader
+    // bracket narrower than the clip, with an id no backend knows, so what
+    // shows is the fallback cut to the bracket's rect -- and a backend
+    // whose bracket arm did not clip would paint the clip's wider box.
+    #[cfg(lumen_shader)]
+    l.shader([155.0, 15.0, 185.0, 45.0], lumen_static::display::ShaderId(0), &[]);
     l.push_clip([150.0, 10.0, 190.0, 50.0]);
     l.rect([140.0, 4.0, 230.0, 56.0], Color(120, 120, 120, 255));
     l.pop_clip();
+    #[cfg(lumen_shader)]
+    l.shader_end();
     l.text([10.0, 60.0, 140.0, 78.0], "parity", 14.0, Color(0, 0, 0, 255));
     l.shadow([160.0, 70.0, 230.0, 110.0], 8.0, 10.0);
     l.rounded_rect([160.0, 70.0, 230.0, 110.0], Color(30, 38, 54, 255), 8.0);
@@ -300,6 +322,10 @@ fn the_frame_uses_every_command() {
         Cmd::PushClip { rect: r },
         Cmd::PopClip,
         Cmd::Path { rect: r, els: (0, 0), fill: PAGE, stroke: PAGE, width: 1.0 },
+        #[cfg(lumen_shader)]
+        Cmd::Shader { rect: r, id: lumen_static::display::ShaderId(0), uniforms: (0, 0) },
+        #[cfg(lumen_shader)]
+        Cmd::ShaderEnd,
     ];
     let mut named = [false; KINDS];
     let mut missing = Vec::new();

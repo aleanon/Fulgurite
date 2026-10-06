@@ -230,6 +230,9 @@ pub use retain::Incremental;
 pub use display::{Cmd, Color, ImageId, ImageSource, Painter, Scaled};
 #[cfg(feature = "alloc")]
 pub use display::{DisplayList, Renderer};
+// M83/T83.3: custom shaders, behind the core's `shader` (D3).
+#[cfg(feature = "shader")]
+pub use display::{ShaderId, MAX_UNIFORMS};
 pub use style::{Align, Edges, Length, Patch, Rule, Selector, Style, TextOverflow};
 pub use inline::{InlineClusters, InlineText};
 pub use text::{ClusterBuf, Dirty, MeasureKey, Measured, TextBuffer, TextStorage};

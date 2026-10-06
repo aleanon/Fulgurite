@@ -27,6 +27,13 @@
 //! centre, found by the same walk, into `Report::shapes`. WCAG 1.4.11
 //! asks 3:1 of non-text ink (`NON_TEXT_RATIO`), not text's 4.5.
 //!
+//! **A shader bracket is unknown ground, and its fallback is none**
+//! (M83/T83.3, `cfg(lumen_shader)`). Text over a `Cmd::Shader`'s rect is
+//! unmeasured, as `"shader"`: its pixels are whatever the WGSL computes.
+//! The commands inside the bracket are the fallback a backend that cannot
+//! run the shader draws, and they are not ground for any run, inside the
+//! bracket or after it; the bracket also clips like a `PushClip`.
+//!
 //! **What it cannot measure it counts, never skips.** A run whose ground
 //! is translucent, an image or glass is `unmeasured`, with the reason; a
 //! run whose centre is clipped away is `clipped` (nobody sees it). A
@@ -188,6 +195,12 @@ fn ground_at(c: &Cmd, x: f32, y: f32) -> Ground {
         // Not one colour across its box (M82/T82.5); the path is measured
         // itself, as a shape.
         Cmd::Path { rect, .. } if holds(rect, x, y) => Ground::Unknown("path"),
+        // M83/T83.3: a shader's output is whatever its WGSL computes, so a
+        // run over it is unmeasured. Its fallback is not the ground: the
+        // walk skips every command inside a bracket (`text_contrast`), so
+        // this arm is what a run over the bracket meets.
+        #[cfg(lumen_shader)]
+        Cmd::Shader { rect, .. } if holds(rect, x, y) => Ground::Unknown("shader"),
         _ => Ground::Miss,
     }
 }
@@ -199,18 +212,37 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
     // `PushClip`, or `None` for unclipped.
     let mut clips: Vec<Rect> = Vec::new();
     let mut at: Vec<Option<Rect>> = Vec::with_capacity(list.cmds.len());
+    // Whether each command is inside a shader bracket (M83/T83.3): a
+    // fallback, which a GPU that runs the shader never draws, so it is not
+    // ground for anything. Only the `lumen_shader` build can set it.
+    #[cfg_attr(not(lumen_shader), allow(unused_mut))]
+    let mut depth = 0u32;
+    let mut fallback: Vec<bool> = Vec::with_capacity(list.cmds.len());
     for c in &list.cmds {
         at.push(clips.last().copied());
+        fallback.push(depth > 0);
+        let push = |clips: &mut Vec<Rect>, rect: &Rect| {
+            let r = match clips.last() {
+                Some(o) => [rect[0].max(o[0]), rect[1].max(o[1]), rect[2].min(o[2]), rect[3].min(o[3])],
+                None => *rect,
+            };
+            clips.push(r);
+        };
         match c {
-            Cmd::PushClip { rect } => {
-                let r = match clips.last() {
-                    Some(o) => [rect[0].max(o[0]), rect[1].max(o[1]), rect[2].min(o[2]), rect[3].min(o[3])],
-                    None => *rect,
-                };
-                clips.push(r);
-            }
+            Cmd::PushClip { rect } => push(&mut clips, rect),
             Cmd::PopClip => {
                 clips.pop();
+            }
+            // A bracket clips its fallback as a `PushClip` would.
+            #[cfg(lumen_shader)]
+            Cmd::Shader { rect, .. } => {
+                push(&mut clips, rect);
+                depth += 1;
+            }
+            #[cfg(lumen_shader)]
+            Cmd::ShaderEnd => {
+                clips.pop();
+                depth = depth.saturating_sub(1);
             }
             _ => {}
         }
@@ -221,7 +253,7 @@ pub fn text_contrast(list: &DisplayList, page: Color) -> Report {
     // gradient sampled at `x`, `x0` and `x1`; the page when nothing is.
     let ground_under = |k: usize, x: f32, y: f32, x0: f32, x1: f32| {
         for j in (0..k).rev() {
-            if !visible(j, x, y) {
+            if !visible(j, x, y) || fallback[j] {
                 continue;
             }
             match ground_at(&list.cmds[j], x, y) {

@@ -123,3 +123,71 @@ the factory the live leg drives.
 
 `just ci-verify` on this half is the coordinator's, and is cited in
 AGENT.md's queue entry.
+
+## T83.3 — the core bracket, at `a4080ea` + T83.3 (2026-10-06)
+
+`Cmd::Shader { rect, id: ShaderId, uniforms: (offset, len) }` … `Cmd::ShaderEnd`,
+`Painter::shader`/`shader_end` (provided: `push_clip`/`pop_clip`, the leaf
+contract), `DisplayList::uniforms`, and the overrides in `Scaled`,
+`Deferring` and `Recording` -- all behind the core's default-off `shader`
+(owner decision D3). Outside the core every arm is `cfg(lumen_shader)`:
+`lumen-static` declares `links = "lumen_static"` and its `build.rs` prints
+`cargo:shader=1`; `lumen-static-shell`, `lumen-static-wgpu` and `benches`
+each turn `DEP_LUMEN_STATIC_SHADER` into that cfg. Wire tags **12** and
+**13**, appended (`wire::VERSION` stays 4). The canvas, SVG and (until
+T83.5) the GPU draw a bracket as a clip around its fallback.
+
+**Budgets** (K1, K83b).
+
+| quantity | parent `a4080ea` | T83.3, `shader` off | T83.3, `shader` on | bound |
+|---|---:|---:|---:|---|
+| `size_of::<Cmd>()` (`tests/glass_cmd.rs`) | 60 B | **60 B** | **60 B** | 60 |
+| `Shader`'s payload, mirrored | — | — | **28 B** (26 B of fields, padded) | ≤ 56 (`Gradient`'s) |
+| `Style` / `NodeState` (`tests/cursor.rs`) | 84 / 84 B | **84 / 84 B** | **84 / 84 B** | unchanged |
+| firmware, `just firmware-delta a4080ea firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | — | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | — | 0 (K83b, K4) |
+| clean build of `just firmware-size` (fresh target dir, three runs) | 3.00, 2.94, 3.04 s (re-measured today; T83.0's 3.04, 3.00, 3.08) | **3.10**, 2.99, 2.98 s | — | printed (Decisions, "Cost") |
+| build scripts in the workspace | 2 (`lumen-static-reload`, `fixtures/embedded`) | **6** (+ the core, the shell, wgpu, `benches`); the firmware build runs the core's and the fixture's | — | the four the plan names |
+
+**K83c, eight invocations under `just bench-lock`, `shader` off** (all 24
+quiet, load1 ≤ 1.27 against 8).
+
+| row | T83.0 spread | T83.3 median | T83.3 spread | verdict |
+|---|---:|---:|---:|---|
+| `idle (floor)` | 55.80–62.60 µs | **56.30 µs** | 53.20–59.70 | inside |
+| `+render (damage)` | 72.90–77.20 µs | **73.20 µs** | 73.10–81.60 | inside |
+| `keystroke + layout, 100 KB` | 5.22–5.50 ms | **5.22 ms** | 5.00–5.79 | inside |
+| `cascade_deep (whole table)` | 15,854.81–15,928.86 ns | **15,152.42 ns** | 15,017.38–15,876.46 | **below the spread (faster): attributed to the machine, not T83.3** |
+
+The cascade row is K83c's "alignment" outcome, settled the strong way: the
+release `cascade` binaries built from `a4080ea` (a throwaway `git archive`
+snapshot) and from this tree have **identical** `.text` (682,515 B each,
+`size`) and an **empty** `nm -C -S` diff of their text symbols, and run
+alternately under the lock, eight a side, they read base **15,155.69 ns**
+(14,993.23–15,339.56) and work **15,109.34 ns** (15,069.95–15,245.01). The
+parent itself sits below T83.0's spread today, so the shift is the
+machine's; no shader symbol is in the default build (K83b reads Δ 0).
+
+**Gates.**
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| exhaustive both ways (`dev-shape`): `cargo check --workspace --all-targets`, off and `--features lumen-static/shader` | both compile, wgpu included | both green | `benches/src/bin/retain.rs`'s `cfg(lumen_shader)` `Shader` arm deleted: "on" fails **E0004** `&Cmd::Shader { .. }` not covered at `retain.rs:37`, "off" green; `cargo:rustc-cfg=lumen_shader` removed from the shell's `build.rs`: "on" fails E0004 at `software.rs:1327` and `svg.rs:168`; one shell arm written `#[cfg(feature = "shader")]` (`svg.rs`): "on" fails E0004 at `svg.rs:168` -- the unification defect the design exists to stop |
+| — lint (`dev-shape`, `just gpu`): `cargo clippy --workspace --all-targets --exclude lumen-static-wgpu --features lumen-static/shader -- -D warnings`, and `-p lumen-static-wgpu --features lumen-static/shader` | clean | -D warnings | an unused binding in svg.rs's `ShaderEnd` arm: the "on" line fails `unused variable: injected`, the feature-off line green |
+| shift (`tests/shader_cmd.rs`) | B's offset **16** → **32** (setup: differ); B's `hash_from` `0x15848bd8474ccf96` both | equal | `hash_into` folds `uniforms.0`: `0x15848bd8474ccf96` vs `0x82cfb1ea060355a6`, red by name |
+| same slot, new bytes | `0x15848bd8474ccf96` vs `0x35920fb4916db1aa`, the command field-for-field equal | differ | `hash_from` skips the bytes: both `0xf7dec8b455c15b95`, red |
+| retention (`Recording` → `Incremental`) | A's bytes change: damage **1.00×** A's rect, B not in it, 2 brackets recorded; accept: B's change damages **1.00×** B, A not in it | 1.00 | `Recording`'s two overrides removed: "damage **0.00×** A's rect, regions [], brackets in the recorded list 0 (setup 2)", red at the setup line |
+| `deferring_forwards_the_bracket` | 4 in, 4 out; `Shader` 1 in each list | equal, count 1 | `Deferring`'s overrides removed: "Shader in the wrapped one 0", "first difference at Some(1), Shader … became PushClip", red |
+| — `Scaled` | rect ×2 `[20, 20, 120, 80]`, bytes `[1..8]` untouched | as stated | overrides removed: `[PushClip, PopClip]`, bytes `[]`, red |
+| — `Recording` forwards | `[Shader, ShaderEnd]` under it | as stated | (the retention injection): `[PushClip, PopClip]`, red |
+| — a leaf inherits the clip | `["push", "rect", "pop"]` | as stated | — (the default itself) |
+| wire | 137 B at version 4, 21 uniform bytes back of 21, equal; with a path too; a range past the bytes refused; an empty list is the version-4 layout | equal | decode drops the bytes: the range check refuses the buffer, `expect("decodes")` red -- a decoder that drops uniforms cannot also pass validation |
+| software (`lumen-static-shell/tests/shader_software.rs`) | fallback pixels inside the rect **2,000** (setup), outside **100** (the unclipped corner rect's only), **0** px differ from `push_clip` + fill + `pop_clip` | 0 | `Canvas` ignores `Shader`/`ShaderEnd`: outside **2,300**, **2,200** px differ, red |
+| contrast (`contrast_names_every_command`) | `kinds 14 built of 14`, probes 14 (measured 8, unmeasured 6); `Shader` and `ShaderEnd` `Unknown("shader")` (feature off: 12 of 12) | every row | `ground_at`'s `Shader` arm deleted: both rows `got Miss`, red; the fallback taken as ground: `ShaderEnd: got Ground(Color(255, 255, 255, 255))`, red |
+| `tests/svg.rs`, the whole vocabulary | 14 kinds, 14 drawn (feature off: 12) | all | — (the arms' own E0004 above) |
+| allocation (`alloc_gate.rs`, `shader::` arm, `--features truetype,shader`) | 20 frames with two brackets: **0** allocs, **0** frees; arms counted 1 | 0; ≥ 1 arm | `DisplayList::shader` copies through a fresh `Vec`: **40** allocs, 40 frees (2.00/frame), red |
+| GPU parity, the clip scope inside a bracket (`lumen-static-wgpu/tests/parity.rs`, `--features lumen-static/shader`, RTX 4070) | clip scope **0** px over 8 (bound 2); `Shader`, `ShaderEnd` "in the frame" | 2 | wgpu's `Shader` arm pushes an unbounded clip: clip scope **700** px over 8, red |
+| size | `Cmd` 60 B both builds; `Shader` payload 28 B | 60; ≤ 56 | (K1's own) |
+| `just abi-stamp`, pair 1: core on, shell off, under a loader with neither | refused (first field `DisplayList` 120/8 vs 144/8); fields that differ `["DisplayList", "lumen-static-shell features"]`, `lumen_shader` in the library's list only | refused, by the entry | the entry reads the shell's `cfg!(feature = "shader")`: fields that differ `["DisplayList"]`, "`lumen-static-shell features` does not differ", red |
+| — pair 2: core and shell on, under a loader with the core on and the shell off | refused: `lumen-static-shell features` `reload,truetype,lumen_shader` vs `…,lumen_shader,shader` | refused | the shell entry dropped: "accepted a library that should have been refused", red |
+| — accept | `host-shader-core`/`shader-core.so` and `host-shader`/`shader.so` accepted (20 fields), and the plain shell pair | accepted | — |
+| firmware (K83b) | Δ **0** on all four | 0 | `ShaderId` and both provided methods ungated: `.text` **+52** (`firmware`), **+24** (the other three), `.rodata` **+8** each, FAIL by name on all four |

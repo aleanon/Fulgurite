@@ -1018,6 +1018,15 @@ firmware_interactive=0 firmware_bind=0 firmware_cascade=0`). At M82b's
 close the `outline` slot stays what T82.7 recorded: in neither D3's nor
 D6's list, within K4, reported to the owner and not accepted growth
 (`docs/results-paint-vocabulary.md`, "M82b's kill rules, at its close").
+M83/T83.3 (the shader bracket, behind the core's default-off `shader`,
+owner decision D3) changed no linked code: Δ 0 on all four (`just
+firmware-delta a4080ea firmware=0 firmware_interactive=0 firmware_bind=0
+firmware_cascade=0`), by construction, since with the feature off neither
+the variants nor the two `Painter` methods exist. Its injection, `ShaderId`
+and both provided methods ungated, prints **+52 B** `.text` on `firmware`
+and **+24 B** on the other three, `.rodata` **+8** on all four (the two
+vtable slots), so the comparator sees them (K83b,
+`docs/results-shader.md` T83.3).
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
 | binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ |

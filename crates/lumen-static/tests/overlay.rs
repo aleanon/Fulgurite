@@ -68,6 +68,12 @@ fn cmds(list: &DisplayList) -> Vec<(&'static str, [f32; 4])> {
             Cmd::Glass { rect, .. } => ("glass", *rect),
             Cmd::PopClip => ("pop", [0.0; 4]),
             Cmd::Path { rect, .. } => ("path", *rect),
+            // M83/T83.3: the core's own feature, since an integration test
+            // is compiled with its package's features.
+            #[cfg(feature = "shader")]
+            Cmd::Shader { rect, .. } => ("shader", *rect),
+            #[cfg(feature = "shader")]
+            Cmd::ShaderEnd => ("shader-end", [0.0; 4]),
         })
         .collect()
 }

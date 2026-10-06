@@ -111,7 +111,22 @@ dev-shape:
     # out while the binary's block-glyph arms keep it green (M43/R17-F1).
     cargo test -q -p lumen-static-shell --features truetype --test alloc_gate
     n=$(cargo test -q -p lumen-static-shell --features truetype --test alloc_gate -- --list 2>/dev/null | grep -c '^truetype::'); echo "alloc_gate: $n truetype arms (bound >= 3)"; [ "$n" -ge 3 ]
+    # M83/T83.3: the shader bracket, with the core's and the shell's
+    # `shader` named for these binaries rather than left to `--workspace`'s
+    # unification (nothing in the default graph turns it on), and the
+    # allocation gate's `shader` arm refused at fewer than one.
+    cargo test -q -p lumen-static --features shader --test shader_cmd --test glass_cmd
+    cargo test -q -p lumen-static-shell --features shader --test shader_software --test contrast_commands --test svg --test clip_test
+    cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate
+    n=$(cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate -- --list 2>/dev/null | grep -c '^shader::'); echo "alloc_gate: $n shader arms (bound >= 1)"; [ "$n" -ge 1 ]
+    # M83/T83.3 (owner decision D3): every `match` over `Cmd` compiler-checked
+    # with the shader variants absent and present. wgpu is included: a check
+    # needs no adapter. The arms outside the core are `cfg(lumen_shader)`,
+    # from each crate's build.rs, so the "on" build is the unified one.
+    cargo check -q --workspace --all-targets
+    cargo check -q --workspace --all-targets --features lumen-static/shader
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu --features lumen-static/shader -- -D warnings
     # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
     # backend through `Program::backend_with`), linted with the feature on.
     cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
@@ -125,6 +140,9 @@ dev-shape:
     # the workspace's unifies `observe` on, so a link to an `observe`-only
     # item from `a11y` code resolves there and fails for the feature alone.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps --features a11y
+    # M83/T83.3: `shader` adds public items (`ShaderId`, `Painter::shader`);
+    # T83.4 and T83.6 add the shell's and the widgets' to this line.
+    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static -p lumen-static-shell --no-deps --features lumen-static/shader,lumen-static-shell/shader
     # M48/T48.9: the core's `observe` without the widgets' must not
     # build, and the matched build must. Compiles, so not in `static`.
     ./scripts/check_feature_seam.sh
@@ -405,6 +423,8 @@ gpu:
     cargo test -q -p lumen-static-wgpu --features shaping --test parity -- --nocapture 2>&1 | grep -E 'shaped region|test result'
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
     cargo clippy -p lumen-static-wgpu --features shaping --all-targets -- -D warnings
+    # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
+    cargo clippy -p lumen-static-wgpu --all-targets --features lumen-static/shader -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32

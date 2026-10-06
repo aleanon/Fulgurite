@@ -116,6 +116,30 @@ impl Svg {
         id
     }
 
+    /// Open a `<g>` clipped to `rect`, for a `PushClip` and for a shader
+    /// bracket (M83/T83.3), which draw their contents the same way here.
+    fn open_clip(&mut self, body: &mut String, rect: Rect) {
+        let id = format!("c{}", self.clips);
+        let _ = write!(
+            self.defs,
+            r#"<clipPath id="{id}"><rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}"/></clipPath>"#,
+            rect[0],
+            rect[1],
+            rect[2] - rect[0],
+            rect[3] - rect[1]
+        );
+        let _ = write!(body, r#"<g clip-path="url(#{id})">"#);
+        self.clips += 1;
+    }
+
+    /// Close the innermost group, never below zero.
+    fn close_clip(&mut self, body: &mut String) {
+        if self.clips > 0 {
+            body.push_str("</g>");
+            self.clips -= 1;
+        }
+    }
+
     /// XML-escape text. Without this a label containing `&` or `<`
     /// produces a document no parser will open — which is the kind of
     /// failure that shows up in someone else's tool, days later.
@@ -314,25 +338,16 @@ impl Renderer for Svg {
                         paint(*stroke)
                     );
                 }
-                Cmd::PushClip { rect } => {
-                    let id = format!("c{}", self.clips);
-                    let _ = write!(
-                        self.defs,
-                        r#"<clipPath id="{id}"><rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}"/></clipPath>"#,
-                        rect[0],
-                        rect[1],
-                        rect[2] - rect[0],
-                        rect[3] - rect[1]
-                    );
-                    let _ = write!(body, r#"<g clip-path="url(#{id})">"#);
-                    self.clips += 1;
-                }
-                Cmd::PopClip => {
-                    if self.clips > 0 {
-                        body.push_str("</g>");
-                        self.clips -= 1;
-                    }
-                }
+                Cmd::PushClip { rect } => self.open_clip(&mut body, *rect),
+                Cmd::PopClip => self.close_clip(&mut body),
+                // **A shader bracket is a `clipPath` group** (M83/T83.3):
+                // SVG runs no WGSL, so the document carries the fallback
+                // recorded inside the bracket, clipped to the shader's rect,
+                // as the software canvas draws it.
+                #[cfg(lumen_shader)]
+                Cmd::Shader { rect, .. } => self.open_clip(&mut body, *rect),
+                #[cfg(lumen_shader)]
+                Cmd::ShaderEnd => self.close_clip(&mut body),
             }
         }
         // An unbalanced list must still produce a parseable document —

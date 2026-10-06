@@ -308,6 +308,17 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
     fn pop_clip(&mut self) {
         self.inner.pop_clip();
     }
+    /// Forwarded, so a deferred node's shader paints in phase 2 as the
+    /// bracket and not as the clip the provided body would turn it into —
+    /// M83/T83.3 (`tests/shader_cmd.rs`, `deferring_forwards_the_bracket`).
+    #[cfg(feature = "shader")]
+    fn shader(&mut self, rect: crate::display::Rect, id: crate::display::ShaderId, uniforms: &[u8]) {
+        self.inner.shader(rect, id, uniforms);
+    }
+    #[cfg(feature = "shader")]
+    fn shader_end(&mut self) {
+        self.inner.shader_end();
+    }
     fn defer(&mut self, i: u32) -> bool {
         if self.painting == Some(i) {
             return false;

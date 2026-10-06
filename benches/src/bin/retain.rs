@@ -49,6 +49,13 @@ fn ink(c: &Cmd) -> [f32; 4] {
         | Cmd::PushClip { rect } => *rect,
         Cmd::Line { a, b, .. } => [a.x, a.y, b.x, b.y],
         Cmd::PopClip => [0.0; 4],
+        // M83/T83.3: a bracket inks its rect, as `Recording::shader` does;
+        // its end, like a pop, has no geometry. `cfg(lumen_shader)` from
+        // this crate's `build.rs`, never its own feature.
+        #[cfg(lumen_shader)]
+        Cmd::Shader { rect, .. } => *rect,
+        #[cfg(lumen_shader)]
+        Cmd::ShaderEnd => [0.0; 4],
     }
 }
 

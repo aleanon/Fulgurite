@@ -36,8 +36,12 @@ const PROBE: [f32; 4] = [40.0, 40.0, 60.0, 60.0];
 /// The number of `Cmd` variants this test builds. A new variant must be
 /// added to [`samples`] as well as to [`row`]; `row` alone compiles only
 /// because a variant nobody builds never reaches it, so this count is
-/// asserted against the distinct kinds the samples produce.
+/// asserted against the distinct kinds the samples produce. 14 under
+/// `cfg(lumen_shader)` (M83/T83.3), where the bracket's two variants exist.
+#[cfg(not(lumen_shader))]
 const KINDS: usize = 12;
+#[cfg(lumen_shader)]
+const KINDS: usize = 14;
 
 #[derive(Debug, PartialEq)]
 enum Want {
@@ -67,6 +71,14 @@ fn row(c: &Cmd) -> (&'static str, Want) {
         Cmd::PushClip { .. } => ("PushClip", Want::Miss),
         Cmd::PopClip => ("PopClip", Want::Miss),
         Cmd::Path { .. } => ("Path", Want::Unknown("path")),
+        // M83/T83.3: a run inside an open bracket is over the shader.
+        #[cfg(lumen_shader)]
+        Cmd::Shader { .. } => ("Shader", Want::Unknown("shader")),
+        // The end fills nothing itself; the run after it meets the bracket
+        // it closes, and the opaque fallback inside that bracket is **not**
+        // its ground (a GPU running the shader never draws it).
+        #[cfg(lumen_shader)]
+        Cmd::ShaderEnd => ("ShaderEnd", Want::Unknown("shader")),
     }
 }
 
@@ -103,6 +115,16 @@ fn samples() -> Vec<fn(&mut DisplayList)> {
             ];
             let paint = PathPaint { fill: Color(140, 20, 20, 255), stroke: Color(0, 0, 0, 0), width: 0.0 };
             l.path(&square, AFFINE_IDENTITY, paint)
+        },
+        #[cfg(lumen_shader)]
+        |l| l.shader(AREA, lumen_static::display::ShaderId(0), &[1, 2, 3, 4]),
+        #[cfg(lumen_shader)]
+        |l| {
+            l.shader(AREA, lumen_static::display::ShaderId(0), &[1, 2, 3, 4]);
+            // An opaque fallback, which would be measured as white if the
+            // walk took it for the ground.
+            l.rect(AREA, Color(255, 255, 255, 255));
+            l.shader_end()
         },
     ]
 }

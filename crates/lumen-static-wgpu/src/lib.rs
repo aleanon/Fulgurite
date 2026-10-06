@@ -1362,6 +1362,19 @@ impl Gpu {
                         clip.pop();
                     }
                 }
+                // **A shader bracket is a clip here, for now** (M83/T83.3):
+                // the fallback recorded inside it is drawn clipped to the
+                // rect, as the software canvas draws it. T83.5 makes it a
+                // real pass split that runs the pipeline and skips the
+                // fallback.
+                #[cfg(lumen_shader)]
+                Cmd::Shader { rect, .. } => clip.push(*rect),
+                #[cfg(lumen_shader)]
+                Cmd::ShaderEnd => {
+                    if clip.len() > damage.is_some() as usize {
+                        clip.pop();
+                    }
+                }
             }
         }
 

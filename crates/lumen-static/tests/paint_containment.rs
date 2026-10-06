@@ -55,6 +55,29 @@ fn first_escape(list: &DisplayList, root: [f32; 4]) -> Option<(usize, [f32; 4])>
             Cmd::PopClip => {
                 stack.pop();
             }
+            // M83/T83.3: a shader bracket draws its rect (the GPU's output,
+            // scissored to it) and is a clip for its fallback, so its rect
+            // is checked like a fill's and then pushed.
+            #[cfg(feature = "shader")]
+            Cmd::Shader { rect, .. } => {
+                let mut r = *rect;
+                for clip in &stack {
+                    r = [r[0].max(clip[0]), r[1].max(clip[1]), r[2].min(clip[2]), r[3].min(clip[3])];
+                }
+                let drawn = r[0] < r[2] && r[1] < r[3];
+                let inside = r[0] >= root[0] - EPS
+                    && r[1] >= root[1] - EPS
+                    && r[2] <= root[2] + EPS
+                    && r[3] <= root[3] + EPS;
+                if drawn && !inside {
+                    return Some((n, r));
+                }
+                stack.push(*rect);
+            }
+            #[cfg(feature = "shader")]
+            Cmd::ShaderEnd => {
+                stack.pop();
+            }
             Cmd::Rect { rect, .. }
             | Cmd::RoundedRect { rect, .. }
             // A border is drawn *inside* its rect, so its containment is
@@ -106,6 +129,11 @@ fn clips_balanced(list: &DisplayList) -> bool {
         match c {
             Cmd::PushClip { .. } => depth += 1,
             Cmd::PopClip => depth -= 1,
+            // M83/T83.3: a bracket balances like a clip.
+            #[cfg(feature = "shader")]
+            Cmd::Shader { .. } => depth += 1,
+            #[cfg(feature = "shader")]
+            Cmd::ShaderEnd => depth -= 1,
             _ => {}
         }
         if depth < 0 {

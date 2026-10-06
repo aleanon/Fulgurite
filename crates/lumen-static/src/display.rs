@@ -274,7 +274,55 @@ pub enum Cmd {
     /// M27/T27.3 rule `Text` follows — and [`DisplayList::hash_from`]
     /// folds the elements themselves.
     Path { rect: Rect, els: (u32, u32), fill: Color, stroke: Color, width: f32 },
+    /// Opens a **custom-shader bracket** over `rect` — M83/T83.3
+    /// (`docs/plan-gpu-extension.md`, Decisions), behind the core's
+    /// `shader` feature.
+    ///
+    /// The commands up to the matching [`Cmd::ShaderEnd`] (depth-counted;
+    /// brackets nest like clips) are the shader's **fallback**, recorded
+    /// at paint time by ordinary [`Painter`] calls. A renderer that runs
+    /// shader `id` draws it over `rect` and skips to the matching end; one
+    /// that cannot — the software `Canvas`, the SVG writer, a GPU whose
+    /// pipeline failed — treats this as [`Cmd::PushClip`] and the end as
+    /// [`Cmd::PopClip`], so the fallback draws clipped to `rect`. One list
+    /// serves both, so the journal hash, `ui.lastDamage` and retention do
+    /// not depend on the backend.
+    ///
+    /// `uniforms` is `(offset, len)` into [`DisplayList::uniforms`], the
+    /// `Text` shape. [`Cmd::hash_into`] folds the **length, never the
+    /// offset** — the M27/T27.3 rule (61,056 px² of phantom damage when
+    /// `Text` folded its offset; `docs/plan-iced-roadmap.md` S2) — and
+    /// [`DisplayList::hash_from`] folds the bytes. `id` is an index into
+    /// the program's shader table, fixed for a build (the [`ImageId`]
+    /// pattern, not a per-frame store index). 16 + 2 + 8 = 26 B of
+    /// payload, inside the 56 B that sets `Cmd`'s 60 B
+    /// (`tests/glass_cmd.rs`).
+    #[cfg(feature = "shader")]
+    Shader { rect: Rect, id: ShaderId, uniforms: (u32, u32) },
+    /// Closes the innermost open [`Cmd::Shader`] bracket — M83/T83.3. A
+    /// renderer that drew the fallback treats it as [`Cmd::PopClip`].
+    #[cfg(feature = "shader")]
+    ShaderEnd,
 }
+
+/// A custom shader, by its index in the program's shader table —
+/// M83/T83.3, behind the core's `shader` feature
+/// (`docs/plan-gpu-extension.md`).
+///
+/// **Not a per-frame store index**: the table is fixed for a build, so an
+/// id means the same shader in every frame of it, as an [`ImageId`] does.
+/// A swap builds a new host whose first frame repaints everything, so a
+/// shader edited under the same id cannot go stale. An id no backend knows
+/// draws the bracket's fallback.
+#[cfg(feature = "shader")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ShaderId(pub u16);
+
+/// The most uniform bytes one [`Cmd::Shader`] carries — M83/T83.3. A
+/// bracket's uniforms are one 256-byte-aligned slot of the GPU's
+/// per-frame buffer (`docs/plan-gpu-extension.md`, "Pipeline state").
+#[cfg(feature = "shader")]
+pub const MAX_UNIFORMS: usize = 256;
 
 /// The region a [`Cmd::Glass`] with this blur **reads**, given the rect
 /// it writes — M19/T19.2.
@@ -1106,6 +1154,23 @@ impl Cmd {
                 f(h, u32::from_be_bytes([stroke.0, stroke.1, stroke.2, stroke.3]) as u64);
                 f(h, width.to_bits() as u64);
             }
+            #[cfg(feature = "shader")]
+            Cmd::Shader { rect, id, uniforms } => {
+                f(h, 13);
+                for v in rect {
+                    f(h, v.to_bits() as u64);
+                }
+                f(h, id.0 as u64);
+                // **The length, never the offset** (M83/T83.3), for
+                // `Text`'s reason above: `uniforms.0` indexes the list's
+                // shared uniform buffer, so a bracket painted earlier whose
+                // uniforms grew would shift every later bracket's offset
+                // and report it changed. The bytes are folded by
+                // [`DisplayList::hash_from`].
+                f(h, uniforms.1 as u64);
+            }
+            #[cfg(feature = "shader")]
+            Cmd::ShaderEnd => f(h, 14),
         }
     }
 }
@@ -1270,6 +1335,41 @@ pub trait Painter {
     /// decision D3 (`docs/plan-iced-roadmap.md`).
     fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint);
 
+    /// Open a custom-shader bracket over `rect` — M83/T83.3
+    /// ([`Cmd::Shader`]), behind the core's `shader` feature. What is
+    /// painted until the matching [`Painter::shader_end`] is the shader's
+    /// **fallback**; `uniforms` (at most [`MAX_UNIFORMS`] bytes) is handed
+    /// to shader `id` as its `@binding(1)` block.
+    ///
+    /// **Provided, as `push_clip(rect)`, and that is a documented leaf
+    /// contract, not a convenience** (`docs/plan-iced-roadmap.md` §2.2's
+    /// one exception to "a new method is required"). A leaf that cannot
+    /// run shaders should draw the fallback clipped to the rect, which is
+    /// exactly what this body makes it do. A *required* method behind a
+    /// feature would instead break every leaf painter in any crate that
+    /// does not forward the feature — the firmware's `Checksum`, the
+    /// retain bench's `Sink` — the moment anything in the graph turned
+    /// `lumen-static/shader` on.
+    ///
+    /// **Wrappers must override this and [`Painter::shader_end`]**, as
+    /// [`Painter::glass`] says: an inherited body turns the bracket into a
+    /// plain clip on the wrapper and the shader is never seen downstream.
+    /// [`Scaled`], `Deferring` and `Recording` override both
+    /// (`tests/shader_cmd.rs`, `deferring_forwards_the_bracket`).
+    #[cfg(feature = "shader")]
+    fn shader(&mut self, rect: Rect, id: ShaderId, uniforms: &[u8]) {
+        let _ = (id, uniforms);
+        self.push_clip(rect);
+    }
+
+    /// Close the innermost open bracket — M83/T83.3. Provided as
+    /// `pop_clip()`, the other half of [`Painter::shader`]'s leaf
+    /// default; wrappers override it with that method.
+    #[cfg(feature = "shader")]
+    fn shader_end(&mut self) {
+        self.pop_clip();
+    }
+
     /// A run at the default weight. Provided, so an implementation only
     /// has to write the weighted form.
     fn text(&mut self, rect: Rect, s: &str, size: f32, color: Color) {
@@ -1351,6 +1451,13 @@ pub struct DisplayList {
     /// `Cmd::Text` does into `text` — M82/T82.5. Cleared with the frame,
     /// so its allocation is reused like `text`'s.
     pub paths: Vec<PathEl>,
+    /// Uniform bytes for this frame's shader brackets — M83/T83.3, behind
+    /// `shader`. `Cmd::Shader` holds `(offset, len)` ranges into it, as
+    /// `Cmd::Text` does into `text`; cleared with the frame so its
+    /// allocation is reused, and copied by `Clone` with the commands that
+    /// index it (winit's `hot::Barred`).
+    #[cfg(feature = "shader")]
+    pub uniforms: Vec<u8>,
 }
 
 #[cfg(feature = "alloc")]
@@ -1365,6 +1472,38 @@ impl DisplayList {
         self.cmds.clear();
         self.text.clear();
         self.paths.clear();
+        #[cfg(feature = "shader")]
+        self.uniforms.clear();
+    }
+
+    /// Open a shader bracket (M83/T83.3, [`Cmd::Shader`]): the bytes are
+    /// appended to [`DisplayList::uniforms`] and the command holds their
+    /// range.
+    ///
+    /// **Never dropped**, unlike [`DisplayList::rect`]'s empty rect: the
+    /// matching [`DisplayList::shader_end`] is recorded unconditionally,
+    /// so dropping the open would unbalance it, as a dropped
+    /// [`DisplayList::push_clip`] would. Bytes past [`MAX_UNIFORMS`] are
+    /// not recorded; a debug build asserts.
+    #[cfg(feature = "shader")]
+    pub fn shader(&mut self, rect: Rect, id: ShaderId, uniforms: &[u8]) {
+        debug_assert!(uniforms.len() <= MAX_UNIFORMS, "{} uniform bytes, past MAX_UNIFORMS", uniforms.len());
+        let bytes = &uniforms[..uniforms.len().min(MAX_UNIFORMS)];
+        let start = self.uniforms.len() as u32;
+        self.uniforms.extend_from_slice(bytes);
+        self.cmds.push(Cmd::Shader { rect, id, uniforms: (start, bytes.len() as u32) });
+    }
+
+    /// Close the innermost shader bracket (M83/T83.3, [`Cmd::ShaderEnd`]).
+    #[cfg(feature = "shader")]
+    pub fn shader_end(&mut self) {
+        self.cmds.push(Cmd::ShaderEnd);
+    }
+
+    /// The uniform bytes a `Cmd::Shader` refers to.
+    #[cfg(feature = "shader")]
+    pub fn uniforms_of(&self, range: (u32, u32)) -> &[u8] {
+        &self.uniforms[range.0 as usize..(range.0 + range.1) as usize]
     }
 
     /// Record a path (M82/T82.5, [`Cmd::Path`]): `xf` is applied as the
@@ -1553,6 +1692,11 @@ impl DisplayList {
                 Cmd::Text { text, .. } => h = fold(h, hash_bytes(self.str_of(*text).as_bytes())),
                 // The elements, which `hash_into` cannot reach (M82/T82.5).
                 Cmd::Path { els, .. } => h = fold(h, hash_path(self.els_of(*els))),
+                // The uniform bytes, which `hash_into` cannot reach
+                // (M83/T83.3): same offset and length, new bytes, is a
+                // change.
+                #[cfg(feature = "shader")]
+                Cmd::Shader { uniforms, .. } => h = fold(h, hash_bytes(self.uniforms_of(*uniforms))),
                 _ => {}
             }
         }
@@ -1842,6 +1986,19 @@ impl Painter for Scaled<'_> {
         let xf = [xf[0] * k, xf[1] * k, xf[2] * k, xf[3] * k, xf[4] * k, xf[5] * k];
         self.inner.path(els, xf, PathPaint { width: paint.width * k, ..paint });
     }
+    /// The rect scales; the uniform bytes are forwarded untouched
+    /// (M83/T83.3) — they are the shader's own data, and the shader is
+    /// handed the scale in its frame block. Overridden because the
+    /// provided body would forward a clip, not the bracket.
+    #[cfg(feature = "shader")]
+    fn shader(&mut self, rect: Rect, id: ShaderId, uniforms: &[u8]) {
+        let r = self.r(rect);
+        self.inner.shader(r, id, uniforms);
+    }
+    #[cfg(feature = "shader")]
+    fn shader_end(&mut self) {
+        self.inner.shader_end();
+    }
 }
 
 /// Collecting into a list is *one* implementation of [`Painter`], not
@@ -1889,5 +2046,13 @@ impl Painter for DisplayList {
     }
     fn path(&mut self, els: &[PathEl], xf: Affine, paint: PathPaint) {
         DisplayList::path(self, els, xf, paint)
+    }
+    #[cfg(feature = "shader")]
+    fn shader(&mut self, rect: Rect, id: ShaderId, uniforms: &[u8]) {
+        DisplayList::shader(self, rect, id, uniforms)
+    }
+    #[cfg(feature = "shader")]
+    fn shader_end(&mut self) {
+        DisplayList::shader_end(self)
     }
 }

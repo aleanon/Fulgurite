@@ -36,7 +36,11 @@ fn it_produces_a_document_with_the_right_viewport() {
 /// a new variant does not compile in [`kind`] until it has an index, and
 /// once it has one [`the_whole_command_vocabulary_renders`] refuses to
 /// pass until [`one_of_each`] draws it.
+#[cfg(not(lumen_shader))]
 const KINDS: usize = 12;
+/// M83/T83.3: the shader bracket's two variants, in a `lumen_shader` build.
+#[cfg(lumen_shader)]
+const KINDS: usize = 14;
 
 /// A stable index per command kind, from an **exhaustive** match with no
 /// wildcard arm — M51/T51.6. "The whole vocabulary" is made true by the
@@ -57,6 +61,10 @@ fn kind(c: &Cmd) -> (usize, &'static str) {
         Cmd::PushClip { .. } => (9, "PushClip"),
         Cmd::PopClip => (10, "PopClip"),
         Cmd::Path { .. } => (11, "Path"),
+        #[cfg(lumen_shader)]
+        Cmd::Shader { .. } => (12, "Shader"),
+        #[cfg(lumen_shader)]
+        Cmd::ShaderEnd => (13, "ShaderEnd"),
     }
 }
 
@@ -68,6 +76,11 @@ fn kind(c: &Cmd) -> (usize, &'static str) {
 /// the group closes *before* the rect drawn after it — a pop that
 /// emitted nothing would leave the rect inside the group, closed only at
 /// the end of the document.
+#[cfg(lumen_shader)]
+fn shader(rect: [f32; 4]) -> Cmd {
+    Cmd::Shader { rect, id: lumen_static::display::ShaderId(0), uniforms: (0, 0) }
+}
+
 fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
     let r = [0.0, 0.0, 10.0, 10.0];
     let clip = Cmd::PushClip { rect: r };
@@ -90,6 +103,12 @@ fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
             0,
             r#"<path d="M0.00 0.00 L9.00 9.00" fill="rgba(255,0,0,1.000)" fill-rule="nonzero" stroke="none""#,
         ),
+        // M83/T83.3: a bracket is a `clipPath` group around its fallback,
+        // and its end closes the group, judged in context like `PopClip`.
+        #[cfg(lumen_shader)]
+        (vec![shader(r)], 0, r#"<g clip-path="url(#c0)">"#),
+        #[cfg(lumen_shader)]
+        (vec![shader(r), Cmd::ShaderEnd, Cmd::Rect { rect: r, color: RED }], 1, r#"</g><rect"#),
     ]
 }
 

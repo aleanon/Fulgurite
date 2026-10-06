@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`).** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3 landed 2026-10-06.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1144,6 +1144,49 @@ task and is recorded in `docs/results-shader.md` with the number).
 - M83a closes: **folded into T83.2's commit**, because its remaining
   steps (`just ci-verify`, the AGENT.md entry) are the coordinator's; the
   K83d rows are `docs/results-shader.md` "M83a closes".
+
+- T83.3: **a core shader build is refused by `DisplayList`'s size before
+  the `lumen_shader` entry is reached.** The uniform buffer makes the list
+  144 B where it was 120, and the stamp's core fields come first, so pair
+  1's refusal names `DisplayList`, and its injection (the entry reading the
+  shell's feature) would have stayed green against a check of the first
+  field alone. `stamp-host` takes an optional fourth argument, a feature
+  word: the named field must differ, with the word in the library's list
+  and not the loader's, whichever field `check` reports first. Both pair
+  injections then go red (`docs/results-shader.md` T83.3).
+- T83.3: **the wire injection "decode drops them, and the lists differ"
+  cannot produce two lists**: a decoder that drops the bytes leaves each
+  bracket's range naming bytes that are not there, and the range check
+  refuses the buffer. It goes red at `decode(..).expect("decodes")`. The
+  uniform section follows the path elements, so the element section is
+  written, empty if need be, whenever uniforms follow it.
+- T83.3: **the retention injection is red at the setup line, not the
+  bound**: with `Recording`'s overrides removed the list under it holds
+  `PushClip`/`PopClip`, so the test prints "damage 0.00× … brackets in the
+  recorded list 0 (setup 2)" before it asserts; both are in the output.
+- T83.3: **`parity.rs` names no file for the bracket.** Rather than point
+  `Shader`'s row at T83.5's `tests/shader.rs`, which does not exist yet,
+  a `lumen_shader` build wraps the frame's clip scope in a bracket
+  narrower than its clip, with an id no backend knows, so both kinds are
+  "in the frame" and the clip-scope region compares the two backends'
+  bracket arms (the GPU's pushing an unbounded clip reads 700 px over 8).
+  T83.5 gives `Shader` its own region.
+- T83.3: **`ShaderEnd`'s contrast row is `Unknown("shader")`**, not a miss:
+  the probe after a bracket whose fallback is an opaque white fill meets
+  the bracket, and that row is what shows the fallback is never taken for
+  ground (the extra injection reads `Ground(255, 255, 255)`).
+- T83.3: **two sites the plan listed as wildcard-ended got arms anyway**:
+  `Canvas::prepare`'s cull pass (so a fallback's runs are culled to the
+  bracket as they will be drawn) and `tests/paint_containment.rs`'s
+  `clips_balanced` (a bracket balances like a clip); the containment walk
+  checks a bracket's rect like a fill's, then pushes it. `MAX_UNIFORMS`
+  (256) names the plan's bound; `DisplayList::shader` records at most that
+  many bytes and asserts in debug builds, and is never dropped for an empty
+  rect, since its end is recorded unconditionally.
+- T83.3: **K83c's `cascade_deep` read below T83.0's spread** (faster),
+  the "alignment" outcome: the `cascade` binaries from `a4080ea` and this
+  tree have identical `.text` and an empty symbol diff, and the parent,
+  run alternately in the same session, reads the same.
 
 **What the review found (M83).**
 

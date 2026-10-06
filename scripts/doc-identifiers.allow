@@ -141,8 +141,6 @@ VECTORTEXT                     # built by M82/T82.8 in scripts/drive/widgets/ric
 LUMEN_GPU_BAD_SHADER           # proposed by M83
 RunId                          # proposed by M83
 ShaderDesc                     # proposed by M83
-ShaderEnd                      # proposed by M83
-ShaderId                       # proposed by M83
 ShaderTable                    # proposed by M83
 ShaderView                     # proposed by M83
 AnimatedImage                  # proposed by M84
@@ -189,8 +187,6 @@ MenuMask                       # proposed by M90
 RegisteredStatusNotifierItems  # proposed by M90
 TrayModel                      # proposed by M90
 TraySpec                       # proposed by M90
-CARGO_FEATURE_SHADER           # proposed by M83
-DEP_LUMEN_STATIC_SHADER        # proposed by M83
 FEATURE_GATED        # proposed by M83: the list of feature-gated items checked both ways
 NoSuchProgram        # proposed by M89: Answer variant for an unknown program index
 WindowOpened         # proposed by M89: Answer variant carrying the new window's key

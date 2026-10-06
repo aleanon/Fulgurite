@@ -139,6 +139,19 @@ The four properties that produce the performance, in rough order of importance:
    crate (`scripts/check_shell_headless.sh`); the window's graph is
    unchanged at 96 crates (`docs/results-shader.md` T83.1).
 
+   **DECIDED 2026-10-06 (M83/T83.3, owner decision D3): a custom shader
+   is a bracket in the one display list, behind the core's `shader`.**
+   `Cmd::Shader { rect, id, uniforms }` … `Cmd::ShaderEnd` holds the
+   shader's fallback, recorded at paint time; a backend that runs the
+   shader skips it, and one that cannot (the software canvas, SVG, the
+   GPU until T83.5) draws it clipped to the rect, so the journal and
+   retention do not depend on the backend. The uniforms are hashed by
+   content, never by offset. With the feature off neither the variants nor
+   `Painter::shader`/`shader_end` exist, and every arm outside the core is
+   `cfg(lumen_shader)`, which the core's `links` build script hands its
+   direct dependents (`docs/plan-gpu-extension.md`, "Feature placement";
+   the firmware Δ 0 and the gates are `docs/results-shader.md` T83.3).
+
 Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes

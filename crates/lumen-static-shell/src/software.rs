@@ -155,6 +155,12 @@ impl TextState {
             match c {
                 Cmd::PushClip { rect } => clip.push(*rect),
                 Cmd::PopClip => clip.pop(),
+                // The same scope the raster loop gives a bracket (M83/T83.3),
+                // so a fallback's runs are culled as they will be drawn.
+                #[cfg(lumen_shader)]
+                Cmd::Shader { rect, .. } => clip.push(*rect),
+                #[cfg(lumen_shader)]
+                Cmd::ShaderEnd => clip.pop(),
                 Cmd::Text { rect, text, size, weight, line_height, .. } => {
                     let pad = *size;
                     let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
@@ -1462,6 +1468,15 @@ impl Surface<'_> {
                     // pops that match pushes it refused for depth.
                     clip.pop();
                 }
+                // **A shader bracket is a clip here** (M83/T83.3,
+                // `docs/plan-gpu-extension.md`): the canvas runs no shader,
+                // so it draws the fallback recorded inside the bracket,
+                // clipped to the shader's rect. The end pops it, with
+                // `PopClip`'s floor.
+                #[cfg(lumen_shader)]
+                Cmd::Shader { rect, .. } => clip.push(*rect),
+                #[cfg(lumen_shader)]
+                Cmd::ShaderEnd => clip.pop(),
             }
         }
     }

@@ -3,6 +3,14 @@ name = "lumen-static"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# M83/T83.3 (docs/plan-gpu-extension.md, "Feature placement"): `links`
+# exists so `build.rs` can hand its dependents `DEP_LUMEN_STATIC_SHADER`,
+# which is how a crate outside the core learns whether `Cmd::Shader`
+# exists in this graph (its own `cfg(feature)` tests its own feature, not
+# this one). Cargo then also refuses two copies of this package in one
+# graph.
+links = "lumen_static"
+build = "build.rs"
 
 [lib]
 name = "lumen_static"
@@ -46,6 +54,14 @@ reload = ["std", "dep:serde", "dep:serde_json"]
 # Measurement only: makes the recursive arm's dispatch opaque to the
 # optimizer, to prove it is real. See docs/results-traversal.md.
 rdyn_opaque = ["lumen-static-macros/rdyn_opaque"]
+# M83/T83.3 (owner decision D3, 2026-09-30; docs/plan-gpu-extension.md):
+# custom shaders -- `Cmd::Shader`/`Cmd::ShaderEnd`, `ShaderId`,
+# `Painter::shader`/`shader_end` and the list's uniform buffer. Default
+# off; with it off none of them exists, so the firmware links nothing of
+# it (K83b, Δ 0 B). `build.rs` tells direct dependents through
+# `DEP_LUMEN_STATIC_SHADER`, and they match the variants under
+# `cfg(lumen_shader)`.
+shader = ["alloc"]
 
 [dev-dependencies]
 # **M30.** The widgets moved out; core's own tests and doctests still
@@ -74,6 +90,13 @@ required-features = ["reload"]
 [[test]]
 name = "display"
 required-features = []
+
+# M83/T83.3: the shader bracket exists only under `shader`; without it the
+# binary would build empty (`scripts/check_test_counts.sh`). `dev-shape`
+# runs it with the feature named, so workspace unification does not decide.
+[[test]]
+name = "shader_cmd"
+required-features = ["shader"]
 
 
 # `just release-shape` sets `--cfg lumen_release_shape`, under which

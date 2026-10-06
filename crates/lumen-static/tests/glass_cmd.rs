@@ -235,3 +235,27 @@ fn the_painter_fallback_paints_something_you_can_see() {
     assert!(c.3 > 40 * 2, "and the floor is well above a realistic tint");
     assert_eq!(radius, 4.0, "the panel keeps its corners");
 }
+
+/// **`Shader`'s payload fits under `Gradient`'s** — M83/T83.3
+/// (`docs/plan-gpu-extension.md`, Budgets): `rect`, `id`, `uniforms` is
+/// 16 + 2 + 8 = 26 B, mirrored from the variant itself and printed beside
+/// the 56 B bound, in the build where the variant exists. `Cmd`'s 60 B is
+/// asserted in both builds by [`the_command_is_free`].
+#[cfg(feature = "shader")]
+#[test]
+fn the_shader_payload_fits() {
+    use lumen_static::display::ShaderId;
+    struct ShaderPayload {
+        _rect: [f32; 4],
+        _id: ShaderId,
+        _uniforms: (u32, u32),
+    }
+    let _ = |c: Cmd| match c {
+        Cmd::Shader { rect, id, uniforms } => ShaderPayload { _rect: rect, _id: id, _uniforms: uniforms },
+        _ => unreachable!(),
+    };
+    let payload = core::mem::size_of::<ShaderPayload>();
+    println!("Shader payload {payload} B (fields 26 B) against Gradient's 56 B; Cmd is {} B", core::mem::size_of::<Cmd>());
+    assert!(payload <= 56, "Shader ({payload} B) would set Cmd's size");
+    assert_eq!(core::mem::size_of::<Cmd>(), 60, "Cmd grew under the shader feature");
+}

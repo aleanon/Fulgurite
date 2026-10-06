@@ -145,6 +145,12 @@ threads = []
 # `simd` vector branch as it runs. `just threads` and `just simd` turn it
 # on; a shipped build never does.
 raster-counters = []
+# M83/T83.3 (owner decision D3; docs/plan-gpu-extension.md): the shell's
+# side of custom shaders. Turns the core's on; T83.4 puts `ShaderDesc`, the
+# `ShaderTable` contents, `Program::shaders` and `Host::set_shaders` behind
+# it. The `Cmd::Shader` arms in this crate are `cfg(lumen_shader)` (from
+# `build.rs`), never this feature: the core's can be on while this is off.
+shader = ["lumen-static/shader"]
 
 [dev-dependencies]
 # `observe` since M48/T48.9: the tests built with `live-agent` turn the
@@ -242,3 +248,8 @@ required-features = ["shaping", "truetype"]
 [[test]]
 name = "vector_text"
 required-features = ["vector-text"]
+
+# M83/T83.3: the software canvas draws a bracket's fallback clipped.
+[[test]]
+name = "shader_software"
+required-features = ["shader"]
