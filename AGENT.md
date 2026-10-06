@@ -704,6 +704,14 @@ found" section rather than silently replacing itself.
     `transitions`, `transition-duration`) stands, T86.2-T86.4 are not
     built. A defect found on the way is fixed in `c22d6a0`: a popup
     inside a `List`/`Repeat`/`Dyn` drew nothing and was not hit.
+    **M87 DONE** (T87.0-T87.7), `just ci-verify 6984df0` green (28
+    steps, 0 failed, 0 skipped). K87 fired on measure, so widths are
+    reused by word content (a 64 KB append 3.23 -> 0.57 ms) rather than
+    re-parsing incrementally; K87c fired too; K87a and K87b were not
+    reached (`docs/plan-markdown.md`). A CI run must take its driver
+    from the commit it tests (`git show <sha>:scripts/ci.sh`): the
+    first run at 6984df0 died when a later commit edited `ci.sh`
+    under it.
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
