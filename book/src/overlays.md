@@ -37,6 +37,23 @@ order — so it stays deterministic, and retention still holds.
 Opening an overlay changes the stream's *length*, which `Incremental`
 already answers with whole-frame damage. Correct, and already built.
 
+A popup defers *its own index*, and inside an arena — a `List` item, a
+`Repeat` row, a `Dyn` island — that index is the item's, not the table's.
+So a deferral carries its arena origin the way a hit does: the owner's
+index, and the row and node inside it (`overlay::Deferred`). The owner
+says which item it is painting (`Painter::in_arena`), and phase 2 and the
+overlay hit test find the node again through `Node::arena_node`. Both
+happen only for an item type whose table carries `NodeDesc::DEFERS`,
+which every widget that defers sets: resolving a node hands out a
+`dyn Node`, and the vtable that makes for an ordinary item cost a
+`List<Label>` a quarter of its layout in the frame arm
+(`docs/results-layout-input.md`, "fix(T15.0)"). Until
+M85 a `Select` inside a `List` drew no menu at all, because the pass
+repainted whichever table node shared the item's number
+(`docs/plan-layout-input.md`, "What building found (M85)"). One level
+only, as a hit's `Inner` is: a popup in an arena inside another arena's
+item paints inline, clipped.
+
 ## `Popup<W>`
 
 The widget half:

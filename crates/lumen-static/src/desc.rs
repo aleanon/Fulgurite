@@ -76,6 +76,25 @@ impl NodeDesc {
     /// A table with no node carrying it costs one empty-slice check per
     /// frame (`docs/plan-layout-input.md`, Decisions).
     pub const WATCHES_VIEW: u8 = 1 << 4;
+    /// **This node may ask to be painted in the overlay phase**
+    /// ([`crate::display::Painter::defer`]) — M85/T85.6, `fix(T15.0)`.
+    ///
+    /// Every widget that calls `defer` sets it on its own entry (`Popup`
+    /// and `Veil` do). An arena owner — `List`, `Repeat` — reads it over
+    /// its item's table as a `const` (`crate::widget::table_has_flag`):
+    /// only an item type that can defer is painted with
+    /// [`crate::display::Painter::in_arena`] around it, and only its
+    /// [`crate::widget::Node::arena_node`] resolves a node. For any other
+    /// item both compile away. That is not a nicety: resolving a node
+    /// hands out `&dyn Node`, which instantiates a vtable for the item
+    /// type, and in the frame arm a `List<Label>` whose labels gained one
+    /// laid out **24.0 µs where it had laid out 19.1** (LTO stopped
+    /// inlining the label's `layout` into the list's loop;
+    /// `docs/results-layout-input.md`, "fix(T15.0)"). **A widget that
+    /// defers without this bit** is painted with no arena origin, and
+    /// inside an arena its deferral names a main-table node again — the
+    /// defect this exists to fix.
+    pub const DEFERS: u8 = 1 << 5;
 
     /// Placeholder for const table construction; every slot is overwritten.
     pub const EMPTY: NodeDesc = NodeDesc::new(0, NO_PARENT, 0, 0, 0);

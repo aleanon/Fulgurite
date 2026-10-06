@@ -181,15 +181,88 @@ pub fn paint_overlaid<W: Node + ?Sized, O: crate::overlay::OverlaySink>(
         }
         for k in done..upto {
             // Copied out before the sink is borrowed again.
-            let i = ov.at(k) as usize;
-            let mut d = Deferring::repainting(out, ov, i as u32);
+            let at = ov.entry(k);
+            let mut d = Deferring::repainting(out, ov, at);
             // Painted at its own index, the way the agent's journal
             // repaints a single node. Nothing above it in the tree runs,
-            // so no ancestor's clip applies — which is the point.
-            tree.node(i).paint(st, i, &mut d);
+            // so no ancestor's clip applies — which is the point. A node
+            // inside an arena is painted at its item-local index with its
+            // item's states (M85/T85.6, `overlay_node`).
+            if let Some((n, s, i)) = overlay_node(tree, st, at) {
+                n.paint(s, i, &mut d);
+            }
         }
         done = upto;
     }
+}
+
+/// **The node an overlay entry names**, the states its index is into,
+/// and that index — M85/T85.6.
+///
+/// A main-table deferral is `tree.node(i)` over `st` at `i`. One made
+/// inside an arena ([`Deferred::inner`](crate::overlay::Deferred)) is the
+/// owner's [`Node::arena_node`]: the
+/// item's node over the item's states at its item-local index. `None`
+/// when the row is no longer materialized. Phase 2, the overlay hit test
+/// and the pass's dismissals all go through this, so the three cannot
+/// disagree about which node an entry is.
+pub fn overlay_node<'t, W: Node + ?Sized>(
+    tree: &'t W,
+    st: &'t [NodeState],
+    at: crate::overlay::Deferred,
+) -> Option<(&'t dyn Node, &'t [NodeState], usize)> {
+    let i = at.node as usize;
+    match at.inner {
+        None => Some((tree.node(i), st, i)),
+        #[cfg(feature = "alloc")]
+        Some(inn) => {
+            let (n, s) = tree.node(i).arena_node(inn.row, inn.node as usize)?;
+            Some((n, s, inn.node as usize))
+        }
+        // No arenas without an allocator, so no entry carries an origin.
+        #[cfg(not(feature = "alloc"))]
+        Some(_) => None,
+    }
+}
+
+/// [`overlay_node`], mutably: the node a dismissal goes to.
+fn overlay_node_mut<W: Node + ?Sized>(tree: &mut W, at: crate::overlay::Deferred) -> Option<&mut dyn Node> {
+    let i = at.node as usize;
+    match at.inner {
+        None => Some(tree.node_mut(i)),
+        #[cfg(feature = "alloc")]
+        Some(inn) => tree.node_mut(i).arena_node_mut(inn.row, inn.node as usize),
+        #[cfg(not(feature = "alloc"))]
+        Some(_) => None,
+    }
+}
+
+/// Hit-test overlay entry `at` — M85/T85.6. A hit inside an arena entry
+/// is answered as the arena owner answers one on that row: `node` the
+/// owner, `inner` the row and the item-local node, so `Handlers` routes
+/// it exactly as it routes a press on the row in place.
+fn overlay_hit<W: Node + ?Sized>(
+    tree: &W,
+    st: &[NodeState],
+    at: crate::overlay::Deferred,
+    x: f32,
+    y: f32,
+) -> Option<crate::hit::Hit> {
+    let (n, s, i) = overlay_node(tree, st, at)?;
+    let h = n.hit(s, i, x, y)?;
+    Some(match at.inner {
+        None => h,
+        Some(inn) => crate::hit::Hit {
+            node: at.node,
+            inner: Some(crate::hit::Inner { row: inn.row, node: h.node }),
+            local: h.local,
+        },
+    })
+}
+
+/// Dismiss overlay entry `at`; whether it closed.
+fn overlay_dismiss<W: Node + ?Sized>(tree: &mut W, at: crate::overlay::Deferred) -> bool {
+    overlay_node_mut(tree, at).is_some_and(|n| n.dismiss())
 }
 
 /// Dispatch with overlays on top — `docs/plan-capabilities.md` T15.1.
@@ -329,11 +402,12 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // to be cleared, so a keyboard user who closed a menu had to Tab
     // from the top of the window again.
     if matches!(ev, Event::Key { key: Key::Escape, down: true }) && !ov.is_empty() {
-        let top = ov.at(ov.len() - 1) as usize;
-        if state.tree_mut().node_mut(top).dismiss() {
+        let at = ov.entry(ov.len() - 1);
+        let top = at.node as usize;
+        if overlay_dismiss(state.tree_mut(), at) {
             input.focus = take_return(state, style, st, input, top as u32);
             consumed.push(top);
-            tell_owner(state, top, ev, input);
+            tell_owner(state, at, ev, input);
             return true;
         }
     }
@@ -344,10 +418,7 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // desktop toolkit does and what a user expects.
     if matches!(ev, Event::PointerDown { .. }) && !ov.is_empty() {
         if let Some(p) = ev.position() {
-            let inside = (0..ov.len()).any(|k| {
-                let i = ov.at(k) as usize;
-                state.tree().node(i).hit(st, i, p.x, p.y).is_some()
-            });
+            let inside = (0..ov.len()).any(|k| overlay_hit(state.tree(), st, ov.entry(k), p.x, p.y).is_some());
             if !inside {
                 // A passive overlay (a tooltip) closes without taking the
                 // press: if every overlay this closed was passive, the
@@ -357,15 +428,17 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
                 // over is the one that is kept (T44.9).
                 let mut back = input.focus;
                 for k in (0..ov.len()).rev() {
-                    let i = ov.at(k) as usize;
-                    if !state.tree().node(i).dismissed_by_outside_press() {
+                    let at = ov.entry(k);
+                    let i = at.node as usize;
+                    let Some((node, _, _)) = overlay_node(state.tree(), st, at) else { continue };
+                    if !node.dismissed_by_outside_press() {
                         continue;
                     }
-                    let consumes = state.tree().node(i).dismissal_consumes_press();
-                    if state.tree_mut().node_mut(i).dismiss() {
+                    let consumes = node.dismissal_consumes_press();
+                    if overlay_dismiss(state.tree_mut(), at) {
                         consumes_press |= consumes;
                         consumed.push(i);
-                        tell_owner(state, i, ev, input);
+                        tell_owner(state, at, ev, input);
                         back = take_return(state, style, st, input, i as u32);
                     }
                 }
@@ -395,12 +468,14 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // This trapped Tab in the topmost overlay of *any* kind, so Tab while
     // a tooltip showed set focus to `None` (R3-F7).
     if matches!(ev, Event::Key { key: Key::Tab, down: true }) && !ov.is_empty() {
-        let top = ov.at(ov.len() - 1) as usize;
+        let at = ov.entry(ov.len() - 1);
+        let top = at.node as usize;
         let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
         let span = crate::style::subtree_range(table, top);
         let back = input.mods.has(crate::event::Mods::SHIFT);
-        let node = state.tree().node(top);
-        if node.is_modal() {
+        let (modal, consumes) =
+            overlay_node(state.tree(), st, at).map_or((false, false), |(n, _, _)| (n.is_modal(), n.dismissal_consumes_press()));
+        if modal {
             let to = if back {
                 prev_focusable_in(table, st, style, input.focus, span)
             } else {
@@ -412,9 +487,9 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
             input.focus_visible = true;
             return true;
         }
-        if node.dismissal_consumes_press() && state.tree_mut().node_mut(top).dismiss() {
+        if consumes && overlay_dismiss(state.tree_mut(), at) {
             consumed.push(top);
-            tell_owner(state, top, ev, input);
+            tell_owner(state, at, ev, input);
             input.focus = take_return(state, style, st, input, top as u32);
             // The closed menu is still laid out until the next frame, so
             // the walk steps over its nodes rather than into them.
@@ -456,8 +531,7 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     if let Some(p) = ev.position().filter(|_| !captured) {
         if !ov.is_empty() {
             for k in (0..ov.len()).rev() {
-                let i = ov.at(k) as usize;
-                if let Some(h) = state.tree().node(i).hit(st, i, p.x, p.y) {
+                if let Some(h) = overlay_hit(state.tree(), st, ov.entry(k), p.x, p.y) {
                     let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
                     if disabled_at(table, st, h.node as usize) {
                         return false;
@@ -511,8 +585,7 @@ pub fn hit_test_overlaid<W: Node + ?Sized, O: crate::overlay::OverlaySink>(
     y: f32,
 ) -> Option<crate::hit::Hit> {
     for k in (0..ov.len()).rev() {
-        let i = ov.at(k) as usize;
-        if let Some(h) = tree.node(i).hit(st, i, x, y) {
+        if let Some(h) = overlay_hit(tree, st, ov.entry(k), x, y) {
             return Some(h);
         }
     }
@@ -1496,10 +1569,19 @@ fn return_target(
 /// by a click.
 fn tell_owner<S: crate::event::App>(
     state: &mut S,
-    overlay: usize,
+    at: crate::overlay::Deferred,
     ev: &crate::event::Event,
     input: &crate::event::InputState,
 ) {
+    // **Not for an overlay inside an arena** (M85/T85.6). Its owner is
+    // item-local, and the dismissal question rides in `NodeSel::inner`,
+    // the field an arena owner's `Handlers` needs for the row — so a
+    // controlled `Select` in a `List` is not told. Its popup still
+    // closes (`overlay_dismiss`); `docs/plan-layout-input.md` records it.
+    if at.inner.is_some() {
+        return;
+    }
+    let overlay = at.node as usize;
     let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
     let owner = table[overlay].parent;
     if owner == crate::desc::NO_PARENT {

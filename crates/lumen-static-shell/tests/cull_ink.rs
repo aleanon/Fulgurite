@@ -29,12 +29,15 @@
 //!   flipped it; K85c decided culling against at T85.7, so the pin is
 //!   the record of the shadow `List` drops.
 //!
-//! **There is no `List` variant of the menu case**, because a `Popup`
-//! inside a `List` draws no menu even unculled: it defers its arena-local
-//! index, and the overlay pass repaints the *main-table* node at that
-//! index, so the menu lands inside the list's own clip, off the surface,
-//! and the two renders agree for the wrong reason
-//! (`docs/plan-layout-input.md`, "What building found", T85.6).
+//! - **`List`**, the menu case: the same shape — an open `Select` as a
+//!   list item whose trigger is below the surface — **differs** too: the
+//!   list culls the item by its rect, so the popup's paint never runs and
+//!   nothing is deferred. Until M85's fix a `Popup` inside a `List` drew
+//!   no menu even unculled (it deferred its arena-local index, and the
+//!   overlay pass repainted the main-table node with that number), so
+//!   both renders agreed for the wrong reason and this case could not be
+//!   written (`docs/plan-layout-input.md`, "What building found",
+//!   T85.6). Pinned green beside the card case, for the same reason.
 //!
 //! Each case prints the subject's rect, its ink and the surface, and
 //! asserts that the setup landed: the rect is off the surface, the ink is
@@ -63,6 +66,9 @@ const SURFACE: [f32; 4] = [0.0, 0.0, S, S];
 const TOP_CONTENT: f32 = S - 32.0;
 
 type Rect = [f32; 4];
+
+/// The menu panel's fill, set by `renders`' stylesheet.
+const PANEL: lumen_static::display::Color = lumen_static::display::Color(40, 60, 120, 255);
 
 fn meets(a: Rect, b: Rect) -> bool {
     a[0].max(b[0]) < a[2].min(b[2]) && a[1].max(b[1]) < a[3].min(b[3])
@@ -134,6 +140,26 @@ struct SelApp {
     ui: SelUi,
 }
 
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct PickRows {
+    #[widget_id("list")]
+    list: List<Select<SelListApp>>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct SelListUi {
+    #[widget_id("scroll")]
+    scroll: ScrollView<PickRows>,
+}
+
+#[derive(DeriveApp, Default)]
+struct SelListApp {
+    #[tree]
+    ui: SelListUi,
+}
+
 const OPTS: [&str; 3] = ["Apple", "Banana", "Cherry"];
 
 fn bind<S: 'static>(r: &mut Row<S>, i: usize) {
@@ -165,7 +191,7 @@ fn renders<A: AppTrait>(app: A) -> (Host<A>, Vec<u8>, Vec<u8>, usize, usize) {
         // `Select` inside a `List`'s arena, where the panel's does.)
         Rule::new(
             Selector::Kind("repeat"),
-            Patch::new().height(Length::Fixed(100.0)).background(lumen_static::display::Color(40, 60, 120, 255)),
+            Patch::new().height(Length::Fixed(100.0)).background(PANEL),
         ),
     ]);
     h.pump();
@@ -202,6 +228,20 @@ fn inked(px: &[u8], r: Rect) -> usize {
             if px[p..p + 3] != [CLEAR.0, CLEAR.1, CLEAR.2] {
                 n += 1;
             }
+        }
+    }
+    n
+}
+
+/// Pixels in `r` of the menu panel's colour (`renders`' `repeat` rule).
+fn panel_pixels(px: &[u8], r: Rect) -> usize {
+    let (x0, y0) = (r[0].max(0.0) as usize, r[1].max(0.0) as usize);
+    let (x1, y1) = (r[2].min(S) as usize, r[3].min(S) as usize);
+    let mut n = 0;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let p = (y * SIDE as usize + x) * 4;
+            n += (px[p..p + 3] == [PANEL.0, PANEL.1, PANEL.2]) as usize;
         }
     }
     n
@@ -299,4 +339,38 @@ fn a_list_culls_a_shadow_from_below_the_surface_today() {
     // Pinned (T85.6): `List` culls by `rect_of`, so the shadow vanishes.
     // T85.8 flips this to byte-identical.
     assert!(diff > 0, "a List no longer culls the card below the surface ({diff} pixels differ) -- the gap this pins has closed; flip the gate");
+}
+
+#[test]
+fn a_list_culls_an_open_menu_whose_trigger_is_below_the_surface_today() {
+    // Closed selects above, so the open one's trigger is below the fold;
+    // forty triggers of any plausible height clear a 300 px surface.
+    const ABOVE: usize = 40;
+    let mut app = SelListApp::default();
+    let mut items: Vec<Select<SelListApp>> = (0..ABOVE).map(|_| Select::new(OPTS.len(), 20.0, bind::<SelListApp>)).collect();
+    items.push(select());
+    app.ui.scroll.content.list = List::new(items);
+    let (h, some, none, n_some, n_none) = renders(app);
+    let list = &h.app.ui.scroll.content.list;
+    let sel = &list.items[ABOVE];
+    let popup = (0..<Select<SelListApp> as Widget>::NODE_COUNT).find(|&j| sel.node(j).floats_children()).expect("the Select holds a popup");
+    let r = |s: lumen_static::NodeState| [s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h];
+    let trigger = r(list.item_state(ABOVE, 1));
+    let menu = r(list.item_state(ABOVE, popup + 1));
+    let menu = select_setup("List", ABOVE, trigger, menu, sel.menu.content_absent());
+    // The panel's own colour over a quarter of the menu, not "any ink":
+    // under the dropped-origin injection the pass repaints the wrong
+    // main-table node, which leaves 1,920 non-clear pixels and 1,120 of
+    // the panel's colour there -- a menu painted inline, mostly clipped.
+    let ink = panel_pixels(&none, menu);
+    let area = ((menu[2] - menu[0]) * (menu[3] - menu[1])) as usize;
+    let diff = differing(&some, &none);
+    println!(
+        "List: commands {n_some} / {n_none}; menu-panel pixels on the surface (None render) {ink} of {area} (bound > {}); Some vs None differ in {diff} pixels",
+        area / 4
+    );
+    assert!(ink > area / 4, "setup (List): the uncull render shows no menu panel in {menu:?} ({ink} of {area} pixels)");
+    // Pinned: `List` culls by `rect_of`, so the menu vanishes with its
+    // trigger. A cull by ink (T85.8, decided against at T85.7) flips it.
+    assert!(diff > 0, "a List no longer culls the open menu below the surface ({diff} pixels differ) -- the gap this pins has closed; flip the gate");
 }

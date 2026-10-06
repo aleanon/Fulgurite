@@ -524,6 +524,10 @@ impl<W: Widget> List<W> {
     fn slice(&self, k: usize) -> &[NodeState] {
         self.arena.slice(k)
     }
+
+    /// Whether an item can ask for the overlay phase — M85/T85.6
+    /// (`NodeDesc::DEFERS`, which says why this is a `const`).
+    const DEFERS: bool = crate::widget::table_has_flag(W::SUB_TABLE, NodeDesc::DEFERS);
 }
 
 #[cfg(feature = "alloc")]
@@ -577,6 +581,27 @@ impl<W: Widget> Node for List<W> {
             style: arena.style_mut(),
             seeds: W::SEEDS,
         })
+    }
+
+    /// Item `row`'s node `node` — M85/T85.6. Only for an item type that
+    /// can defer (`NodeDesc::DEFERS`); for any other the body compiles
+    /// away, and with it the item's `dyn Node` vtable.
+    fn arena_node(&self, row: u64, node: usize) -> Option<(&dyn Node, &[NodeState])> {
+        if !Self::DEFERS {
+            return None;
+        }
+        let k = usize::try_from(row).ok()?;
+        let item = self.items.get(k).filter(|_| node < W::NODE_COUNT)?;
+        Some((item.node(node), self.slice(k)))
+    }
+
+    fn arena_node_mut(&mut self, row: u64, node: usize) -> Option<&mut dyn Node> {
+        if !Self::DEFERS {
+            return None;
+        }
+        let k = usize::try_from(row).ok()?;
+        let item = self.items.get_mut(k).filter(|_| node < W::NODE_COUNT)?;
+        Some(item.node_mut(node))
     }
 
     fn kind_name(&self) -> &'static str {
@@ -673,7 +698,16 @@ impl<W: Widget> Node for List<W> {
                     continue;
                 }
             }
+            // **Item `k` is being painted** (M85/T85.6): a popup inside it
+            // defers an item-local index, and the overlay pass needs the
+            // list and the row to find it again.
+            if Self::DEFERS {
+                out.in_arena(Some((i as u32, k as u64)));
+            }
             self.items[k].paint(self.slice(k), 0, out);
+            if Self::DEFERS {
+                out.in_arena(None);
+            }
         }
         out.pop_clip();
     }
@@ -1017,6 +1051,21 @@ impl<S> Node for Dyn<S> {
         Some(crate::arena::ArenaMut { table, style: arena.style_mut(), seeds })
     }
 
+    /// The island's node `node`; its one row is `0` — M85/T85.6.
+    fn arena_node(&self, row: u64, node: usize) -> Option<(&dyn Node, &[NodeState])> {
+        if row != 0 || node >= self.table.len() {
+            return None;
+        }
+        Some((self.inner.node(node), self.arena.slice(0)))
+    }
+
+    fn arena_node_mut(&mut self, row: u64, node: usize) -> Option<&mut dyn Node> {
+        if row != 0 || node >= self.table.len() {
+            return None;
+        }
+        Some(self.inner.node_mut(node))
+    }
+
     fn kind_name(&self) -> &'static str {
         "dyn"
     }
@@ -1054,7 +1103,11 @@ impl<S> Node for Dyn<S> {
         // Same shape as `List`: the island's content may exceed the box
         // `resolve_self` gave it; `hit` stops at the box, so paint must.
         out.push_clip(crate::ops::rect_of(&st[i]));
+        // Row 0 of this island's arena, for a deferral from inside it
+        // (M85/T85.6) — `List::paint` says why.
+        out.in_arena(Some((i as u32, 0)));
         self.inner.paint(self.arena.slice(0), 0, out);
+        out.in_arena(None);
         out.pop_clip();
     }
 

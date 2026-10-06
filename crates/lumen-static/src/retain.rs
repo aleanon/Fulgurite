@@ -1103,6 +1103,11 @@ impl<R: Retention> Painter for Recording<'_, R> {
     fn defer(&mut self, i: u32) -> bool {
         self.inner.defer(i)
     }
+    /// Forwarded and not observed: it says where a deferral comes from,
+    /// and draws nothing (M85/T85.6).
+    fn in_arena(&mut self, at: Option<(u32, u64)>) {
+        self.inner.in_arena(at);
+    }
     /// Forwarded unchanged: recording observes a stream, it does not
     /// move anything (T16.12).
     fn clip_bounds(&self) -> Option<Rect> {

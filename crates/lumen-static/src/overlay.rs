@@ -45,19 +45,54 @@
 /// works; the cap stops a widget that defers itself from spinning.
 pub const MAX_ROUNDS: usize = 4;
 
+/// One deferral: the node to repaint in the overlay phase, addressed the
+/// way a [`Hit`](crate::hit::Hit) addresses a node.
+///
+/// **`inner` is the arena origin**, and it exists because a popup defers
+/// its *own* index from inside its own paint: inside an arena — a `List`
+/// item, a `Repeat` row, a `Dyn` island — that index is the item's, not
+/// the main table's. The pass used to repaint the main-table node with
+/// that number, so a `Select` inside a `List` drew no menu at all
+/// (M85/T85.6, `docs/plan-layout-input.md` "What building found (M85)").
+/// The arena owner tells the painter which item it is painting
+/// ([`Painter::in_arena`](crate::display::Painter::in_arena)), and
+/// [`Deferring`] records `node` = the owner's main-table index and
+/// `inner` = the row and the item-local node — exactly the pair a hit
+/// inside that item answers, so [`Handlers`](crate::event::Handlers)
+/// routes a press on the overlay the way it routes one on the row.
+/// [`Node::arena_node`](crate::widget::Node::arena_node) resolves it.
+///
+/// One level, as `Hit::inner` is: an arena inside an arena's item is
+/// refused (the popup paints inline, clipped), for the reason an inner
+/// hit drops a nested row.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Deferred {
+    /// Main-table node: the deferred node itself, or its arena's owner.
+    pub node: u32,
+    /// The row and the row-local node, when `node` is an arena owner.
+    pub inner: Option<crate::hit::Inner>,
+}
+
+impl Deferred {
+    /// A main-table node.
+    pub const fn at(node: u32) -> Self {
+        Deferred { node, inner: None }
+    }
+}
+
 /// Where a deferred subtree is recorded until the overlay phase.
 ///
 /// Implemented twice: [`NoOverlays`] refuses every deferral and costs
 /// nothing, [`Overlays<N>`] holds up to `N` in a fixed array.
 pub trait OverlaySink {
-    /// Record `node` to be painted in the overlay phase.
+    /// Record `d` to be painted in the overlay phase.
     ///
     /// **Returns whether it was recorded.** A widget that gets `false`
     /// must paint inline instead — that is what makes `NoOverlays` a
     /// working configuration rather than a broken one, and what makes a
     /// full [`Overlays<N>`] degrade to a clipped popup rather than a
     /// missing one.
-    fn defer(&mut self, node: u32) -> bool;
+    fn defer(&mut self, d: Deferred) -> bool;
 
     /// How many deferrals are recorded.
     fn len(&self) -> usize;
@@ -66,8 +101,19 @@ pub trait OverlaySink {
         self.len() == 0
     }
 
-    /// The `k`th deferral, in the order they were made.
-    fn at(&self, k: usize) -> u32;
+    /// The `k`th deferral, in the order they were made — with its arena
+    /// origin. **Required**: a sink that kept only the main-table index
+    /// would hand phase 2 an arena owner to repaint whole, outside its
+    /// clip, instead of the one node inside it.
+    fn entry(&self, k: usize) -> Deferred;
+
+    /// The `k`th deferral's main-table node: the deferred node, or the
+    /// owner of the arena it lives in. What focus, Tab and the host's
+    /// "which overlay is on top" read, since none of them can address a
+    /// node inside an arena.
+    fn at(&self, k: usize) -> u32 {
+        self.entry(k).node
+    }
 
     /// Forget them all. `paint_overlaid` calls this before phase 1, so
     /// a sink is reusable across frames without the host clearing it.
@@ -92,55 +138,74 @@ pub trait OverlaySink {
 pub struct NoOverlays;
 
 impl OverlaySink for NoOverlays {
-    fn defer(&mut self, _: u32) -> bool {
+    fn defer(&mut self, _: Deferred) -> bool {
         false
     }
     fn len(&self) -> usize {
         0
     }
-    fn at(&self, _: usize) -> u32 {
+    fn entry(&self, _: usize) -> Deferred {
         // Unreachable through `paint_overlaid`, which guards on `len`.
         // A panic would be a worse answer than a harmless index for a
         // frame loop, so this returns the root.
-        0
+        Deferred::at(0)
     }
     fn clear(&mut self) {}
 }
 
 /// Up to `N` deferred subtrees, in a fixed array.
 ///
-/// `N` overlays cost `N * 4` bytes and no heap: `Overlays<8>` is 40
-/// bytes, which is what a menu with submenus needs and less than one
-/// `NodeState`. Size it above the deepest stack of simultaneously-open
-/// overlays, not at the number of overlay *widgets* in the tree.
+/// `N` overlays cost `N * 16` bytes and no heap: a [`Deferred`] packed
+/// as the node, the row and the row-local node (`u32::MAX` there for a
+/// main-table deferral). `Overlays<8>` is 144 bytes, which is what a
+/// menu with submenus needs. Size it above the deepest stack of
+/// simultaneously-open overlays, not at the number of overlay *widgets*
+/// in the tree.
 #[derive(Clone, Copy, Debug)]
 pub struct Overlays<const N: usize> {
-    buf: [u32; N],
+    buf: [Slot; N],
     len: usize,
     refused: u32,
 }
 
+/// One packed [`Deferred`]: `local == NOT_IN_ARENA` is `inner: None`.
+#[derive(Clone, Copy, Debug)]
+struct Slot {
+    node: u32,
+    local: u32,
+    row: u64,
+}
+
+const NOT_IN_ARENA: u32 = u32::MAX;
+
 impl<const N: usize> Default for Overlays<N> {
     fn default() -> Self {
-        Overlays { buf: [0; N], len: 0, refused: 0 }
+        Overlays { buf: [Slot { node: 0, local: NOT_IN_ARENA, row: 0 }; N], len: 0, refused: 0 }
     }
 }
 
 impl<const N: usize> OverlaySink for Overlays<N> {
-    fn defer(&mut self, node: u32) -> bool {
+    fn defer(&mut self, d: Deferred) -> bool {
         if self.len == N {
             self.refused = self.refused.saturating_add(1);
             return false;
         }
-        self.buf[self.len] = node;
+        self.buf[self.len] = match d.inner {
+            None => Slot { node: d.node, local: NOT_IN_ARENA, row: 0 },
+            Some(inn) => Slot { node: d.node, local: inn.node, row: inn.row },
+        };
         self.len += 1;
         true
     }
     fn len(&self) -> usize {
         self.len
     }
-    fn at(&self, k: usize) -> u32 {
-        self.buf[k.min(N.saturating_sub(1))]
+    fn entry(&self, k: usize) -> Deferred {
+        let s = self.buf[k.min(N.saturating_sub(1))];
+        Deferred {
+            node: s.node,
+            inner: (s.local != NOT_IN_ARENA).then_some(crate::hit::Inner { row: s.row, node: s.local }),
+        }
     }
     fn clear(&mut self) {
         self.len = 0;
@@ -166,24 +231,34 @@ pub struct Deferring<'a, O: OverlaySink> {
     /// recorded, and in phase 2 it is told `false` and paints inline —
     /// which is correct there, because phase 2 already runs outside
     /// every clip.
-    painting: Option<u32>,
+    painting: Option<Deferred>,
+    /// The arena item being painted — `(owner, row)` — set by
+    /// [`Painter::in_arena`](crate::display::Painter::in_arena), and how
+    /// deep in arenas the walk is. A deferral at depth 1 is recorded
+    /// with its origin; at depth 2 or more its owner's index is itself
+    /// item-local, so it is refused and paints inline.
+    arena: Option<(u32, u64)>,
+    depth: u8,
 }
 
 impl<'a, O: OverlaySink> Deferring<'a, O> {
     /// Phase 1: nothing is being repainted, so every deferral is taken.
     pub fn new(inner: &'a mut dyn crate::display::Painter, sink: &'a mut O) -> Self {
-        Deferring { inner, sink, painting: None }
+        Deferring { inner, sink, painting: None, arena: None, depth: 0 }
     }
 
-    /// Phase 2, repainting node `i`. `i`'s own deferral is refused; a
+    /// Phase 2, repainting `d`. `d`'s own deferral is refused; a
     /// *different* node deferred from inside it — a submenu — is taken
-    /// and painted in the next round.
+    /// and painted in the next round. A node inside an arena is
+    /// repainted *inside* its item, so a submenu deferred from it is
+    /// recorded against the same `(owner, row)`.
     pub fn repainting(
         inner: &'a mut dyn crate::display::Painter,
         sink: &'a mut O,
-        i: u32,
+        d: Deferred,
     ) -> Self {
-        Deferring { inner, sink, painting: Some(i) }
+        let arena = d.inner.map(|inn| (d.node, inn.row));
+        Deferring { inner, sink, painting: Some(d), arena, depth: arena.is_some() as u8 }
     }
 }
 
@@ -321,9 +396,32 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
         self.inner.shader_end();
     }
     fn defer(&mut self, i: u32) -> bool {
-        if self.painting == Some(i) {
+        let d = match (self.depth, self.arena) {
+            (0, _) => Deferred::at(i),
+            (1, Some((owner, row))) => Deferred { node: owner, inner: Some(crate::hit::Inner { row, node: i }) },
+            // Nested arenas: `owner` would be item-local. Inline instead.
+            _ => return false,
+        };
+        if self.painting == Some(d) {
             return false;
         }
-        self.sink.defer(i)
+        self.sink.defer(d)
+    }
+    /// Where a deferral made now comes from — see [`Deferred`].
+    fn in_arena(&mut self, at: Option<(u32, u64)>) {
+        match at {
+            Some(a) => {
+                self.depth = self.depth.saturating_add(1);
+                if self.depth == 1 {
+                    self.arena = Some(a);
+                }
+            }
+            None => {
+                self.depth = self.depth.saturating_sub(1);
+                if self.depth == 0 {
+                    self.arena = None;
+                }
+            }
+        }
     }
 }

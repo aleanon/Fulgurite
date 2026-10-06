@@ -307,3 +307,65 @@ and `cull_damage.rs` and `cull_ink.rs` keep holding them. Firmware: docs
 and test comments only, `just firmware-delta 9c73dc9 firmware=0
 firmware_interactive=0 firmware_bind=0 firmware_cascade=0`, **+0** on
 all four.
+
+## fix(T15.0) — a popup inside an arena, after T85.7 (2026-10-06)
+
+The defect T85.6 recorded (`docs/plan-layout-input.md`, "What building
+found (M85)"): a `Popup` inside a `List` deferred its item-local index
+and the overlay pass repainted the main-table node with that number.
+Fixed by carrying the arena origin with the deferral
+(`overlay::Deferred`), behind `NodeDesc::DEFERS`. Gates, each watched red
+on today's code (`b6163e5`) and under its injection:
+
+| gate | prints | red |
+|---|---|---|
+| `list_overlay.rs`, an open `Select` as item 1 of a `List`, menu `[0, 56, 320, 156]` below the list's clip `[0, 0, 120, 56]` | **12,800** panel pixels of 32,000 in the menu (bound > 8,000) | today's code **0**; a `Deferring` that records the item-local index (origin dropped) **0**; `List` not calling `in_arena` **0**; `Popup` without `DEFERS` **0** — each "a Select inside a List drew no menu" |
+| the same, in a derived column (accept direction) | **12,800** of 32,000 (bound > 8,000) | green under every injection |
+| a press on button `b` `[0, 88, 120, 116]` in row 1's popup | release handled, `chosen` **`(Some(1), 'b')`** | today's code and origin dropped: `None`; the overlay hit answered with the item-local `Hit`, an index into the main table's padding: release unhandled, `None`; `Popup` without `DEFERS`: `None` |
+| a press at `(316, 316)`, below every overlay | consumed, row 1's popup **closed**, no handler ran | today's code, origin dropped, no `in_arena`, no `DEFERS`: not consumed, popup still open |
+| a `Repeat` scrolled one row (rows 1..10 in a ring of 9): data row 3 at window position 2, slot 3 | release handled, `chosen` **`(Some(3), 'b')`** | `arena_node` indexing the ring raw: `None`; no `DEFERS`: `None` |
+| `every_deferring_widget_carries_the_defers_bit` | `Popup`, `Select`, `Modal`, `Sheet`, `Drawer` true; `Button` false | `Popup` without `DEFERS`: "lack NodeDesc::DEFERS: [Popup, Select]" |
+| `cull_ink.rs`, a `List` of 40 closed selects and an open one, trigger `[0, 1360, 28, 1394]`, menu `[0, 200, 300, 300]` | uncull render **12,000** menu-panel pixels of 30,000 (bound > 7,500); Some vs None **15,270** differ — pinned, the list culls the item | origin dropped: **1,120** of 30,000 (a menu painted inline, mostly clipped), "the uncull render shows no menu panel"; no `DEFERS`: the same assertion fires |
+
+**K3, first build: fired, and attributed.** Eight interleaved runs a
+side under one `just bench-lock` (quiet), `R=1 benches-competitive/run.sh
+-p lumen-static-frame`'s binary against `b6163e5`'s:
+
+| build | `layout` | `+paint` | `+render (damage)` | `+paint (culled)` |
+|---|---:|---:|---:|---:|
+| parent, built in this tree | 19.10 (19.0–20.1) | 38.70 (38.3–40.8) | 72.55 (72.3–76.6) | 21.20 (21.1–22.3) |
+| `Node::arena_node` methods only, no overrides | 19.00 | 38.75 | 72.75 | 21.10 |
+| `Painter::in_arena` only | 19.20 | 38.90 | 72.70 | 21.15 |
+| `List` overriding `arena_node` with `None`, `in_arena` called | 19.10 | 41.45 | 76.10 | 21.50 |
+| `List::arena_node` coercing an item to `&dyn Node` directly | 24.05 | 48.80 | 83.90 | 26.10 |
+| the first fix, whole | **24.05** (23.9–24.1) | **48.85** (48.6–50.1) | **83.75** (83.3–84.2) | **26.10** (26.1–27.6) |
+
+Microseconds, median (spread). Forcing 64-byte function and 32-byte
+block alignment on both sides left it (19.15 → 24.10), so it is not
+placement: a `dyn Node` vtable for the item type is reachable from
+`List`'s own vtable, which is live in the arm (a `None`-returning
+override cost nothing and a coercing one cost it all), and
+with it LTO stops inlining the label's `layout` into the list's loop.
+No call is ever made. The `in_arena` pair is the rest of `+paint`
+(~0.9 ns a row over 3,000).
+
+**K3, as shipped** (`NodeDesc::DEFERS` gating both; same lock and
+method, load1 6.78 → 5.89, bound 8):
+
+| arm row | `b6163e5` median (spread) | this tree | |
+|---|---:|---:|---|
+| frame `idle (floor)` | 55.75 µs (52.7–61.6) | 56.30 | inside |
+| frame `ALL rows: +paint` | 1,219.60 µs (1,216.0–1,298.1) | 1,218.80 | inside |
+| frame `layout` | 19.10 µs (18.9–19.2) | 19.10 | inside |
+| frame `+paint` | 38.60 µs (38.4–39.0) | 38.60 | inside |
+| frame `+render (damage)` | 73.25 µs (73.0–73.4) | 72.70 | below (faster) |
+| frame `+render (full)` | 131.45 µs (131.3–131.8) | 130.85 | below (faster) |
+| `--bin cascade`, `cascade_deep (whole table)` | 15,225.7 ns (15,033.8–15,886.2) | 15,143.8 | inside |
+| `--bin textarea -- 100`, `keystroke + layout, 100 KB` | 5.220 ms (5.025–5.998) | 5.314 | inside |
+
+The two render rows below the base's spread are where the base was
+built, not this change: the parent built in this tree read 131.15 and
+72.70 against the base worktree's 131.55 and 73.05 in the same lock.
+Firmware: `just firmware-delta b6163e5` (K4's default), **+8 B** `.text`
+and **+4 B** `.rodata` on all four (`Painter::in_arena`'s provided body
+and its vtable slot; `docs/results-embedded.md`).

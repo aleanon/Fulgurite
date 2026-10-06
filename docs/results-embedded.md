@@ -45,10 +45,10 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **31,090 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at M85/T85.1 (2026-10-06; the four-binary table below, +484 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **31,098 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at `fix(T15.0)` after M85/T85.7 (2026-10-06; the four-binary table below, +8 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
-| `.rodata` | — | 13,344 B | of which the baked face is most; 9,010 B at T13.7; re-measured at M82/T82.7, +4 B (`TextMeasure::outline`'s vtable slot) |
+| `.rodata` | — | 13,348 B | of which the baked face is most; 9,010 B at T13.7; re-measured at `fix(T15.0)` after M85/T85.7, +4 B (`Painter::in_arena`'s vtable slot) |
 | Total (`size -A`) | ≤ 512 KB flash | **44,167 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.7 (44,155 B at T82.5) |
 | RAM, 100 nodes | ≤ 24 KB | **16.4 KB** state + style | **pass**; measured at M82/T82.3 (2026-10-04), below — `Style` 84 B, `NodeState` 84 B |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
@@ -1050,14 +1050,23 @@ by a symbol diff, `pass::dispatch` **−6**, its `Event` match recompiled
 around the new variant, and alignment; the other three +0, `.rodata` +0
 (`just firmware-delta ad18045`). K85d's cumulative is **+432** of 1,024
 against `a21135b`.
+`fix(T15.0)` — a popup inside an arena deferring its item-local index,
+found by M85/T85.6 and fixed after T85.7 — moves all four by **+8 B**
+`.text` and **+4 B** `.rodata`: by a symbol diff of
+`firmware_interactive`, `Painter::in_arena`'s provided no-op body **+6**
+(and 2 of alignment), and its vtable slot. No firmware calls it — only
+`List`, `Repeat` and `Dyn` do, and none of them links without `alloc` —
+and `Node::arena_node` is behind `alloc` with them, so it links nothing
+(`just firmware-delta b6163e5`, K4's default). K85d's cumulative is
+**+440** of 1,024 against `a21135b`.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 31,090 | 38.0% | 50,830 | 13,344 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 |
-| `firmware_interactive` | **63,912** | **78.0%** | **18,008** | 21,886 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** |
-| `firmware_bind` | 34,450 | 42.1% | 47,470 | 13,948 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 |
-| `firmware_cascade` | 33,178 | 40.5% | 48,742 | 14,132 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,098 | 38.0% | 50,822 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 |
+| `firmware_interactive` | **63,920** | **78.0%** | **18,000** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** |
+| `firmware_bind` | 34,458 | 42.1% | 47,462 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 |
+| `firmware_cascade` | 33,186 | 40.5% | 48,734 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

@@ -93,6 +93,31 @@ pub trait Node {
         None
     }
 
+    /// **Node `node` of arena row `row`, with that row's states** — the
+    /// address a [`Hit::inner`](crate::hit::Hit) and a deferred overlay
+    /// ([`Deferred`](crate::overlay::Deferred)) carry, resolved.
+    ///
+    /// `row` means what this node's `hit` puts in `Inner::row`: a
+    /// `List`'s item index, a `Repeat`'s *data* row (through its ring,
+    /// as its `Handlers` impl does — M44/T44.7), `0` for a `Dyn`. `None`
+    /// for a row that is not materialized, a node past the template, or
+    /// a node that owns no arena — the default, right for everything in
+    /// the table. The overlay pass repaints and hit-tests a popup inside
+    /// an arena through this (M85/T85.6).
+    #[cfg(feature = "alloc")]
+    fn arena_node(&self, row: u64, node: usize) -> Option<(&dyn Node, &[NodeState])> {
+        let _ = (row, node);
+        None
+    }
+
+    /// [`arena_node`](Self::arena_node), mutably and without the states:
+    /// what the pass dismisses an overlay inside an arena through.
+    #[cfg(feature = "alloc")]
+    fn arena_node_mut(&mut self, row: u64, node: usize) -> Option<&mut dyn Node> {
+        let _ = (row, node);
+        None
+    }
+
     /// This kind's own style defaults, before any rule applies.
     ///
     /// **Must depend only on the type, never on `self`'s current

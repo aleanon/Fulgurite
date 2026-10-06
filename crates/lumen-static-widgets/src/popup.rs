@@ -140,7 +140,8 @@ impl<W: Widget> PopupTable<W> {
     const ARRAY: [NodeDesc; MAX_POPUP_NODES] = {
         assert!(W::NODE_COUNT < MAX_POPUP_NODES, "Popup content exceeds MAX_POPUP_NODES");
         let mut t = [NodeDesc::EMPTY; MAX_POPUP_NODES];
-        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
+        // `DEFERS`: `paint` asks for the overlay phase (M85/T85.6).
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER | NodeDesc::DEFERS);
         lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
         t
     };

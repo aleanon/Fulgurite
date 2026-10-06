@@ -210,7 +210,9 @@ fn no_overlays_is_a_zst() {
     // The gating policy's second mechanism: a tree that declares no
     // overlay pays nothing, and the type says so.
     assert_eq!(core::mem::size_of::<NoOverlays>(), 0);
-    assert_eq!(core::mem::size_of::<Overlays<8>>(), 8 * 4 + 2 * core::mem::size_of::<usize>());
+    // 16 B a deferral since M85/T85.6: the node, and the row and node
+    // inside an arena it was deferred from (`overlay::Deferred`).
+    assert_eq!(core::mem::size_of::<Overlays<8>>(), 8 * 16 + 2 * core::mem::size_of::<usize>());
 }
 
 // ---- T15.1: dismissal ------------------------------------------------

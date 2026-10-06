@@ -667,6 +667,57 @@ that adds a `Session` method…" does not touch M85: none is added.
   it: a `Kind` rule reaches a `Repeat` inside a `List` item but not the
   `Repeat`'s rows, which is why the gate styles the menu panel and not
   its rows.
+- **After M85b: the `Popup` in a `List` is fixed — `fix(T15.0)`**, the
+  task whose overlay phase deferred a bare index. A deferral now carries
+  its arena origin as a `Hit` does (`overlay::Deferred`: the owner's
+  main-table index and an `Inner { row, node }`); `List`, `Repeat` and
+  `Dyn` say which item they paint (`Painter::in_arena`), and phase 2,
+  the overlay hit test and the pass's dismissals resolve the entry
+  through `Node::arena_node` (`pass::overlay_node`). **The first build
+  fired K3**: the frame arm's `List<Label>` laid out one row in **24.0
+  µs against 19.1** and painted in 48.9 against 38.6, every one-row row
+  outside its spread. Bisected over a dozen builds: `Node`'s two new methods
+  alone moved nothing, and nor did a `List::arena_node` that returned
+  `None`; one that coerced an item to `&dyn Node` — whether through
+  `node()` or directly — cost the whole 5 µs of layout with no call
+  ever made, and forcing function and block alignment left it there.
+  A vtable for the item type is what LTO answered by no longer inlining
+  the label's `layout` into the list's loop. The `in_arena` pair cost
+  another ~2.7 µs of paint over 3,000 rows. So both are behind
+  `NodeDesc::DEFERS`, a new table bit `Popup` and `Veil` (the only two
+  callers of `defer`) set: `List` and `Repeat` read it over the item
+  table as a `const`, and for an item that cannot defer the calls and
+  the resolution compile away. With it every K3 row is inside its
+  parent's spread (`docs/results-layout-input.md`, "fix(T15.0)").
+  `crates/lumen-static-shell/tests/list_overlay.rs` gates it — the menu
+  draws inside a `List` (0 → 12,800 panel pixels, bound > 8,000) and
+  still in a column, a press in row 1's popup runs that row's handler,
+  a press outside closes it, a scrolled `Repeat` resolves its data row
+  through the ring, every deferring widget carries `DEFERS` (all but the
+  column case go red when `Popup`'s entry loses it) — and `cull_ink.rs`
+  gains its `List` menu case,
+  pinned *differing* beside the card case (the list culls the item, so
+  nothing defers). Three things it does **not** do, found while
+  building it and recorded rather than fixed:
+  - **A `Kind` rule on a `Repeat` inside a `List` item does not reach
+    the repeater's rows** — not this defect. `style.rs`'s
+    `cascade_arenas` styles an arena's template table and stops: an
+    arena nested in that template is not walked (its own comment, F4.4's
+    territory). The `Repeat` node is in the item's table, so its panel
+    is styled; its rows are in a second arena, so they are not. Both
+    gates style the panel for that reason.
+  - **An option press in a `Select` inside a `List` chooses nothing**:
+    the menu now draws and the press lands inside it, but `List::hit`
+    answers `Inner { row: item, node }` and drops the `Repeat`'s own
+    row, so `Repeat`'s `Handlers` gets no row and returns `None`
+    (probed: down and up both unhandled, the row handler never ran).
+    One level of `Inner`, the same limit; the overlay path mirrors it
+    rather than widening `Hit`, and a popup in an arena inside another
+    arena's item is refused and paints inline.
+  - **`tell_owner` is not run for an overlay inside an arena.** The
+    dismissal question rides in `NodeSel::inner`, the field an arena
+    owner's `Handlers` needs for the row, so a controlled `Select` in a
+    `List` is not told it was dismissed; the popup itself closes.
 
 - **T85.7: built, and K85c fired.** `Retention::scope_end` and the
   `Incremental` re-sync were built as the Decisions describe and flipped

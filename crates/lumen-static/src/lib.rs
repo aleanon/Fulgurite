@@ -295,7 +295,7 @@ macro_rules! __reloadable {
 macro_rules! __reloadable {
     ($($t:tt)*) => {};
 }
-pub use overlay::{NoOverlays, OverlaySink, Overlays};
+pub use overlay::{Deferred, NoOverlays, OverlaySink, Overlays};
 pub use anim::{Animated, Easing, Lerp};
 #[cfg(feature = "alloc")]
 pub use anim::Playback;

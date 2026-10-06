@@ -469,6 +469,10 @@ impl<T: Widget + Default> Repeat<T> {
     fn slice(&self, k: usize) -> &[NodeState] {
         self.arena.slice(self.slot(k))
     }
+
+    /// Whether a row can ask for the overlay phase — M85/T85.6
+    /// (`NodeDesc::DEFERS`, which says why this is a `const`).
+    const DEFERS: bool = crate::widget::table_has_flag(T::SUB_TABLE, NodeDesc::DEFERS);
 }
 
 impl<T: Widget + Default + 'static> Widget for Repeat<T> {
@@ -545,6 +549,33 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
             style: self.arena.style_mut(),
             seeds: T::SEEDS,
         })
+    }
+
+    /// Data row `row`'s node `node`, through the ring as `Handlers` reads
+    /// it (M44/T44.7) — M85/T85.6. `None` for a row outside the window,
+    /// and for a row type that cannot defer (`NodeDesc::DEFERS`, as
+    /// `List`'s).
+    fn arena_node(&self, row: u64, node: usize) -> Option<(&dyn Node, &[NodeState])> {
+        if !Self::DEFERS {
+            return None;
+        }
+        let k = usize::try_from(row).ok()?.checked_sub(self.first)?;
+        if k >= self.window.len() || node >= T::NODE_COUNT {
+            return None;
+        }
+        Some((self.window[self.slot(k)].node(node), self.slice(k)))
+    }
+
+    fn arena_node_mut(&mut self, row: u64, node: usize) -> Option<&mut dyn Node> {
+        if !Self::DEFERS {
+            return None;
+        }
+        let k = usize::try_from(row).ok()?.checked_sub(self.first)?;
+        if k >= self.window.len() || node >= T::NODE_COUNT {
+            return None;
+        }
+        let s = self.slot(k);
+        Some(self.window[s].node_mut(node))
     }
 
     /// Yes — this is the construct A7 forbids inside a scroller.
@@ -784,7 +815,15 @@ impl<T: Widget + Default + 'static> Node for Repeat<T> {
         crate::ops::border(st, i, out);
         out.push_clip(r);
         for k in 0..self.window.len() {
+            // The *data* row, as `hit` reports it, for a deferral from
+            // inside it (M85/T85.6) — `List::paint` says why.
+            if Self::DEFERS {
+                out.in_arena(Some((i as u32, (self.first + k) as u64)));
+            }
             self.window[self.slot(k)].paint(self.slice(k), 0, out);
+            if Self::DEFERS {
+                out.in_arena(None);
+            }
         }
         // The keyboard's row and the current choice, over their rows and in
         // each row's own text colour, so the tint reads in either palette.

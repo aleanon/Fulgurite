@@ -1442,6 +1442,28 @@ pub trait Painter {
         let _ = i;
         false
     }
+
+    /// **Which arena item is being painted** — `Some((owner, row))`
+    /// before an arena owner paints item `row`, `None` after it.
+    /// `List`, `Repeat` and `Dyn` call it around each item, with `owner`
+    /// their own main-table index and `row` what their `hit` puts in
+    /// `Inner::row`.
+    ///
+    /// It is what lets a [`defer`](Self::defer) from inside an item be
+    /// recorded with its arena origin
+    /// ([`Deferred`](crate::overlay::Deferred)): a popup defers its own
+    /// index, and inside an item that index is the item's. Without it
+    /// the overlay pass repainted a main-table node with an item-local
+    /// number, and a `Select` in a `List` drew no menu (M85/T85.6).
+    ///
+    /// Provided as a no-op, which is right for a leaf painter — it
+    /// records no deferral, so it has no origin to track. **A wrapper
+    /// must forward it** beside `defer`, for the reason `defer` itself
+    /// is forwarded: the default acts on the wrapper, and an overlay
+    /// sink under it would record item-local indices again.
+    fn in_arena(&mut self, at: Option<(u32, u64)>) {
+        let _ = at;
+    }
 }
 
 /// One frame's drawing commands, in paint order.
@@ -1991,6 +2013,9 @@ impl Painter for Scaled<'_> {
     }
     fn defer(&mut self, i: u32) -> bool {
         self.inner.defer(i)
+    }
+    fn in_arena(&mut self, at: Option<(u32, u64)>) {
+        self.inner.in_arena(at);
     }
     /// Back to **logical** units. Everything above the renderer is
     /// logical, so a container culling against this must be handed the
