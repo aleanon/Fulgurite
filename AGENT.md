@@ -690,6 +690,20 @@ found" section rather than silently replacing itself.
     fired on its third condition (GStreamer dev libraries absent), so
     `lumen-static-video` is deferred; it reopens when the owner installs
     `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev`.
+    **M85 and M86 DONE**, `just ci-verify 262643a` green (28 steps, 0
+    failed, 0 skipped). M85's run at `73f174c` failed `stack`: T85.1's
+    out-of-line `Round::limits` put three temporaries on every derived
+    level's stack (+72 B a level); fixed in `1148444` by recovering the
+    bytes, not re-budgeting -- and changes to emitted layout code now
+    check `just stack` beside `just firmware-delta`. K85c fired
+    (`scope_end` costs +11.6% on every frame), so container culling is
+    decided against and T85.8 does not ship; K85e decided the capture
+    phase against (one real case of two). **M86 stopped at T86.1 on
+    K86b**, re-measured on a quiet machine after the first reading was
+    taken beside a CI run; T86.1 (the level, the blend behind
+    `transitions`, `transition-duration`) stands, T86.2-T86.4 are not
+    built. A defect found on the way is fixed in `c22d6a0`: a popup
+    inside a `List`/`Repeat`/`Dyn` drew nothing and was not hit.
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
