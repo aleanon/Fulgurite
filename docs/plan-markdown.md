@@ -2,7 +2,10 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Not started.** The shared byte inventory, seams (S1,
+> its own file. Built 2026-10-06 (T87.0–T87.7), closing on `just
+> ci-verify` of its T87.7 commit (S5), cited in AGENT.md; K87c fired, so
+> the colour parts were withdrawn (T87.2), and K87 fired, so T87.6 built
+> width reuse keyed by word content (`docs/results-markdown.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -627,6 +630,17 @@ Appendix rows for the assembler:
   `DejaVuSans` alone has no bold, so a bold word measured as a regular
   one; the gate measures under the system stack, as the bench does, and
   asserts its bold differs before the edits run.
+
+- T87.7 (M87's close): **K87 and K87c fired; K87a and K87b were not
+  reached**; K4 held at every task and M87's total, measured `262643a` →
+  `70310c7` in one invocation, is +0 on all four; K1 held (no file under
+  `crates/lumen-static/src` changed) and K2 held. The numbers are
+  `docs/results-markdown.md`'s, "M87's kill rules, at its close".
+  Nothing was built at the close. One change landed outside the widgets
+  crate, recorded there: the shell session's `ui.contrast` scales a
+  selector's rect at scale 2 (T87.2), a blind check M87's drive found.
+  Carried out of M87: italic (T87.5's reopen condition), and the append's
+  remaining parse and place walks, unbuilt under the bound (T87.6).
 
 **What the review found (M87).**
 

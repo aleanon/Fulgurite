@@ -6,6 +6,47 @@ and the commits. The plan-wide budgets and kill rules K1–K4 are
 `docs/plan-iced-roadmap.md` §2 and §4; the firmware's four-binary table
 is `docs/results-embedded.md`'s.
 
+## M87's headline — Markdown you can style, link and illustrate, closed at T87.7 (2026-10-06)
+
+**A `Markdown` keeps every word, takes a theme, a blockquote, links that
+activate and images that resolve by name, and an edit to a 64 KB
+document re-measures the words it touched, not the document — for no
+firmware byte and no core change; italic stays a recorded gap.** The
+figures are the task sections below and the kill-rule table at the end;
+this section cites them and states none of its own.
+
+- **The store grows and the parse walks once** (T87.1): the 192-word
+  ceiling and `MAX_SPANS` are gone, `set_str` carries its line offset
+  instead of re-scanning from byte 0, and a still frame still allocates
+  nothing (K87a not reached).
+- **Per-element style is a value, not nodes** (T87.2): `MarkdownTheme`
+  sets each element's scale and weight. The two style parts the plan
+  chose for colour tripled a `Markdown`'s node count and fired K87c, so
+  they were withdrawn: link and quote colours are an optional fixed
+  override on the theme, and by default derive from the node's own
+  colour, because no fixed default reads at AA on both of the showcase's
+  surfaces.
+- **Links and images** (T87.3, T87.4): `[text](target)` is drawn as its
+  words for every `Markdown`, and activates only on a `LinkedMarkdown`,
+  through `Hit::inner` and `ctx.row` (K87b not reached);
+  `![alt](name)` resolves through `set_images` to an `ImageRef`, drawn as
+  a block at frame 0, and loading one damages its rect.
+- **Incremental parsing was decided by its number, and the number said
+  measure** (T87.6): K87 fired on eight runs, and its dominant split
+  quantity was the measure, not the parse, so what was built is width
+  reuse keyed by word content, not a re-parse. A block-level re-parse
+  could not have brought the append under the bound.
+- **Italic is recorded, not built** (T87.5): no pinned face list names
+  an italic face and no `Painter` method carries a face; it reopens when
+  a per-run face reaches `Painter`.
+- **What building found that no gate had** (the plan's "What building
+  found"): `ui.contrast` filtered a scale-2 display list by logical
+  bounds, so the harness's after-every-action contrast check had passed
+  on "no text in the widget's box" for every widget on that leg (T87.2,
+  fixed in the shell's session); gate 5's injection could not fire on
+  the showcase's `DOC` (T87.0); and T87.6's weight injection stayed green
+  under the pinned face, which has no bold.
+
 ## Thresholds, written before anything is built
 
 M87's kill rules, copied from the plan so each later row has its
@@ -295,3 +336,36 @@ regular, 20.000 bold).
 
 Firmware: `rich.rs` is behind `alloc`, which no leaf firmware binary
 enables; Δ 0 on all four (the commit body quotes `just firmware-delta`).
+
+## M87's kill rules, at its close (T87.7, 2026-10-06)
+
+Every rule M87 could read, with its number, fired or not (S5). The
+milestone's firmware total is T87.0's base (`262643a`, T86.1) against
+T87.6's head (`70310c7`), measured directly rather than summed: `just
+firmware-delta 262643a firmware=0 firmware_interactive=0 firmware_bind=0
+firmware_cascade=0` prints **+0** `.text` and **+0**
+`.rodata` on all four. T87.7 changes no linked code.
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K87 — incremental parsing | median of eight runs of a one-character append to 64 KB ≤ **1.5 ms** | **3.215–3.239 ms** at `f501d3a`, measure 85% of it; **0.560–0.616 ms** after the build (T87.6) | **fired**; the dominant split quantity (measure) built as width reuse keyed by word content, gated by `append_matches_full_parse`; parse and place not built |
+| K87a — the store on a still frame | **0** allocations per hover frame | **0.00** allocs, **0.00** frees (T87.1); T87.6's keys are reserved at parse time, and `alloc_gate.rs`'s arm stays green in `just test` | not reached; the `Vec` stores stand |
+| K87b — a link as `Inner` | no existing test or drive turns red | `just test` and the three-widget drive green on all six legs (T87.3) | not reached; links are `Hit::inner` |
+| K87c — parts cost | `cascade_deep (markdown x16)` inside T87.1's spread, eight runs a side | **943.23–1004.60 ns** against **274.12–293.52 ns**, 3.4x (T87.2) | **fired**; the parts withdrawn, colours an optional fixed override on the theme with a derived default |
+| K4 — per task | Δ 0 B `.text` on all four (strict form) | T87.0–T87.6 each **+0** `.text` and **+0** `.rodata` on all four (each commit body) | holds |
+| — M87's total | recorded | **+0** on all four (`262643a` → `70310c7`); `firmware_interactive` **64,160** B | recorded; `docs/results-embedded.md`'s table does not move |
+| K1 — the struct budget | `Cmd` 60; `Style`, `NodeState` +0 B | no file under `crates/lumen-static/src` changed in M87 (`git diff --stat 262643a 70310c7 -- crates/lumen-static/src` is empty) | holds |
+| K2 — default-off | the default window's crate count Δ 0 | **96** against 96, `scripts/check_default_crates.sh` in `just static` at every task | holds |
+| K3 — the task's named arm | — | no M87 task names a K3 arm: with no core change, the plan's per-task bound is K4's strict Δ 0 instead (`docs/plan-markdown.md`, Kill rules) | not measured, by the plan |
+
+**What M87 changed outside `lumen-static-widgets`**, each recorded where
+it was built: the shell session's `ui.contrast` now scales a selector's
+rect at scale 2 (T87.2, `crates/lumen-static-shell/tests/contrast_scale.rs`), a fix for a blind
+check found by M87's live drive, not an M87 feature; the journal gained
+no rule, because K87c withdrew the parts it would have signed.
+
+**Carried out of M87**: italic reopens when a per-run face reaches
+`Painter` (T87.5); the append's remaining 0.31 ms parse and 0.20 ms
+place are whole-text walks left unbuilt under the bound (T87.6) — a
+block-level re-parse is the reopen if a larger document or a tighter
+budget puts the append back over 1.5 ms.
