@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`). M83b: T83.3, T83.4, T83.5, T83.6 and T83.7 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3–T83.8 landed 2026-10-06 and M83b closes; no kill rule fired (`docs/results-shader.md`, "M83b closes").** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1350,6 +1350,29 @@ task and is recorded in `docs/results-shader.md` with the number).
   is retention's), so `ui.lastDamage` is the view alone, 0.77 of view ∪
   card; the pixel comparison excludes the card's box, inside which the
   frost legitimately follows the plasma.
+
+- T83.8: **`book/src/gaps.md` names neither iced item**, so the "drops the
+  two iced items" step has nothing to drop: its "What is genuinely absent"
+  never listed custom shaders or window renderer injection. Both are closed
+  in `docs/results-shader.md`'s verdict table instead.
+- T83.8: **the GPU leg runs under both strategies** (`gpu`,
+  `gpu-everything`), per §3.1, though the plan names one: the post-swap
+  call is strategy-blind, and the `Everything` leg costs one rebuild of the
+  copy.
+- T83.8: **the swap frame is the new session's first ring entry.** The
+  agent lives in the library's session, so a swap starts a fresh `app.perf`
+  ring, and its oldest entry is the swap frame: `since: 0` (every entry)
+  less `since: 1` (every entry but the oldest) is that frame's
+  `damaged_px`. `window.max` was the first draft, and is not that frame's
+  number once `xwd` reads have added frames.
+- T83.8: **the fixture's program chain ends in the line the shaping step
+  edits whole**, so the shader table is added by a `with_shaders` wrapper
+  around the chain rather than as a link in it; the shaping edit now
+  writes `.shaping(Shaping::Complex),` (the argument's trailing comma).
+- T83.8: **the first GPU read polls** (up to 5 s) for the swatch's red, and
+  `xwd -name` is retried: the drive's first request can be answered before
+  the window's first GPU frame lands (one run read `(5, 6, 6)`), or before
+  the server has mapped it.
 
 **What the review found (M83).**
 

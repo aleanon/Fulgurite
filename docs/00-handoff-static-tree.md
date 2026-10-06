@@ -510,6 +510,10 @@ every successful swap (`Backend::set_shaders`, required). The table
 borrows the session for that call only; a backend copies what it keeps, so
 no pointer into a swapped-out library survives (`docs/plan-gpu-extension.md`,
 "Shaders are data"; the gates are `docs/results-shader.md` T83.4).
+**Driven live since M83/T83.8**: an edit to a running window's WGSL reaches
+the GPU with the swap, and the swap's frame repaints the whole window, which
+is why a `ShaderId` naming an edited source cannot go stale (`just
+hot-window-drive`'s GPU legs; `docs/results-shader.md` T83.8).
 
 ### The model
 

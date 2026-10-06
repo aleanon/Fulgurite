@@ -30,6 +30,12 @@ agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # M81/T81.4: `Shaping::Complex` for the drive's shaping step -- the loader
 # and the library both build with it, and `--expect-features` names it.
 shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
+# M83/T83.8: `#swatch` becomes a `ShaderView` and the program registers its
+# table, so the drive's GPU legs can edit the copy's WGSL and watch the swap
+# re-send it (`--features hot,agent,gpu,shader`). Default-off: a member's
+# features unify into every `--workspace` build.
+shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
+gpu = ["lumen-static-winit/gpu"]
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static" }

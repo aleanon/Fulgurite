@@ -349,3 +349,41 @@ on the software `Boundaries<256>` leg, tree **10** table nodes:
 A ticking shader re-lays the whole tree out every frame; a still window
 lays nothing out. On ten nodes that is 4.9 µs; it grows with the tree,
 which is why M84's `App::tick_marked` (K84c) is where it is reopened.
+
+## T83.8 — a WGSL edit reaches a running window, at `6412378` + T83.8 (2026-10-06)
+
+`fixtures/hot-window`'s second node, `#swatch`, is a 320 × 40
+`ShaderView<16>` with the fixture's default-off `shader` (an empty spacer
+in the same slot without it, so the tree has one shape in every build): a
+flat colour on its own WGSL line times a uniform gain of ones, over a grey
+fallback. `scripts/hot_window_drive.sh` gains two GPU legs (`gpu`,
+`gpu-everything`; `--gpu` runs them alone), built `hot agent gpu shader`,
+`LUMEN_BACKEND=gpu`, read back with `xwd`, skipping with 77 without `xwd`
+or an adapter. RTX 4070 (Vulkan), scale 1, release builds.
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| the WGSL edit (`EDIT colour`, red → blue), `Boundaries<256>` | before: `#swatch` centre `(219, 31, 41)`, distance from red **0** (from the fallback's grey 97); reloads **1 → 2** (setup: +1), swapped in 1.16 s; after: `(31, 76, 229)`, distance from blue **1** (from red 188) | 6; +1 | the post-swap `Backend::set_shaders` in `redraw`'s swap branch skipped: after the swap the centre stays `(219, 31, 41)`, distance from blue **189**, red ("the new build's shader table did not reach the backend") |
+| — the swap frame's `damaged_px` | **128,000** px, the oldest entry of the new session's fresh ring (2 entries; `since: 0` less `since: 1`) | = the window's 320 × 400 = 128,000 | — (the premise `ShaderId` rests on, printed) |
+| — `Everything` | distance from red 0 → from blue **1**; reloads 1 → 2; swap frame **128,000** px | as above | — (the same call site; the strategy cannot reach it) |
+| the error bar keeps the shader (the drive's broken `EDIT handler`, both legs) | the bar is up: foot pixel `(255, 255, 255)` → `(102, 30, 34)` (setup); `#swatch` under the bar: **0** of 12,800 px differ, centre `(31, 76, 229)`; the fix-back clears it with no swap | 0 | `Barred::new` clears the clone's `uniforms` (the literal's shape): the frame panics, "range end index 16 out of range for slice of length 0" (`display.rs`, `uniforms_of`), the window exits **101** and `launch.py` fails the leg on the unexpected panic |
+| the other legs (`hot`, `static`, `everything`), unchanged | PASS: format edit 0.85 s, `#star` under the bar unchanged, the panic shown and cleared, the IME area inside `#field`, the shaping swap's `#hebrew` = the `Complex` render (`946486508a17152d`) on all three | their own | their own (M37, M80, M81, M82) |
+| lint (`dev-shape`, `just gpu`): `cargo clippy -p hot-window --all-targets --features hot,agent,shader`, and `hot,agent,gpu,shader` | clean | -D warnings | an unused binding in `swatch_fallback`: the `shader` line fails `unused variable: injected`; the same crate without `shader` stays green |
+| firmware (K83b, K4): `just firmware-delta 6412378 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (a fixture and scripts only) |
+
+## M83b closes — the verdict table (2026-10-06)
+
+Every kill rule's number, fired or not (S5).
+
+| rule | quantity | bound | measured | verdict |
+|---|---|---|---|---|
+| K83a | the pass split, per shader node, `shader_cost` at 1080p on the rule's adapter | ≤ 50 µs | **6.30** µs (RTX 4070; llvmpipe 111.05 µs for the record, not the rule's adapter) | does not fire (T83.5) |
+| K83b | firmware `.text`/`.rodata`, all four binaries, `shader` off, per task | Δ 0 | Δ **0** in T83.0–T83.8, every task | holds |
+| K83c | frame `idle (floor)`, `+render (damage)`, `keystroke + layout, 100 KB`, `cascade_deep` against T83.0's spread | inside | three inside; `cascade_deep` below (faster), attributed to the machine by identical `.text` and an empty symbol diff | holds (alignment outcome, T83.3) |
+| K83d | `lumen-static-winit` default normal dependencies; the stripped release showcase | +0; under +3 MB | **96** (T83.0 96); **9,728,104 B** stripped (T83.0 9,719,656 B: **+8,448 B**; 13,055,368 B unstripped) | holds |
+| K1 | `size_of::<Cmd>()`; `Style` / `NodeState` | 60 B both builds; unchanged | **60 B** off and on; **84 / 84 B** | holds |
+
+What M83b closes from the iced list (`docs/plan-iced-roadmap.md`): custom
+shaders — registered as data, run by the GPU behind a scissor, a fallback
+everywhere else, and re-sent across a hot swap. `just ci-verify` on this
+half is the coordinator's, and is cited in AGENT.md's queue entry.

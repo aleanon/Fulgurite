@@ -15,6 +15,11 @@
 //! a copy that dropped the list's path store would lose it. It is first
 //! in the column and the window is 400 px tall, so the bar (at most ten
 //! lines at the foot) never reaches it.
+//! `#swatch` (M83/T83.8), second, is a `ShaderView` with the `shader`
+//! feature: the drive's GPU legs edit `EDIT colour` in its WGSL from red
+//! to blue and the swap must re-send the new build's table to the backend.
+//! Without the feature it is an empty spacer in the same slot, so the tree
+//! has one shape in every build.
 
 use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -30,6 +35,9 @@ pub struct Ui {
     /// A filled star, painted with `Painter::path` (M82/T82.5).
     #[widget_id("star")]
     pub star: PaintBox,
+    /// A box the program's shader draws, with `shader` ([`Swatch`]).
+    #[widget_id("swatch")]
+    pub swatch: Swatch,
     #[widget_id("inc")]
     pub inc: Button<Tally>,
     #[widget_id("value")]
@@ -43,6 +51,41 @@ pub struct Ui {
     /// `Shaping::Complex` (M81/T81.4).
     #[widget_id("hebrew")]
     pub hebrew: Label<String>,
+}
+
+/// `#swatch`: a `ShaderView` running [`SHADERS`]'s one entry with the
+/// `shader` feature (M83/T83.8)…
+#[cfg(feature = "shader")]
+pub type Swatch = lumen_static_widgets::ShaderView<16>;
+/// …and an empty spacer in its slot without it.
+#[cfg(not(feature = "shader"))]
+pub type Swatch = Spacer;
+
+/// The swatch's WGSL: a flat colour times the uniform block's gain (all
+/// ones). The colour is on its own line, which the drive's GPU legs edit
+/// in the copy; the gain is there so the bracket carries uniform bytes,
+/// which the failed-build step's error bar must keep (`hot::Barred`
+/// clones the list, uniforms included).
+#[cfg(feature = "shader")]
+const SWATCH: &str = "
+struct U { gain: vec4<f32> }
+@group(0) @binding(1) var<uniform> u: U;
+@fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> {
+    let c = vec3(0.86, 0.12, 0.16); // EDIT colour
+    return vec4(c * u.gain.rgb, 1.0);
+}
+";
+
+/// The program's shader table: `#swatch` names entry 0.
+#[cfg(feature = "shader")]
+pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] =
+    [lumen_static_shell::shader::ShaderDesc::new("swatch", SWATCH, 16)];
+
+/// What `#swatch` draws where the shader does not run: grey, neither of
+/// the colours the drive edits between.
+#[cfg(feature = "shader")]
+fn swatch_fallback(out: &mut dyn lumen_static::Painter, r: [f32; 4], _: &[u8]) {
+    out.rect(r, lumen_static::Color(0x80, 0x80, 0x80, 0xff));
 }
 
 /// `#star`'s callback: one filled path, placed by its transform.
@@ -96,6 +139,16 @@ fn boot() -> Counter {
     c.ui.inc.on_click = on_inc;
     c.ui.hebrew.set(HEBREW.to_owned());
     c.ui.star.draw = star;
+    #[cfg(feature = "shader")]
+    {
+        let mut gain = [0u8; 16];
+        for k in 0..4 {
+            gain[k * 4..k * 4 + 4].copy_from_slice(&1.0f32.to_le_bytes());
+        }
+        let mut v = lumen_static_widgets::ShaderView::new(lumen_static::display::ShaderId(0), swatch_fallback);
+        v.set_uniforms(&gain);
+        c.ui.swatch = v;
+    }
     c
 }
 
@@ -108,18 +161,34 @@ pub type Strategy = lumen_static_shell::program::DefaultInval; // EDIT strategy
 /// The program, described once: the binary runs it, the library exports
 /// it, and a reload boots the new build's copy of it (§2.2).
 pub fn program() -> Program<Counter, Strategy> {
-    application(boot)
-        .invalidation::<Strategy>()
-        .title("hot-window")
-        .size(320, 400)
-        .style(|_: &Counter| {
-            vec![
-                Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL)),
-                Rule::new(Selector::Id("hebrew"), Patch::new().font_size(20.0)),
-                Rule::new(Selector::Id("star"), Patch::new().width(Length::FILL).height(Length::Fixed(48.0))),
-            ]
-        })
-        .shaping(Shaping::Basic) // EDIT shaping
+    with_shaders(
+        application(boot)
+            .invalidation::<Strategy>()
+            .title("hot-window")
+            .size(320, 400)
+            .style(|_: &Counter| {
+                #[allow(unused_mut)]
+                let mut rules = vec![
+                    Rule::new(Selector::Id("inc"), Patch::new().width(Length::FILL)),
+                    Rule::new(Selector::Id("hebrew"), Patch::new().font_size(20.0)),
+                    Rule::new(Selector::Id("star"), Patch::new().width(Length::FILL).height(Length::Fixed(48.0))),
+                ];
+                #[cfg(feature = "shader")]
+                rules.push(Rule::new(Selector::Id("swatch"), Patch::new().width(Length::FILL).height(Length::Fixed(40.0))));
+                rules
+            })
+            .shaping(Shaping::Basic), // EDIT shaping
+    )
+}
+
+/// The program's shader table with `shader` (M83/T83.8): re-asked from the
+/// new session on every swap and re-sent to the backend
+/// (`Backend::set_shaders` in the window's swap branch). Kept out of the
+/// chain above, whose last line the drive edits whole.
+fn with_shaders(p: Program<Counter, Strategy>) -> Program<Counter, Strategy> {
+    #[cfg(feature = "shader")]
+    let p = p.shaders(&SHADERS);
+    p
 }
 
 // Only a hot build is a library a window loads (M49/T49.9).

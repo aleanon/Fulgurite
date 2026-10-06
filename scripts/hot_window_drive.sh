@@ -22,7 +22,17 @@
 #   everything  a fresh copy whose `Strategy` is edited to `Everything`
 #               before the build, running step 9 alone -- so both
 #               strategies see the swap's repaint-all.
-# `HOT_WINDOW_LEGS` picks legs (default "hot static everything");
+#   gpu         M83/T83.8: a fresh copy built `hot agent gpu shader` and
+#               run on the GPU backend, read back with `xwd`: the copy's
+#               WGSL colour is edited red -> blue and must reach the
+#               running window through the swap's `Backend::set_shaders`;
+#               the swap frame repaints the whole window; and the broken
+#               edit's bar leaves `#swatch`'s pixels as they were.
+#   gpu-everything  the same under `Everything`.
+# The GPU legs skip with exit 77 without `xwd` or an adapter -- and a skip
+# is not a pass (M43): `just live` refuses it unless LUMEN_ALLOW_SKIP=1.
+# `HOT_WINDOW_LEGS` picks legs (default "hot static everything gpu
+# gpu-everything"); `--gpu` runs the two GPU legs alone;
 # `HOT_WINDOW_SHAPING_ONLY=1` runs step 9 alone in the hot leg too.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,7 +41,8 @@ LAUNCH="python3 scripts/live/launch.py --script hot-window-drive"
 $LAUNCH --display-only || exit $?
 ROOT="$(pwd)"
 WS="$ROOT/target/hot-live/ws"
-LEGS="${HOT_WINDOW_LEGS:-hot static everything}"
+LEGS="${HOT_WINDOW_LEGS:-hot static everything gpu gpu-everything}"
+[ "${1:-}" = --gpu ] && LEGS="gpu gpu-everything"
 FEATURES="hot agent shaping"
 # The live hashes are compared with headless renders at scale 1.
 SCALE=(--env WINIT_X11_SCALE_FACTOR=1)
@@ -55,13 +66,14 @@ license = "MIT OR Apache-2.0"
 TOML
 [ -f "$WS/Cargo.lock" ] || cp Cargo.lock "$WS/Cargo.lock"
 
-build_hot() {
-    echo "== building the window, and the library it will first swap to =="
-    (cd "$WS" && cargo build --release -q -p hot-window --features "$FEATURES")
+build_hot() { # [FEATURES]
+    local features="${1:-$FEATURES}"
+    echo "== building the window, and the library it will first swap to ($features) =="
+    (cd "$WS" && cargo build --release -q -p hot-window --features "$features")
     # The window's first build runs at start-up; doing it once here first
     # makes that build incremental rather than a cold one of every dependency.
     (cd "$WS" && cargo rustc --release -q -p hot-window --lib --crate-type cdylib \
-        --features "$FEATURES" --target-dir "$WS/target/reload")
+        --features "$features" --target-dir "$WS/target/reload")
     # The headless half of step 9's comparison, kept apart from the window
     # binary the static leg rebuilds.
     cp "$WS/target/release/hot-window" "$WS/hash-hot"
@@ -86,7 +98,7 @@ if [[ " $LEGS " == *" static "* ]]; then
     # The copy as the hot leg left it -- its program says Complex -- built
     # as a plain window: no `hot`, so no reload.
     echo "== building the edited source as a static window =="
-    grep -q 'Shaping::Complex) // EDIT shaping' "$WS/app/src/lib.rs" \
+    grep -q 'Shaping::Complex), // EDIT shaping' "$WS/app/src/lib.rs" \
         || { echo "hot-window-drive: the static leg needs the hot leg's edited copy" >&2; exit 1; }
     (cd "$WS" && cargo build --release -q -p hot-window --features "agent shaping")
     $LAUNCH --leg static --exe "$WS/target/release/hot-window" "${SCALE[@]}" \
@@ -104,3 +116,32 @@ if [[ " $LEGS " == *" everything "* ]]; then
         --expect-strategy Everything --expect-features reload,shaping \
         -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --only-shaping
 fi
+
+# M83/T83.8: a WGSL edit reaches a running window, on the GPU.
+GPU_FEATURES="hot agent gpu shader"
+gpu_leg() { # LEG STRATEGY
+    if ! command -v xwd >/dev/null; then
+        echo "hot-window-drive: no xwd -- the GPU legs skipped (77)"
+        exit 77
+    fi
+    fresh_copy
+    if [ "$2" = Everything ]; then
+        sed -i 's|^pub type Strategy = .*// EDIT strategy$|pub type Strategy = lumen_static::Everything; // EDIT strategy|' "$WS/app/src/lib.rs"
+        grep -q 'lumen_static::Everything; // EDIT strategy' "$WS/app/src/lib.rs" \
+            || { echo "hot-window-drive: the strategy edit did not apply" >&2; exit 1; }
+    fi
+    build_hot "$GPU_FEATURES"
+    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$GPU_FEATURES" \
+        --env LUMEN_BACKEND=gpu "${SCALE[@]}" \
+        --expect-strategy "$2" --expect-features reload \
+        -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --gpu || {
+        rc=$?
+        if ! grep -q '^lumen-static: gpu' "target/live/hot-window-drive-$1.log"; then
+            echo "hot-window-drive: no adapter on this machine -- skipped (77): $(head -3 "target/live/hot-window-drive-$1.log")"
+            exit 77
+        fi
+        exit $rc
+    }
+}
+if [[ " $LEGS " == *" gpu "* ]]; then gpu_leg gpu Boundaries; fi
+if [[ " $LEGS " == *" gpu-everything "* ]]; then gpu_leg gpu-everything Everything; fi

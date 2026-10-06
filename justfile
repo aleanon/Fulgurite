@@ -151,6 +151,9 @@ dev-shape:
     # build), so the lines above skip it. Its tests and lint, here.
     cargo test -q -p shader --features shader
     cargo clippy -q -p shader --all-targets --features shader,agent,everything -- -D warnings
+    # M83/T83.8: fixtures/hot-window's default-off `shader` (`#swatch` and the
+    # program's table), which no line above turns on.
+    cargo clippy -q -p hot-window --all-targets --features hot,agent,shader -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An
@@ -453,6 +456,8 @@ gpu:
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
     # M83/T83.7: examples/shader on the GPU, the build `just shader-drive` runs.
     cargo clippy -q -p shader --features gpu,agent --all-targets -- -D warnings
+    # M83/T83.8: the build `just hot-window-drive`'s GPU legs run.
+    cargo clippy -q -p hot-window --features hot,agent,gpu,shader --all-targets -- -D warnings
     # M83/T83.4: `GpuBackend::set_shaders` keeps its owned copy under the
     # window crate's `shader`, which only a GPU build compiles.
     cargo clippy -p lumen-static-winit --features gpu,shader --all-targets -- -D warnings
@@ -827,8 +832,10 @@ window-reload-demo:
 # fixtures/hot-window with sed and drives it over the agent: new text with
 # the old count, a failed build kept out, a panic shown and cleared by the
 # next swap. Since M81/T81.4 also a swap to `Shaping::Complex` under both
-# strategies, and the edited source launched as a static window. Needs a
-# display.
+# strategies, and the edited source launched as a static window. Since
+# M83/T83.8 two GPU legs too: an edit to the copy's WGSL reaches the running
+# window with the swap, and the error bar leaves the shader's pixels alone.
+# Needs a display, and for the GPU legs `xwd` and an adapter.
 hot-window-drive:
     ./scripts/hot_window_drive.sh
 

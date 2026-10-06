@@ -23,10 +23,20 @@ Over the agent, against fixtures/hot-window's copy:
      through `Hot`'s forward and the window calls `Backend::set_font`.
 Prints reload latency (edit -> swapped) and resident memory per reload.
 
-Usage: hot_window_drive.py PORT SRC PID HASH_EXE [--only-shaping] [--save F]
+Usage: hot_window_drive.py PORT SRC PID HASH_EXE [--only-shaping] [--save F] [--gpu]
        hot_window_drive.py PORT --static HASH_EXE SAVED
 `--only-shaping` waits for the first hot build and runs step 9 alone (the
 `Everything` leg); `--save F` writes step 9's post-swap hash to F.
+`--gpu` (M83/T83.8) is the GPU leg, built with `shader` and read back with
+`xwd`: it waits for the first hot build and runs step 10 alone --
+  10. edit the copy's WGSL colour (`EDIT colour`) from red to blue: after
+      the swap `#swatch`'s centre is blue (the window re-sent the new
+      build's table to the backend, `Backend::set_shaders` on the swap),
+      the swap frame's `damaged_px` is the window's area (the full-repaint
+      premise `ShaderId` rests on), and the reload count went up by one;
+      then the broken edit: while its bar is up, `#swatch`'s region reads
+      the same pixels as before it (the bar draws over a clone of the
+      session's list, uniforms included).
 `--static` is the fresh launch of the edited source, a window with no hot
 reload: its `#hebrew` hash must equal the `Complex` headless render's and
 the post-swap hash SAVED, and differ from the `Basic` render's -- what
@@ -38,11 +48,12 @@ port = int(sys.argv[1])
 static = sys.argv[2] == "--static"
 if static:
     src, pid, hash_exe, saved = None, None, sys.argv[3], sys.argv[4]
-    only_shaping, save = False, None
+    only_shaping, save, gpu = False, None, False
 else:
     src, pid, hash_exe = sys.argv[2], int(sys.argv[3]), sys.argv[4]
     rest = sys.argv[5:]
     only_shaping = "--only-shaping" in rest
+    gpu = "--gpu" in rest
     save = rest[rest.index("--save") + 1] if "--save" in rest else None
 
 
@@ -192,7 +203,7 @@ def shaping_step(leg):
     assert hb["hash"] != hc["hash"], "setup: Basic and Complex draw #hebrew alike, so nothing here could fail"
     assert pre["hash"] == hb["hash"], "setup: before the edit the window does not draw the Basic program's frame"
     n = reloads()["reloads"]
-    edit("shaping", ".shaping(Shaping::Complex)")
+    edit("shaping", ".shaping(Shaping::Complex),")
     r, lat = wait(lambda r: r["reloads"] >= n + 1 and not r["building"], "the shaping edit's reload")
     assert r["error"] is None, f"step 9: the shaping edit did not build: {r['error']}"
     for _ in range(20):
@@ -227,6 +238,116 @@ if static:
     assert live["hash"] == hc["hash"], "a static Complex window does not draw the Complex headless frame"
     assert live["hash"] == want, "the fresh launch of the edited source differs from the swapped-in frame"
     print("hot-window-drive [static]: PASS")
+    sys.exit(0)
+
+# ---- 10 (M83/T83.8): a WGSL edit reaches the running window -----------
+RED, BLUE, GREY = (219, 31, 41), (31, 77, 230), (0x80, 0x80, 0x80)
+COLOUR_TOL = 6
+
+
+def xwd_shot():
+    """The window read back off the X server (`scripts/gpu_parity.sh`'s
+    reader): the GPU backend cannot answer `ui.screenshot`."""
+    import tempfile
+    call("app.diagnostics")  # the process still answers
+    with tempfile.NamedTemporaryFile(suffix=".xwd") as t:
+        # A few tries: `xwd -name` can miss a window the server is still
+        # mapping, and the read is of the window, not of the process.
+        for k in range(5):
+            if subprocess.run(["xwd", "-name", "hot-window", "-out", t.name], stderr=subprocess.DEVNULL).returncode == 0:
+                break
+            time.sleep(0.3)
+        else:
+            sys.exit("hot-window-drive [gpu]: xwd found no window named hot-window in five tries")
+        d = open(t.name, "rb").read()
+    h = struct.unpack(">25I", d[:100])
+    hdr, w, ht, bpp, bpl, ncolors = h[0], h[4], h[5], h[11], h[12], h[19]
+    px, step = d[hdr + ncolors * 12:], bpp // 8
+    return w, ht, lambda x, y: (px[y * bpl + x * step + 2], px[y * bpl + x * step + 1], px[y * bpl + x * step])
+
+
+def dist(a, b):
+    return max(abs(x - y) for x, y in zip(a, b))
+
+
+def gpu_step():
+    log = open(os.environ["LUMEN_LIVE_LOG"], errors="replace").read()
+    assert "lumen-static: gpu" in log, f"setup: the window is not on the GPU backend: {log.splitlines()[:4]}"
+    sw = [round(v) for v in call("ui.resolve", {"selector": "#swatch"})["bounds"]]
+    cx, cy = (sw[0] + sw[2]) // 2, (sw[1] + sw[3]) // 2
+    # The window's first frames land after the agent answers: poll the
+    # read until the swatch shows its shader, or give up after 5 s.
+    for _ in range(25):
+        w, h, px = xwd_shot()
+        pre = px(cx, cy)
+        if dist(pre, RED) <= COLOUR_TOL:
+            break
+        time.sleep(0.2)
+    area = w * h
+    print(f"hot-window-drive [gpu]: #swatch {sw}, centre {pre}: distance from red {dist(pre, RED)} "
+          f"(bound {COLOUR_TOL}), from the fallback's grey {dist(pre, GREY)}; window {w}x{h} = {area} px")
+    assert dist(pre, RED) <= COLOUR_TOL, "setup: before the edit #swatch is not the shader's red"
+    n = reloads()["reloads"]
+    edit("colour", "let c = vec3(0.12, 0.30, 0.90);")
+    r, lat = wait(lambda r: r["reloads"] >= n + 1 and not r["building"], "the WGSL edit's reload")
+    assert r["error"] is None, f"step 10: the WGSL edit did not build: {r['error']}"
+    # The swap frame's own damage. The new session's agent starts a fresh
+    # ring, so its oldest entry is the swap frame; `since` N sums the
+    # newest `frame - N` entries, so `since: 0` is every entry and
+    # `since: 1` every entry but the oldest (each request is answered in a
+    # frame of its own, which both reads count alike).
+    every = call("app.perf", {"since": 0})["since"]
+    rest = call("app.perf", {"since": 1})["since"]
+    frames = every["frames"]
+    assert 0 < frames < 128 and not every["truncated"], f"setup: the new session's ring: {every}"
+    swap_px = (every["damaged_px"] or 0) - (rest["damaged_px"] or 0)
+    for _ in range(30):
+        _, _, px = xwd_shot()
+        post = px(cx, cy)
+        if dist(post, BLUE) <= COLOUR_TOL:
+            break
+        time.sleep(0.1)
+    print(f"hot-window-drive [gpu]: WGSL edit -> swapped in {lat:.2f}s; reloads {n} -> {r['reloads']} "
+          f"(setup: +1); #swatch centre {post}: distance from blue {dist(post, BLUE)} (bound {COLOUR_TOL}), "
+          f"from red {dist(post, RED)}")
+    print(f"hot-window-drive [gpu]: the swap frame (the oldest of the new session's {frames} "
+          f"entries): damaged_px {swap_px} (bound: = the window's {area} px)")
+    assert r["reloads"] == n + 1, f"setup: the reload count went {n} -> {r['reloads']}, not up by one"
+    assert dist(post, BLUE) <= COLOUR_TOL, ("step 10: after the swap #swatch is not the edited blue: the "
+                                             "new build's shader table did not reach the backend")
+    assert swap_px == area, "step 10: the swap frame was not a full repaint"
+
+    # The bar keeps the shader (second review A13).
+    _, _, px = xwd_shot()
+    before = [px(x, y) for y in range(sw[1], sw[3]) for x in range(sw[0], sw[2])]
+    foot0 = px(4, h - 4)
+    k = reloads()["reloads"]
+    edit("handler", 'let step: i64 = "one";')
+    r, _ = wait(lambda r: not r["building"] and (r["error"] is not None or r["reloads"] != k), "the broken build's error")
+    assert r["reloads"] == k, f"a failed build swapped: reloads {r['reloads']}"
+    for _ in range(30):
+        _, _, px = xwd_shot()
+        foot = px(4, h - 4)
+        if is_bar(foot):
+            break
+        time.sleep(0.1)
+    under = [px(x, y) for y in range(sw[1], sw[3]) for x in range(sw[0], sw[2])]
+    differ = sum(1 for a, b in zip(before, under) if a != b)
+    print(f"hot-window-drive [gpu]: the bar is up: foot pixel {foot0} -> {foot} (setup: differs, red); "
+          f"#swatch under the bar: {differ} of {len(under)} px differ (bound 0), centre {px(cx, cy)}")
+    assert is_bar(foot) and not is_bar(foot0), f"setup: the bar is not on screen: {foot} (before {foot0})"
+    assert differ == 0, "the shader's region changed under the error bar: the bar's copy of the list lost its uniforms"
+    edit("handler", "let step = 1;")
+    r, _ = wait(lambda r: r["error"] is None and not r["building"], "the fix-back to clear the error")
+    assert r["reloads"] == k, f"fixing back to the running source swapped anyway: {r['reloads']}"
+
+
+if gpu:
+    r, took = wait(lambda r: r["supported"] and r["reloads"] >= 1 and not r["building"], "the first hot build")
+    assert r["error"] is None, f"the first hot build did not take: {r['error']}"
+    print(f"hot-window-drive [gpu]: first hot build swapped in after {took:.1f}s")
+    gpu_step()
+    print("hot-window-drive: PASS")
     sys.exit(0)
 
 # ---- 1. the first hot build replaces the static application ----------
