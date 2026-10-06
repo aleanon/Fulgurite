@@ -147,6 +147,8 @@ LINKED_MARKDOWN                # proposed by M87
 LINKS                          # proposed by M87
 LinkedMarkdown                 # proposed by M87
 MarkdownTheme                  # proposed by M87
+MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
+line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 ClipFormat                     # proposed by M88
 ClipKind                       # proposed by M88
 ClipboardRead                  # proposed by M88

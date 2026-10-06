@@ -2,7 +2,25 @@
 //! class toggle performs (M8c T8c.4).
 use benches::{bench, Ten10};
 use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
-use lumen_static::{pass, Color, Style, Widget};
+use lumen_static::{pass, Color, StaticTree, Style, Widget};
+use lumen_static_widgets::Markdown;
+
+/// **Sixteen `Markdown`s in a derived column** — K87c's arm (M87/T87.1,
+/// `docs/plan-markdown.md`). `Ten10`, which every other row times, holds no
+/// `Markdown`, so no existing row could see the two part nodes T87.2 adds
+/// to each one; this tree is where they land. `NODE_COUNT` is asserted
+/// before timing: 17 here, 49 once each `Markdown` is three nodes.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Md16 {
+    m0: Markdown, m1: Markdown, m2: Markdown, m3: Markdown,
+    m4: Markdown, m5: Markdown, m6: Markdown, m7: Markdown,
+    m8: Markdown, m9: Markdown, m10: Markdown, m11: Markdown,
+    m12: Markdown, m13: Markdown, m14: Markdown, m15: Markdown,
+}
+
+/// The `Markdown` table's node count this arm expects; T87.2 makes it 49.
+const MD16_NODES: usize = 17;
 
 fn main() {
     let sheet: Vec<Rule> = vec![
@@ -94,4 +112,23 @@ fn main() {
     println!(
         "   {found} findings — `Ten10` carries no ids, so every `Id` rule is reported unmatched"
     );
+
+    // ---- K87c's arm — M87/T87.1 ----------------------------------------
+    //
+    // One `Kind` rule per kind the tree will hold: the widget and the two
+    // parts T87.2 adds (`markdown-link`, `markdown-quote`), which match
+    // nothing until then. T87.2 measures this row against T87.1's commit.
+    let md_sheet: Vec<Rule> = vec![
+        Rule::new(Selector::Kind("markdown"), Patch::new().font_size(15.0)),
+        Rule::new(Selector::Kind("markdown-link"), Patch::new().color(Color(37, 99, 235, 255))),
+        Rule::new(Selector::Kind("markdown-quote"), Patch::new().color(Color(100, 116, 139, 255))),
+    ];
+    let mut md = Md16::default();
+    let mut md_styles: Vec<Style> = pass::default_styles(&md);
+    println!("\nmarkdown x16: NODE_COUNT {} (expected {MD16_NODES})", Md16::NODE_COUNT);
+    assert_eq!(Md16::NODE_COUNT, MD16_NODES, "setup: the arm's tree is not the one K87c names");
+    bench("cascade_deep (markdown x16)", 20_000, || {
+        lumen_static::style::cascade_deep(&mut md, &md_sheet, &mut md_styles);
+        md_styles.len() as u64
+    });
 }

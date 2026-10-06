@@ -178,7 +178,7 @@ pub use data::{
 pub use field::{NumberInput, RangeSlider, SearchField};
 #[cfg(feature = "alloc")]
 pub use rich::{
-    Markdown, PaintBox, RichText, RichTextEditor, Span, MAX_EDITOR_NODES, MAX_SPANS,
+    Markdown, PaintBox, RichText, RichTextEditor, Span, MAX_EDITOR_NODES,
 };
 #[cfg(feature = "alloc")]
 pub use pick::{

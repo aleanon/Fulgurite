@@ -12,9 +12,21 @@
 //!
 //! That is one measure call per word rather than a cluster walk, it is
 //! exact (the breaker never guesses a width), and it makes the paint a
-//! straight loop over placed boxes. What it costs is a fixed ceiling —
-//! [`MAX_SPANS`] words — which is the same trade `Tree` makes with
-//! `MAX_TREE_NODES` and a `FilePicker` with `MAX_FILES`.
+//! straight loop over placed boxes.
+//!
+//! # What it costs is heap, sized once per parse
+//!
+//! **There is no word ceiling** — M87/T87.1. The spans, where each was
+//! placed and what each measured are three `Vec`s, grown when the text is
+//! parsed ([`RichText::new`], [`Markdown::set_str`]) and never on a
+//! layout, so a still frame touches the allocator not at all
+//! (`crates/lumen-static-shell/tests/alloc_gate.rs`, the Markdown arm).
+//! Until T87.1 they were arrays of 192 words held inline, and `push`
+//! refused the 193rd silently: a 64 KB document laid out its first 192
+//! words, and any probe of it timed a truncated parse. The widget's
+//! inline size and the heap per word are `docs/results-markdown.md`'s
+//! (T87.1). This crate's `rich` module is behind `alloc`, and the leaf
+//! firmware links none of it.
 //!
 //! # What the Markdown subset leaves out, and why
 //!
@@ -31,15 +43,13 @@
 //! identifier, a list.
 
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::style::{Fields, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Edges, LayoutCx};
-
-/// The most words one `RichText` lays out.
-pub const MAX_SPANS: usize = 192;
 
 /// A word, and how it is drawn.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -69,12 +79,16 @@ impl Span {
 }
 
 /// Wrapped, styled text.
+///
+/// Its three per-word stores are `Vec`s sized when the text is parsed and
+/// never on a layout — this module's header, "What it costs".
+#[derive(Default)]
 pub struct RichText {
     text: String,
-    spans: [Span; MAX_SPANS],
-    count: usize,
-    /// Where each span was placed, and how wide it measured.
-    placed: [(f32, f32, f32); MAX_SPANS],
+    spans: Vec<Span>,
+    /// Where each span was placed, and how wide it measured. As long as
+    /// `spans` after every parse (`fit`).
+    placed: Vec<(f32, f32, f32)>,
     /// Lines the last layout produced — published because "did it wrap"
     /// is the question a test about wrapping actually asks.
     lines: usize,
@@ -85,23 +99,8 @@ pub struct RichText {
     /// The widths do not depend on the box (a span never wraps inside
     /// itself), so the key is the text, the spans, the font size and the
     /// display scale, folded; a still frame measures nothing.
-    widths: [(f32, f32); MAX_SPANS],
+    widths: Vec<(f32, f32)>,
     measured_under: u64,
-}
-
-impl Default for RichText {
-    fn default() -> Self {
-        RichText {
-            text: String::new(),
-            spans: [Span::plain((0, 0)); MAX_SPANS],
-            count: 0,
-            placed: [(0.0, 0.0, 0.0); MAX_SPANS],
-            lines: 0,
-            height: 0.0,
-            widths: [(0.0, 0.0); MAX_SPANS],
-            measured_under: 0,
-        }
-    }
 }
 
 impl RichText {
@@ -123,7 +122,7 @@ impl RichText {
         eat(self.text.as_bytes());
         eat(&font_size.to_bits().to_le_bytes());
         eat(&scale.to_bits().to_le_bytes());
-        for s in &self.spans[..self.count] {
+        for s in &self.spans {
             eat(&s.range.0.to_le_bytes());
             eat(&s.range.1.to_le_bytes());
             eat(&s.scale.to_bits().to_le_bytes());
@@ -136,7 +135,7 @@ impl RichText {
 
     /// The spans, as parsed.
     pub fn spans(&self) -> &[Span] {
-        &self.spans[..self.count]
+        &self.spans
     }
 
     pub fn text(&self) -> &str {
@@ -145,8 +144,10 @@ impl RichText {
 
     /// The text one span covers.
     pub fn span_str(&self, i: usize) -> &str {
-        let s = self.spans[i.min(self.count.saturating_sub(1))];
-        self.text.get(s.range.0 as usize..s.range.1 as usize).unwrap_or("")
+        match self.spans.get(i.min(self.spans.len().saturating_sub(1))) {
+            Some(s) => self.text.get(s.range.0 as usize..s.range.1 as usize).unwrap_or(""),
+            None => "",
+        }
     }
 
     /// Lines the last layout produced.
@@ -154,21 +155,37 @@ impl RichText {
         self.lines
     }
 
-    pub fn push(&mut self, s: Span) -> bool {
-        if self.count >= MAX_SPANS {
-            return false;
-        }
-        self.spans[self.count] = s;
-        self.count += 1;
-        true
+    /// Append a span. **Never refuses** since M87/T87.1: the store grows,
+    /// which is a parse-time allocation, never a layout-time one
+    /// (`fit` sizes the other two stores to match).
+    pub fn push(&mut self, s: Span) {
+        self.spans.push(s);
     }
 
+    /// Forget every span, keeping the stores' capacity for the next parse.
     pub fn clear(&mut self) {
-        self.count = 0;
+        self.spans.clear();
+    }
+
+    /// Size `placed` and `widths` to `spans` — called once a parse is
+    /// done, and by `layout` only when a span was pushed since, so a still
+    /// frame resizes nothing. Shrinking keeps the capacity; growing
+    /// allocates, at parse time.
+    fn fit(&mut self) {
+        let n = self.spans.len();
+        if self.placed.len() != n {
+            self.placed.resize(n, (0.0, 0.0, 0.0));
+        }
+        if self.widths.len() != n {
+            self.widths.resize(n, (0.0, 0.0));
+            // A store that changed length holds no widths for the new
+            // spans, so the memo cannot be trusted whatever the fold says.
+            self.measured_under = 0;
+        }
     }
 
     fn split_plain(&mut self) {
-        self.count = 0;
+        self.spans.clear();
         let text = core::mem::take(&mut self.text);
         let mut at = 0usize;
         for w in text.split_whitespace() {
@@ -177,11 +194,10 @@ impl RichText {
             // otherwise put every following span one byte short.
             let start = text[at..].find(w).map(|k| at + k).unwrap_or(at);
             at = start + w.len();
-            if !self.push(Span::plain((start as u32, at as u32))) {
-                break;
-            }
+            self.push(Span::plain((start as u32, at as u32)));
         }
         self.text = text;
+        self.fit();
     }
 }
 
@@ -257,14 +273,19 @@ impl Widget for RichText {
     }
 }
 
-impl Node for RichText {
-    fn layout(
+impl RichText {
+    /// The layout, with `keep` false for [`Node::probe`]: the words are
+    /// placed and measured as ever, but `placed` is not written, so the
+    /// probe keeps the last real layout without copying a store (M87/T87.1
+    /// — it copied three inline arrays, which a `Vec` would allocate for).
+    fn lay(
         &mut self,
         cx: &mut LayoutCx,
         limits: Constraints,
         style: &[Style],
         st: &mut [NodeState],
         i: usize,
+        keep: bool,
     ) -> Size {
         let me = style[i];
         if !me.visible {
@@ -276,9 +297,11 @@ impl Node for RichText {
         // width it is given and shrinks in height, which is what
         // `type_defaults` says and what this relies on.
         let inner = (limits.max_w - me.padding.horizontal()).max(0.0);
+        self.fit();
+        let count = self.spans.len();
         let key = self.fold(me.font_size, cx.scale());
         if key != self.measured_under {
-            for k in 0..self.count {
+            for k in 0..count {
                 let s = self.spans[k];
                 let size = me.font_size * s.scale;
                 let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
@@ -294,8 +317,8 @@ impl Node for RichText {
         let mut hang = 0.0f32;
         let ratio = line_ratio(me.line_height);
         let mut line_h = me.font_size * ratio;
-        self.lines = if self.count == 0 { 0 } else { 1 };
-        for k in 0..self.count {
+        self.lines = if count == 0 { 0 } else { 1 };
+        for k in 0..count {
             let s = self.spans[k];
             let size = me.font_size * s.scale;
             let (w, gap) = self.widths[k];
@@ -316,14 +339,16 @@ impl Node for RichText {
                 self.lines += 1;
             }
             line_h = line_h.max(size * ratio);
-            self.placed[k] = (x + lead, y, w);
+            if keep {
+                self.placed[k] = (x + lead, y, w);
+            }
             if s.bullet {
                 hang = x + lead;
             }
             x += lead + w + gap;
         }
         let content =
-            Size { w: limits.max_w, h: if self.count == 0 { 0.0 } else { y + line_h } };
+            Size { w: limits.max_w, h: if count == 0 { 0.0 } else { y + line_h } };
         let s = lumen_static::ops::resolve_self(
             limits,
             &me,
@@ -331,6 +356,19 @@ impl Node for RichText {
         );
         self.height = s.h;
         lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+}
+
+impl Node for RichText {
+    fn layout(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        self.lay(cx, limits, style, st, i, true)
     }
 
     /// `layout` with nothing kept — M41/T41.7. `layout` places every
@@ -347,9 +385,9 @@ impl Node for RichText {
         st: &mut [NodeState],
         i: usize,
     ) -> Size {
-        let kept = (self.placed, self.lines, self.height);
-        let size = self.layout(cx, limits, style, st, i);
-        (self.placed, self.lines, self.height) = kept;
+        let kept = (self.lines, self.height);
+        let size = self.lay(cx, limits, style, st, i, false);
+        (self.lines, self.height) = kept;
         size
     }
 
@@ -366,9 +404,7 @@ impl Node for RichText {
         lumen_static::ops::border(st, i, out);
         out.push_clip(r);
         let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
-        for k in 0..self.count {
-            let sp = self.spans[k];
-            let (x, y, w) = self.placed[k];
+        for (k, (&sp, &(x, y, w))) in self.spans.iter().zip(&self.placed).enumerate() {
             let size = s.font_size * sp.scale;
             let h = size * line_ratio(s.line_height);
             if sp.bullet {
@@ -420,7 +456,7 @@ impl Node for RichText {
         // "code ." — the separator the layout honours (`Span::space`) and
         // the one it published disagreed.
         let mut v = String::new();
-        for k in 0..self.count {
+        for k in 0..self.spans.len() {
             if k > 0 {
                 if self.spans[k].br {
                     v.push('\n');
@@ -470,21 +506,28 @@ impl Markdown {
     }
 
     /// Re-parse. The editor calls this on every keystroke, which is why
-    /// the parser allocates once and walks once.
+    /// the parser reuses its stores' capacity and **walks once**: each
+    /// line's byte offset is carried from the last, where until M87/T87.1
+    /// it was found by re-scanning from byte 0 for every line — lines ×
+    /// bytes, T45.10's quadratic again (`tests/markdown_m69.rs`,
+    /// `set_str_is_linear`).
     pub fn set_str(&mut self, src: &str) {
-        self.inner.text = src.to_string();
+        self.inner.text.clear();
+        self.inner.text.push_str(src);
         self.inner.clear();
         let text = core::mem::take(&mut self.inner.text);
         let mut blank_pending = false;
-        for (ln, line) in text.split('\n').enumerate() {
-            let base = line_start(&text, ln);
+        let mut next = 0usize;
+        for line in text.split('\n') {
+            let base = next;
+            next += line.len() + 1;
             let trimmed = line.trim_start();
             let indent = line.len() - trimmed.len();
             if trimmed.is_empty() {
                 // A blank line is a blank line: remembered rather than
                 // emitted, so a document that ends with one does not
                 // render a trailing empty row.
-                blank_pending = self.inner.count > 0;
+                blank_pending = !self.inner.spans.is_empty();
                 continue;
             }
             if blank_pending {
@@ -555,15 +598,13 @@ impl Markdown {
                             sp.scale = scale;
                             sp.weight = if bold { 700.0 } else { weight };
                             sp.code = code;
-                            sp.br = first_seg && first_in_line && self.inner.count > 0;
+                            sp.br = first_seg && first_in_line && !self.inner.spans.is_empty();
                             sp.bullet = bullet && first_seg && first_in_line;
                             // Only the word's last segment takes the
                             // gap: `**bold**,` is one word and must not
                             // render as `bold ,`.
                             sp.space = false;
-                            if !self.inner.push(sp) {
-                                break;
-                            }
+                            self.inner.push(sp);
                             first_seg = false;
                         }
                         match marker {
@@ -579,28 +620,18 @@ impl Markdown {
                 }
                 // The gap belongs to the word, so it is set on whatever
                 // segment ended up last.
-                if end < body.len() && self.inner.count > 0 {
-                    let last = self.inner.count - 1;
-                    self.inner.spans[last].space = true;
+                if end < body.len() {
+                    if let Some(last) = self.inner.spans.last_mut() {
+                        last.space = true;
+                    }
                 }
                 first_in_line = false;
                 at = end;
             }
         }
         self.inner.text = text;
+        self.inner.fit();
     }
-}
-
-/// Byte offset of line `n` in `text`.
-fn line_start(text: &str, n: usize) -> usize {
-    let mut at = 0usize;
-    for _ in 0..n {
-        match text[at..].find('\n') {
-            Some(k) => at += k + 1,
-            None => return text.len(),
-        }
-    }
-    at
 }
 
 /// `#`, `##`, `###` — scale, weight, bytes to skip, and never a bullet.

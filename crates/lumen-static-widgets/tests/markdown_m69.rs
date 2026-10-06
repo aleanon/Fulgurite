@@ -2,16 +2,16 @@
 //! (`docs/plan-markdown.md`). Headless, with `BlockMetrics`, as
 //! `tests/rich.rs` is.
 //!
-//! Every gate here is committed **green** (`docs/plan-iced-roadmap.md`
-//! §3.1): gates 1–4 pin today's gap — they assert the current value and
-//! print it — and the task that closes each one flips its assertion to
-//! the bound written beside it. Gate 5 pins the default display list
+//! Every gate here was committed **green** (`docs/plan-iced-roadmap.md`
+//! §3.1): gates 1–4 pinned T87.0's gap — they asserted the value then and
+//! printed it — and the task that closes each one flips its assertion to
+//! the bound written beside it. Gates 1 and 2 are flipped (T87.1). Gate 5 pins the default display list
 //! before `MarkdownTheme` (T87.2) moves anything.
 //!
 //! | gate | pinned today | flipped by | bound |
 //! |---|---|---|---|
-//! | 1 `every_word_is_kept` | 192 spans of 1,000 words | T87.1 | spans = words |
-//! | 2 `set_str_is_linear` | ratio > 25 | T87.1 | ratio ≤ 25 |
+//! | 1 `every_word_is_kept` | 192 spans of 1,000 words | T87.1 (flipped) | spans = words |
+//! | 2 `set_str_is_linear` | ratio > 25 | T87.1 (flipped) | ratio ≤ 25 |
 //! | 3 `link_markup_is_not_drawn` | `](` drawn | T87.3 | no `[`, `](` or target |
 //! | 4 `image_markup_is_not_drawn` | `](` drawn | T87.4 | no `![`, `](` or name |
 //! | 5 `default_theme_is_todays` | the two folds below | — | unchanged |
@@ -42,17 +42,22 @@ fn drawn(m: &Markdown) -> String {
     (0..r.spans().len()).map(|k| r.span_str(k)).collect::<Vec<_>>().join("|")
 }
 
-/// Gate 1. **Pinned at 192**: `RichText::push` refuses silently past
-/// `MAX_SPANS`, so a long document lays out its first 192 words and any
-/// probe of it times a truncated parse. T87.1 flips this to `== words`.
+/// Gate 1. **Every word is a span** — flipped by T87.1. Pinned at 192 by
+/// T87.0: `RichText::push` refused silently past `MAX_SPANS`, so a long
+/// document laid out its first 192 words and any probe of it timed a
+/// truncated parse. The store grows now; `RichText`'s inline size is
+/// printed beside it (7,736 B before T87.1, `docs/results-markdown.md`).
 #[test]
 fn every_word_is_kept() {
     let words = 1_000;
     let src: String = (0..words).map(|k| format!("w{k}")).collect::<Vec<_>>().join(" ");
     let m = Markdown::new(&src);
     let spans = m.rich().spans().len();
-    println!("every_word_is_kept: {spans} spans of {words} words (pinned today: 192; T87.1's bound: equal)");
-    assert_eq!(spans, 192, "pinned: the span store keeps 192 of {words} words today");
+    println!(
+        "every_word_is_kept: {spans} spans of {words} words (bound: equal); size_of::<RichText>() = {} B",
+        std::mem::size_of::<lumen_static_widgets::RichText>()
+    );
+    assert_eq!(spans, words, "the span store kept {spans} of {words} words");
 }
 
 /// `bytes` of 40-byte lines: 39 bytes of words and a newline.
@@ -84,8 +89,9 @@ fn parse_min(src: &str) -> Duration {
 /// when it is lines × bytes; the bound is 25, `textarea_scale.rs`'s. The
 /// self-ratio (the small size against itself) is printed beside it, so
 /// noise on a loaded machine is visible next to the number it could
-/// spoil. **Pinned above 25**: `line_start` re-scans from byte 0 for
-/// every line (T45.10's quadratic again). T87.1 flips it to `≤ 25`.
+/// spoil. **Flipped by T87.1 to `≤ 25`**: T87.0 pinned it above 25,
+/// because `line_start` re-scanned from byte 0 for every line (T45.10's
+/// quadratic again); `Markdown::set_str` carries the offset now.
 #[test]
 fn set_str_is_linear() {
     let (small, large) = (lines40(6_400), lines40(64_000));
@@ -94,12 +100,12 @@ fn set_str_is_linear() {
     let tb = parse_min(&large).as_secs_f64();
     let r = tb / ta;
     println!(
-        "set_str_is_linear: 6.4KB={:.3} ms 64KB={:.3} ms ratio={r:.1} (bound 25; pinned today: > 25), self-ratio {:.2}",
+        "set_str_is_linear: 6.4KB={:.3} ms 64KB={:.3} ms ratio={r:.1} (bound 25), self-ratio {:.2}",
         ta * 1e3,
         tb * 1e3,
         ta / self_a
     );
-    assert!(r > 25.0, "pinned: set_str is lines x bytes today, ratio {r:.1} is not above 25");
+    assert!(r <= 25.0, "set_str grows faster than its text: ratio {r:.1}, bound 25");
 }
 
 /// Gate 3. **Pinned**: the parser has no link markup, so `[the` and

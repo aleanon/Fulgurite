@@ -473,6 +473,20 @@ Appendix rows for the assembler:
   debug, so it is pinned above the bound and T87.1's second change does
   carry a gate claim.
 
+- **T87.1 — `push` no longer answers a `bool`.** It answered whether the
+  193rd word was refused; with nothing to refuse it returns `()`, and its
+  only callers were `rich.rs`'s own parsers. **`probe` stopped copying
+  the stores**: it copied three inline arrays to restore them, which a
+  `Vec` would allocate for, so `layout` and `probe` share a private
+  `lay(.., keep)` and the probe never writes `placed`.
+- **T87.1 — how `--bin markdown` splits the append.** *Parse* is
+  `set_str`; *place* is a second layout of the same text with the memo
+  warm (the breaker plus the whole-text fold that finds it warm);
+  *measure* is the first layout less that. The first single run puts the
+  64 KB append at 3.10 ms, 2.73 of it measure
+  (`docs/results-markdown.md` T87.1), above K87's 1.5 ms; K87 is judged
+  by T87.6's eight runs under `just bench-lock`, not by this row.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =

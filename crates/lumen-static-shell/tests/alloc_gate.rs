@@ -324,6 +324,44 @@ fn an_enum_widget_allocates_nothing() {
     assert_eq!((a, f), (0.0, 0.0), "two enum nodes, idle: {a:.2} allocs/frame, {f:.2} frees/frame");
 }
 
+/// **A `Markdown`'s span store does not allocate on a frame** — M87/T87.1,
+/// kill rule K87a (`docs/plan-markdown.md`). T87.1 turned its three
+/// per-word arrays into `Vec`s sized when the text is parsed; this is the
+/// arm that says a layout never grows or rebuilds one. Ten hover frames
+/// (the pointer moves across the document each frame), under
+/// `Everything` ([`Whole`]) so every frame lays the `Markdown` out.
+#[test]
+fn a_markdown_hover_frame_allocates_nothing() {
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 0.0)]
+    struct MdUi {
+        doc: lumen_static_widgets::Markdown,
+    }
+    #[derive(DeriveApp, Default)]
+    struct MdApp {
+        #[tree]
+        ui: MdUi,
+    }
+    let mut app = MdApp::default();
+    app.ui.doc.set_str("# Title\n\nSome **bold** words and `code`, then\n\n- a bullet\n- another one");
+    let mut host: Whole<_> = Host::new(app, 320, 200);
+    for k in 0..5 {
+        host.post(lumen_static::Event::PointerMove { x: 10.0 + k as f32, y: 12.0 });
+        host.pump();
+    }
+    let spans = host.app.ui.doc.rich().spans().len();
+    let before = counters();
+    for k in 0..10 {
+        host.post(lumen_static::Event::PointerMove { x: 20.0 + 8.0 * k as f32, y: 12.0 + 3.0 * k as f32 });
+        host.pump();
+    }
+    let after = counters();
+    let (a, f) = ((after.0 - before.0) as f64 / 10.0, (after.1 - before.1) as f64 / 10.0);
+    println!("markdown, 10 hover frames: {a:.2} allocs/frame, {f:.2} frees/frame (bound 0) over {spans} spans");
+    assert!(spans >= 10, "setup: the document parsed into only {spans} spans");
+    assert_eq!((a, f), (0.0, 0.0), "a Markdown frame touched the allocator: {a:.2} allocs/frame, {f:.2} frees/frame");
+}
+
 #[test]
 fn the_retention_seam_allocates_nothing_in_either_mode() {
     // Both halves of the M8b type parameter, on the same tree, so a
