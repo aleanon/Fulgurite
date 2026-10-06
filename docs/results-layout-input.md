@@ -369,3 +369,35 @@ built, not this change: the parent built in this tree read 131.15 and
 Firmware: `just firmware-delta b6163e5` (K4's default), **+8 B** `.text`
 and **+4 B** `.rodata` on all four (`Painter::in_arena`'s provided body
 and its vtable slot; `docs/results-embedded.md`).
+
+## M85b closes (2026-10-06)
+
+T85.6 and T85.7 are in — T85.7 as a measurement, its code reverted —
+and T85.8 is not shipped. M85b's kill rules, each with its number, fired
+or not (index §3.3, M12):
+
+| rule | threshold | measured | verdict |
+|---|---|---|---|
+| K85b — culling beats the arm | `benches --bin scroll_cull`'s culled median below the uncull arm's eight-run spread | **not measured**: a derived column has nothing to cull until T85.8's `CullTo`, which K85c stopped before it was built. T85.6's arm reads 224 commands either way and **1.18 µs** (1.18–1.71) against **1.18 µs** (1.18–1.18) — nothing culls today, which is the arm working | **not reached** — T85.8 is not shipped on K85c's ground, whatever K85b would have said |
+| K85c — re-sync is free when nothing shifts | `--bin retain` and the frame arm's `idle (floor)` and `+render (damage)` inside their eight-run spreads | `--bin retain` at 2,000 commands with clips: `Incremental` **20,340 ns** against 18,089–18,397 (**+11.6%**), `Streaming<4096>` **+7.0%**, `NO list + Streaming<4096>` **+8.6%**, `Rebuild` **+4.3%**; 34 commands `Incremental` **+9.8%**; the clip-free 2,000-text row and every frame-arm row inside (T85.7) | **fired** — T85.7 reverted, culling decided against **on X1's ground** |
+| K85d — firmware, M85's cumulative | `firmware_interactive` `.text` ≤ **1,024 B** against `a21135b` | M85a **+432**; T85.6 **+0**, T85.7 **+0** (reverted; docs and test comments), `fix(T15.0)` **+8**: cumulative **+440** of 1,024 (`just firmware-delta a21135b firmware_interactive=1024`; `firmware_interactive` 63,920 B of 81,920) | **held**; 584 B of the cap unused |
+| K4 (per task) | ≤ 1,000 B on `firmware_interactive`; Δ 0 where nothing linked changes | T85.6 **0**, T85.7 **0** on all four (strict), `fix(T15.0)` **+8** `.text` / **+4** `.rodata` on all four (bound 1,000), this close **0** (strict) | held |
+| K1 | `Cmd` 60 B, `Event` 16 B; `Style` ≤ 84, `NodeState` ≤ 88 | 60 / 16 / 84 / 84 B — nothing in M85b moves a size (`fix(T15.0)` grows `Overlays<N>`, 16 B a deferral, which is not a K1 struct) | held |
+
+**What is decided, and the reopen.** Container culling is decided against
+on X1's ground: retention charged a shifted command count as damage, and
+the one mechanism that stopped it (`Retention::scope_end`) paid about
+2 ns a clip scope on every frame and every strategy, shifted or not
+(T85.7, "Attributed"). `List` keeps the rect cull it has had since T16.12,
+and `cull_damage.rs` and `cull_ink.rs` hold its two gaps as pinned
+behaviour — the label it charges on a scroll, and the ink it drops below
+the surface (a shadow, and since `fix(T15.0)` an open menu). **Reopen**
+only with a scope mechanism that costs nothing on a frame whose length
+held: for example scopes recovered from the stream inside
+`Incremental::finish` only when two frames' lengths differ, which needs
+no `Retention` method at all (`docs/plan-layout-input.md`, "What
+building found", T85.7). Such a reopen is its own plan: it must keep
+`cull_ink.rs`'s derived cases byte-identical and flip the `List` pins.
+
+The closing `just ci-verify <sha>` and its citation in AGENT.md's queue
+entry are the coordinator's (index §3.3).

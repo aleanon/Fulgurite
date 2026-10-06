@@ -219,8 +219,8 @@ Status letters: **F** finished, **P** in progress, **—** pending,
 | `Video` widget | — | missing | **M84** (widget + the `VideoFeed` producer; decoder crate on K84b) |
 | `pin` widget | F | missing | **M85** |
 | `pop` widget | F | missing | **M85** |
-| `Flexible` variant for `Length` | — | missing (`FillPortion` exists) | **M85** |
-| Primitive culling (containers) | P | renderers cull; `List` culls on `clip_bounds()` (T16.12, `docs/results-competitive.md`); derived containers and `ScrollView` do not, and `clip_bounds` is the surface, not the clip | **M85** |
+| `Flexible` variant for `Length` | F | missing (`FillPortion` exists) | **M85** (T85.1; K85a held, `docs/results-layout-input.md` "M85a closes") |
+| Primitive culling (containers) | — | renderers cull; `List` culls on `clip_bounds()` (T16.12, `docs/results-competitive.md`); derived containers and `ScrollView` do not, and `clip_bounds` is the surface, not the clip | **M85b**: **decided against under K85c on 2026-10-06** — retention's re-sync cost +4.3% to +11.6% on `--bin retain` with no shift (`docs/results-layout-input.md` T85.7, "M85b closes"); so T85.8 (`CullTo`) is not shipped and the `CullTo` cases §2.2 names do not arise; reopens on a scope mechanism free when no frame shifts |
 | Smart event propagation | — | bubble only, no capture phase | **M85/T85.5 survey only**: **decided against under K85e on 2026-10-06** — one real case (`PullToRefresh`), two required (`docs/results-layout-input.md` T85.5); reopens on a second real case (§6) |
 | Widget animations | P | only `Glass`'s press | **M86** |
 | Customizable Markdown rendering and images | F | fixed subset, no images, no links | **M87** |
