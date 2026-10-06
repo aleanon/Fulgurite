@@ -56,6 +56,17 @@ fn the_cursor_costs_nothing() {
     assert_eq!(core::mem::size_of::<Cursor>(), 1);
 }
 
+/// **`Length` is 8 B** — M85/T85.0 (`docs/plan-layout-input.md`). `Style`
+/// holds two of them, so a variant wider than `Fixed(f32)` would grow every
+/// node by 16 B; the flexible length T85.1 adds is decided on the claim
+/// that it does not, and this is where that claim can fail.
+#[test]
+fn a_length_is_eight_bytes() {
+    let l = core::mem::size_of::<lumen_static::style::Length>();
+    println!("Length {l} B (bound 8), Style {} B", core::mem::size_of::<Style>());
+    assert_eq!(l, 8, "Length grew; Style carries two of them");
+}
+
 /// The sum of `Style`'s field sizes, without padding — M82/T82.3.
 fn style_used_bytes() -> usize {
     use core::mem::size_of_val as z;
