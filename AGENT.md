@@ -677,7 +677,19 @@ found" section rather than silently replacing itself.
     ICE), cleared before the re-run. Rulings recorded in the plans:
     K82c is read one-sided as a stop (a faster median is not a firing);
     K83a is measured on the reference GPU (llvmpipe's 111 us/shader is
-    recorded, not a firing).
+    recorded, not a firing). **M83b, M84a and M84b DONE**, `just
+    ci-verify 2fcb000` green (28 steps, 0 failed, 0 skipped). M83b's own
+    runs at `1024cba` failed: first on a full disk, then
+    deterministically on the live tiers, because four drive scripts
+    read the showcase's entry list from `catalog.rs`'s text and T83.6's
+    `#[cfg]`-gated `ShaderView` entry skewed every later index by one
+    (fixed in `553ac3c`: the drives ask the binary, `--entries`); then
+    `selftest` refused `check_default_crates.sh` in a parentless
+    one-commit copy (fixed in `11c7aa2`). One run was restarted after a
+    rustc hung 79 minutes on `x11_dl` (the machine's instability). K84b
+    fired on its third condition (GStreamer dev libraries absent), so
+    `lumen-static-video` is deferred; it reopens when the owner installs
+    `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev`.
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
