@@ -416,3 +416,43 @@ which this table's K4 row would have stopped the task at.
 **K1, K2.** `Cmd`, `Style` and `NodeState` are untouched; the default
 window's crate count is **96** against 96 at `479efa9`
 (`scripts/check_default_crates.sh`), since `image` stays off by default.
+
+## T84.9 — the K84b probe, at `11c7aa2` (2026-10-06)
+
+A scratch manifest under `target/` (never committed, deleted after
+T84.10) naming `gstreamer`, `gstreamer-app` and `gstreamer-video` 0.24.5
+beside a path dependency on `lumen-static-shell`, resolved against this
+workspace's lock, and one `src/main.rs` carrying `#![forbid(unsafe_code)]`
+with a `GstFeed: VideoFeed` over `appsink`: caps set to RGBA, each sample
+mapped with `gstreamer_video::VideoFrame::from_buffer_readable` and its
+plane 0 copied row by row at its stride into `VideoFrame::rgba`.
+
+| K84b condition | bound | measured | verdict |
+|---|---|---|---|
+| the dependency set, K2's form (`cargo tree -e normal --prefix none \| sed 's/ (\*)$//' \| sort -u \| wc -l`) | ≤ **150** crates | **58** besides the probe (59 lines); **50** of them new over the shell's 8; **66** with build edges (`system-deps`, `pkg-config`, `cfg-expr`, `toml`, `version-compare`, `target-lexicon`, `serde_spanned`, `autocfg`) | holds |
+| `unsafe` in our code for `appsink` → RGBA | **none** | **0**: the feed type-checks under `forbid(unsafe_code)` (`cargo check`, with the pkg-config step bypassed, below). Injection: the stride read as `unsafe { *frame.plane_stride().get_unchecked(0) }` → "error: usage of an `unsafe` block", by name; restored → `Finished`. The bindings hold their own `unsafe` (4,224 occurrences across the three crates' `src`), as `winit` does; K84b's condition is the crate's own | holds |
+| the GStreamer development libraries on the reference machine | **present** | **absent**. `pkg-config` finds none of `gstreamer-1.0`, `-base-1.0`, `-app-1.0`, `-video-1.0` (it finds `glib-2.0` and `gobject-2.0` 2.80.0). The runtime is installed — `libgstreamer1.0-0` 1.24.2, plugins base/good/bad/ugly/libav, `gst-launch-1.0` — but no `-dev` package: no `.pc` file and no unversioned linker name (`libgstreamer-1.0.so`). Nothing was installed | **fires** |
+
+**What a build does on this machine.** `cargo build` stops in
+`gstreamer-video-sys`'s build script: "The system library
+`gstreamer-video-1.0` required by crate `gstreamer-video-sys` was not
+found". With `system-deps`'s pkg-config bypass
+(`SYSTEM_DEPS_<NAME>_NO_PKG_CONFIG=1` and `_LIB`) `cargo check` passes —
+which is how the `unsafe` row was read — and `cargo build` fails at the
+link, "unable to find library -lgstvideo-1.0" and the other three. With
+linker-name symlinks to the runtime `.so.0` files in the probe's own
+directory (`_SEARCH_NATIVE`) it links and runs: one `videotestsrc` frame,
+**320 × 240, 307,200 bytes** = w·h·4. So the path is sound and only the
+machine's packages are missing — but a gate that needs hand-made symlinks
+and four environment variables is not one `just test` or CI can run, so
+its gate could only skip, which is the condition as written.
+
+**The pinned toolchain needs an older `kstring`.** `gstreamer` 0.24.5
+takes `kstring`, whose 2.0.5 requires rustc 1.96 against this workspace's
+1.94.0; the MSRV-aware resolve (`rust-version = "1.94"`,
+`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`) takes 2.0.2. The
+crate counts above are from that resolve (the count is 59 either way).
+
+**K84b fires — on the third condition only.** T84.10 takes its second
+branch. The probe changes no tracked file but this one: firmware Δ 0 by
+construction.
