@@ -1310,6 +1310,31 @@ task and is recorded in `docs/results-shader.md` with the number).
   The `.lss` mirror test drops the `DShaderView` kind rule in a `shader`
   build. The showcase's `shader` also turns on the shell's and the window's,
   so `program()` registers `catalog::SHADERS` and a `gpu` build runs it.
+- T83.6: **a feature-gated catalogue entry skewed every live drive after
+  it by one index — found by `just ci`, fixed after M83b closed.** Four
+  drive scripts took the showcase's entry list from `catalog.rs`'s *text*
+  (`scripts/drive/parity.py`, `scripts/drive/run.py`,
+  `scripts/a11y_drive.sh`, `scripts/gpu_parity.sh`). The text holds the
+  `#[cfg(feature = "shader")]` `ShaderView` entry at index 12; the
+  default build the drives launch does not. So every entry after it was
+  one off: D5 parity's `--demo 13` rendered CheckBox while the live window
+  picked Button ("16352 px … 24994 bytes differ"), Switch and Pagination
+  the same, the full drive asked the sidebar for a `ShaderView` it never
+  showed, and the a11y drive opened the window one entry past Button
+  ("the agent sees no buttons"). **The leading hypothesis — the live and
+  headless builds differ in features — was refuted**: both renders are
+  one binary, `target/release/showcase`; nothing turned `shader` on. The
+  showcase now answers `--entries` (the compiled `CATALOG`, `name<TAB>animated`)
+  and all four scripts read it from the binary they drive. Gate: parity
+  asserts `--demo N` printed the name it is about to pick live, and its
+  summary prints "rendered another entry than the one picked: N (bound
+  0)". RED with `_entries` restored to parse the text: `FAIL Button
+  [Everything] parity setup: --demo 13 rendered 'CheckBox', the entry
+  picked live is 'Button'`, on all five comparing legs; GREEN: 1 of 1
+  byte-identical, 0 bytes differ, 0 unmatched. Accept: in a `shader`
+  build `--entries` lists 59 with `ShaderView` at 12 and `--demo` renders
+  `ShaderView`, Button and Pagination by name; the default lists 58.
+  **The source is not the build** whenever a list can carry `#[cfg]`.
 
 - T83.7: **the example's features are default-off and its binary requires
   `shader`.** "Features `gpu`, `agent` and `everything`, the showcase's

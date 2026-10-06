@@ -102,13 +102,11 @@ cargo build --release -p showcase --features gpu
 # M82/T82.8: and the VectorText entry (one run at 0, 30 and 90 degrees, its
 # outlines one path each), whose first frame is K82d's second reading.
 for name in PaintBox VectorText; do
-entry=$(NAME="$name" python3 - <<'PY'
-import os, re
-src = open("examples/showcase/src/catalog.rs").read()
-names = re.findall(r'entry!\("[^"]*", "([^"]*)"', src[src.index("pub static CATALOG"):])
-print(names.index(os.environ["NAME"]))
-PY
-)
+# The index in the binary's own catalogue (`showcase --entries`), not in
+# `catalog.rs`'s text, which counts entries behind a feature this build may
+# lack (M83/T83.6's `ShaderView`).
+entry=$(target/release/showcase --entries | awk -F'\t' -v n="$name" '$1 == n && !f {print NR - 1; f = 1}')
+[ -n "$entry" ] || { echo "gpu-parity: no $name entry in the showcase's --entries" >&2; exit 1; }
 leg=$(echo "$name" | tr '[:upper:]' '[:lower:]')
 sgrab() {
     $LAUNCH --no-agent --settle 3 --leg "$1" --exe target/release/showcase --arg "$entry" ${3:+--env "$3"} \

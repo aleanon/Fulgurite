@@ -35,13 +35,23 @@ BIN = ROOT / "target/release/showcase"
 
 
 def _entries() -> list[tuple[str, bool]]:
-    """(name, animated) for every catalogue entry, in order."""
-    src = (ROOT / "examples/showcase/src/catalog.rs").read_text()
+    """(name, animated) for every catalogue entry, in order -- **asked of
+    the binary**, `showcase --entries`, never parsed from `catalog.rs`.
+
+    The source text is not the build: an entry behind `#[cfg(feature =
+    ..)]` is in the text and not in a build without the feature. Counting
+    the text put M83/T83.6's `ShaderView` (behind the showcase's `shader`)
+    at index 12 in a default build that has no such entry, so every later
+    `--demo N` rendered the entry after the one the live window picked --
+    Button's parity compared a CheckBox (`docs/plan-gpu-extension.md`,
+    "What building found")."""
+    res = subprocess.run([str(BIN), "--entries"], capture_output=True, text=True, check=True)
     out = []
-    for chunk in src.split('entry!("')[1:]:
-        name = chunk.split('"')[2]
-        animated = re.match(r'[^\n]*\n\s*(true|false),', chunk.split('",', 2)[2])
-        out.append((name, bool(animated and animated.group(1) == "true")))
+    for line in res.stdout.splitlines():
+        name, _, animated = line.partition("\t")
+        out.append((name, animated == "true"))
+    if not out:
+        raise RuntimeError(f"{BIN} --entries listed nothing: {res.stdout!r}")
     return out
 
 
@@ -55,13 +65,24 @@ def _fnv_rgba(rgb: bytes) -> str:
     return f"{h:016x}"
 
 
-def _headless(index: int) -> tuple[list[float], bytes, str]:
+def _headless(index: int, name: str) -> tuple[list[float], bytes, str]:
     """Render entry `index` headless; answer its rect, its RGB bytes and
-    the stack's shaping mode `--demo` printed."""
+    the stack's shaping mode `--demo` printed.
+
+    **The render must be the entry the live window picks**: `--demo`
+    prints the name it rendered, and this refuses a render of any other.
+    Without it an index skew compares two different demos and reports a
+    pixel difference, which reads as a rendering defect (M83/T83.6)."""
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "demo.ppm"
         res = subprocess.run([str(BIN), "--demo", str(index), str(path)],
                              capture_output=True, text=True, check=True)
+        got = re.search(r": (.+?) \u2014 \d+x\d+ at", res.stdout)
+        if not got or got.group(1) != name:
+            raise RuntimeError(
+                f"parity setup: --demo {index} rendered "
+                f"{got.group(1) if got else res.stdout.strip()!r}, the entry picked live is {name!r} -- "
+                f"the entry list and the binary disagree, so the comparison would be of two demos")
         m = re.search(r"(\d+)x(\d+) at \((\d+),(\d+)\)", res.stdout + res.stderr)
         if not m:
             raise RuntimeError(f"--demo {index} printed no rect: {res.stdout!r}")
@@ -109,7 +130,7 @@ def leg_shaping() -> str:
 def run_parity(c, pick, strategy: str, only: set[str] | None = None) -> tuple[list[str], int]:
     """Compare every non-animated entry (or those `only` names, lower
     case); answer the lines and the failures."""
-    out, failures, checked, skipped = [], 0, 0, []
+    out, failures, checked, skipped, unmatched = [], 0, 0, [], 0
     want_mode, modes = leg_shaping(), set()
     scale = c.rpc("ui.screenshot").get("scale", 1.0)
     if scale != 1.0:
@@ -122,7 +143,13 @@ def run_parity(c, pick, strategy: str, only: set[str] | None = None) -> tuple[li
         if animated:
             skipped.append(name)
             continue
-        rect, rgb, mode = _headless(index)
+        try:
+            rect, rgb, mode = _headless(index, name)
+        except RuntimeError as e:
+            failures += 1
+            unmatched += 1
+            out.append(f"  FAIL {name} [{strategy}] {e}")
+            continue
         modes.add(mode)
         if mode != want_mode:
             failures += 1
@@ -148,6 +175,7 @@ def run_parity(c, pick, strategy: str, only: set[str] | None = None) -> tuple[li
         out.append(f"  FAIL parity [{strategy}]: no entry compared -- {sorted(only or [])} named none")
     out.append(f"parity [{strategy}]: --demo stack {', '.join(sorted(modes)) or 'none run'}, "
                f"leg {want_mode} (process features {os.environ.get('LUMEN_LIVE_FEATURES', '')!r})")
-    out.append(f"parity [{strategy}]: {checked - failures} of {checked} entries byte-identical "
-               f"to a headless render with no agent; skipped (animated): {', '.join(skipped) or 'none'}")
+    out.append(f"parity [{strategy}]: {checked - (failures - unmatched)} of {checked} entries byte-identical "
+               f"to a headless render with no agent; skipped (animated): {', '.join(skipped) or 'none'}; "
+               f"--demo rendered another entry than the one picked: {unmatched} (bound 0)")
     return out, failures

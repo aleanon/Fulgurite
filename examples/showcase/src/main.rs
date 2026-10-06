@@ -1068,6 +1068,20 @@ fn main() {
         press_shot(&path, entry, which);
         return;
     }
+    // The catalogue this binary was compiled with, one `name<TAB>animated`
+    // line per entry in index order: what `--demo N` and a bare `N` mean.
+    // The drives (`scripts/drive/parity.py`, `run.py`, `a11y_drive.sh`,
+    // `gpu_parity.sh`) take their entry list from here, never from
+    // `catalog.rs`'s text: an entry behind `#[cfg(feature = ..)]` is in the
+    // source and not in a build without the feature, and counting the
+    // source shifted every later index by one (M83/T83.6's `ShaderView`;
+    // `docs/plan-gpu-extension.md`, "What building found").
+    if args.first().map(String::as_str) == Some("--entries") {
+        for e in CATALOG {
+            println!("{}\t{}", e.name, e.animated);
+        }
+        return;
+    }
     if args.first().map(String::as_str) == Some("--demo") {
         let entry: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         let path = args.get(2).cloned().unwrap_or_else(|| "demo.ppm".into());

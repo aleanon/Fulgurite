@@ -202,8 +202,11 @@ def main() -> int:
     # have an entry in keys.py -- coverage as data, not as a review.
     from keys import KEYS  # noqa: E402
     from harness import run_keys, _pick, _focusables_in_demo  # noqa: E402
-    catalog = Path(HERE.parent.parent / "examples/showcase/src/catalog.rs").read_text()
-    names = [n.split('"')[2] for n in catalog.split('entry!("')[1:]]
+    # The binary's own catalogue (`showcase --entries`), not `catalog.rs`'s
+    # text, which lists entries a build without their feature lacks
+    # (M83/T83.6; `parity._entries` says how that skewed every index).
+    from parity import _entries  # noqa: E402
+    names = [n for n, _ in _entries()]
     if only:
         names = [n for n in names if n.lower() in wanted]
     kfail = kdone = 0

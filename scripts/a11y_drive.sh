@@ -40,9 +40,13 @@ $LAUNCH --leg counter-window --exe target/release/counter-window \
 # The Program application (T54.2): on the bus through `run`'s shared
 # adapter, opened on its Button entry so the three demo buttons are there
 # to count and "Primary" to find. The entry is looked up by name, so a
-# reordered catalogue does not open the wrong demo.
+# reordered catalogue does not open the wrong demo -- and in the binary's
+# own list (`showcase --entries`), not `catalog.rs`'s text: the text counts
+# an entry behind `#[cfg(feature = ..)]` that this build lacks, which opened
+# the window one entry past Button, on a demo with no buttons (M83/T83.6).
+# awk reads to the end: an early `exit` would break the binary's pipe.
 cargo build --release -q -p showcase --features agent
-entry=$(awk '/pub static CATALOG/ {on=1} on && /entry!\(/ {if ($0 ~ /"Button"/) {print n; exit} n++}' examples/showcase/src/catalog.rs)
+entry=$(target/release/showcase --entries | awk -F'\t' '$1 == "Button" && !f {print NR - 1; f = 1}')
 [ -n "$entry" ] || { echo "a11y-drive: FAIL -- no Button entry in the showcase catalogue" >&2; exit 1; }
 $LAUNCH --leg showcase --exe target/release/showcase --arg "$entry" \
     -- python3 scripts/a11y_drive.py {port} --expect present --button Primary --act Primary
