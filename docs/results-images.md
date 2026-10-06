@@ -456,3 +456,36 @@ crate counts above are from that resolve (the count is 59 either way).
 **K84b fires — on the third condition only.** T84.10 takes its second
 branch. The probe changes no tracked file but this one: firmware Δ 0 by
 construction.
+
+## T84.10 — `lumen-static-video`, deferred (2026-10-06)
+
+**K84b fired (T84.9), so T84.10 takes its second branch**: the crate is
+not added, and `Video` ships with `VideoFeed` and `GifFeed` (T84.8).
+
+| K84b condition | bound | measured (T84.9) | |
+|---|---|---|---|
+| dependency set | ≤ 150 | **58** (66 with build edges) | holds |
+| `unsafe` in the crate | none | **0** | holds |
+| development libraries on the reference machine | present | **absent** (runtime 1.24.2 only) | **fires** |
+
+**What it would have cost**, measured: 50 crates over the shell (58 in
+the crate's own set), eight more build-time crates for the `pkg-config`
+step, four system libraries at link time, and `kstring` held below its
+latest for the pinned toolchain. None of it reaches a default build: the
+crate was planned default-off and outside the reload source hash.
+
+**Reopen condition.** The plan's clauses — "a GStreamer binding below
+150 crates with a safe `appsink`, or a pure-Rust decoder of one common
+codec" — are kept, and the first is **already met** by `gstreamer`
+0.24.5. What blocks the crate is the machine, so the operative
+condition is: **the reference machine has `libgstreamer1.0-dev` and
+`libgstreamer-plugins-base1.0-dev`** (so `pkg-config --modversion
+gstreamer-video-1.0 gstreamer-app-1.0` answers), installed by the owner,
+never by a task. Then T84.10's first branch is built as the plan writes
+it: `GstFeed: VideoFeed`, default-off, `forbid(unsafe_code)`, its
+`videotestsrc` gate at 30 ± 1 frames/s with a seek inside one frame, and
+the unset-caps injection. Or: a pure-Rust decoder of one common codec,
+which needs no system library and so no such install.
+
+**Firmware.** No code is linked by any firmware; the one source change is
+`video.rs`'s module rustdoc, in the shell.

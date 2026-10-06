@@ -28,8 +28,9 @@
 //! frame), which is `Session`'s supertrait.
 //!
 //! `GifFeed`, behind the shell's `image` feature, is the reference feed:
-//! a decoded GIF played at its own delays, so `Video` ships whether or not
-//! a real decoder crate does (K84b, T84.9/T84.10).
+//! a decoded GIF played at its own delays, so `Video` ships without a real
+//! decoder crate — and it does: the GStreamer crate was deferred on K84b
+//! (`docs/results-images.md` T84.9–T84.10, with the reopen condition).
 
 use std::time::{Duration, Instant};
 

@@ -1452,7 +1452,11 @@ remains** — which is why §10 Step 1 is the kill criterion.
    keeps every frame from before a seek out. `GifFeed`, behind `image`, is
    the feed that ships. A derived application declares the work with
    `#[app(msg, apply, subscriptions, jobs)]`. Numbers, including K84e, in
-   `docs/results-images.md` T84.8.
+   `docs/results-images.md` T84.8. **The GStreamer decoder crate is
+   DEFERRED, M84/T84.10, 2026-10-06**: K84b fired on its third condition
+   (no GStreamer development libraries on the reference machine), while
+   its crate count and its no-`unsafe` condition held; the numbers and
+   the reopen condition are `docs/results-images.md` T84.9–T84.10.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

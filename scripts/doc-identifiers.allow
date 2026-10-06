@@ -126,7 +126,7 @@ MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 map
 # names the plans propose, not built. Delete each entry in the commit whose
 # task builds it; a built name left here is reported as stale by this script.
 DEFAULT                        # proposed by ?
-GstFeed                        # proposed by ?
+GstFeed                        # deferred by M84/T84.10 (K84b fired); docs/results-images.md T84.10
 LineHeight                     # proposed by ?
 LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?

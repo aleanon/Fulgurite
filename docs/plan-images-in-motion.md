@@ -1148,6 +1148,33 @@ task and is recorded with its number in `docs/results-images.md`):
   `SeekTrack`, a second `impl Node`, so it has its own `a11y_roles.rs` row
   (a slider named "Seek") and a `SeekTrack = Video` line in
   `scripts/drive/undriven.allow`.
+- **T84.9: K84b fires on the machine, not on the binding.** The probe's
+  dependency set is 58 crates (bound 150) and its `appsink` → RGBA path
+  needs no `unsafe` (it type-checks under `forbid`), so the first two
+  conditions hold; the reference machine has GStreamer 1.24.2's runtime
+  and plugins and none of its `-dev` packages, so the third fires
+  (`docs/results-images.md` T84.9). With linker-name symlinks in the
+  probe's own directory the feed links and plays a `videotestsrc` frame
+  of 320 × 240 RGBA: the path is sound, and only the gate would skip.
+  `gstreamer` 0.24.5 also needs `kstring` held at 2.0.2 on the pinned
+  rustc 1.94.0 (2.0.5 asks for 1.96).
+- **T84.9: the `check_no_unsafe.sh` list needs no edit either way.** The
+  standing gate (every crate under `crates/` carries `forbid(unsafe_code)`
+  but `lumen-static-reload`) was K84b's second condition, and the probe
+  shows a `GstFeed` would meet it as an ordinary crate; the bindings'
+  own `unsafe` is a dependency's, as `winit`'s is. No FFI exemption was
+  weighed further because none is needed.
+- **T84.10: the reopen condition's first clause is already met**, so the
+  deferral record names the condition that actually blocks it. The plan
+  wrote "a GStreamer binding below 150 crates with a safe `appsink`, or a
+  pure-Rust decoder of one common codec"; `gstreamer` 0.24.5 is both
+  below 150 and safe from our side, and what fired is the third
+  condition. `docs/results-images.md` T84.10 keeps the plan's two clauses
+  and adds the operative one: the reference machine gaining
+  `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev` (an owner's
+  install, never a task's), after which T84.10's first branch is built as
+  written. `lumen-static-video` is not added; `Video` ships with
+  `VideoFeed` and `GifFeed`.
 
 **What the review found (M84).**
 
