@@ -23,6 +23,11 @@ serde_json = "1"
 
 [features]
 default = []
+# So `just windows-drive` can run this window under both invalidation
+# strategies (M89/T89.2's phase 1) -- a compile-time choice made in `main`
+# (`Program::invalidation`, M55/T55.4), as examples/tasks-demo's is; not
+# forwarded to lumen-static-winit.
+everything = []
 # The platform accessibility adapter — the window crate's (M54/T54.2).
 a11y = ["lumen-static-winit/a11y"]
 # Passed through so `just profile` can measure the rasteriser's SIMD

@@ -51,6 +51,11 @@ pub const PRIMARY: u32 = 1;
 pub struct WindowSlot {
     /// This window's key (module doc): 1 for the primary.
     pub(crate) key: u32,
+    /// The program this window runs: 0 for the program itself, 1 and up
+    /// for its window table's entries (T89.3). `app.windows` reports it
+    /// (M89/T89.2) — read only by the agent until T89.3 opens windows.
+    #[cfg_attr(not(feature = "agent"), allow(dead_code))]
+    pub(crate) program: u16,
     /// The application this window runs, whichever strategy it chose.
     pub(crate) session: Box<dyn Session>,
     /// `None` until `resumed`; winit owns window creation.
@@ -126,6 +131,7 @@ impl WindowSlot {
         }
         WindowSlot {
             key,
+            program: 0,
             session,
             window: None,
             backend: None,

@@ -1037,6 +1037,22 @@ impl Win {
         }
     }
 
+    /// **Close slot `i`'s window** — `app.close` (M89/T89.2). The
+    /// primary's window is the program's: closing it ends the process
+    /// (`docs/plan-windows.md`, "Closing a window and quitting are
+    /// different"), at the next `about_to_wait`, as `app.quit` does. Any
+    /// other window's slot is dropped, and with it its window, its
+    /// renderer and its session.
+    #[cfg(feature = "agent")]
+    fn close_window(&mut self, i: usize) {
+        if self.slots[i].key == windows::PRIMARY {
+            self.quit = true;
+            self.slots[i].ask_redraw();
+            return;
+        }
+        drop(self.slots.remove(i));
+    }
+
     /// The soonest of every slot's deadlines (M47/T47.1, per slot since
     /// M89/T89.1): `WaitUntil` the earliest instant, or `Wait` when no
     /// slot has one.
@@ -1251,50 +1267,129 @@ impl ApplicationHandler<UserEvent> for Win {
     }
 }
 
+/// **Which window an agent request names** — M89/T89.2
+/// (`docs/plan-windows.md`, "The agent addresses a window by a top-level
+/// `"window"` member on one port").
+///
+/// The request's top-level `"window"` member, if it has one, must be the
+/// key of an open window; absent, the request is the **primary's**
+/// (`windows::PRIMARY`) — never the focused window, because every live
+/// script opens its windows inactive (P23). Answers the key, or the
+/// `-32602` message, which names `app.windows` so a drive that addressed
+/// a closed window is told where to look.
+#[cfg(feature = "agent")]
+fn window_named(req: &serde_json::Value, open: &[u32]) -> Result<u32, String> {
+    let key = match req.get("window") {
+        None => windows::PRIMARY,
+        Some(v) => match v.as_u64().and_then(|k| u32::try_from(k).ok()) {
+            Some(k) => k,
+            None => return Err(format!("\"window\" must be a window key (a u32), not {v} -- app.windows lists them")),
+        },
+    };
+    if open.contains(&key) {
+        Ok(key)
+    } else {
+        Err(format!("no window {key} is open -- app.windows lists the open ones"))
+    }
+}
+
 #[cfg(feature = "agent")]
 impl Win {
     /// Answer one agent request **on the event loop's own thread**, with
     /// the tree and the backend in hand.
     ///
-    /// The session answers it — the tree is wherever the session is — as
-    /// JSON text, so no `serde_json::Value` crosses into a hot library
-    /// (M37). The backend goes with it as the [`backend::AsScreen`] the
-    /// agent presents to and takes screenshots from.
+    /// **The target first** (M89/T89.2): the request's top-level
+    /// `"window"` member names the window it is for ([`window_named`]);
+    /// absent, the primary. An unknown or closed key is `-32602` naming
+    /// `app.windows`, answered before anything else is looked at.
     ///
-    /// **The primary window answers** (M89/T89.1): until T89.2 resolves a
-    /// request's `window` member, every request is the primary slot's.
+    /// **Then the window's own methods, before any backend lookup** (G23,
+    /// first half): `app.windows` and `app.close` (M89/T89.2), `app.quit`,
+    /// `app.reloads`, `app.presents`, `app.imeArea` and `app.copy` are the
+    /// window's — what reached the platform, or what the process has one
+    /// of — and need no renderer, so a window without one still answers
+    /// them. Everything else goes to the target slot's session, which
+    /// answers it — the tree is wherever the session is — as JSON text, so
+    /// no `serde_json::Value` crosses into a hot library (M37). The slot's
+    /// backend goes with it as the [`backend::AsScreen`] the agent
+    /// presents to and takes screenshots from.
+    ///
+    /// **Every reply names the window that answered** with a top-level
+    /// `"window": key` (G24, A28), so a drive prints who answered; the
+    /// `-32602` for a window nobody has is the one reply without it.
     fn answer_agent(&mut self, rpc: agent::Rpc) {
-        let slot = &mut self.slots[0];
-        let Some(backend) = slot.backend.as_deref_mut() else {
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "error": {"code": -32603, "message": "no window yet"}
-            }));
-            return;
+        let id = rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+        let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("").to_string();
+        let open: Vec<u32> = self.slots.iter().map(|s| s.key).collect();
+        let key = match window_named(&rpc.req, &open) {
+            Ok(k) => k,
+            Err(message) => {
+                let _ = rpc.reply.send(serde_json::json!({
+                    "jsonrpc": "2.0", "id": id, "error": {"code": -32602, "message": message}
+                }));
+                return;
+            }
         };
-        // **`app.quit` is the window's** — M48/T48.13 (R13-F9). The skill
-        // listed it and only counter-window had it; every turnkey window
-        // answered -32601, which `agent_client.py quit` reported as
-        // success. The reply goes first, then the loop exits at its next
-        // `about_to_wait`. Answered whatever the session's state, so a
-        // window showing a panic can still be closed by a drive.
-        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.quit") {
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": { "ok": true }
-            }));
-            self.quit = true;
-            slot.ask_redraw();
-            return;
-        }
-        // `app.reloads` is the window's, not the session's: the count
-        // outlives every session it counts (M37/T37.4 waits on it).
-        #[cfg(feature = "hot")]
-        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.reloads") {
-            let r = self.hot.as_ref().map(|h| &h.reloader);
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {
+        let i = self.slot_keyed(key).expect("window_named answered an open key");
+        // The reply, with the answering window named on it.
+        let send = |mut v: serde_json::Value| {
+            if let Some(o) = v.as_object_mut() {
+                o.insert("window".into(), key.into());
+            }
+            let _ = rpc.reply.send(v);
+        };
+        let result = |r: serde_json::Value| serde_json::json!({"jsonrpc": "2.0", "id": id, "result": r});
+        match method.as_str() {
+            // **`app.windows`** — M89/T89.2: every open window, by key,
+            // with the program it runs (0 is the program itself, 1 and up
+            // its window table's entries, T89.3), its title, and whether it
+            // is a daemon's windowless session (key 0, T89.6).
+            "app.windows" => {
+                let list: Vec<serde_json::Value> = (0..self.slots.len())
+                    .map(|j| {
+                        let s = &self.slots[j];
+                        serde_json::json!({
+                            "key": s.key,
+                            "program": s.program,
+                            "title": self.title_now(j),
+                            "windowless": s.key == 0,
+                        })
+                    })
+                    .collect();
+                send(result(serde_json::json!({"windows": list})));
+                return;
+            }
+            // **`app.close`** — M89/T89.2: closes the window the request
+            // names. Not `app.quit` with a field: a method whose meaning
+            // flipped on an optional member would let a stale script close
+            // a window where it meant to exit (`docs/plan-windows.md`,
+            // "Changed from X5's fix"). The reply goes first; the window
+            // closes as `close_window` says.
+            "app.close" => {
+                send(result(serde_json::json!({"ok": true})));
+                self.close_window(i);
+                return;
+            }
+            // **`app.quit` is the process's** — M48/T48.13 (R13-F9). The
+            // skill listed it and only counter-window had it; every
+            // turnkey window answered -32601, which `agent_client.py quit`
+            // reported as success. The reply goes first, then the loop
+            // exits at its next `about_to_wait`. Answered whatever the
+            // session's state, so a window showing a panic can still be
+            // closed by a drive. Unchanged by M89: it ends the process
+            // whichever window it names.
+            "app.quit" => {
+                send(result(serde_json::json!({"ok": true})));
+                self.quit = true;
+                self.slots[i].ask_redraw();
+                return;
+            }
+            // `app.reloads` is the process's, not the session's: the count
+            // outlives every session it counts (M37/T37.4 waits on it).
+            #[cfg(feature = "hot")]
+            "app.reloads" => {
+                let r = self.hot.as_ref().map(|h| &h.reloader);
+                send(result(serde_json::json!({
                     "supported": r.is_some(),
                     "reloads": r.map_or(0, |r| r.reloads),
                     "building": r.is_some_and(|r| r.building),
@@ -1307,62 +1402,63 @@ impl Win {
                     // M49/T49.10: the old build's work in flight, handed on.
                     "reissued": r.map_or(0, |r| r.reissued.spawned),
                     "reissue_dropped": r.map_or(0, |r| r.reissued.unknown),
-                }
+                })));
+                return;
+            }
+            // `app.presents` is the window's too (M53/T53.4): frames
+            // presented, and redraws that presented nothing because nothing
+            // changed. Answered without a frame, so asking does not move it.
+            "app.presents" => {
+                let s = &self.slots[i];
+                send(result(serde_json::json!({"presents": s.presents.0, "skipped": s.presents.1})));
+                return;
+            }
+            // **`app.imeArea` is the window's** — M80/T80.5: the IME cursor
+            // area this window last passed to `set_ime_cursor_area`, in
+            // physical pixels (`[x0, y0, x1, y1]`), or `null`. The call is
+            // made outside the session the agent talks to, so only the
+            // window can say what reached the platform. Answered without a
+            // frame, from the slot the request names (second review G24).
+            "app.imeArea" => {
+                send(result(serde_json::json!({"area": self.slots[i].ime_area})));
+                return;
+            }
+            // **`app.copy` is the window's** — M80/T80.4. A drive's Ctrl+C
+            // reaches the session as an `input.key`, and only a real
+            // `KeyboardInput` goes through `clipboard_shortcut`, so a drive
+            // could never copy. This is the copy that shortcut makes: the
+            // session's selection onto the system clipboard, then read
+            // back, so the reply says what reached the clipboard and not
+            // only what was asked for. `copied` is `null` with nothing
+            // selected (the clipboard is then left alone); `error` names a
+            // clipboard that did not read back what was set.
+            "app.copy" => {
+                let copied = self.slots[i].session.copy();
+                let set = copied.as_deref().is_some_and(|t| self.clipboard.set(t));
+                let clipboard = self.clipboard.get();
+                let error = match &copied {
+                    Some(t) if clipboard.as_deref() != Some(t.as_str()) => Some(format!(
+                        "the system clipboard did not read back what was set (set: {set}, read: {})",
+                        if clipboard.is_some() { "other text" } else { "nothing" }
+                    )),
+                    _ => None,
+                };
+                send(result(serde_json::json!({"copied": copied, "clipboard": clipboard, "set": set, "error": error})));
+                return;
+            }
+            _ => {}
+        }
+        let slot = &mut self.slots[i];
+        let Some(backend) = slot.backend.as_deref_mut() else {
+            send(serde_json::json!({
+                "jsonrpc": "2.0", "id": id, "error": {"code": -32603, "message": "no window yet"}
             }));
             return;
-        }
-        // `app.presents` is the window's too (M53/T53.4): frames
-        // presented, and redraws that presented nothing because nothing
-        // changed. Answered without a frame, so asking does not move it.
-        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.presents") {
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {"presents": slot.presents.0, "skipped": slot.presents.1},
-            }));
-            return;
-        }
-        // **`app.imeArea` is the window's** — M80/T80.5: the IME cursor
-        // area this window last passed to `set_ime_cursor_area`, in
-        // physical pixels (`[x0, y0, x1, y1]`), or `null`. The call is made
-        // outside the session the agent talks to, so only the window can
-        // say what reached the platform. Answered without a frame.
-        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.imeArea") {
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {"area": slot.ime_area},
-            }));
-            return;
-        }
-        // **`app.copy` is the window's** — M80/T80.4. A drive's Ctrl+C
-        // reaches the session as an `input.key`, and only a real
-        // `KeyboardInput` goes through `clipboard_shortcut`, so a drive
-        // could never copy. This is the copy that shortcut makes: the
-        // session's selection onto the system clipboard, then read back,
-        // so the reply says what reached the clipboard and not only what
-        // was asked for. `copied` is `null` with nothing selected (the
-        // clipboard is then left alone); `error` names a clipboard that
-        // did not read back what was set.
-        if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.copy") {
-            let copied = slot.session.copy();
-            let set = copied.as_deref().is_some_and(|t| self.clipboard.set(t));
-            let clipboard = self.clipboard.get();
-            let error = match &copied {
-                Some(t) if clipboard.as_deref() != Some(t.as_str()) => Some(format!(
-                    "the system clipboard did not read back what was set (set: {set}, read: {})",
-                    if clipboard.is_some() { "other text" } else { "nothing" }
-                )),
-                _ => None,
-            };
-            let _ = rpc.reply.send(serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {"copied": copied, "clipboard": clipboard, "set": set, "error": error},
-            }));
-            return;
-        }
+        };
         // An input's latency runs from its arrival to the frame that
         // shows it (M60/T60.3): the present inside this request, and the
         // redraw asked for below, which journals it.
-        if rpc.req.get("method").and_then(|m| m.as_str()).is_some_and(|m| m.starts_with("input.")) {
+        if method.starts_with("input.") {
             slot.input_at.get_or_insert_with(Instant::now);
         }
         let text = slot.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
@@ -1372,7 +1468,7 @@ impl Win {
         Self::serve_requests(&mut *slot.session, &mut *backend, &mut self.clipboard);
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
-                "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "jsonrpc": "2.0", "id": id,
                 "error": {"code": -32603, "message": format!("the session answered malformed JSON: {e}")}
             })
         });
@@ -1386,8 +1482,8 @@ impl Win {
                 slot.place_ime(&window);
             }
         }
-        let _ = rpc.reply.send(resp);
-        slot.ask_redraw();
+        send(resp);
+        self.slots[i].ask_redraw();
     }
 }
 
@@ -2138,6 +2234,33 @@ mod tests {
             other => panic!("120 ms gave {other:?}, not WaitUntil"),
         }
         assert_eq!(control_flow_for(now, None), ControlFlow::Wait, "no timer must wait without a deadline");
+    }
+
+    /// **M89/T89.2: which window a request names.** Absent is the
+    /// primary; an open key is itself; a closed key, a non-key and a key
+    /// past `u32` are `-32602` naming `app.windows`.
+    #[cfg(feature = "agent")]
+    #[test]
+    fn a_request_names_its_window_or_is_refused_naming_app_windows() {
+        let open = [windows::PRIMARY];
+        let req = |w: Option<serde_json::Value>| {
+            let mut r = serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "ui.getTree"});
+            if let Some(w) = w {
+                r["window"] = w;
+            }
+            r
+        };
+        let absent = window_named(&req(None), &open);
+        let one = window_named(&req(Some(1.into())), &open);
+        println!("absent -> {absent:?} (want Ok(1)); 1 -> {one:?} (want Ok(1))");
+        assert_eq!(absent, Ok(windows::PRIMARY), "a request with no window member is the primary's");
+        assert_eq!(one, Ok(1));
+        for w in [serde_json::json!(7), serde_json::json!(0), serde_json::json!("1"), serde_json::json!(1u64 << 33)] {
+            let got = window_named(&req(Some(w.clone())), &open);
+            println!("window {w} -> {got:?} (want Err naming app.windows)");
+            assert!(got.as_ref().is_err_and(|m| m.contains("app.windows")), "window {w} answered {got:?}");
+        }
+        assert_eq!(window_named(&req(Some(2.into())), &[1, 2]), Ok(2), "an open second window is itself");
     }
 
     /// **The present decision** (M53/T53.4).

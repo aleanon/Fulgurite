@@ -5,20 +5,25 @@ one phase per call:
 
     windows_drive.py PORT PHASE
 
-Phase 0 (T89.0) pins TODAY's behaviour on `examples/counter-window`, a
-one-window program, so the task that changes each line flips it rather
-than writing it fresh (docs/plan-iced-roadmap.md §3.1, S3). Each
-assertion names the task that inverts it:
+Phase 1 (T89.2) is one window, `examples/counter-window`, under both
+invalidation strategies. It inverts T89.0's phase 0, which pinned the
+one-window router (`app.windows` was -32601, and a request carrying
+`"window": 7` was answered by the one window anyway):
 
-  (a) `app.windows` answers -32601, method not found       -- T89.2 inverts
-  (b) a request carrying `"window": 7` is answered by the
-      one window anyway: a click on `#inc` is `handled` and
-      `#value` reads 1 after it                              -- T89.2 inverts
-  (c) `app.quit` exits 0 in under 2 s                        -- stays (accept)
+  (a) `app.windows` lists exactly `[1]`, and its reply names window 1
+  (b) a request carrying `"window": 7` answers -32602 naming
+      `app.windows`, carries no `"window"` (nobody answered), and the
+      click it carried landed nowhere: `#value` does not move
+  (c) `input.click` with `"window": 1` on `#inc` is `handled`, the reply
+      carries `"window": 1`, and `#value` reads one more -- the accept
+      direction; and a request with no `window` member is the primary's
+  (d) `app.quit` exits 0 in under 2 s                        -- stays (accept)
 
-(c) is the launcher's own stop (`--stop quit`: `app.quit`, then exit
+(d) is the launcher's own stop (`--stop quit`: `app.quit`, then exit
 status 0 timed against a 2000 ms bound and the port closed), so this
-script leaves the process running for it.
+script leaves the process running for it. (b) is the router's injection
+point (docs/plan-windows.md T89.2: "the router ignores `window` and always
+answers from the primary" answers the request, and (b) fails by name).
 
 Every check prints the quantity it read beside what it wanted.
 """
@@ -56,43 +61,71 @@ def fail(msg):
     sys.exit(f"windows-drive: FAIL -- {msg}")
 
 
-def phase0():
-    print("== phase 0 (T89.0): today's one-window behaviour, pinned ==")
-    # (a) -- T89.2 inverts: the router answers `app.windows` itself.
-    r = raw("app.windows")
-    err = r.get("error")
-    if err is None:
-        fail(f"app.windows: answered {r.get('result')!r} -- want -32601 until T89.2 builds it")
-    print(f"  ..  app.windows: {err.get('code')} {err.get('message')} (want -32601)")
-    if err.get("code") != -32601:
-        fail(f"app.windows: error {err.get('code')}, want -32601 method not found")
-    print("  ok  (a) app.windows: -32601 method not found [T89.2 inverts]")
+def value():
+    return result("ui.resolve", {"selector": "#value"})["value"]
 
-    # (b) -- T89.2 inverts: `"window": 7` names no window and is -32602.
-    # Setup landed: the click is `handled`, and the label it drives moved.
-    before = result("ui.resolve", {"selector": "#value"})["value"]
+
+def phase1():
+    print("== phase 1 (T89.2): one window, addressed by its key ==")
+    # (a) app.windows: exactly [1], and the reply names who answered.
+    r = raw("app.windows")
+    if "error" in r:
+        fail(f"(a) app.windows answered {r['error']} -- want the router to answer it")
+    keys = [w.get("key") for w in r["result"].get("windows", [])]
+    print(f"  ..  app.windows: {r['result']['windows']} -> keys {keys} (want [1]); reply window {r.get('window')!r} (want 1)")
+    if keys != [1]:
+        fail(f"(a) app.windows listed keys {keys}, want exactly [1]")
+    if r.get("window") != 1:
+        fail(f"(a) app.windows' reply names window {r.get('window')!r}, want 1")
+    print("  ok  (a) app.windows lists [1]")
+
+    # (b) "window": 7 names no window: -32602 naming app.windows, and the
+    # click it carried did not land anywhere.
+    before = value()
     click = raw("input.click", {"selector": "#inc"}, window=7)
+    after = value()
+    err = click.get("error")
+    print(f'  ..  "window": 7: {err or click.get("result")} (want -32602 naming app.windows); '
+          f"#value {before!r} -> {after!r} (want unchanged)")
+    if err is None:
+        fail(f'(b) "window": 7: answered {click.get("result")!r} by window {click.get("window")!r} '
+             f"-- the router ignored the window member")
+    if err.get("code") != -32602 or "app.windows" not in err.get("message", ""):
+        fail(f'(b) "window": 7: error {err!r}, want -32602 naming app.windows')
+    if "window" in click:
+        fail(f'(b) "window": 7: the refusal names window {click["window"]!r} -- nobody answered it')
+    if after != before:
+        fail(f'(b) "window": 7: #value {before!r} -> {after!r} -- the refused click landed')
+    print('  ok  (b) "window": 7 -> -32602 naming app.windows, nothing landed')
+
+    # (c) the accept direction: "window": 1 is the one window.
+    before = value()
+    click = raw("input.click", {"selector": "#inc"}, window=1)
     if "error" in click:
-        fail(f'"window": 7: input.click answered {click["error"]} -- want the one window to answer it until T89.2')
+        fail(f'(c) "window": 1: input.click answered {click["error"]}')
     handled = click["result"].get("handled")
-    after = result("ui.resolve", {"selector": "#value"}, window=7)["value"]
-    print(f'  ..  "window": 7: input.click #inc handled {handled} (want true); '
-          f"#value {before!r} -> {after!r} (want +1)")
+    after = result("ui.resolve", {"selector": "#value"}, window=1)["value"]
+    print(f'  ..  "window": 1: input.click #inc handled {handled} (want true), reply window '
+          f"{click.get('window')!r} (want 1); #value {before!r} -> {after!r} (want +1)")
     if handled is not True:
-        fail(f'"window": 7: the click on #inc was not handled ({click["result"]!r}) -- the setup did not land')
+        fail(f'(c) "window": 1: the click on #inc was not handled ({click["result"]!r}) -- the setup did not land')
+    if click.get("window") != 1:
+        fail(f'(c) "window": 1: the reply names window {click.get("window")!r}, want 1')
     try:
         moved = int(after) == int(before) + 1
     except ValueError:
         moved = False
     if not moved:
-        fail(f'"window": 7: #value {before!r} -> {after!r}, want one more -- the click landed nowhere visible')
-    if "window" in click:
-        fail(f'"window": 7: the reply names a window ({click["window"]!r}) -- pinned: no reply carries one until T89.2')
-    print('  ok  (b) "window": 7 answered by the one window [T89.2 inverts]')
-    print("  ..  (c) app.quit exits 0 in under 2 s: the launcher's --stop quit checks it next [stays]")
+        fail(f'(c) "window": 1: #value {before!r} -> {after!r}, want one more')
+    plain = raw("ui.resolve", {"selector": "#value"})
+    print(f"  ..  no window member: reply window {plain.get('window')!r} (want 1, the primary)")
+    if plain.get("window") != 1:
+        fail(f"(c) a request with no window member was answered by {plain.get('window')!r}, want the primary, 1")
+    print('  ok  (c) "window": 1 clicks #inc, handled, and the reply names window 1')
+    print("  ..  (d) app.quit exits 0 in under 2 s: the launcher's --stop quit checks it next [stays]")
 
 
-PHASES = {"0": phase0}
+PHASES = {"1": phase1}
 if phase not in PHASES:
     fail(f"no phase {phase!r}; have {sorted(PHASES)}")
 PHASES[phase]()

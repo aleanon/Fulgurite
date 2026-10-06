@@ -42,6 +42,11 @@ fn main() {
         // boot — which is what `LUMEN_SHOT` renders, too.
         _ => {
             let count = arg.and_then(|a| a.parse().ok()).unwrap_or(0);
+            // M89/T89.2: the strategy is this application's choice, made
+            // here, so `just windows-drive` can drive both.
+            #[cfg(feature = "everything")]
+            app::program(count, 440, 520).invalidation::<lumen_static::Everything>().run();
+            #[cfg(not(feature = "everything"))]
             app::program(count, 440, 520).run();
         }
     }

@@ -870,4 +870,28 @@ the first review's findings of the same name.
   does not fit Xephyr's 900 px screen, so the canvas and the window
   differ in height — and passed on the desktop (0 differing pixels on
   every leg).
-
+- **T89.2, the slot carries its program index now.** `app.windows`
+  reports each window's program, so the field T89.1 deferred lands here
+  with that first reader (`WindowSlot::program`, 0 for the primary). The
+  opener's `(key, tag)` still waits for T89.3, whose `WindowOpened` and
+  `WindowClosed` are its first readers.
+- **T89.2, `examples/counter-window` gains an `everything` feature**,
+  following `examples/tasks-demo`: phase 1 runs under both strategies and
+  T89.0 recorded that counter-window had no `everything` build. The
+  strategy is chosen in `main` (`Program::invalidation`), not forwarded
+  to the window crate.
+- **T89.2, `app.close` is built with its method, and gated by T89.3.**
+  On the primary it ends the process at the next `about_to_wait`, as
+  `app.quit` does; any other window's slot is dropped. With one window,
+  exercising it ends the leg, which the launcher's `--stop quit` reads as
+  a death mid-drive, so its live gate is T89.3 gate 3, where a second
+  window exists to survive it.
+- **T89.2, phase 0 is replaced by phase 1**, not kept beside it: its two
+  pins are exactly the assertions phase 1 inverts. The flip's red run —
+  T89.0's phase 0 against the T89.2 router — fails (a) with
+  `app.windows: answered {'windows': [{'key': 1, ...}]} -- want -32601`,
+  and with (a) removed fails (b) with `"window": 7: input.click answered
+  {'code': -32602, ...}`. (c), `app.quit` exits 0, stays as phase 1 (d).
+- **T89.2, `ui.tree` appears nowhere as a method name**: a grep of the
+  repository for it in backticks or quotes finds only this plan's own
+  instruction, so "`ui.getTree` everywhere" needed no edit.

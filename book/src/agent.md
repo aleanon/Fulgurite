@@ -48,8 +48,25 @@ window's clipboard shortcut, so this is how a drive copies;
 `app.imeArea` answers the IME cursor area the window last passed to the
 platform after a frame, in physical pixels, or `null` (M80/T80.5) — the
 focused field's caret, which is where an input method opens its
-candidate window. The list above, the skill's and the code are held to
-one another by `scripts/check_agent_methods.sh`.
+candidate window. `app.windows` lists the open windows — each one's
+`key`, the `program` it runs, its `title`, and whether it is
+`windowless` — and `app.close` closes the window a request names
+(closing the primary ends the process; M89/T89.2). The list above, the
+skill's and the code are held to one another by
+`scripts/check_agent_methods.sh`.
+
+**One port, windows by key** (M89/T89.2, `docs/plan-windows.md`). A
+request may carry a top-level `"window"` member beside `"method"`: the
+key of the window it is for, as `app.windows` reports it. Without one it
+is the **primary** window's (key 1) — never the focused window's, since
+every live drive opens its windows without focus. A key no open window
+has answers `-32602`, and the message names `app.windows`. **Every reply
+names the window that answered** with its own top-level `"window"`, so a
+drive's output says who answered; the `-32602` for a window nobody has
+is the one reply without it. `app.quit` still ends the process whichever
+window it names, and closing one window is `app.close`, never `app.quit`
+with a field: a method whose meaning flipped on an optional member would
+let a stale script close a window where it meant to exit.
 
 **A synthesised input reports what arrived.** Everything above goes
 through the host's input queue, which has a fixed size, so `input.type`
