@@ -144,7 +144,9 @@ pub mod windows;
 pub mod translate;
 pub mod keys;
 
-pub use backend::{Backend, BackendFactory, BackendTarget, Frame, Prefer, Software, WindowHandles};
+pub use backend::{Backend, BackendFactory, BackendTarget, Frame, Prefer, ShaderTable, Software, WindowHandles};
+#[cfg(feature = "shader")]
+pub use backend::ShaderDesc;
 pub use clipboard::Clipboard;
 pub use dialog::Dialogs;
 #[cfg(feature = "gpu")]
@@ -155,18 +157,24 @@ pub use translate::{Cursor, Translated};
 
 /// The backend half of `resumed`: make a backend and hand it the images —
 /// extracted verbatim by M47/T47.0 so a unit test can drive it with a
-/// fake backend (R15-F6).
+/// fake backend (R15-F6) — and the program's shaders (M83/T83.4).
 ///
 /// Taken, not cloned: `ImageSource` is a trait object and the renderer
-/// is where the pixels are wanted.
+/// is where the pixels are wanted. The shader table is the opposite: the
+/// session's, borrowed for the one `Backend::set_shaders` call, so **every**
+/// backend made here is handed it, the second resume's as much as the
+/// first's. A refusal is the backend's to report; the count is not used
+/// here.
 fn resume_backend(
     images: &mut Option<Box<dyn lumen_static::ImageSource>>,
+    shaders: ShaderTable<'_>,
     make: impl FnOnce() -> Box<dyn Backend>,
 ) -> Box<dyn Backend> {
     let mut backend = make();
     if let Some(images) = images.take() {
         backend.set_images(images);
     }
+    let _refused = backend.set_shaders(shaders);
     backend
 }
 
@@ -883,6 +891,14 @@ impl Win {
                     );
                 }
                 self.last_frame = None;
+                // **The new build's shaders** — M83/T83.4: its program's
+                // table, re-asked from the new session and re-sent, so an
+                // edited WGSL reaches the backend with the swap. Every swap,
+                // not only one whose table changed: the backend keys what it
+                // compiles by content (T83.5), so an unchanged table costs a
+                // lookup. From M89 this is the multi-window swap's per-slot adopt step
+                // (`docs/plan-windows.md`).
+                let _refused = backend.set_shaders(self.session.shaders());
                 // **A build may change the program's shaping** — M81/T81.4.
                 // The new session measures with its own program's mode; the
                 // backend follows it, and everything is repainted, because
@@ -1400,7 +1416,7 @@ impl Win {
             accept_cpu: prefer == Prefer::Gpu,
         };
         let custom = self.config.backend_with.as_mut();
-        let backend = resume_backend(&mut self.config.images, || pick_backend(&target, prefer, custom));
+        let backend = resume_backend(&mut self.config.images, self.session.shaders(), || pick_backend(&target, prefer, custom));
         eprintln!("lumen-static: {}", backend.name());
         self.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
@@ -2027,10 +2043,12 @@ mod tests {
     }
 
     /// A backend that records, in a log shared with the test, which
-    /// backend was handed images; and keeps them.
+    /// backend was handed images; and keeps them. And, in a second log,
+    /// which was handed the shader table (M83/T83.4).
     struct Fake {
         id: usize,
         log: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+        shaders: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
         images: Option<Box<dyn lumen_static::ImageSource>>,
     }
     impl Backend for Fake {
@@ -2051,6 +2069,13 @@ mod tests {
             self.images.take()
         }
         fn set_font(&mut self, _font: FontStack) {}
+        // Required since M83/T83.4. Every call is recorded: a build
+        // without `shader` hands an empty table, and being handed it is
+        // what this fake is for.
+        fn set_shaders(&mut self, _table: ShaderTable<'_>) -> usize {
+            self.shaders.borrow_mut().push(self.id);
+            0
+        }
         // Required since M83/T83.1; a fake reads nothing back.
         fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
             None
@@ -2071,22 +2096,30 @@ mod tests {
     /// Driven here as resume, suspend, resume, printing what each backend
     /// was given. Until T47.7 the suspend was a bare drop, and backend #2
     /// printed `None`.
+    ///
+    /// **And every backend is handed the shader table** (M83/T83.4):
+    /// `resume_backend` calls `Backend::set_shaders` on each one it makes,
+    /// so the second resume's backend compiles the program's shaders as the
+    /// first did. Printed as the backends that were handed it.
     #[test]
     fn a_second_resume_still_has_the_images() {
         let mut images: Option<Box<dyn lumen_static::ImageSource>> = Some(Box::new(OnePixel));
         let log = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let shaders = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let mut made = 0;
         for round in 1..=2 {
-            let backend = resume_backend(&mut images, || {
+            let backend = resume_backend(&mut images, ShaderTable::EMPTY, || {
                 made += 1;
-                Box::new(Fake { id: round, log: log.clone(), images: None })
+                Box::new(Fake { id: round, log: log.clone(), shaders: shaders.clone(), images: None })
             });
             let given = log.borrow().contains(&round);
             println!("backend #{round} images: {}", if given { "Some" } else { "None" });
             // What `suspended` does with it.
             suspend_backend(&mut images, backend);
         }
+        println!("backends handed the shader table: {:?} (of {made} made)", shaders.borrow());
         assert_eq!(made, 2, "setup: two backends were made");
         assert_eq!(*log.borrow(), vec![1, 2], "backend #2 was given no images");
+        assert_eq!(*shaders.borrow(), vec![1, 2], "a backend resume made was not handed the shader table");
     }
 }

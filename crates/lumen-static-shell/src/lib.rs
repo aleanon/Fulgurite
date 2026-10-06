@@ -47,6 +47,10 @@ pub mod recover;
 // so it needs the face.
 #[cfg(feature = "truetype")]
 pub mod session;
+/// M83/T83.4: a program's custom shaders, as data — the table a host
+/// holds and a backend is handed. Ungated: `ShaderTable` exists, empty,
+/// without `shader`, so `Session` and `Backend` keep one shape.
+pub mod shader;
 pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]
@@ -345,6 +349,11 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// paint reads is the resolved copy in the frame list
     /// (`DisplayList::fills`), which [`Host::fills`] answers.
     fill_table: Vec<lumen_static::style::Fill>,
+    /// The program's shader table — M83/T83.4 ([`Host::set_shaders`]).
+    /// Never read by the frame: a backend gets it through
+    /// `Session::shaders`. Empty for a host built with [`Host::new`].
+    #[cfg(feature = "shader")]
+    shaders: &'static [shader::ShaderDesc],
     /// Where the sheet comes from — M32 (`docs/plan-program.md`).
     ///
     /// Set by [`program::Program::host`], and re-asked by
@@ -864,6 +873,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet_findings: Vec::new(),
             palette: lumen_static::style::Palette::LIGHT,
             fill_table: Vec::new(),
+            #[cfg(feature = "shader")]
+            shaders: &[],
             sheet_source: None,
             boot: None,
             sheet_key: None,
@@ -949,6 +960,35 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// so it signs what the frame paints.
     pub fn fills(&self) -> &[lumen_static::style::Fill] {
         &self.list.fills
+    }
+
+    /// **Install the program's shader table** — M83/T83.4
+    /// (`docs/plan-gpu-extension.md`, "Shaders are data"). Entry `n` is
+    /// what a `Cmd::Shader` bracket with `ShaderId(n)` names.
+    ///
+    /// Data for the backend, never for the frame: nothing is marked,
+    /// because the list a bracket records — the id, the uniforms and its
+    /// fallback — does not depend on the table, so the pixels the software
+    /// canvas draws cannot change with it. [`program::Program::host`]
+    /// calls this, so every headless host has the table and a hot swap's
+    /// new host has the new build's.
+    #[cfg(feature = "shader")]
+    pub fn set_shaders(&mut self, table: &'static [shader::ShaderDesc]) {
+        self.shaders = table;
+    }
+
+    /// The shader table `Host::set_shaders` installed — what
+    /// `Session::shaders` answers. [`shader::ShaderTable::EMPTY`] in a
+    /// build without `shader`, and for a host nobody gave one.
+    pub fn shaders(&self) -> shader::ShaderTable<'_> {
+        #[cfg(feature = "shader")]
+        {
+            shader::ShaderTable::new(self.shaders)
+        }
+        #[cfg(not(feature = "shader"))]
+        {
+            shader::ShaderTable::EMPTY
+        }
     }
 
     /// Resolve the kept table into the frame list; whether it changed.

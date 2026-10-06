@@ -191,3 +191,27 @@ machine's; no shader symbol is in the default build (K83b reads Δ 0).
 | — pair 2: core and shell on, under a loader with the core on and the shell off | refused: `lumen-static-shell features` `reload,truetype,lumen_shader` vs `…,lumen_shader,shader` | refused | the shell entry dropped: "accepted a library that should have been refused", red |
 | — accept | `host-shader-core`/`shader-core.so` and `host-shader`/`shader.so` accepted (20 fields), and the plain shell pair | accepted | — |
 | firmware (K83b) | Δ **0** on all four | 0 | `ShaderId` and both provided methods ungated: `.text` **+52** (`firmware`), **+24** (the other three), `.rodata` **+8** each, FAIL by name on all four |
+
+## T83.4 — the shader table, host to backend, at `e339bc1` + T83.4 (2026-10-06)
+
+`ShaderDesc` (a `const fn` constructor asserting `uniform_size <= 256`)
+and `ShaderTable` (opaque, `Copy`, empty without the shell's `shader`) in
+`lumen_static_shell::shader`; `Program::shaders`, installed by
+`Program::host()` through `Host::set_shaders`; the required
+`Session::shaders` (`Local` answers its host's table, `Hot` forwards) and
+`Backend::set_shaders` (`Software`: a no-op refusing 0; `GpuBackend`: an
+owned copy until T83.5; glasswall's `Counting` forwards). The window calls
+it in `resume_backend`, on every backend it makes, and in `redraw`'s swap
+branch after `swap` returns true. No backend acts on the table yet, so no
+pixel and no frame changes; the live call sites are driven by T83.7
+(resume) and T83.8 (swap).
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| headless (`lumen-static-shell/tests/shader_table.rs`, `--features truetype,shader`) | `Program::shaders(&TWO).host()`: **2** descs `["solid", "tint"]`; `Local::from_program(..).shaders()`: **2** descs `["solid", "tint"]` | 2, by name | `host()` omits `set_shaders`: both print **0** descs `[]`, red at "`Program::host` must install the program's shader table"; `Local::shaders` answering `ShaderTable::EMPTY`: host 2, session **0**, red at "`Session::shaders` must answer the host's table" |
+| — accept | a program with no table, and a bare `Host::new`, answer **0** | empty | — |
+| winit unit (`a_second_resume_still_has_the_images`) | backends handed the shader table **`[1, 2]`** (of 2 made); images still `[1, 2]` | `[1, 2]` | a once-only send in `resume_backend` (the plan's "only when `made == 1`"; the count is the test's, see the plan's "What building found"): **`[1]`**, red |
+| `Hot` forwards `Session::shaders` (S1) | compiles | — | forward deleted: **E0046** "missing: `shaders`" (`cargo check -p lumen-static-winit --features hot`); no runtime injection is claimed |
+| — glasswall's `Counting` forwards `Backend::set_shaders` | compiles, `dev-shape`'s `custom-backend` clippy line clean | — | forward deleted: **E0046** "missing: `set_shaders`" |
+| lint (`dev-shape`): `cargo clippy -p lumen-static-shell -p lumen-static-winit --all-targets --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader` | clean | -D warnings | an unused binding in `Host::set_shaders`: the new line fails `unused variable: injected`, the workspace `--features lumen-static/shader` line stays green |
+| firmware (K83b, K4): `just firmware-delta e339bc1 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (nothing in the firmware's graph changed: the shell, winit and reload crates only) |

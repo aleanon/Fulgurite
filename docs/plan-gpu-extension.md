@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`). M83b: T83.3 landed 2026-10-06.** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3 and T83.4 landed 2026-10-06.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1187,6 +1187,38 @@ task and is recorded in `docs/results-shader.md` with the number).
   the "alignment" outcome: the `cascade` binaries from `a4080ea` and this
   tree have identical `.text` and an empty symbol diff, and the parent,
   run alternately in the same session, reads the same.
+
+- T83.4: **the window crate's `shader` feature lands here, one task
+  early.** The Decisions give winit `shader = ["lumen-static-shell/shader",
+  "lumen-static-wgpu?/shader"]` and no task names it; `GpuBackend` "stores
+  the table until T83.5", and reading a table's contents needs the shell's
+  feature, so winit declares `shader = ["lumen-static-shell/shader"]` now
+  and T83.5 appends the wgpu half. It is additive the safe way round: with
+  winit's off and the shell's on through another crate, `GpuBackend`
+  stores nothing and compiles. Linted by a `dev-shape` clippy line with the
+  shell's and winit's `shader` (and `just gpu`'s `gpu,shader` line), since
+  the workspace's `--features lumen-static/shader` line turns neither on.
+- T83.4: **`GpuBackend` copies the sources into owned strings, not the
+  descs.** A `ShaderDesc` is two `&'static str`s into whichever build
+  registered it, a hot library included, so a `Vec<ShaderDesc>` would keep
+  exactly the borrow "no borrow survives the call" forbids;
+  `GpuBackend::shaders` answers `(name, wgsl, uniform_size)` until T83.5
+  compiles them.
+- T83.4: **the winit injection "`set_shaders` only when `made == 1`" has no
+  `made` to read**: the count lives in the test's closure, not in
+  `resume_backend`. The injection that breaks the same mechanism is a
+  once-only send in `resume_backend` (a static flag), and it prints `[1]`.
+- T83.4: **a fifth `Backend` implementor**: `examples/glasswall`'s
+  `Counting` (T83.2's `custom-backend`), a forwarding wrapper, which the
+  compiler named (E0046) under `dev-shape`'s `--features custom-backend`
+  clippy line; it forwards `set_shaders`, and the book's `factory` anchor
+  shows it.
+- T83.4: **`ShaderDesc`'s fields are private**, with `const` accessors, so
+  `ShaderDesc::new`'s `uniform_size <= 256` assertion cannot be skipped by a
+  struct literal; and **`Host::shaders`** (every build, `ShaderTable::EMPTY`
+  without the feature) is what `Local::shaders` reads, a name the plan
+  needed and did not give. `Session::shaders` is not guarded: it reads a
+  field and runs no application code, as `shaping` does.
 
 **What the review found (M83).**
 

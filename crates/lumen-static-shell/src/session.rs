@@ -151,7 +151,9 @@ impl Screen for Offscreen {
 
 /// A running application, as a window drives it. Object-safe, and every
 /// value it passes is either `Copy` or owned by the caller's side of the
-/// call — except the display list, which a renderer borrows in place.
+/// call — except the display list, which a renderer borrows in place, and
+/// the program's shader table ([`Session::shaders`], M83/T83.4), which a
+/// backend borrows for one `Backend::set_shaders` call and copies from.
 ///
 /// **Its shape is part of the ABI stamp** ([`abi_fields`]): a method
 /// added here moves every slot of the vtable after it.
@@ -279,6 +281,26 @@ pub trait Session: FrameSource {
     /// (`docs/plan-iced-roadmap.md` §2.3). Not guarded: it reads a field
     /// and runs no application code.
     fn shaping(&self) -> Shaping;
+    /// **The program's custom shaders** — M83/T83.4
+    /// (`docs/plan-gpu-extension.md`, "Shaders are data"): the table
+    /// `Program::shaders` registered, which `Program::host` installed in
+    /// this session's host (`Host::shaders`). The window hands it to
+    /// `Backend::set_shaders` on every backend it makes and after every
+    /// successful swap, so a new build's WGSL reaches the backend with the
+    /// new build's session.
+    ///
+    /// **Borrowed for that call and no longer**: a hot library's strings
+    /// live in the library, and a backend copies what it keeps
+    /// ([`crate::shader`]).
+    ///
+    /// **Unconditional, with an opaque type**, as [`Session::a11y_tree`]
+    /// is: [`ShaderTable`](crate::shader::ShaderTable) is empty without the
+    /// shell's `shader`, so the vtable is one shape in every build, and
+    /// the stamp's `shader` entry tells the two layouts apart
+    /// ([`abi_fields`]). **Required**: `impl Session for Hot` must forward
+    /// it or not compile. Not guarded: it reads a field and runs no
+    /// application code.
+    fn shaders(&self) -> crate::shader::ShaderTable<'_>;
 }
 
 /// An accessibility tree crossing the session seam — M54/T54.2. Holds
@@ -879,6 +901,10 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
 
     fn shaping(&self) -> Shaping {
         self.shaping
+    }
+
+    fn shaders(&self) -> crate::shader::ShaderTable<'_> {
+        self.host.shaders()
     }
 }
 

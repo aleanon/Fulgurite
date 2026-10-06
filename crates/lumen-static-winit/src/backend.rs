@@ -17,6 +17,11 @@ use lumen_static_shell::software::Canvas;
 use lumen_static_shell::text::FontStack;
 
 pub use lumen_static_shell::backend::{Backend, BackendFactory, BackendTarget, Frame, WindowHandles};
+/// M83/T83.4: what `Backend::set_shaders` is handed, re-exported beside the
+/// trait; `ShaderDesc` under this crate's `shader`.
+pub use lumen_static_shell::shader::ShaderTable;
+#[cfg(feature = "shader")]
+pub use lumen_static_shell::shader::ShaderDesc;
 
 /// The software canvas, blitted through softbuffer — what every window
 /// in this workspace did before T15.12, unchanged.
@@ -67,6 +72,14 @@ impl Backend for Software {
     fn set_font(&mut self, font: FontStack) {
         self.canvas.set_font(font.clone());
         self.font = Some(font);
+    }
+
+    /// **A no-op that refuses nothing** — M83/T83.4. The canvas runs no
+    /// shader: a `Cmd::Shader` bracket is a clip around its fallback, which
+    /// the widget recorded in the list at paint time, so that fallback is
+    /// this backend's whole answer and no shader is refused.
+    fn set_shaders(&mut self, _table: lumen_static_shell::shader::ShaderTable<'_>) -> usize {
+        0
     }
 
     fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {

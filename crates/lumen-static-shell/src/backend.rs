@@ -197,6 +197,29 @@ pub trait Backend {
     /// exactly that defect, and it would compile.
     fn set_font(&mut self, font: FontStack);
 
+    /// **The program's custom shaders** — M83/T83.4
+    /// (`docs/plan-gpu-extension.md`, "Shaders are data, delivered to the
+    /// backend"). **How many it refused**: a shader it cannot compile, or
+    /// will not run at all, has its brackets draw their fallback.
+    ///
+    /// The window calls it on every backend it makes (`resumed`, once per
+    /// window and again after a suspend) and after every successful hot
+    /// swap, with the session's table (`Session::shaders`):
+    ///
+    /// | setting | side | read | across a swap |
+    /// |---|---|---|---|
+    /// | `Program::shaders` | host | `Program::host()`, every build | re-asked through `Session::shaders`, re-sent here |
+    ///
+    /// **No borrow survives the call**: the table borrows the session, and
+    /// a hot library's strings live in that library. A backend copies the
+    /// sources it keeps before returning.
+    ///
+    /// **Required**, so a custom backend decides: a provided no-op would be
+    /// right for the software canvas, whose answer is the fallback already
+    /// in the list, and wrong for every forwarding wrapper, which would
+    /// drop the table in silence (`AGENT.md`'s provided-method trap).
+    fn set_shaders(&mut self, table: crate::shader::ShaderTable<'_>) -> usize;
+
     /// The last frame this backend rendered, as RGBA8.
     ///
     /// **Not the same as `fetch_rgba`**, and the difference is the whole

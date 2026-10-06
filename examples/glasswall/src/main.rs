@@ -756,7 +756,7 @@ mod counting {
     use lumen_static::display::Color;
     use lumen_static_shell::session::FrameSource;
     use lumen_static_shell::text::FontStack;
-    use lumen_static_winit::{Backend, BackendTarget, Frame, Software};
+    use lumen_static_winit::{Backend, BackendTarget, Frame, ShaderTable, Software};
 
     /// `Software`, under a name that counts.
     pub struct Counting {
@@ -792,6 +792,9 @@ mod counting {
         }
         fn set_font(&mut self, font: FontStack) {
             self.inner.set_font(font)
+        }
+        fn set_shaders(&mut self, table: ShaderTable<'_>) -> usize {
+            self.inner.set_shaders(table)
         }
         fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
             self.inner.frame_rgba()

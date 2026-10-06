@@ -315,6 +315,10 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// window's `Config` by `run`, once; never read by a hot swap.
     #[cfg(feature = "truetype")]
     pub backend_with: Option<crate::backend::BackendFactory>,
+    /// [`Program::shaders`]' table — M83/T83.4. Installed in every host
+    /// [`Program::host`] builds.
+    #[cfg(feature = "shader")]
+    pub shaders: &'static [crate::shader::ShaderDesc],
     /// Where to serve the agent endpoint, when the window crate was
     /// built with its `agent` feature. Inert otherwise.
     pub agent: Option<String>,
@@ -372,6 +376,8 @@ where
         images: None,
         #[cfg(feature = "truetype")]
         backend_with: None,
+        #[cfg(feature = "shader")]
+        shaders: &[],
         agent: None,
         strategy: core::marker::PhantomData,
         accessible: cfg!(feature = "a11y"),
@@ -405,6 +411,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
             images: self.images,
             #[cfg(feature = "truetype")]
             backend_with: self.backend_with,
+            #[cfg(feature = "shader")]
+            shaders: self.shaders,
             agent: self.agent,
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
@@ -627,6 +635,27 @@ impl<A: App, I: Invalidation> Program<A, I> {
         self
     }
 
+    /// **The program's custom shaders** — M83/T83.4
+    /// (`docs/plan-gpu-extension.md`, "Shaders are data, delivered to the
+    /// backend"). Entry `n` is `ShaderId(n)` in a `Cmd::Shader` bracket;
+    /// the table is fixed for a build, as an image id is.
+    ///
+    /// Consumed on the host side, like [`Program::fills`]:
+    ///
+    /// | setting | side | read | across a hot swap |
+    /// |---|---|---|---|
+    /// | `shaders` | host | [`Program::host`], every build, through [`Host::set_shaders`] | re-asked through `Session::shaders` and re-sent to the backend |
+    ///
+    /// The window hands the table to every backend it makes and again
+    /// after every successful swap (`Backend::set_shaders`); **no borrow
+    /// of it survives that call** — a backend copies what it keeps
+    /// ([`crate::shader`]). Behind the shell's `shader` feature.
+    #[cfg(feature = "shader")]
+    pub fn shaders(mut self, table: &'static [crate::shader::ShaderDesc]) -> Self {
+        self.shaders = table;
+        self
+    }
+
     /// Where a window built with the `agent` feature serves its endpoint
     /// **by default**: `LUMEN_AGENT_ADDR` in the environment overrides it,
     /// read by the window alone (M48/T48.11). An application does not read
@@ -680,7 +709,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// rendered from** — the same function, so a `--shot` compares the
     /// frame the window draws (`docs/plan-program.md` rule 2).
     ///
-    /// Boots the application, sets the palette, installs the sheet and
+    /// Boots the application, sets the palette, the fill table and the
+    /// shader table (M83/T83.4), installs the sheet and
     /// keeps its source so [`Host::adopt`] can re-ask it, and keeps the
     /// boot so `Host::reload` can rebuild through it (M49/T49.4). Jobs the boot
     /// returned are held until a spawner is installed
@@ -692,6 +722,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
         host.set_boot(Rc::clone(&self.boot));
         host.set_palette(self.palette);
         host.set_fills(self.fills);
+        #[cfg(feature = "shader")]
+        host.set_shaders(self.shaders);
         if let Some(sheet) = &self.sheet {
             host.set_sheet_source(Rc::clone(sheet));
         }

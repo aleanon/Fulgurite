@@ -934,6 +934,9 @@ pub mod hot {
         fn shaping(&self) -> lumen_static_shell::text::Shaping {
             self.s().shaping()
         }
+        fn shaders(&self) -> lumen_static_shell::shader::ShaderTable<'_> {
+            self.s().shaders()
+        }
     }
 }
 

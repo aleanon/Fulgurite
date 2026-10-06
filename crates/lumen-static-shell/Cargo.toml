@@ -146,9 +146,9 @@ threads = []
 # on; a shipped build never does.
 raster-counters = []
 # M83/T83.3 (owner decision D3; docs/plan-gpu-extension.md): the shell's
-# side of custom shaders. Turns the core's on; T83.4 puts `ShaderDesc`, the
-# `ShaderTable` contents, `Program::shaders` and `Host::set_shaders` behind
-# it. The `Cmd::Shader` arms in this crate are `cfg(lumen_shader)` (from
+# side of custom shaders. Turns the core's on; since T83.4 `ShaderDesc`, the
+# `ShaderTable` contents, `Program::shaders` and `Host::set_shaders` are
+# behind it (`src/shader.rs`). The `Cmd::Shader` arms in this crate are `cfg(lumen_shader)` (from
 # `build.rs`), never this feature: the core's can be on while this is off.
 shader = ["lumen-static/shader"]
 
@@ -253,3 +253,9 @@ required-features = ["vector-text"]
 [[test]]
 name = "shader_software"
 required-features = ["shader"]
+
+# M83/T83.4: `Program::shaders` reaches `Program::host()` and
+# `Session::shaders`; a session needs `truetype`.
+[[test]]
+name = "shader_table"
+required-features = ["shader", "truetype"]

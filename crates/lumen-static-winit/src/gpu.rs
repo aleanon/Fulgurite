@@ -26,6 +26,15 @@ pub struct GpuBackend {
     /// masks take (M82/T82.6, `docs/plan-paint-vocabulary.md`), once per
     /// window; `just gpu-parity`'s PaintBox leg reads it.
     masks_logged: bool,
+    /// The program's shader table as last handed over
+    /// (`Backend::set_shaders`, M83/T83.4) — `(name, wgsl, uniform_size)`,
+    /// **copied into owned strings**: a `ShaderDesc`'s `&'static str`
+    /// points into whichever build registered it, a hot library included,
+    /// so keeping the descs would keep a borrow past the call. Held, not
+    /// compiled, until T83.5 gives `Gpu` its shader pass; until then every
+    /// bracket draws its fallback, as the software canvas does.
+    #[cfg(feature = "shader")]
+    shaders: Vec<(String, String, u16)>,
 }
 
 impl GpuBackend {
@@ -44,11 +53,25 @@ impl GpuBackend {
             gpu.set_font(f);
         }
         let name = format!("gpu ({})", gpu.adapter());
-        Some(GpuBackend { gpu, name, masks_logged: false })
+        Some(GpuBackend {
+            gpu,
+            name,
+            masks_logged: false,
+            #[cfg(feature = "shader")]
+            shaders: Vec::new(),
+        })
     }
 
     pub fn gpu_mut(&mut self) -> &mut Gpu {
         &mut self.gpu
+    }
+
+    /// The shader table this backend holds — M83/T83.4: what the last
+    /// `Backend::set_shaders` copied, as `(name, wgsl, uniform_size)` in
+    /// `ShaderId` order.
+    #[cfg(feature = "shader")]
+    pub fn shaders(&self) -> &[(String, String, u16)] {
+        &self.shaders
     }
 }
 
@@ -64,6 +87,22 @@ impl Backend for GpuBackend {
     fn set_font(&mut self, font: FontStack) {
         // `Gpu::set_font` resets the glyph atlas: ids are per stack.
         self.gpu.set_font(font);
+    }
+
+    /// **Stores the table and refuses nothing** — M83/T83.4. Nothing is
+    /// compiled until T83.5; a bracket draws its fallback meanwhile, so
+    /// there is nothing to refuse. Without this crate's `shader` there is
+    /// no table to keep.
+    fn set_shaders(&mut self, table: lumen_static_shell::shader::ShaderTable<'_>) -> usize {
+        #[cfg(feature = "shader")]
+        {
+            self.shaders.clear();
+            let owned = table.descs().iter().map(|d| (d.name().to_owned(), d.wgsl().to_owned(), d.uniform_size()));
+            self.shaders.extend(owned);
+        }
+        #[cfg(not(feature = "shader"))]
+        let _ = table;
+        0
     }
 
     fn resize(&mut self, width: u32, height: u32) -> bool {

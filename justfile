@@ -119,6 +119,9 @@ dev-shape:
     cargo test -q -p lumen-static-shell --features shader --test shader_software --test contrast_commands --test svg --test clip_test
     cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate
     n=$(cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate -- --list 2>/dev/null | grep -c '^shader::'); echo "alloc_gate: $n shader arms (bound >= 1)"; [ "$n" -ge 1 ]
+    # M83/T83.4: `Program::shaders` reaches `Program::host()` and
+    # `Session::shaders`.
+    cargo test -q -p lumen-static-shell --features truetype,shader --test shader_table
     # M83/T83.3 (owner decision D3): every `match` over `Cmd` compiler-checked
     # with the shader variants absent and present. wgpu is included: a check
     # needs no adapter. The arms outside the core are `cfg(lumen_shader)`,
@@ -127,6 +130,10 @@ dev-shape:
     cargo check -q --workspace --all-targets --features lumen-static/shader
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
     cargo clippy --workspace --all-targets --exclude lumen-static-wgpu --features lumen-static/shader -- -D warnings
+    # M83/T83.4: the shell's and the window's own `shader` (the table's
+    # contents, `Program::shaders`, `Host::set_shaders`), which neither line
+    # above turns on.
+    cargo clippy -q -p lumen-static-shell -p lumen-static-winit --all-targets --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader -- -D warnings
     # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
     # backend through `Program::backend_with`), linted with the feature on.
     cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
@@ -141,8 +148,11 @@ dev-shape:
     # item from `a11y` code resolves there and fails for the feature alone.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps --features a11y
     # M83/T83.3: `shader` adds public items (`ShaderId`, `Painter::shader`);
-    # T83.4 and T83.6 add the shell's and the widgets' to this line.
+    # T83.4 adds the shell's (`ShaderDesc`, `Program::shaders`, the table's
+    # contents) and the window's (the `ShaderDesc` re-export), with
+    # `truetype` so `Session::shaders` is documented; T83.6 adds the widgets'.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static -p lumen-static-shell --no-deps --features lumen-static/shader,lumen-static-shell/shader
+    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-shell -p lumen-static-winit --no-deps --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader
     # M48/T48.9: the core's `observe` without the widgets' must not
     # build, and the matched build must. Compiles, so not in `static`.
     ./scripts/check_feature_seam.sh
@@ -426,6 +436,9 @@ gpu:
     # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
     cargo clippy -p lumen-static-wgpu --all-targets --features lumen-static/shader -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
+    # M83/T83.4: `GpuBackend::set_shaders` keeps its owned copy under the
+    # window crate's `shader`, which only a GPU build compiles.
+    cargo clippy -p lumen-static-winit --features gpu,shader --all-targets -- -D warnings
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
 # bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the

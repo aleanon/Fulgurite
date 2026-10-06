@@ -483,6 +483,16 @@ factory is ignored and changing it needs a restart. The closure is loader
 code and never a pointer into a dylib, so rule 3 (below) does not apply
 (`docs/plan-gpu-extension.md`, "Not reloadable").
 
+**DECIDED 2026-10-06 (M83/T83.4): shaders are re-sent on every swap and
+resume.** A program's shader table (`Program::shaders`) is host-side data:
+`Program::host()` installs it (`Host::set_shaders`), the window asks the
+session for it (`Session::shaders`, required, so `Hot` forwards it or does
+not compile) and hands it to every backend `resumed` makes and again after
+every successful swap (`Backend::set_shaders`, required). The table
+borrows the session for that call only; a backend copies what it keeps, so
+no pointer into a swapped-out library survives (`docs/plan-gpu-extension.md`,
+"Shaders are data"; the gates are `docs/results-shader.md` T83.4).
+
 ### The model
 
 Throw away the tree, rebuild from the new code, graft old *values* back on.
