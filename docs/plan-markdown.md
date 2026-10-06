@@ -595,6 +595,13 @@ Appendix rows for the assembler:
   assumed — it is white when the entry runs first and `(226, 232, 240)`
   after `Markdown`'s quote action leaves the window on `light`.
 
+- **T87.5 — recorded, as predicted.** No pinned face list names an
+  italic face (0 entries), though `NotoSans-Italic.ttf` is on disk beside
+  the body face; and no `Painter` text method carries a face — `GlyphKey`'s
+  `face` is chosen inside the shell from the weight. The probe's output is
+  `docs/results-markdown.md` T87.5; the reopen condition is in the
+  `rich.rs` header and `book/src/gaps.md`.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =

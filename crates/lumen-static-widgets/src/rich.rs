@@ -38,6 +38,12 @@
 //! stack's rather than this widget's — a slant belongs beside
 //! `FontStack`, next to the weight axis it would join.
 //!
+//! M87/T87.5 probed it again and recorded (`docs/results-markdown.md`,
+//! T87.5): the shell's pinned face lists name no italic face, and no
+//! `Painter` method carries a face — the shaped run's `GlyphKey::face`
+//! (M81) is chosen inside the shell from the weight. **It reopens when M81
+//! (or a successor) exposes a per-run face to `Painter`.**
+//!
 //! Headings, `**bold**`, `` `code` ``, bullets, paragraphs, and since
 //! M87 blockquotes, `[links](target)` and `![images](name)`, are the
 //! subset, which is what a UI actually renders: labels, emphasis, an

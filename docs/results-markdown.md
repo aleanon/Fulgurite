@@ -222,3 +222,19 @@ alt, is 96 × 96 at `[476.5, 401.3, 572.5, 497.3]`, and **2,530 of 8,836 px
 (28.6%)** of it are off the page fill read beside it (bound ≥ 5%; 28.0% at
 scale 2). With the `Painter::image` call skipped: **0 px (0.0%)** on every
 leg. The link action, the keyboard pass and the a11y sweep are unchanged.
+
+## T87.5 — the italic probe: recorded, not built
+
+The plan's two questions, each answered from the tree at `538d4dc` on
+this machine (2026-10-06). **Both must be yes to build; neither is.**
+
+| question | probe | answer |
+|---|---|---|
+| does the pinned fallback list find an italic face for the body face? | `lumen-static-shell/src/text.rs`'s `CANDIDATES` (regular, bold pairs) and `FALLBACKS`, grepped for `Italic\|Oblique` | **0 entries**. The body face is `NotoSans-Regular.ttf`; `NotoSans-Italic.ttf` and `DejaVuSans-Oblique.ttf` are on disk, and **no list names them**, so a `FontStack` can never load one |
+| does M81 give a widget's paint a per-run face? | `Painter`'s text methods in `lumen-static/src/display.rs`; `GlyphKey::face` in `lumen-static/src/text.rs`; `FontStack::face` | **absent**. `text`, `text_weighted` and `text_spaced` take size, weight, line height and colour, no face; `GlyphKey::face` is "0 regular, 1 bold, 2 + k fallback k", chosen inside the shell by `FontStack::face(weight)`; no file under `lumen-static-widgets/src` names `GlyphKey` |
+
+So `*` stays plain text, the `rich.rs` header and `book/src/gaps.md` keep
+the gap, and both now carry the reopen condition: **M81 (or a successor)
+exposes a per-run face to `Painter`**. Finding an italic file is the easy
+half — this machine has two — and choosing it per span is the half no
+milestone builds. No gate is owed (the plan's gate is the build's).

@@ -47,7 +47,8 @@ application's handler with the link's index — and images, `![alt](name)`
 naming an `ImageRef` the application binds, drawn as a block
 (`docs/plan-markdown.md`).
 But a span's only typographic axis is weight, so Markdown has no italic
-and says why. A span is a word: it never wraps inside itself.
+and says why; M87/T87.5's probe recorded that again, and it reopens when
+M81 exposes a per-run face to `Painter` (`docs/results-markdown.md`). A span is a word: it never wraps inside itself.
 
 **Most of vector drawing.** Paths shipped in M82/T82.5: `Painter::path`
 fills and strokes moves, lines and quadratic and cubic Béziers under a
