@@ -111,6 +111,30 @@ input state rather than a per-node flag — there is one focus, and storing the 
 would have grown `NodeState` for every node of every tree to say
 something about one of them.
 
+## Entering and leaving the view
+
+A node whose table entry carries `NodeDesc::WATCHES_VIEW` is told when it
+comes into view and when it leaves (M85/T85.3). The host lists those
+nodes once, when it is built, and after every `place` asks of each one
+whether its rect meets the window **and** every ancestor that clips its
+children — a scroller's content below the fold is in the window and out
+of the scroller, and only the second question says so. A change is
+delivered on the next pump: `Event::Visibility { visible }` to the node
+and its ancestors, then the node's own handler, asked with
+`NodeSel::visibility(i)`. That is a sentinel no activation sends, so a
+click cannot reach a visibility handler:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/pop_visibility.rs:visibility_handler}}
+```
+
+While a change waits, `next_deadline_ms()` answers `Some(0.0)`, so a
+window that sleeps until its next deadline wakes for the pump that
+delivers it, and the handler's write is drawn one frame after the frame
+that placed the node in view. It is a host pass and not a per-node tick:
+a tree that watches nothing pays one empty-slice check per frame. The
+gates and their numbers are in `docs/results-layout-input.md` (T85.3).
+
 ## Where this runs
 
 Step 1 of [the frame](./frame.md): the queue is drained before anything

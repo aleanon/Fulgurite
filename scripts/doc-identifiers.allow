@@ -142,7 +142,6 @@ RunId                          # proposed by M83
 AnimatedImage                  # decided against by M84 (an animated image is an `Image` whose frame moves; M84/T84.3 built none), and the plan says so by name
 CullTo                         # proposed by M85
 INKS_OUTSIDE                   # proposed by M85
-WATCHES_VIEW                   # proposed by M85
 MIX_LEVELS                     # proposed by M86
 ImageRef                       # proposed by M87
 KEYS                           # proposed by M87

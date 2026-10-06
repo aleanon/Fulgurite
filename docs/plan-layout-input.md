@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0, T85.1 and T85.2 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
+> the end). T85.0–T85.3 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -577,6 +577,24 @@ that adds a `Session` method…" does not touch M85: none is added.
   plan predicted the fill would read 150; run first, the fills divide all
   of `free` among their own portions, so `[Flexible 80, FILL]` reads
   80/300. The gate fires by name either way.
+- **T85.2: the past-the-edge hit gate needs a negative offset.** A child
+  is laid out inside the pin's box less its offset, so a positive offset
+  can never put it past the pin's right or bottom edge; the gate pins its
+  child at `(-30, 20)`, the one way a child leaves the box it is laid out
+  in, and the pin's own `hit` is what keeps that part unpressable.
+- **T85.3: the adopted application hears `true` after two pumps, not
+  one.** The Decisions deliver a change on the pump *after* the `place`
+  that found it, and an adopted application has been placed by nobody:
+  its first pump places it and queues `true`, and the pump its deadline
+  asks for delivers it. The gate reads 0 → 0 → 1 and bounds the count at
+  2; "0 → 1 after one pump" contradicted the one-frame-later rule.
+- **T85.3: the A11 gate's label has to be in a container of its own.**
+  Written with the readout label as a bare leaf beside the scroller, the
+  `ScrollEnd`-style marking injection left it green: the derive's skip is
+  per container, a leaf is laid out whenever its parent is, and the root
+  is dirty whenever the watched leaf below it is marked. The label now
+  sits in a row of its own, which `Boundaries` skips, and the injection
+  goes red with damage `None` (`docs/results-layout-input.md` T85.3).
 
 **What the review found (M85).**
 

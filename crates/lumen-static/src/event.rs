@@ -312,6 +312,19 @@ pub enum Event {
     /// as a test (E0). `node` is a main-table index; `Event` stays 16 B
     /// (`tests/modifiers.rs`).
     Action { node: u32, action: Action },
+    /// **This node entered or left the view** — M85/T85.3.
+    ///
+    /// Sent by the host to a node whose table entry carries
+    /// [`NodeDesc::WATCHES_VIEW`](crate::desc::NodeDesc::WATCHES_VIEW),
+    /// on the pump after the `place` that changed its answer: offered to
+    /// the node and its ancestors like [`Event::ScrollEnd`], then handed
+    /// to the node's own handler, asked with [`NodeSel::visibility`], as
+    /// `ctx.event`. A node in view on the first frame hears `true`; one
+    /// never shown hears nothing. **A host pass, not a per-node tick**:
+    /// the host walks only the flagged nodes it listed at construction,
+    /// so a tree with none pays nothing per node. Never enqueued by a
+    /// host's input path. `Event` stays 16 B (`tests/modifiers.rs`).
+    Visibility { visible: bool },
 }
 
 /// What an assistive technology asked a node to do — M54/T54.4.
@@ -390,7 +403,8 @@ impl Event {
             | Event::Focus { .. }
             | Event::Leave
             | Event::ScrollEnd
-            | Event::Linger => None,
+            | Event::Linger
+            | Event::Visibility { .. } => None,
         }
     }
 }
@@ -842,6 +856,27 @@ impl NodeSel {
     /// Whether this selection is [`NodeSel::dismissed`]'s question.
     pub const fn is_dismissal(&self) -> bool {
         matches!(self.inner, Some(Self::DISMISSED))
+    }
+
+    /// The `inner` a visibility query carries — another row no repeater
+    /// can have.
+    const VISIBILITY: (u64, u32) = (u64::MAX, u32::MAX - 1);
+
+    /// **"This node entered or left the view — who handles that?"** —
+    /// M85/T85.3, [`NodeSel::dismissed`]'s pattern.
+    ///
+    /// Asked by `pass::tell_visibility` after the host delivered
+    /// [`Event::Visibility`], with a sentinel `inner` that no activation
+    /// sends — activation passes `inner` only at the node it hit, and a
+    /// real row is never `u64::MAX` — so a click on a node cannot run its
+    /// visibility handler, and that handler never answers a click.
+    pub const fn visibility(node: usize) -> NodeSel {
+        NodeSel { i: node, inner: Some(Self::VISIBILITY) }
+    }
+
+    /// Whether this selection is [`NodeSel::visibility`]'s question.
+    pub const fn is_visibility(&self) -> bool {
+        matches!(self.inner, Some(Self::VISIBILITY))
     }
 }
 

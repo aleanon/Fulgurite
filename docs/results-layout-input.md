@@ -112,3 +112,30 @@ Gates in `crates/lumen-static-widgets/tests/pin.rs` and live.
 with no row in the table: [\"Pin\"]") with the `Pin` row removed, and
 `scripts/check_observe.sh` with its ALLOW line removed. K1 holds: two
 `f32` in the application's struct, no `Style` or `NodeState` byte.
+
+## T85.3 — the visibility pass (2026-10-06)
+
+`NodeDesc::WATCHES_VIEW`, `Event::Visibility`, `NodeSel::visibility`,
+`pass::in_view`, `pass::tell_visibility`, and `Host`'s `view_watch`,
+`view_seen` and `view_pending`. Gated with a test-only flagged leaf in
+`crates/lumen-static-shell/tests/pop_visibility.rs` (the T85.0 setup:
+100 px viewport, 300 px window, 20 px wheel steps), both strategies
+unless named.
+
+| gate | prints | injection (red) |
+|---|---|---|
+| in and out | wheel down 15 steps, up 15, each handled; `true` **1**, `false` **1** (bound 1 / 1); the leaf heard `[true, false]`; counter 0 → **1** | — |
+| arrival step (G18) | first inside the window and outside the viewport **3**; first in the viewport **13**; `true` at **13**. On the way up, first out of the viewport **3**, `false` at **3** | intersect with the window only (skip the clipping ancestors in `pass::in_view`): `true` at **3**, "`true` did not arrive at the first step whose rect meets the viewport (inside-window-outside-viewport step Some(3))" |
+| deadline (G17) | each step with a change pending: deadline `Some(0.0)`; otherwise the wheel's scroll-end timer, `Some(150.0)` | drop `next_deadline_with`'s term: "step 13: 1 change(s) pending and the deadline is Some(150.0)" |
+| one frame, modelled loop (pumps only while due) | frames from placement to the write: **1** (bound 1), readout `"seen 1"` | the same injection with the deadline assertion skipped: **0** frames in the modelled loop, the write a wheel later (step 14), fails by name |
+| still | 50 still frames delivered **0** (bound 0) | — |
+| a click on the leaf | hit node **4** (the leaf), handled, clicks **1**, visibility handler runs 1 → **1** (bound unchanged) | a `Handlers` impl that ignores `sel`: runs 1 → **2**, "a click ran the visibility handler" |
+| unsplit, `Boundaries<256>` vs `Everything` (A11) | at step 13 the readout reads `"seen 1"` in both; the frame hashes equal at every step (Everything's moved at 13); damage two regions, the label `[0, 100, 48, 116]` and the label after it | mark the delivery as `ScrollEnd` does (consumed subtrees only): Boundaries' hash unchanged, damage `None`, "step 13: the label written by the visibility handler is stale under Boundaries" |
+| split application (accept) | the delivering frame marked `Marks { all: false, ranges: 1 }`; `true` 1 | — |
+| `Host::adopt` with the leaf in view (X8) | the fresh application's count 0 → 0 after one pump → **1** after **2** (the pump that places it, then the one its deadline asks for; bound 2) | leave `view_seen` untouched in `reasked`: 0 after 1, "the adopted application never heard `true` from a leaf in view" |
+| `size_of::<Event>()` (K1) | **16** (bound 16) | — |
+| a tree with no flagged node (accept) | `watched_views()` **0** (bound 0); every golden byte-identical (`just test`) | — |
+| firmware, `just firmware-delta ad18045` (K4) and against `a21135b` (K85d) | `firmware_interactive` **−4** (`pass::dispatch` −6, its `Event` match), the other three +0, `.rodata` +0; K85d cumulative **+432** of 1,024 | — |
+
+K1 holds: `Event` 16 B, no `Style` or `NodeState` byte; the host's heap
+is 4 B per watched node plus a `bool`. K4 and K85d hold.

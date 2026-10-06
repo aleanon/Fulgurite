@@ -1043,14 +1043,21 @@ default) and `just firmware-delta a21135b firmware_interactive=1024`
 (K85d), with `firmware_interactive` at **18,004 B** of headroom; the
 spellings that did not fit are in `docs/plan-layout-input.md`, "What
 building found".
+M85/T85.2 (`Pin`) changed no linked code (Δ 0 on all four). M85/T85.3
+(`Event::Visibility`, `NodeDesc::WATCHES_VIEW` and the host's visibility
+pass, which no firmware links) moves `firmware_interactive` by **−4 B**:
+by a symbol diff, `pass::dispatch` **−6**, its `Event` match recompiled
+around the new variant, and alignment; the other three +0, `.rodata` +0
+(`just firmware-delta ad18045`). K85d's cumulative is **+432** of 1,024
+against `a21135b`.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 31,090 | 38.0% | 50,830 | 13,344 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 |
-| `firmware_interactive` | **63,916** | **78.0%** | **18,004** | 21,886 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** |
-| `firmware_bind` | 34,450 | 42.1% | 47,470 | 13,948 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 |
-| `firmware_cascade` | 33,178 | 40.5% | 48,742 | 14,132 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,090 | 38.0% | 50,830 | 13,344 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 |
+| `firmware_interactive` | **63,912** | **78.0%** | **18,008** | 21,886 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** |
+| `firmware_bind` | 34,450 | 42.1% | 47,470 | 13,948 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 |
+| `firmware_cascade` | 33,178 | 40.5% | 48,742 | 14,132 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

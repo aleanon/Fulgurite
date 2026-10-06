@@ -485,6 +485,12 @@ report is `Host::invalidate`. A marked repeater lays its rows out under
 `Changed::ALL`, since a row's indices are its arena's, not the main
 table's (`docs/plan-boundaries-repair.md` §2.3, §6).
 
+**A repeater's rows are not watched for visibility** (M85/T85.3, §12
+item 12): the host's pass lists table nodes carrying
+`NodeDesc::WATCHES_VIEW`, and arena rows are not in the table. Inside a
+repeater the signal is its window range, `first_row()..first_row() +
+window_len()`.
+
 ---
 
 ## 7. Hot reload
@@ -1519,3 +1525,22 @@ remains** — which is why §10 Step 1 is the kill criterion.
    is drawn and what is pressable agree. Over another widget is a
    `stack` holding a `Pin` (`crates/lumen-static-widgets/tests/pin.rs`;
    numbers in `docs/results-layout-input.md` T85.2).
+
+12. **How does a node learn it scrolled into view?** iced's `sensor`
+   reports a widget appearing; the first draft had `place()` deliver to
+   itself, but `place` has no clip, no context and no application, and a
+   per-node `Node::tick` would charge every node of every tree.
+   **DECIDED 2026-10-06 (M85/T85.3): a host pass over flagged nodes.**
+   `NodeDesc::WATCHES_VIEW` marks a node; `Host` lists them once at
+   construction and, after `place` (a whole-tree walk under every
+   strategy), decides each against the window and every
+   `clips_children()` ancestor (`pass::in_view`). A change is delivered on
+   the next pump as `Event::Visibility`, then to the node's handler asked
+   with `NodeSel::visibility` — the sentinel path `NodeSel::dismissed`
+   uses, so no click can reach it — and `next_deadline_ms` answers
+   `Some(0.0)` while one waits. A handler that ran is marked as a click
+   is; `adopt` forgets last frame's visibility. `Event` stays 16 B; a
+   tree with no flagged node pays one empty-slice check per frame
+   (`crates/lumen-static-shell/tests/pop_visibility.rs`; numbers in
+   `docs/results-layout-input.md` T85.3). Arena rows are not table nodes
+   and are not watched (§6, Repeaters).

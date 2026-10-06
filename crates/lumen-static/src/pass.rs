@@ -1531,10 +1531,83 @@ fn tell_owner<S: crate::event::App>(
 /// Both of the last two are needed: `visible` catches a styled-away
 /// node, and area catches one hidden by `layout` zeroing its subtree,
 /// which is how `Option`, `Either` and a hidden subtree express absence.
-/// One function, so focus (C5) and capture (M44/T44.3) cannot disagree
-/// about what "gone" means.
-fn gone(len: usize, style: &[Style], st: &[NodeState], i: usize) -> bool {
+/// One function, so focus (C5), capture (M44/T44.3) and the host's
+/// visibility pass (M85/T85.3, [`in_view`]) cannot disagree about what
+/// "gone" means.
+pub fn gone(len: usize, style: &[Style], st: &[NodeState], i: usize) -> bool {
     i >= len || !style[i].visible || st[i].size.w <= 0.0 || st[i].size.h <= 0.0
+}
+
+/// **Whether node `i` is in view** — M85/T85.3, the host's visibility
+/// pass.
+///
+/// Not [`gone`], and its rect, intersected with `window` and with the
+/// rect of **every ancestor answering
+/// [`Node::clips_children`]**, has
+/// positive area. The ancestors come from the table's `parent` chain:
+/// one virtual call per ancestor. A scroller's content below its fold is
+/// inside the window and outside the scroller, and only the second
+/// intersection says so — which is why the window alone is not the test
+/// (`crates/lumen-static-shell/tests/pop_visibility.rs`).
+///
+/// Read after `place`, which is a whole-tree walk under every strategy,
+/// so the positions are this frame's.
+pub fn in_view<W: Node + ?Sized>(
+    tree: &W,
+    table: &[crate::desc::NodeDesc],
+    style: &[Style],
+    st: &[NodeState],
+    i: usize,
+    window: crate::display::Rect,
+) -> bool {
+    if gone(table.len(), style, st, i) {
+        return false;
+    }
+    let s = &st[i];
+    let mut r = [s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h];
+    let meet = |r: &mut crate::display::Rect, o: crate::display::Rect| {
+        r[0] = r[0].max(o[0]);
+        r[1] = r[1].max(o[1]);
+        r[2] = r[2].min(o[2]);
+        r[3] = r[3].min(o[3]);
+    };
+    meet(&mut r, window);
+    let mut a = table[i].parent;
+    while a != crate::desc::NO_PARENT {
+        let k = a as usize;
+        if tree.node(k).clips_children() {
+            let p = &st[k];
+            meet(&mut r, [p.pos.x, p.pos.y, p.pos.x + p.size.w, p.pos.y + p.size.h]);
+        }
+        a = table[k].parent;
+    }
+    r[2] > r[0] && r[3] > r[1]
+}
+
+/// **Run a node's visibility handler** — M85/T85.3.
+///
+/// After the host has offered [`Event::Visibility`](crate::event::Event::Visibility)
+/// to `node` through [`deliver`], this asks the tree for the handler
+/// [`NodeSel::visibility`](crate::event::NodeSel::visibility) names —
+/// the sentinel-`inner` path [`NodeSel::dismissed`](crate::event::NodeSel::dismissed)
+/// uses, so no activation can reach it — and runs it with the event as
+/// `ctx.event`. Answers whether a handler ran, which is what the host
+/// marks by (a handler may write any widget of an unsplit application).
+pub fn tell_visibility<S: crate::event::App>(
+    state: &mut S,
+    node: u32,
+    visible: bool,
+    mods: crate::event::Mods,
+) -> bool {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    if node as usize >= table.len() {
+        return false;
+    }
+    let sel = crate::event::NodeSel::visibility(node as usize);
+    let Some(h) = crate::event::Handlers::handler(state.tree(), sel) else { return false };
+    let ctx = crate::event::EventCtx::for_event_with(node, crate::event::Event::Visibility { visible }, mods);
+    h(state.state_mut(), &ctx);
+    true
 }
 
 /// The focusable node after `from` in declaration order, wrapping.

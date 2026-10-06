@@ -65,6 +65,17 @@ impl NodeDesc {
     /// by position in the *unfiltered* list (a combobox filtered to
     /// Apple, apricot chose Banana).
     pub const KEEPS_FOCUS: u8 = 1 << 3;
+    /// **Tell this node when it enters or leaves the view** — M85/T85.3.
+    ///
+    /// A host scans its table once, at construction, for nodes carrying
+    /// this bit, and after every `place` decides whether each one is in
+    /// view: not gone, and its rect meets the window and every ancestor
+    /// that answers `Node::clips_children`. A change is delivered on the
+    /// next pump as [`crate::event::Event::Visibility`], then to the
+    /// node's handler asked with [`crate::event::NodeSel::visibility`].
+    /// A table with no node carrying it costs one empty-slice check per
+    /// frame (`docs/plan-layout-input.md`, Decisions).
+    pub const WATCHES_VIEW: u8 = 1 << 4;
 
     /// Placeholder for const table construction; every slot is overwritten.
     pub const EMPTY: NodeDesc = NodeDesc::new(0, NO_PARENT, 0, 0, 0);

@@ -210,6 +210,22 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// The node the pointer is resting on, and how long until that counts
     /// as hover intent — M57/B35 (`Event::Linger`).
     linger: Option<(u32, f32)>,
+    /// The nodes whose table entry carries `NodeDesc::WATCHES_VIEW` —
+    /// M85/T85.3, scanned from `SUB_TABLE` once, in [`Host::new`]. Empty
+    /// for a tree with no such node, which then pays one empty-slice
+    /// check per frame and nothing per node.
+    view_watch: Vec<u32>,
+    /// Whether each of `view_watch`'s nodes was in view at the
+    /// last `place`, by position in that list. Starts `false`, so a node
+    /// in view on the first frame hears `true` and one never shown hears
+    /// nothing.
+    view_seen: Vec<bool>,
+    /// Visibility changes the last `place` found and the next pump
+    /// delivers, as `(node, visible)` — data, no `fn` pointer, so nothing
+    /// here outlives a swap. While it is non-empty
+    /// [`Host::next_deadline_ms`] answers `Some(0.0)`, which is what asks
+    /// a waiting window for that pump.
+    view_pending: Vec<(u32, bool)>,
     /// Where deferred work runs — M28/T28.3.
     ///
     /// `dyn` at the shell, which `docs/plan-agent-parity.md`'s appendix
@@ -790,6 +806,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
         self.invalidation.mark_all();
         self.arenas_dirty = true;
+        // **Last frame's visibility describes the old application**
+        // (M85/T85.3, X8): forget it, so the adopted one hears `true`
+        // from each watched node already in view on its first frame.
+        self.view_seen.iter_mut().for_each(|s| *s = false);
+        self.view_pending.clear();
     }
 
     /// Graft saved `#[reload(keep)]` state onto the application this host
@@ -842,6 +863,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     pub fn new(app: A, width: u32, height: u32) -> Self {
         let n = <A::Tree as Widget>::NODE_COUNT;
         let styles = pass::default_styles(app.tree());
+        // M85/T85.3: the watched nodes, once. A `const` table, so this is
+        // the whole cost of the pass for a tree that watches nothing.
+        let view_watch: Vec<u32> = <A::Tree as Widget>::SUB_TABLE
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.flags & lumen_static::desc::NodeDesc::WATCHES_VIEW != 0)
+            .map(|(i, _)| i as u32)
+            .collect();
+        let view_seen = vec![false; view_watch.len()];
         Host {
             app,
             inbox: lumen_static::inbox::Inbox::new(),
@@ -850,6 +880,9 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             focus_owed: false,
             scroll_end: None,
             linger: None,
+            view_watch,
+            view_seen,
+            view_pending: Vec::new(),
             spawner: None,
             ledger: lumen_static::spawn::Ledger::new(),
             timer_coalesced: 0,
@@ -1873,6 +1906,36 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             }
         }
 
+        // **Visibility the last `place` found** — M85/T85.3. Offered to
+        // each node as `Event::Visibility` (it records it and consumes),
+        // then its own handler, asked with `NodeSel::visibility`, runs.
+        // Before `update_marked`, as a handler's write is. **A delivery
+        // that ran a handler is marked as a click is** (`mark_handled`
+        // below, through `handled`): the handler of an unsplit
+        // application may write any widget, so it marks the whole tree,
+        // and a split one marks what consumed it. Marked only where it
+        // was consumed — `ScrollEnd`'s rule — when no handler ran.
+        if !self.view_pending.is_empty() {
+            let table = <A::Tree as Widget>::SUB_TABLE;
+            for (node, visible) in core::mem::take(&mut self.view_pending) {
+                let took_before = consumed.nodes().len();
+                let took = pass::deliver(
+                    &mut self.app,
+                    node,
+                    Event::Visibility { visible },
+                    self.input.mods,
+                    &mut consumed,
+                );
+                if pass::tell_visibility(&mut self.app, node, visible, self.input.mods) {
+                    handled = true;
+                } else if took {
+                    for &k in &consumed.nodes()[took_before..] {
+                        self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                    }
+                }
+            }
+        }
+
         // **A cancel the application asked for** — M28/T28.12.
         //
         // Before the drains, so a result that arrived this frame from a
@@ -2154,6 +2217,21 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             self.passes.places += 1;
             tree.place(Point::default(), &self.styles, &mut self.states, 0);
             self.last_place_ns = t1.elapsed().as_nanos() as u64;
+            // **Which watched nodes are in view** — M85/T85.3. Here,
+            // because `place` is a whole-tree walk under every strategy,
+            // so positions are fresh under `Boundaries` too. A change is
+            // queued for the next pump, which `next_deadline_ms` asks for.
+            if !self.view_watch.is_empty() {
+                let table = <A::Tree as Widget>::SUB_TABLE;
+                let window = [0.0, 0.0, limits.max_w, limits.max_h];
+                for (k, &node) in self.view_watch.iter().enumerate() {
+                    let now = pass::in_view(&*tree, table, &self.styles, &self.states, node as usize, window);
+                    if now != self.view_seen[k] {
+                        self.view_seen[k] = now;
+                        self.view_pending.push((node, now));
+                    }
+                }
+            }
             // M55/T55.5's net: a length that did not come through the
             // cascade's repair stops a debug build here, by node.
             lumen_static::pass::debug_assert_finite(&self.states);
@@ -2271,6 +2349,20 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.stages.paint = self.last_paint_ns;
         self.stages.pump = t_pump.elapsed().as_nanos() as u64;
         handled
+    }
+
+    /// How many nodes this host watches for visibility — M85/T85.3: the
+    /// nodes whose table entry carries `NodeDesc::WATCHES_VIEW`, listed
+    /// once at construction. `0` for a tree that watches nothing.
+    pub fn watched_views(&self) -> usize {
+        self.view_watch.len()
+    }
+
+    /// How many visibility changes wait for the next pump — M85/T85.3.
+    /// While this is non-zero [`Host::next_deadline_ms`] answers
+    /// `Some(0.0)`.
+    pub fn views_pending(&self) -> usize {
+        self.view_pending.len()
     }
 
     /// Advance animations by `dt` milliseconds; returns whether
@@ -2409,6 +2501,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             timers,
             self.scroll_end.map(|(_, l)| l.max(0.0)),
             self.linger.map(|(_, l)| l.max(0.0)),
+            // A visibility change waiting to be delivered is due now
+            // (M85/T85.3): the pump that delivers it is the frame its
+            // handler's write is drawn in.
+            (!self.view_pending.is_empty()).then_some(0.0),
             wake.filter(|w| w.is_finite()).map(|w| w.max(0.0)),
         ]
         .into_iter()
