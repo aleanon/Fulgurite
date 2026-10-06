@@ -229,6 +229,13 @@ pub trait Session: FrameSource {
     /// tick that asks whether anything is still moving — or, when a
     /// panic is being shown, the panic screen at `width × height`.
     /// Whether to draw again.
+    ///
+    /// **A daemon's windowless session is pumped through this too**
+    /// (M89/T89.6, `docs/plan-windows.md`): the window crate calls
+    /// `frame(dt, 1, 1)` at the session's deadline and on its waker, drops
+    /// the frame's damage, and presents nothing — so its timers, its
+    /// `App::wake_in_ms` and its inbox run with no window and no new
+    /// method (review A14).
     fn frame(&mut self, dt_ms: f32, width: u32, height: u32) -> bool;
     /// Whether a panic is being shown (M36).
     fn failed(&self) -> bool;

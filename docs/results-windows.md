@@ -173,3 +173,49 @@ release with `reload`; Everything and Boundaries<256> read alike; Xephyr):
 Under "answer every request from slot 0's backend" the detail's
 screenshot reads `340x440 73833b4fd5595075`, window 1's; under
 "`app.imeArea` reads slot 0's area" window 2 answers `null`, window 1's.
+
+## T89.6 — `daemon(boot)` and the windowless pump (2026-10-06)
+
+**The live gates** (`just windows-drive` phase 5, `examples/daemon`,
+release; Everything and Boundaries<256> alike; Xephyr). The launcher's
+`app.diagnostics` identity check passed with no window open in every leg.
+
+| gate | read | bound |
+|---|---|---|
+| `app.diagnostics` with no window | answered by window 0 | 0 |
+| `#ticks` on window 0, one read before and one after 3.0 s with no call that runs a frame | 25–26 ticks in 3,009–3,058 ms (want 25) | `want − 1` = 24 |
+| `app.windows` over those 3 s | [0] → [0, 1] at +1,048–1,179 ms → [0] at +2,267–2,389 ms; alive | tick 10 / tick 20 |
+| Escape on window 0 (`KeyOutcome::Quit`) | `app.windows` [0]; 1 stderr line naming `Request::Quit` | [0]; 1 |
+| `Request::Quit` at tick 40 | the port closed at about tick 39–40 (estimated from the drive's clock); exit 0 | ≥ 38 (40 less the estimate's 2); 0 |
+| no endpoint at all | ran to its own Quit, exit 0 in 4.9 s | exit 0 within 10 s |
+
+**K89d** (`just idle-count`'s daemon leg, 60 s, release, Boundaries,
+Xephyr):
+
+| leg | frames | loop-thread wakes | process context switches | bound | verdict |
+|---|---:|---:|---:|---|---|
+| `daemon --still` (no deadline) | **0** | 1 | 3 | 0 frames; wakes ≤ 2, the two reads' own | holds |
+| `daemon --steady` (120 ms deadline, 500 periods) | **500** | 501 | 503 | periods + 1 = 501 | holds |
+
+- **One frame a period**, where `examples/tasks-demo`'s 120 ms timer
+  draws two (`docs/results-frame-cost.md`, "Idle"): the daemon's timer is
+  its own deadline (`App::wake_in_ms` and `App::tick`), which needs no
+  job, so there is no second, wake-driven frame. Its loop thread wakes
+  about once a period (501), against about four for the window (2,049–2,062
+  at T89.0–T89.1).
+- **The bound is periods + 1**, not periods: an interval of 500.x periods
+  holds up to 501 deadlines. The first run, bounded at the period count,
+  read 501 against 500 and fired; the quantity was the fencepost, not a
+  second frame (`docs/plan-windows.md`, What building found).
+- **Injection** (every windowless step asks for the next at once):
+  `--still` drew 2,939,304 frames in 10 s and `--steady` 2,914,247 for 83
+  periods, and K89d fired by name on both.
+
+**The injections** (the plan's three, each on the Boundaries leg):
+
+| injection | what the drive printed |
+|---|---|
+| pump the windowless session only inside a slot's redraw | `#ticks 0 -> 0: 0 ticks after 3060 ms` — "the windowless session was never pumped" |
+| skip the drain after a windowless frame | `#ticks 0 -> 26`, `app.windows [[0]]` — "app.windows stays [0] after tick 26 … never drained" |
+| treat a windowless `wants_quit` as `Request::Quit` | (b), (c) pass; "(d) the agent's port was lost after Escape on window 0" |
+| no first windowless frame asked for (the defect found) | no-endpoint leg: still running after 10 s, killed (−15) |

@@ -115,7 +115,9 @@ caret focused and while a panic is shown; M80/T80.5), and `app.windows`
 dropped}}` — `posts` counts `Request::Post`s, M89/T89.4) and `app.close`
 (closes the window the request names; the primary's ends the process) —
 M89/T89.2. **A request's top-level `"window"` member names its window**
-by key (absent: the primary, key 1, never the focused one); a key no
+by key (absent: the primary, key 1, never the focused one — for a
+`daemon(boot)` program its windowless session, key 0, answered over a 1×1
+offscreen screen, M89/T89.6); a key no
 open window has is `-32602` naming `app.windows`, and every reply carries
 `"window": key`, the window that answered; a call whose drain opened
 windows also carries `"opened": [keys]` (M89/T89.3). `input.compose` takes `{text, commit}` or

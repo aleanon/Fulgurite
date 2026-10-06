@@ -788,7 +788,9 @@ motion-present:
 
 # M47/T47.8: the Idle section of docs/results-frame-cost.md -- frames,
 # wakes, context switches and threads of a still window and of one with a
-# 120 ms timer, over SECONDS. Needs a display (run it on a private one).
+# 120 ms timer, over SECONDS; and (M89/T89.6) examples/daemon with no
+# window, idle and ticking, judged against K89d. Needs a display (run it on
+# a private one).
 idle-count seconds="60":
     ./scripts/idle_count.sh {{ seconds }}
 
@@ -990,7 +992,8 @@ observe-inlining *args:
 # phase by phase (scripts/windows_drive.py). T89.2's phase 1 addresses
 # counter-window's one window by key under both strategies; phases 2-4 drive
 # examples/two-windows: open and close (T89.3), posts between windows (T89.4)
-# and per-window answers (T89.5). Needs a display.
+# and per-window answers (T89.5); phase 5 drives examples/daemon, a program
+# with no window (T89.6). Needs a display.
 windows-drive:
     ./scripts/windows_drive.sh
 

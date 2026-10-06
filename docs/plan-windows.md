@@ -995,3 +995,47 @@ the first review's findings of the same name.
   Its injection is checked for equality before nullness, so it fails by
   the name the plan gives it ("window 2's answer equals window 1's").
 
+- **T89.6, the windowless session is a slot.** Key 0 sits in `Win`'s
+  `Vec<WindowSlot>` with no window, renderer or adapter, rather than in a
+  field beside it, so the router, `app.windows`, the keyed waker and the
+  deadline fold (`soonest_wait`) serve it unchanged; `resumed` skips it,
+  `close_window` never closes it, and "the primary" is the slot running
+  program 0 (a daemon's windows are all table entries, so closing the last
+  ends nothing). A windowless step is taken from `about_to_wait` when it is
+  due: its deadline (`new_events`), its wake (`Wake(0)`), an answer or post
+  routed into it, and an agent call addressing it — the last two where a
+  window would ask a redraw — so an idle daemon still takes none.
+- **T89.6, nothing asked for a daemon's first frame.** A window's first
+  frame is the `request_redraw` in `open_window`; no deadline is armed
+  before a frame computes one, so a daemon with no endpoint never ticked —
+  every live gate passed, because the launcher's `app.diagnostics` is an
+  agent call and kicked it. Found by running `examples/daemon` with no
+  endpoint (still running at 8 s); `Win::new` now marks the first
+  windowless step due, and phase 5 gained a no-endpoint leg (`--stop wait`,
+  exit 0 within 10 s), red under the removed first step (killed at 10 s).
+- **T89.6, the daemon's timer is its own deadline.** A `Timers::every`
+  firing is delivered by a job, so it costs two frames a period — the
+  deadline's and the wake's (`docs/results-frame-cost.md`, "Idle") — and
+  K89d's "more than one windowless frame per period" would fire on the
+  mechanism the window crate does not choose. `examples/daemon` counts with
+  `App::wake_in_ms` and `App::tick`, one frame a period, which is what K89d
+  bounds.
+- **T89.6, K89d's two quantities, read as measured.** "Wakes more than 0
+  times" is read as the loop thread's wakes beyond the two sampling reads'
+  own: a still window reads 2 (T89.0), and a still daemon read 1. "More
+  than one frame per period" is bounded at periods + 1: an interval of
+  N.x periods holds N + 1 deadlines, and the first run, bounded at N, read
+  501 against 500 — the fencepost, not a second frame. Both are judged by
+  `scripts/idle_count.py`, which exits 1 when K89d fires.
+- **T89.6, the tick gate reads twice, as `tasks_drive.py` does.** "One
+  `ui.resolve #ticks` after 3.0 s unobserved" against `want = elapsed ÷
+  120` needs a start: the ticks count from the daemon's boot, which the
+  drive cannot see. So it reads once, waits 3.0 s while polling only
+  `app.windows` (answered by `Win`, which runs no frame), and reads again,
+  `want` being the interval's — `tasks_drive.py`'s formula exactly. Ticks
+  10 and 20 fall inside the interval, so the [0, 1] and [0] reads are the
+  deadline's alone.
+- **T89.6, `Built` and `Building` still only ask redraws.** The decision
+  that they schedule a windowless step (second review P13) is gated by
+  T89.7's daemon leg and injection (f), and lands there with the swap step
+  it serves.

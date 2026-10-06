@@ -344,6 +344,9 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// [`OpenProgram`] is.
     #[cfg(feature = "truetype")]
     windows: Option<WindowTable>,
+    /// Whether this program is a **daemon** ([`daemon`], M89/T89.6): it
+    /// opens no window of its own, and its session runs windowless.
+    windowless: bool,
     /// The application's source directory, from `application`'s caller —
     /// M36: a panic report's application frame is found under it.
     source_root: Option<&'static str>,
@@ -390,11 +393,49 @@ where
         agent: None,
         #[cfg(feature = "truetype")]
         windows: None,
+        windowless: false,
         strategy: core::marker::PhantomData,
         accessible: cfg!(feature = "a11y"),
         #[cfg(feature = "truetype")]
         shaping: crate::text::Shaping::Basic,
     }
+}
+
+/// **A program with no window of its own** — iced's `daemon`, M89/T89.6
+/// (`docs/plan-windows.md`, "A daemon is `daemon(boot)`").
+///
+/// Described exactly as [`application`] describes one — boot, title,
+/// sheet, key hook, window table — and run the same way, but the window
+/// crate opens **no** window for it: its session is the *windowless*
+/// session, key 0, and lives for the whole process. Its timers, its
+/// [`App::wake_in_ms`] deadline and its inbox still run, through
+/// `Session::frame` at a 1×1 size whose display list is never presented,
+/// pumped at the session's deadline and on its waker; and the requests it
+/// makes are drained after each of those frames, so a daemon opens and
+/// closes its table's windows with `Request::OpenWindow` and
+/// `Request::CloseWindow` and ends with `Request::Quit`.
+///
+/// - **Closing its last window does not end it**: a daemon's windows are
+///   all table entries, and only `Request::Quit` (or `app.quit`) ends the
+///   process.
+/// - **Its key hook's `KeyOutcome::Quit` closes nothing** — key 0 has no
+///   window — and is ignored with one line on stderr naming
+///   `Request::Quit` (second review A21).
+/// - The agent addresses it as window 0, the default for a daemon, through
+///   a 1×1 offscreen screen: `ui.resolve`, `ui.getTree` and
+///   `app.diagnostics` answer with no window open.
+/// - Size, page and renderer settings describe a window it does not have,
+///   and are ignored.
+#[track_caller]
+pub fn daemon<A, F, C>(boot: F) -> Program<A>
+where
+    A: App,
+    F: Fn() -> C + 'static,
+    C: IntoBoot<A>,
+{
+    let mut p = application(boot);
+    p.windowless = true;
+    p
 }
 
 impl<A: App, I: Invalidation> Program<A, I> {
@@ -427,6 +468,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             agent: self.agent,
             #[cfg(feature = "truetype")]
             windows: self.windows,
+            windowless: self.windowless,
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
             accessible: self.accessible,
@@ -751,6 +793,13 @@ impl<A: App, I: Invalidation> Program<A, I> {
     #[cfg(feature = "truetype")]
     pub fn window_table(&self) -> Option<WindowTable> {
         self.windows
+    }
+
+    /// Whether this program is a daemon ([`daemon`], M89/T89.6): the
+    /// window crate runs its session windowless, as key 0, and opens no
+    /// window for it.
+    pub fn is_daemon(&self) -> bool {
+        self.windowless
     }
 
     /// The application's source directory as the compiler spelled it

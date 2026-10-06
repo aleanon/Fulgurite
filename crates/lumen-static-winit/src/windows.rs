@@ -37,6 +37,12 @@
 //! a closed window's slot is removed. Closing the primary (key 1) of a
 //! program that is not a daemon ends the process (`docs/plan-windows.md`,
 //! "Closing a window and quitting are different").
+//!
+//! **A daemon's slot 0 is windowless** (M89/T89.6): `daemon(boot)` opens
+//! no window, so its session sits in a slot with key [`WINDOWLESS`] and no
+//! window, renderer or adapter, pumped by its deadline and its waker rather
+//! than by redraws; its table's windows take keys from 1, and closing the
+//! last of them ends nothing.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -50,6 +56,13 @@ use crate::{translate, Backend, Cursor};
 
 /// The primary window's key: the program's own window (program 0).
 pub const PRIMARY: u32 = 1;
+
+/// The key of a daemon's **windowless session** (M89/T89.6): program 0
+/// of a `daemon(boot)` program, which opens no window. Its slot has no
+/// window, no renderer and no adapter; it is pumped by
+/// `Win::step_windowless`, and the agent answers it through a 1×1
+/// offscreen screen. Never a window's key.
+pub const WINDOWLESS: u32 = 0;
 
 /// One window and everything that is its own (module doc).
 ///

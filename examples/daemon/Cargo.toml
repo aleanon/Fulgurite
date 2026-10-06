@@ -1,0 +1,23 @@
+[package]
+name = "daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M89/T89.6 (docs/plan-windows.md): a program with no window of its own --
+# iced's `daemon`. A 120 ms deadline counts ticks on a tree nobody sees; it
+# opens its panel (program 1) at tick 10, closes it at tick 20 and quits at
+# tick 40. `just windows-drive` phase 5 drives it, and `just idle-count`'s
+# daemon leg counts what it costs idle.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+
+[features]
+default = []
+# Both programs under `Everything`, so the drive runs both strategies -- a
+# compile-time choice made in `main.rs`, as examples/two-windows' is.
+everything = []

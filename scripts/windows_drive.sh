@@ -29,6 +29,12 @@
 # screenshot is the detail's pixels, not the list's, and `app.imeArea`
 # answers each window's own caret.
 #
+# Phase 5 (T89.6) is examples/daemon, under both strategies: a program
+# with no window. The launcher's identity check passes with none open; its
+# 120 ms deadline ticks with nothing reading it; it opens its panel at tick
+# 10 and closes it at 20 without ending; a windowless KeyOutcome::Quit is
+# ignored with one stderr line; and Request::Quit at tick 40 exits 0.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`. Needs a display; skips with exit 77 without
 # one (M43 §2). Opens one window per leg (scripts/drive_window.sh places
@@ -102,4 +108,27 @@ for leg in everything boundaries; do
         -- python3 scripts/windows_drive.py {port} 4
 done
 
-echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close); phase 3 passed under both (posts: the clicked row, an idle target, a closed target); phase 4 passed under both (a screenshot and an IME area answered by their own window)"
+for leg in everything boundaries; do
+    echo "== phase 5: daemon, no window, $leg =="
+    case "$leg" in
+    everything)
+        cargo build --release -q -p daemon --features everything
+        strategy=Everything ;;
+    boundaries)
+        cargo build --release -q -p daemon
+        strategy=Boundaries ;;
+    esac
+    # The daemon ends itself at tick 40 (`Request::Quit`): `--expect-exit 0`.
+    $LAUNCH --leg "phase5-$leg" --exe target/release/daemon \
+        --expect-strategy "$strategy" --expect-features "" --expect-exit 0 \
+        -- python3 scripts/windows_drive.py {port} 5
+done
+
+# ...and with no endpoint at all it still runs to its own Quit: nothing but
+# the window crate asks for its first frame, and a daemon nobody drives
+# never ticked until that was found (T89.6, What building found).
+echo "== phase 5: daemon, no agent, runs to its own Request::Quit =="
+$LAUNCH --leg "phase5-noagent" --exe target/release/daemon --no-agent \
+    --stop wait --timeout 10 --expect-exit 0
+
+echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close); phase 3 passed under both (posts: the clicked row, an idle target, a closed target); phase 4 passed under both (a screenshot and an IME area answered by their own window); phase 5 passed under both (a daemon: ticks unobserved, opens and closes its panel, ignores a windowless Quit key, ends on Request::Quit, with or without an endpoint)"

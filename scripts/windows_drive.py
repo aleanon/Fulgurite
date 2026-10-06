@@ -91,6 +91,28 @@ Its injections: answer every request from slot 0's backend, and (a)'s
 hashes are window 1's; `app.imeArea` reads slot 0's area for every
 window, and (b)'s window 2 answers window 1's `null`.
 
+Phase 5 (T89.6) is `examples/daemon`, `daemon(boot)`: a program with no
+window, under both strategies. The launcher's `app.diagnostics` identity
+check passing with no window open is the first assertion.
+
+  (a) `app.diagnostics` is answered by window 0, the windowless session
+  (b) one `ui.resolve #ticks` on window 0, then 3.0 s with no call that
+      runs a frame (`app.windows` is `Win`'s), then one more: the ticks
+      counted read `want - 1` or more, `want` = elapsed / 120 ms
+      (`scripts/tasks_drive.py`'s formula)
+  (c) over those 3 s `app.windows` goes [0] -> [0, 1] (tick 10) -> [0]
+      (tick 20), and the process is still alive
+  (d) Escape on window 0 (`input.key`) reaches the key hook's
+      `KeyOutcome::Quit`: `app.windows` stays [0], the process runs on,
+      and stderr carries one line naming `Request::Quit` (A21)
+  (e) `Request::Quit` at tick 40 ends the process, status 0
+      (`--expect-exit 0`), and not before
+
+Its injections: pump the windowless session only inside a slot's redraw,
+and (b) reads `#ticks` 0; skip the drain after a windowless frame, and (c)
+reads [0] after tick 10; treat a windowless `wants_quit` as
+`Request::Quit`, and (d) names the lost port.
+
 Every check prints the quantity it read beside what it wanted.
 """
 import base64
@@ -756,7 +778,101 @@ def phase4():
     print("  ok  (b) window 2's IME area is its own field's caret; window 1's is null")
 
 
-PHASES = {"1": phase1, "2": phase2, "3": phase3, "4": phase4}
+def phase5():
+    """T89.6: `examples/daemon`, a program with no window of its own."""
+    print("== phase 5 (T89.6): a daemon -- the windowless session, key 0 ==")
+    PERIOD = 0.120
+    # (a) the launcher's `app.diagnostics` identity check already passed with
+    # no window; asked again here, the reply names the windowless session.
+    d = raw("app.diagnostics")
+    pid = (d.get("result") or {}).get("process", {}).get("pid")
+    print(f"  ..  (a) app.diagnostics with no window: answered by window {d.get('window')!r} (want 0), "
+          f"pid {pid} (want {os.environ.get('LUMEN_LIVE_PID')})")
+    if "error" in d or d.get("window") != 0:
+        fail(f"(a) app.diagnostics on a daemon answered {d.get('error') or d.get('window')!r}, want window 0")
+    if keys()[:1] != [0]:
+        fail(f"(a) app.windows {keys()} does not start with the windowless session 0")
+
+    # (b) one read of #ticks, then 3.0 s with nothing but `app.windows`, which
+    # `Win` answers itself and which runs no frame: the ticks, the panel's
+    # open at tick 10 and its close at tick 20 are the deadline's alone.
+    before = int(value("#ticks", 0))
+    t0 = time.monotonic()
+    seen, opened_at, closed_at = [], None, None
+    while time.monotonic() - t0 < 3.0:
+        k = keys()
+        if not seen or seen[-1] != k:
+            seen.append(k)
+        if k == [0, 1] and opened_at is None:
+            opened_at = time.monotonic() - t0
+        if k == [0] and opened_at is not None and closed_at is None:
+            closed_at = time.monotonic() - t0
+        time.sleep(0.03)
+    x = (time.monotonic() - t0) * 1000
+    after = int(value("#ticks", 0))
+    got = after - before
+    want = int(x // (PERIOD * 1000))
+    bound = want - 1
+    print(f"  ..  (b) #ticks {before} -> {after}: {got} ticks after {x:.0f} ms unobserved "
+          f"(expected {want}, bound {bound})")
+    print(f"  ..  (c) app.windows over those 3 s: {seen} (want [0] -> [0, 1] -> [0]); "
+          f"opened at +{opened_at and round(opened_at * 1000)} ms, closed at +{closed_at and round(closed_at * 1000)} ms")
+    if after == 0:
+        fail(f"(b) #ticks reads 0 after {x:.0f} ms: the windowless session was never pumped -- "
+             f"its deadline and its waker reach no frame")
+    if got < bound:
+        fail(f"(b) the daemon's {PERIOD * 1000:.0f} ms deadline ticked {got} times in {x:.0f} ms "
+             f"with nothing reading it (bound {bound})")
+    if opened_at is None:
+        fail(f"(c) app.windows stays [0] after tick {after} (the panel opens at tick 10): the windowless "
+             f"frame's requests were never drained")
+    if closed_at is None:
+        fail(f"(c) app.windows did not go back to [0] by tick {after} (the panel closes at tick 20)")
+    if after >= 40:
+        fail(f"(c) setup: #ticks reached {after} before the key step, past the daemon's Quit at 40")
+    print(f"  ok  (b) the windowless session ticks unobserved: {got} >= {bound}")
+    print("  ok  (c) the daemon opened its panel at tick 10 and closed it at tick 20, and is still running")
+
+    # (d) Escape on window 0 reaches the daemon's key hook, which answers
+    # KeyOutcome::Quit: key 0 has no window to close, so nothing closes, the
+    # process runs on, and stderr says so once, naming Request::Quit (A21).
+    r = raw("input.key", {"key": "Escape"}, window=0)
+    if "error" in r or r.get("window") != 0:
+        fail(f"(d) setup: input.key Escape on window 0 answered {r.get('error') or r.get('window')!r}")
+    time.sleep(0.3)
+    try:
+        k = keys()
+    except PortLost:
+        fail("(d) the agent's port was lost after Escape on window 0: a windowless KeyOutcome::Quit ended "
+             "the process, which only Request::Quit may do")
+    log = open(os.environ["LUMEN_LIVE_LOG"], errors="replace").read()
+    lines = [ln for ln in log.splitlines() if "KeyOutcome::Quit" in ln and "Request::Quit" in ln]
+    print(f"  ..  (d) after Escape on window 0: app.windows {k} (want [0]); stderr lines naming "
+          f"Request::Quit: {len(lines)} (want 1)")
+    if k != [0]:
+        fail(f"(d) app.windows {k} after a windowless KeyOutcome::Quit, want [0]")
+    if len(lines) != 1:
+        fail(f"(d) {len(lines)} stderr lines name Request::Quit for the ignored KeyOutcome::Quit, want 1")
+    print("  ok  (d) a windowless KeyOutcome::Quit closes nothing, ends nothing, and says so once")
+
+    # (e) Request::Quit at tick 40 ends the process (its status is the
+    # launcher's `--expect-exit 0`), and not before.
+    t1 = time.monotonic()
+    try:
+        while time.monotonic() - t1 < 8.0:
+            keys()
+            time.sleep(0.05)
+        fail("(e) the daemon was still running 8 s after the key step: Request::Quit at tick 40 did not end it")
+    except PortLost:
+        pass
+    at = before + (time.monotonic() - t0) / PERIOD
+    print(f"  ..  (e) the port closed at about tick {at:.0f} (want >= 40, the daemon's Quit)")
+    if at < 40 - 2:
+        fail(f"(e) the daemon ended at about tick {at:.0f}, before its Quit at tick 40")
+    print("  ok  (e) Request::Quit ended the daemon")
+
+
+PHASES = {"1": phase1, "2": phase2, "3": phase3, "4": phase4, "5": phase5}
 if phase not in PHASES:
     fail(f"no phase {phase!r}; have {sorted(PHASES)}")
 try:

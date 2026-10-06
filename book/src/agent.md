@@ -61,7 +61,11 @@ skill's and the code are held to one another by
 request may carry a top-level `"window"` member beside `"method"`: the
 key of the window it is for, as `app.windows` reports it. Without one it
 is the **primary** window's (key 1) — never the focused window's, since
-every live drive opens its windows without focus. A key no open window
+every live drive opens its windows without focus. A **daemon**'s primary
+is its windowless session, key 0 (M89/T89.6): the agent answers it
+through a 1×1 offscreen screen, so `ui.resolve` and `app.diagnostics`
+work with no window open, and `app.close` on it is refused, naming
+`app.quit`. A key no open window
 has answers `-32602`, and the message names `app.windows`. **Every reply
 names the window that answered** with its own top-level `"window"`, so a
 drive's output says who answered; the `-32602` for a window nobody has

@@ -1249,8 +1249,19 @@ The years go to:
   `App::answered` turns `Answer::Posted { from, desc }` into a message
   in the build loaded when it arrives; the target is asked for a frame,
   so an idle window draws it with no input (`just windows-drive` phase
-  3, `docs/results-windows.md` T89.4). Daemons and hot reload with
-  several windows are T89.6 and T89.7.
+  3, `docs/results-windows.md` T89.4).
+  **`Daemon`: DECIDED, M89/T89.6** (`docs/plan-windows.md`, "A daemon is
+  `daemon(boot)`"; 2026-10-06). `daemon(boot)` describes a program with
+  no window of its own: its session runs windowless as key 0, pumped
+  through `Session::frame(dt, 1, 1)` at its deadline and on its waker —
+  no new `Session` method — and drained after every windowless frame, so
+  it opens and closes its table's windows by request and ends with
+  `Request::Quit`; closing its last window ends nothing, and its key
+  hook's `KeyOutcome::Quit` is ignored with one stderr line. The agent
+  answers it as window 0 through a 1×1 offscreen screen (`just
+  windows-drive` phase 5, `examples/daemon`; K89d's idle leg in `just
+  idle-count`, `docs/results-windows.md` T89.6). Hot reload with several
+  windows is T89.7.
 
 None of these get easier because the tree is static. **Strong recommendation:**
 compose rather than build. Take an existing shaping and rasterization stack and

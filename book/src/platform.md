@@ -44,6 +44,45 @@ example, and `just windows-drive` drives it under both strategies. What
 two windows share is what your application passes between them, and
 M89's next step makes that a message (`Request::Post`), not shared state.
 
+## A program with no window
+
+A **daemon** is a program that runs without a window of its own — iced's
+`daemon` — and opens windows only when it wants them. It is described
+exactly as an application is, with `daemon(boot)` where you would write
+`application(boot)`:
+
+```text
+{{#include ../../examples/daemon/src/lib.rs:daemon}}
+```
+
+Its session runs **windowless**: no window, no renderer, and nothing
+presented, but its timers, its `App::wake_in_ms` deadline and its inbox
+run as a window's do, through the same `Session::frame` at a 1×1 size,
+pumped at its deadline and on its waker. After each of those frames the
+window crate drains its requests, so a daemon opens its table's windows
+with `Request::OpenWindow`, closes them with `Request::CloseWindow`, and
+ends with `Request::Quit`. Closing its last window ends nothing: a
+daemon's windows are all table entries. Its key hook's `KeyOutcome::Quit`
+closes nothing either — there is no window to close — and the window
+crate says so on stderr.
+
+`examples/daemon` counts 120 ms ticks on a tree nobody sees, opens its
+panel at tick 10, closes it at tick 20, and quits at tick 40. Its timer
+is its own deadline rather than `Timers::every`, because a `Timers`
+firing is delivered by a job and costs two frames a period
+(`docs/results-frame-cost.md`, "Idle"); a daemon that only counts needs
+one:
+
+```text
+{{#include ../../examples/daemon/src/lib.rs:tick}}
+```
+
+The agent addresses the windowless session as window 0, which is a
+daemon's default target, through a 1×1 offscreen screen, so `ui.resolve`
+and `app.diagnostics` answer with no window open. `just windows-drive`
+phase 5 drives it, and `just idle-count`'s daemon leg holds what it costs
+idle (`docs/results-windows.md` T89.6).
+
 ## Clipboard
 
 Copy and paste is split in half, deliberately:
@@ -121,11 +160,12 @@ times every node of every tree.
 
 ## The pattern worth taking away
 
-Four capabilities, four different mechanisms, one rule:
+Five capabilities, five different mechanisms, one rule:
 
 | capability | mechanism | why | reachable |
 |---|---|---|---|
 | multi-window | a window table and three requests | a second session was already the right shape | yes, since M89/T89.3 |
+| daemon (no window) | `daemon(boot)`, a windowless session pumped at its deadline | the same `Session::frame`, no new method | yes, since M89/T89.6 |
 | clipboard | default-on feature | small, and close to table stakes | yes |
 | dialogs | default-off feature | large dependency, measured | no: types only |
 | cursors | a `Style` field | cascades, and fits in existing padding | yes |

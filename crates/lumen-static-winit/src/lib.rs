@@ -436,6 +436,10 @@ pub struct Config {
     /// from the static binary's program — loader code, never a hot
     /// library's.
     pub windows: Option<lumen_static_shell::program::WindowTable>,
+    /// The program is a daemon (`daemon`, M89/T89.6): its session runs
+    /// **windowless**, as key 0, and no window is opened for it. From
+    /// `Program::is_daemon`.
+    pub daemon: bool,
 }
 
 impl Default for Config {
@@ -452,6 +456,7 @@ impl Default for Config {
             agent: None,
             accessible: cfg!(feature = "a11y"),
             windows: None,
+            daemon: false,
         }
     }
 }
@@ -675,6 +680,21 @@ struct Win {
     /// (M89/T89.4) — `app.windows`' `posts`.
     #[cfg_attr(not(feature = "agent"), allow(dead_code))]
     posts: (u64, u64),
+    /// **A windowless frame is due** (M89/T89.6): the windowless session's
+    /// deadline passed, its waker fired, an answer or a post was routed into
+    /// it, or an agent call addressed it. `about_to_wait` takes the step
+    /// ([`Win::step_windowless`]); one still due after it wakes the loop at
+    /// once rather than waiting.
+    windowless_due: bool,
+    /// The windowless session's `KeyOutcome::Quit` was noted on stderr
+    /// once (second review A21): `wants_quit` stays true, and the line is
+    /// one line.
+    quit_noted: bool,
+    /// The screen the agent presents the windowless session's frames to and
+    /// reads them back from (M89/T89.6, G23): a 1×1 offscreen canvas, made
+    /// on the first request that needs one.
+    #[cfg(feature = "agent")]
+    windowless_screen: Option<lumen_static_shell::session::Offscreen>,
     /// The proxy each window's keyed [`ProxyWaker`] is built over —
     /// installed by `start`, so a window opened later wakes itself.
     wake_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
@@ -693,7 +713,10 @@ impl Win {
         // that slot's `resumed` makes is handed them, and its `suspended`
         // takes them back.
         let images = config.images.take();
-        let mut primary = WindowSlot::new(windows::PRIMARY, session, images);
+        // **A daemon's session is windowless** (M89/T89.6): key 0, which
+        // opens no window; its table's windows take keys from 1.
+        let first = if config.daemon { windows::WINDOWLESS } else { windows::PRIMARY };
+        let mut primary = WindowSlot::new(first, session, images);
         primary.spec = (config.width, config.height, config.page, config.backend);
         Win {
             slots: vec![primary],
@@ -709,8 +732,17 @@ impl Win {
             journal: false,
             quit: false,
             frames: (0, 0),
-            next_key: windows::PRIMARY + 1,
+            next_key: first + 1,
             posts: (0, 0),
+            // **A daemon's first frame is asked for here**, as a window's
+            // is by `open_window`: nothing else starts it — no deadline is
+            // armed before a frame computes one — so without an agent call
+            // to kick it a daemon would never tick (found by running
+            // `examples/daemon` with no endpoint).
+            windowless_due: first == windows::WINDOWLESS,
+            quit_noted: false,
+            #[cfg(feature = "agent")]
+            windowless_screen: None,
             wake_proxy: None,
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
             #[cfg(feature = "a11y")]
@@ -999,7 +1031,7 @@ impl Win {
         // `next_frame` reads `more_deferred`, which an applied answer
         // sets.
         let key = slot.key;
-        let windows = Self::serve_requests(&mut *slot.session, &mut **backend, &mut self.clipboard);
+        let windows = Self::serve_requests(&mut *slot.session, Some(&mut **backend), &mut self.clipboard);
         // **Window requests, inside the same drain** (M89/T89.3): a window
         // is opened and its opener answered before this returns. A `Close`
         // from this window removes its slot, and the frame ends here.
@@ -1090,8 +1122,16 @@ impl Win {
     /// `app.quit` does. Any other window's slot is dropped — its window,
     /// renderer, adapter and session with it — and its opener, if still
     /// open, is told `Answer::WindowClosed` under the unsolicited tag.
+    ///
+    /// **A daemon's windowless session (key 0) is never closed** (M89/T89.6):
+    /// it has no window, and it is the program; `Request::Quit` and
+    /// `app.quit` end it. A daemon's every window is a table entry, so
+    /// closing its last one ends nothing.
     fn close_window(&mut self, i: usize) {
-        if self.slots[i].key == windows::PRIMARY {
+        if self.slots[i].key == windows::WINDOWLESS {
+            return;
+        }
+        if self.slots[i].program == 0 {
             self.quit = true;
             self.slots[i].ask_redraw();
             return;
@@ -1109,12 +1149,108 @@ impl Win {
     /// a frame** (M89/T89.3; second review A10): `Session::answer` applies
     /// the message at once, but only the window's own next frame shows it,
     /// and an idle window draws none unless asked. A closed key's answer
-    /// is dropped.
+    /// is dropped. **Into the windowless session**, which draws no frame,
+    /// it schedules a windowless step instead (M89/T89.6, second review P9),
+    /// whose drain takes whatever the answer's message pushed.
     fn answer_window(&mut self, key: u32, tag: u64, a: lumen_static::request::Answer<'_>) {
         if let Some(i) = self.slot_keyed(key) {
             let slot = &mut self.slots[i];
             slot.session.answer(tag, a);
-            slot.ask_redraw();
+            self.ask_frame(i);
+        }
+    }
+
+    /// **Ask slot `i` for a frame of its own**: a redraw of its window, or
+    /// for the windowless session (key 0, M89/T89.6) a windowless step at
+    /// the end of this batch of events ([`Win::step_windowless`]).
+    fn ask_frame(&mut self, i: usize) {
+        if self.slots[i].key == windows::WINDOWLESS {
+            self.windowless_due = true;
+        } else {
+            self.slots[i].ask_redraw();
+        }
+    }
+
+    /// **One frame of the windowless session** — a daemon's (M89/T89.6,
+    /// `docs/plan-windows.md`, "A daemon is `daemon(boot)`").
+    ///
+    /// `Session::frame(dt, 1, 1)`: its ticks, its timers, its inbox and its
+    /// pump, exactly as a window's frame runs them — **no new `Session`
+    /// method** (review A14). Nothing is presented: the damage the frame
+    /// left is taken and dropped, and the display list waits for the next
+    /// agent call, which presents it to the 1×1 offscreen screen. Taken from
+    /// `about_to_wait` when [`Win::windowless_due`] is set, which the
+    /// session's deadline (`new_events`), its waker (`Wake(0)`), an answer
+    /// or post routed into it and an agent call addressing it set — the
+    /// two paths an idle window's frames come from (M47/T47.1), plus the
+    /// two a window gets by asking for a redraw. An idle daemon takes none,
+    /// and a frame with nothing to do is the `Boundaries` skip.
+    ///
+    /// **Then its requests are drained and answered** (second review P9):
+    /// M88's two drain sites run after a window's present and after an agent
+    /// call, and neither runs for a session that is never redrawn and not
+    /// addressed, so without this a daemon's `OpenWindow` and `Quit` would
+    /// never leave its queue. A `Screenshot` from it is
+    /// `Refused(Unsupported)`: it has no renderer.
+    fn step_windowless(&mut self, event_loop: &ActiveEventLoop) {
+        self.windowless_due = false;
+        let Some(i) = self.slot_keyed(windows::WINDOWLESS) else { return };
+        let slot = &mut self.slots[i];
+        let start = Instant::now();
+        // As a window's frame (`redraw`): a panic being shown runs no
+        // application code and does not advance the clock.
+        let dt = if slot.session.failed() {
+            0.0
+        } else {
+            slot.last_frame.replace(start).map_or(0.0, |t| start.duration_since(t).as_secs_f32() * 1000.0)
+        };
+        let animating = slot.session.frame(dt, 1, 1);
+        // Nothing presents this frame: drop its damage rather than let it
+        // accumulate for a present that never comes.
+        let _ = slot.session.take_damage_for_age(1);
+        slot.wait = if slot.session.failed() {
+            slot.last_frame = None;
+            ControlFlow::Wait
+        } else {
+            let wait = control_flow_for(start, slot.session.next_deadline_ms());
+            if slot.session.failed() {
+                slot.last_frame = None;
+                ControlFlow::Wait
+            } else {
+                wait
+            }
+        };
+        self.frames.0 += 1;
+        if self.journal {
+            let (layout_ns, paint_ns) = slot.session.timings();
+            let ran = |ns: u64| (ns > 0).then_some(ns);
+            slot.session.agent_frame_done(lumen_static_shell::session::FrameTimes {
+                layout_ns: ran(layout_ns),
+                paint_ns: ran(paint_ns),
+                frame_ns: Some(start.elapsed().as_nanos() as u64),
+                ..Default::default()
+            });
+            self.frames.1 += 1;
+        }
+        // A panic in the windowless session is M36's failure state, read
+        // through `app.failure` and cleared by `app.retry`; no screen shows
+        // it, and nothing is drained while it stands.
+        if slot.session.failed() {
+            return;
+        }
+        let windows = Self::serve_requests(&mut *slot.session, None, &mut self.clipboard);
+        if !windows.is_empty() {
+            let _opened = self.window_requests(event_loop, windows::WINDOWLESS, windows);
+        }
+        // Moving, or a deferred backlog: the next step one display interval
+        // on, or at once for a backlog (`next_frame`), as a window's.
+        let Some(i) = self.slot_keyed(windows::WINDOWLESS) else { return };
+        let slot = &mut self.slots[i];
+        let (wait, now) =
+            next_frame(animating, slot.session.more_deferred(), false, start, std::time::Duration::from_micros(16_667), slot.wait);
+        slot.wait = wait;
+        if now {
+            self.windowless_due = true;
         }
     }
 
@@ -1313,6 +1449,13 @@ impl ApplicationHandler<UserEvent> for Win {
     /// `docs/results-frame-cost.md` true — this changes when a still
     /// window wakes, never how often a busy one draws.
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // **The windowless step** (M89/T89.6), when one is due: after every
+        // batch of events, so a deadline, a wake, an answer and an agent
+        // call each reach it, and before the quit check, so a daemon's
+        // `Request::Quit` ends the loop in the same pass.
+        if self.windowless_due {
+            self.step_windowless(event_loop);
+        }
         // `app.quit`, or the application's key hook answering `Quit`
         // (M60/T60.1) — asked of the session after every batch of
         // events, so a key the window posted and one the agent's
@@ -1320,8 +1463,23 @@ impl ApplicationHandler<UserEvent> for Win {
         //
         // **`wants_quit` closes the window it came from** (M89/T89.3, X5):
         // only the primary's ends the process ([`Win::close_window`]).
+        //
+        // **A windowless `wants_quit` closes nothing and ends nothing**
+        // (M89/T89.6, second review A21): key 0 has no window, and a daemon
+        // ends only by `Request::Quit`. It is ignored, with one line on
+        // stderr naming that request.
         let quitting: Vec<u32> = self.slots.iter().filter(|s| s.session.wants_quit()).map(|s| s.key).collect();
         for key in quitting {
+            if key == windows::WINDOWLESS {
+                if !self.quit_noted {
+                    self.quit_noted = true;
+                    eprintln!(
+                        "lumen-static: the daemon's key hook answered KeyOutcome::Quit; ignored -- its session has \
+                         no window to close, and a daemon ends with Request::Quit"
+                    );
+                }
+                continue;
+            }
             if let Some(i) = self.slot_keyed(key) {
                 self.close_window(i);
             }
@@ -1330,7 +1488,9 @@ impl ApplicationHandler<UserEvent> for Win {
             event_loop.exit();
             return;
         }
-        let wait = self.soonest_wait();
+        // A windowless step still due after the one above (an answer its
+        // own drain routed back into it) is taken at once: wake now.
+        let wait = if self.windowless_due { ControlFlow::WaitUntil(Instant::now()) } else { self.soonest_wait() };
         #[cfg(debug_assertions)]
         if let Some(at) = self.test_resume {
             if Instant::now() >= at {
@@ -1377,7 +1537,13 @@ impl ApplicationHandler<UserEvent> for Win {
                 // A past `WaitUntil` left armed would spin the loop wherever
                 // the platform holds the redraw back (a hidden window).
                 slot.wait = ControlFlow::Wait;
-                slot.ask_redraw();
+                // The windowless session's deadline is a windowless step
+                // (M89/T89.6), taken in `about_to_wait`.
+                if slot.key == windows::WINDOWLESS {
+                    self.windowless_due = true;
+                } else {
+                    slot.ask_redraw();
+                }
             }
         }
     }
@@ -1399,9 +1565,10 @@ impl ApplicationHandler<UserEvent> for Win {
             // already own that sequence, and a second entry point into it
             // is how two frame loops come to disagree. A closed window's
             // key finds no slot and the wake is dropped.
+            // Key 0's wake is the windowless session's (M89/T89.6): a step.
             UserEvent::Wake(key) => {
                 if let Some(i) = self.slot_keyed(key) {
-                    self.slots[i].ask_redraw();
+                    self.ask_frame(i);
                 }
             }
             #[cfg(feature = "agent")]
@@ -1455,10 +1622,13 @@ impl ApplicationHandler<UserEvent> for Win {
 /// script opens its windows inactive (P23). Answers the key, or the
 /// `-32602` message, which names `app.windows` so a drive that addressed
 /// a closed window is told where to look.
+///
+/// `primary` is the key an absent member means: window 1, or for a daemon
+/// its windowless session, 0 (M89/T89.6).
 #[cfg(feature = "agent")]
-fn window_named(req: &serde_json::Value, open: &[u32]) -> Result<u32, String> {
+fn window_named(req: &serde_json::Value, open: &[u32], primary: u32) -> Result<u32, String> {
     let key = match req.get("window") {
-        None => windows::PRIMARY,
+        None => primary,
         Some(v) => match v.as_u64().and_then(|k| u32::try_from(k).ok()) {
             Some(k) => k,
             None => return Err(format!("\"window\" must be a window key (a u32), not {v} -- app.windows lists them")),
@@ -1495,11 +1665,23 @@ impl Win {
     /// **Every reply names the window that answered** with a top-level
     /// `"window": key` (G24, A28), so a drive prints who answered; the
     /// `-32602` for a window nobody has is the one reply without it.
+    ///
+    /// **A daemon's windowless session is window 0** (M89/T89.6, G23), and
+    /// a daemon's default target: the window's own methods answer it as
+    /// they answer any slot (`app.close` refuses, naming `app.quit` — key 0
+    /// has no window), and the session's methods go to it over a 1×1
+    /// offscreen screen in place of a backend, so `app.diagnostics` — the
+    /// launcher's identity check — `ui.resolve` and `ui.getTree` answer a
+    /// daemon with no window open. Its requests are drained here as a
+    /// window's are, a `Screenshot` refused (it has no renderer), and the
+    /// call schedules a windowless step where a window's asks a redraw.
     fn answer_agent(&mut self, event_loop: &ActiveEventLoop, rpc: agent::Rpc) {
         let id = rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("").to_string();
         let open: Vec<u32> = self.slots.iter().map(|s| s.key).collect();
-        let key = match window_named(&rpc.req, &open) {
+        // A daemon's default target is its windowless session (M89/T89.6).
+        let primary = if open.contains(&windows::WINDOWLESS) { windows::WINDOWLESS } else { windows::PRIMARY };
+        let key = match window_named(&rpc.req, &open, primary) {
             Ok(k) => k,
             Err(message) => {
                 let _ = rpc.reply.send(serde_json::json!({
@@ -1548,6 +1730,16 @@ impl Win {
             // a window where it meant to exit (`docs/plan-windows.md`,
             // "Changed from X5's fix"). The reply goes first; the window
             // closes as `close_window` says.
+            //
+            // The windowless session (key 0, M89/T89.6) has no window to
+            // close: `-32602`, naming `app.quit`.
+            "app.close" if key == windows::WINDOWLESS => {
+                send(serde_json::json!({
+                    "jsonrpc": "2.0", "id": id, "error": {"code": -32602, "message":
+                        "window 0 is the daemon's windowless session and has no window to close -- app.quit ends the process"}
+                }));
+                return;
+            }
             "app.close" => {
                 send(result(serde_json::json!({"ok": true})));
                 self.close_window(i);
@@ -1631,24 +1823,41 @@ impl Win {
             }
             _ => {}
         }
-        let slot = &mut self.slots[i];
-        let Some(backend) = slot.backend.as_deref_mut() else {
-            send(serde_json::json!({
-                "jsonrpc": "2.0", "id": id, "error": {"code": -32603, "message": "no window yet"}
-            }));
-            return;
-        };
+        // **The session's methods, over its screen**: the window's backend,
+        // or for the windowless session (M89/T89.6, G23) a 1×1 offscreen
+        // canvas, so `ui.resolve`, `ui.getTree` and `app.diagnostics` — the
+        // launcher's identity check — answer a daemon with no window open.
+        let Win { slots, clipboard, windowless_screen, .. } = self;
+        let slot = &mut slots[i];
         // An input's latency runs from its arrival to the frame that
         // shows it (M60/T60.3): the present inside this request, and the
         // redraw asked for below, which journals it.
         if method.starts_with("input.") {
             slot.input_at.get_or_insert_with(Instant::now);
         }
-        let text = slot.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
-        // **The requests the call left** — M88/T88.3, the agent site: an
-        // `input.*` pumps and presents inside the request, so a handler's
-        // request is answered here, from the frame that call presented.
-        let windows = Self::serve_requests(&mut *slot.session, &mut *backend, &mut self.clipboard);
+        let (text, windows) = match slot.backend.as_deref_mut() {
+            Some(backend) => {
+                let text = slot.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
+                // **The requests the call left** — M88/T88.3, the agent
+                // site: an `input.*` pumps and presents inside the request,
+                // so a handler's request is answered here, from the frame
+                // that call presented.
+                (text, Self::serve_requests(&mut *slot.session, Some(backend), clipboard))
+            }
+            None if key == windows::WINDOWLESS => {
+                let shaping = slot.session.shaping();
+                let screen = windowless_screen
+                    .get_or_insert_with(|| lumen_static_shell::session::Offscreen::with_shaping(1, 1, shaping));
+                let text = slot.session.agent(&rpc.req.to_string(), screen);
+                (text, Self::serve_requests(&mut *slot.session, None, clipboard))
+            }
+            None => {
+                send(serde_json::json!({
+                    "jsonrpc": "2.0", "id": id, "error": {"code": -32603, "message": "no window yet"}
+                }));
+                return;
+            }
+        };
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0", "id": id,
@@ -1680,7 +1889,7 @@ impl Win {
         }
         send(resp);
         if let Some(i) = self.slot_keyed(key) {
-            self.slots[i].ask_redraw();
+            self.ask_frame(i);
         }
     }
 }
@@ -1721,9 +1930,12 @@ impl Win {
     /// this function does not hold, so the caller hands them to
     /// [`Win::window_requests`] before its own drain returns. Empty —
     /// no allocation — when there are none.
+    ///
+    /// **`backend` is `None` for the windowless session** (M89/T89.6): it
+    /// has no renderer, so its `Screenshot` is `Refused(Unsupported)`.
     fn serve_requests(
         session: &mut dyn Session,
-        backend: &mut dyn Backend,
+        mut backend: Option<&mut dyn Backend>,
         clipboard: &mut Clipboard,
     ) -> Vec<lumen_static::request::Request> {
         use lumen_static::request::{Answer, ClipFormat, ClipKind, Refusal, Request};
@@ -1740,7 +1952,7 @@ impl Win {
                 }
                 Request::Screenshot { tag } => {
                     let scale = session.scale();
-                    match backend.frame_rgba() {
+                    match backend.as_deref_mut().and_then(|b| b.frame_rgba()) {
                         Some((width, height, rgba)) => session.answer(tag, Answer::Image { width, height, scale, rgba }),
                         None => session.answer(tag, Answer::Refused(Refusal::Unsupported)),
                     }
@@ -1818,9 +2030,10 @@ impl Win {
 
     /// Open every slot's window that is not open — the first `resumed`,
     /// and every one after a `suspended` (M47/T47.7).
+    /// The windowless session (key 0, M89/T89.6) never gets one.
     fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
         for i in 0..self.slots.len() {
-            if self.slots[i].window.is_none() {
+            if self.slots[i].window.is_none() && self.slots[i].key != windows::WINDOWLESS {
                 self.open_window(event_loop, i);
             }
         }
@@ -2083,7 +2296,7 @@ pub fn regions_for(
 
 // ---- M32: running a described program ------------------------------
 
-pub use lumen_static_shell::program::{application, KeyOutcome, Program};
+pub use lumen_static_shell::program::{application, daemon, KeyOutcome, Program};
 
 /// Open a window on a described program and run until it closes — M32.
 ///
@@ -2164,6 +2377,7 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
         agent: program.agent.take(),
         accessible: program.accessible,
         windows: program.window_table(),
+        daemon: program.is_daemon(),
     };
     start(session(program), config, hot);
 }
@@ -2477,17 +2691,21 @@ mod tests {
             }
             r
         };
-        let absent = window_named(&req(None), &open);
-        let one = window_named(&req(Some(1.into())), &open);
+        let absent = window_named(&req(None), &open, windows::PRIMARY);
+        let one = window_named(&req(Some(1.into())), &open, windows::PRIMARY);
         println!("absent -> {absent:?} (want Ok(1)); 1 -> {one:?} (want Ok(1))");
         assert_eq!(absent, Ok(windows::PRIMARY), "a request with no window member is the primary's");
         assert_eq!(one, Ok(1));
         for w in [serde_json::json!(7), serde_json::json!(0), serde_json::json!("1"), serde_json::json!(1u64 << 33)] {
-            let got = window_named(&req(Some(w.clone())), &open);
+            let got = window_named(&req(Some(w.clone())), &open, windows::PRIMARY);
             println!("window {w} -> {got:?} (want Err naming app.windows)");
             assert!(got.as_ref().is_err_and(|m| m.contains("app.windows")), "window {w} answered {got:?}");
         }
-        assert_eq!(window_named(&req(Some(2.into())), &[1, 2]), Ok(2), "an open second window is itself");
+        assert_eq!(window_named(&req(Some(2.into())), &[1, 2], windows::PRIMARY), Ok(2), "an open second window is itself");
+        // M89/T89.6: a daemon's absent member is its windowless session, 0.
+        let daemon = window_named(&req(None), &[0, 1], windows::WINDOWLESS);
+        println!("daemon, absent -> {daemon:?} (want Ok(0))");
+        assert_eq!(daemon, Ok(windows::WINDOWLESS), "a daemon's default target is its windowless session");
     }
 
     /// **The present decision** (M53/T53.4).
@@ -2727,7 +2945,7 @@ mod tests {
             ] {
                 assert!(s.host.app.requests.push(r), "setup: a request was refused");
             }
-            Win::serve_requests(&mut s, backend, &mut Clipboard::closed());
+            Win::serve_requests(&mut s, Some(backend), &mut Clipboard::closed());
             let left = s.host.app.requests.len();
             (std::mem::take(&mut s.host.app.got), left)
         };
