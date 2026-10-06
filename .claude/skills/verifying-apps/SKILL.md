@@ -126,7 +126,11 @@ IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
 `input.click` takes `clicks` (2 or 3) — M45/T45.6 — and `input.click`,
 `input.pointerDown` and `input.pointerUp` take `button` (`"left"`, the
-default, `"right"`, `"middle"`), echoed in the reply — M90/T90.1. `input.invokeAction`
+default, `"right"`, `"middle"`), echoed in the reply — M90/T90.1. A
+right press presses nothing: it is one context request at its point
+(`handled` only if something consumed it), and middle reaches nothing
+(M90/T90.2); `app.diagnostics`'s `open_overlays` says whether a press
+would dismiss a popup first. `input.invokeAction`
 takes `action` (`default`, `increment`, `decrement`, `setValue` with
 `value`, `expand`, `collapse`, `focus`) and queues the `Event::Action` a
 screen reader's request becomes, answering `handled` — M54/T54.4; it is

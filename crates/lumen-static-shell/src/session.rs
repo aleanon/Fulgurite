@@ -1411,6 +1411,11 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
         lumen_static_agent::process_block(self.host.strategy(), &crate::process_features())
     }
 
+    /// M90/T90.2: [`Host::open_overlays`](crate::Host::open_overlays).
+    fn open_overlays(&self) -> Option<usize> {
+        Some(self.host.open_overlays())
+    }
+
     /// Measured on the frame's own display list (M54/T54.5): each text
     /// run whose centre lies in `rect` against the opaque fill under it,
     /// with the page behind everything.

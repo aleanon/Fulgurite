@@ -84,6 +84,34 @@ a pointer that never did. The rule is recorded in
 `docs/events-decision.md`, and keyboard activation (Enter, Space) is not
 affected by it.
 
+## Secondary buttons
+
+Only the left button presses anything (M90/T90.2). A right or middle
+press or release stops in dispatch **before** any widget sees it: no
+handler runs, no press latches, no pressed bit is set, focus does not
+move, and a drag in progress keeps its capture. A right press does one
+thing instead. It first closes any open popup it lands outside, as a
+left press would, and is then delivered as `Event::ContextRequest {
+x, y }` to the node under the point and on up its ancestors until one
+consumes it, which is what a context menu opens on. Its release, and
+every middle event, reach nothing.
+
+The gate presses each of six widgets with each secondary button and
+checks every one of those effects, with the left button at the same
+point as the accept direction:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/secondary_button.rs:secondary_presses_nothing}}
+```
+
+The filter sits before pass 1 rather than in pass 2's activation, where
+a first draft put it: a right *release* used to activate, but a right
+*press* also acted in pass 1 on every widget that matches any press — a
+collapsible toggled, a tab selected, a slider captured — and only a
+filter ahead of pass 1 stops both. Middle-click paste and right-button
+drags are therefore not supported. The numbers and the injections are in
+`docs/results-desktop-integration.md` (T90.2).
+
 ## Focus
 
 Focus is the framework's, not each widget's. `NodeDesc` carries a

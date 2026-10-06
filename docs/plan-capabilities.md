@@ -245,7 +245,9 @@ Escape-to-close, and focus trapping for modals.
 
 **Gate:** click-outside dismisses; Escape dismisses; Tab inside a modal
 does not leave it; a context menu opens on `PointerButton::Right`
-(T14.3).
+(T14.3). **Since M90/T90.2 a right press reaches no widget as a press**:
+it is delivered as `Event::ContextRequest`, which is what a context menu
+opens on (`docs/plan-desktop-integration.md`).
 
 **The mechanism is built and gated; the four widgets are compositions
 over it, and that is a decision rather than a shortfall** — the same one

@@ -931,3 +931,40 @@ T90.0; everything else cites it.
   `scripts/drive/harness.py`'s, since the harness forwards to it; both
   send it only when it is not `"left"`, so every existing drive's
   request is byte-identical.
+- **T90.2, the live leg replays each click after the action's checks,
+  not before it.** Sent before, its hover and press would have landed in
+  the action's own change window and could have made a click that missed
+  look landed (check 1). After the checks, in the state the action left,
+  nothing the action measured can see it; the pointer is first rested at
+  the click's point past `LINGER_MS`, so a hover is not read as the
+  click's doing.
+- **T90.2, a right click with a popup open is not sent, and the manifest
+  says so.** A right press outside every open overlay dismisses them, as
+  decided above, so "answers `handled: false` and changes nothing" holds
+  only with none open. The window could not say whether one was:
+  `app.diagnostics` gained `open_overlays` (`AgentHost::open_overlays`,
+  provided, `null` from a host that cannot say), and the leg files each
+  clicking action as `checked` or `overlay_open`, both lists in
+  `scripts/drive/expected.json`'s `secondary`. So the plan's single
+  "click-action count" is two lists, compared by name for the entries a
+  run drives: 85 checked and 19 not sent, 104 clicking actions of 166.
+  The dismissal itself is gated headlessly
+  (`crates/lumen-static/tests/context_request.rs`).
+- **T90.2, a disabled node takes no context request**, as it takes no
+  press (M57/A16), and after a right press has dismissed an overlay the
+  request goes to what is under the point without it, since the closed
+  overlay is still in the list until the next paint.
+- **T90.2, injection (2) names all six widgets, not only the four.** With
+  the filter in pass 2 alone a release-acting `Button` and `CheckBox` run
+  no handler, but the gate also reads the pressed bit, the latched press
+  and focus, which a right press still set on all six; by effect alone
+  the four pass-1 widgets are the ones named, as the verifier predicted.
+- **T90.2 cost the interactive firmware −4 B.** The filter's hover update
+  is the move's, shared as one function (`track_hover`), so the bytes the
+  filter adds are paid back by the dedup.
+- **T90.2 reversed T14.3's own gate.** `crates/lumen-static/tests/
+  modifiers.rs`'s `a_handler_can_tell_the_buttons_apart` asserted that the
+  right button activates (`docs/plan-desktop.md` T14.3's gate) and went
+  red under the filter, which is this task's point; it now asserts a right
+  press and release runs no handler and a left click at the same point
+  does, and `docs/plan-desktop.md` T14.3 says it was superseded.

@@ -1,13 +1,19 @@
 //! **The agent can press any button** — M90/T90.1 (G25,
 //! `docs/plan-desktop-integration.md`). `input.click`,
 //! `input.pointerDown` and `input.pointerUp` take `button: "left" |
-//! "right" | "middle"` (default `"left"`) and echo it. Until this task
+//! "right" | "middle"` (default `"left"`) and echo it. Until T90.1
 //! every one of them queued `PointerButton::Left` whatever it was asked,
 //! so no drive could right-click at all.
 //!
-//! The probe reads the button **from `ctx.event`** — the event the widget
-//! was handed — and prints `ctx.button` beside it, so the gate sees what
-//! arrived, not what the agent meant to send.
+//! **Rewritten by T90.2** (second review G22): after dispatch's
+//! secondary-button filter no widget receives a `Right` or `Middle`
+//! pointer event, so a probe that recorded the button it was handed
+//! would record nothing. What arrives now is the observable: a `Right`
+//! press is one `Event::ContextRequest` at the pressed point, which the
+//! probe consumes; its release, and every `Middle` event, reach nothing
+//! and answer `handled: false`, with the reply still echoing the button;
+//! an omitted button is still a `Left` press and release, read from
+//! `ctx.event` with `ctx.button` printed beside it.
 
 use lumen_static::desc::{NodeDesc, NO_PARENT};
 use lumen_static::display::Painter;
@@ -20,10 +26,12 @@ use lumen_static_agent::{Agent, AgentHost, TreeRef};
 use serde_json::{json, Value};
 
 /// Records the button of every `PointerDown` and `PointerUp` it is
-/// handed, read from `ctx.event`, with `ctx.button` beside it.
+/// handed, read from `ctx.event`, with `ctx.button` beside it — and every
+/// `ContextRequest`, by its point, which it consumes.
 #[derive(Default)]
 struct Probe {
     seen: Vec<(&'static str, PointerButton, PointerButton)>,
+    requests: Vec<(f32, f32)>,
 }
 
 impl Widget for Probe {
@@ -53,6 +61,10 @@ impl Node for Probe {
         let (kind, button) = match cx.event {
             Event::PointerDown { button, .. } => ("down", button),
             Event::PointerUp { button, .. } => ("up", button),
+            Event::ContextRequest { x, y } => {
+                self.requests.push((x, y));
+                return true;
+            }
             _ => return false,
         };
         self.seen.push((kind, button, cx.button));
@@ -169,11 +181,30 @@ fn button(name: Option<&str>) -> PointerButton {
     }
 }
 
-/// **Each of the three methods delivers the button it was asked for**,
-/// and an omitted one is `Left` (the accept direction: every caller that
-/// predates T90.1 passes none). The reply echoes the button.
+/// What each method should deliver for each button, after T90.2's
+/// filter: `(presses and releases the probe is handed, context requests,
+/// handled)`.
+fn expected(method: &str, asked: Option<&str>) -> (&'static [&'static str], usize, bool) {
+    match (button(asked), method) {
+        (PointerButton::Left, "input.click") => (&["down", "up"], 0, true),
+        (PointerButton::Left, "input.pointerDown") => (&["down"], 0, true),
+        (PointerButton::Left, _) => (&["up"], 0, true),
+        // A right press is one request at its point; its release is
+        // nothing.
+        (PointerButton::Right, "input.click" | "input.pointerDown") => (&[], 1, true),
+        (PointerButton::Right, _) => (&[], 0, false),
+        (PointerButton::Middle, _) => (&[], 0, false),
+    }
+}
+
+/// **Each of the three methods delivers what its button means** —
+/// T90.2's rewrite of T90.1's gate. `"right"` arrives as one
+/// `ContextRequest` at the pressed point (and its release as nothing),
+/// `"middle"` as `handled: false`, and an omitted or `"left"` button as a
+/// `Left` press and release (the accept direction: every caller that
+/// predates T90.1 passes none). The reply echoes the button every time.
 #[test]
-fn each_method_delivers_the_button_it_was_asked_for() {
+fn each_method_delivers_what_its_button_means() {
     let mut wrong = Vec::new();
     for asked in [Some("right"), Some("middle"), Some("left"), None] {
         let want = button(asked);
@@ -186,29 +217,36 @@ fn each_method_delivers_the_button_it_was_asked_for() {
             }
             let r = call(&mut h, method, params);
             assert!(r.get("error").is_none(), "{method} {asked:?}: {r}");
-            let seen = &h.app.ui.probe.seen;
-            let kinds: &[&str] = match method {
-                "input.click" => &["down", "up"],
-                "input.pointerDown" => &["down"],
-                _ => &["up"],
-            };
-            // Setup landed: the probe was handed exactly the events the
-            // method queues, so the button below is one it read.
-            assert_eq!(seen.iter().map(|s| s.0).collect::<Vec<_>>(), kinds, "setup: {method} reached the probe as {seen:?}");
-            for &(kind, got, ctx) in seen {
-                println!(
-                    "{method:<17} button {:<8} -> {kind:<4} ctx.event button {got:?}, ctx.button {ctx:?} (want {want:?}); echo {}",
-                    format!("{asked:?}"),
-                    r["result"]["button"]
-                );
+            let at = (r["result"]["at"][0].as_f64().unwrap() as f32, r["result"]["at"][1].as_f64().unwrap() as f32);
+            let handled = r["result"]["handled"].as_bool().unwrap();
+            let (kinds, requests, want_handled) = expected(method, asked);
+            let probe = &h.app.ui.probe;
+            println!(
+                "{method:<17} button {:<14} -> handled {handled}, presses {:?}, requests {:?} (pressed at {at:?}); echo {}",
+                format!("{asked:?}"),
+                probe.seen,
+                probe.requests,
+                r["result"]["button"]
+            );
+            let got: Vec<&str> = probe.seen.iter().map(|s| s.0).collect();
+            if got != kinds {
+                wrong.push(format!("{method} {asked:?}: the probe was handed {:?}, want {kinds:?}", probe.seen));
+            }
+            for &(kind, got, _) in &probe.seen {
                 if got != want {
                     wrong.push(format!("{method} asked {asked:?}: the probe read {got:?} on its {kind}"));
                 }
             }
+            if probe.requests.len() != requests || probe.requests.iter().any(|&p| p != at) {
+                wrong.push(format!("{method} {asked:?}: requests {:?}, want {requests} at {at:?}", probe.requests));
+            }
+            if handled != want_handled {
+                wrong.push(format!("{method} {asked:?}: handled {handled}, want {want_handled}"));
+            }
             assert_eq!(r["result"]["button"], echo, "{method}: the reply does not echo the button");
         }
     }
-    assert!(wrong.is_empty(), "the button asked for did not arrive:\n{}", wrong.join("\n"));
+    assert!(wrong.is_empty(), "a button did not arrive as it means:\n{}", wrong.join("\n"));
 }
 
 /// **A button the framework has no name for is refused**, naming the
@@ -221,7 +259,12 @@ fn an_unknown_button_is_refused_by_name() {
         println!("{method} button \"side\": {}", r["error"]);
         assert_eq!(r["error"]["code"], -32602, "{method}: {r}");
         assert!(r["error"]["message"].as_str().unwrap_or("").contains("side"), "{method}: the refusal does not name the value: {r}");
-        assert!(h.app.ui.probe.seen.is_empty(), "{method}: a refused button still queued {:?}", h.app.ui.probe.seen);
+        assert!(
+            h.app.ui.probe.seen.is_empty() && h.app.ui.probe.requests.is_empty(),
+            "{method}: a refused button still queued {:?} {:?}",
+            h.app.ui.probe.seen,
+            h.app.ui.probe.requests
+        );
         let r = call(&mut h, method, json!({ "selector": "#probe", "button": 2 }));
         assert_eq!(r["error"]["code"], -32602, "{method}: a number for a button: {r}");
     }

@@ -82,6 +82,18 @@ def check_manifest(entries) -> list[str]:
                    f"-- remove it from `static`")
     for s_ in sorted(set(static) - set(m["static"])):
         bad.append(f"{s_}: static (not checked for landing), and the manifest does not say so")
+    # M90/T90.2: the secondary-button leg's two lists name real actions,
+    # and no action is in both.
+    sec = m.get("secondary", {})
+    for k in ("checked", "overlay_open"):
+        if k not in sec:
+            bad.append(f"secondary.{k}: missing from scripts/drive/expected.json")
+        for name in sec.get(k, []):
+            w, _, act = name.partition("/")
+            if act not in have.get(w, []):
+                bad.append(f"secondary.{k}: {name!r} names no inventory action")
+    for name in set(sec.get("checked", [])) & set(sec.get("overlay_open", [])):
+        bad.append(f"secondary: {name!r} is both checked and overlay_open")
     got = counts(entries)
     print(f"inventories: {got['entries']} entries / {got['actions']} actions "
           f"(manifest {m['counts']['entries']}/{m['counts']['actions']}); "
@@ -191,6 +203,25 @@ def main() -> int:
             # other twenty's results, which is what an uncaught exception
             # did the first time this happened.
             print(f"  ERROR {widget} [{strategy}]: {e}", file=sys.stderr)
+            failures += 1
+    # M90/T90.2: the secondary-button leg checked exactly the clicking
+    # actions the manifest names, for the entries this run drove -- so a
+    # leg that silently skipped an action fails, and so does an action
+    # that started or stopped clicking without the manifest saying so.
+    import harness  # noqa: E402
+    driven = {e[0] for e in entries}
+    sec = json.loads((HERE / "expected.json").read_text())["secondary"]
+    for k in ("checked", "overlay_open"):
+        want = sorted(x for x in sec[k] if x.partition("/")[0] in driven)
+        got = sorted(harness.SECONDARY[k])
+        print(f"secondary-button leg [{strategy}]: {k} {len(got)} (manifest {len(want)})")
+        for x in sorted(set(want) - set(got)):
+            print(f"  FAIL secondary [{strategy}]: {x} is in expected.json's secondary.{k} "
+                  f"and the leg did not file it there", file=sys.stderr)
+            failures += 1
+        for x in sorted(set(got) - set(want)):
+            print(f"  FAIL secondary [{strategy}]: {x} was filed as {k} and expected.json's "
+                  f"secondary.{k} does not name it", file=sys.stderr)
             failures += 1
     n = counts(entries)
     print(f"widget-drive [{strategy}]: {len(entries)} widgets, {actions} actions, "

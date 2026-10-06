@@ -47,6 +47,12 @@ is open and no widget test here has ever made them:
   each run against the fill under it, at 3:1 (M54/T54.5, R16-F8).
 
 * **`ui.lint` is clean** — the ambient auditor already runs per frame.
+* **A right click presses nothing** (M90/T90.2): every left click an
+  action's `do` sent is sent again with `button: "right"`, after the
+  action's own checks, and must answer `handled: false` and leave the
+  widget's pixels as they were — or, with a popup open, is not sent and
+  is filed as such. `expected.json`'s `secondary` names which, so a leg
+  that skipped an action fails.
 * **Damage is bounded by the widget's own box**, ratio printed. A widget
   that repaints the window to show a hover is a defect M16 and M18 exist
   to prevent and nothing checked per widget. **This is true of every
@@ -540,6 +546,61 @@ def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
     return msg
 
 
+#: **The secondary-button leg's record** — M90/T90.2. Every inventory
+#: action whose `do` clicks is filed under `checked` (the same click,
+#: with `button: "right"`, answered `handled: false` and left the
+#: widget's pixels as they were) or `overlay_open` (not sent: a popup was
+#: open, and a right press outside an open popup dismisses it, which
+#: `crates/lumen-static/tests/context_request.rs` gates headlessly).
+#: `run.py` compares both lists with `expected.json`'s `secondary`, so a
+#: leg that silently skipped an action fails.
+SECONDARY: dict[str, list[str]] = {"checked": [], "overlay_open": []}
+
+
+def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action: str,
+                   rect) -> list[str]:
+    """The same clicks `do` sent, each with `button: "right"`: `handled`
+    false, and `rect`'s pixels unchanged. Run after the action's own
+    checks, in the state the action left, so nothing it measured sees
+    these inputs. The pointer is first put where the click lands and left
+    to rest past `LINGER_MS`, so a hover is not mistaken for the click's
+    doing; it ends where the action left it."""
+    import time
+    name = f"{widget}/{action}"
+    n = c.rpc("app.diagnostics").get("open_overlays")
+    if n is None:
+        raise Failed(f"{name}: app.diagnostics has no open_overlays -- the window cannot say "
+                     f"whether a right press would dismiss a popup")
+    if n > 0:
+        SECONDARY["overlay_open"].append(name)
+        return [f"      secondary: not sent, {n} overlay(s) open (a right press there dismisses them)"]
+    out = []
+    last = None
+    for p in clicks:
+        at = p["at"]
+        loc = {"x": at[0], "y": at[1]}
+        rpc("input.hover", **loc)
+        time.sleep(0.7)
+        h0 = _settled_hash(c, rect)
+        extra = {"clicks": p["clicks"]} if p.get("clicks", 1) != 1 else {}
+        r = rpc("input.click", button="right", **loc, **extra)
+        h1 = _settled_hash(c, rect)
+        same = h0.get("hash") == h1.get("hash")
+        out.append(f"      secondary: right click at ({at[0]:.0f}, {at[1]:.0f}) handled "
+                   f"{r.get('handled')} (want false), echo {r.get('button')!r}, "
+                   f"{h0.get('pixels')} px {'unchanged' if same else 'CHANGED'}")
+        if r.get("handled") or not same or r.get("button") != "right":
+            raise Failed(f"{name}: the same click with the right button acted -- handled "
+                         f"{r.get('handled')}, the widget's {h0.get('pixels')} px "
+                         f"{'unchanged' if same else 'changed'} (injection: delete "
+                         f"pass::secondary, so a right press reaches pass 1)")
+        last = loc
+    if last is not None:
+        rpc("input.hover", **last)
+    SECONDARY["checked"].append(name)
+    return out
+
+
 def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
                strategy: str, root: str | None = None) -> list[str]:
     """Drive every action and return the log. Raises `Failed` on the first
@@ -621,7 +682,23 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
             pix_rect = _region_rect(ctx, a.region)
             pix_before = c.rpc("ui.regionHash", rect=pix_rect)
         since = ctx.mark()
-        a.do(ctx)
+        # Record every left click `do` sends, for the secondary-button leg
+        # (M90/T90.2): `c.rpc` is shadowed for the call alone, so a click
+        # through `ctx.click`, `c.click` or a raw `input.click` counts.
+        sent: list[dict] = []
+        rpc = c.rpc
+
+        def recording(method, **params):
+            r = rpc(method, **params)
+            if method == "input.click" and params.get("button", "left") == "left":
+                sent.append({"at": r.get("at"), "clicks": params.get("clicks", 1)})
+            return r
+
+        c.rpc = recording
+        try:
+            a.do(ctx)
+        finally:
+            del c.rpc
 
         # (1) it landed -- on this widget, not anywhere in the frame.
         changed = c.rpc("ui.lastChange", since=since).get("changed", [])
@@ -800,6 +877,11 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
                     + f"; first: {new_ones[0]}")
             out.append(f"      lint: {len(after) - before_lint} expected "
                        f"{'/'.join(a.expects_lint)} finding(s)")
+
+        # (2c) M90/T90.2: the same clicks with the right button press
+        # nothing.
+        if sent:
+            out.extend(_secondary_leg(c, c.rpc, sent, widget, a.name, ctx.box(root or sel)))
 
         # (3) the same input, somewhere it must not work.
         if a.isolate is not None:

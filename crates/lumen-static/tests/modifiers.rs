@@ -155,8 +155,11 @@ fn has_none_is_always_true() {
 
 // ---- T14.3: buttons and click counts ---------------------------------
 
-/// A right-click reaches a handler that a left-click does — the handler
-/// tells them apart by `ctx.button`, not by a separate event.
+/// A handler reads the button from `ctx.button`, not from a separate
+/// event — and since M90/T90.2 a right press and release reaches **no**
+/// handler: dispatch stops it before pass 1 and makes it a context
+/// request (`docs/plan-desktop-integration.md`). T14.3's gate said the
+/// right button activated; that is what M90 reversed.
 #[test]
 fn a_handler_can_tell_the_buttons_apart() {
     use lumen_static::PointerButton;
@@ -166,10 +169,10 @@ fn a_handler_can_tell_the_buttons_apart() {
 
     f.send(Event::PointerDown { x, y, button: PointerButton::Right, clicks: 1 });
     f.send(Event::PointerUp { x, y, button: PointerButton::Right });
-    assert_eq!(f.app.clicks, 1, "the right button still activates");
-    assert_eq!(f.app.seen_button, PointerButton::Right, "and says which it was");
+    assert_eq!(f.app.clicks, 0, "the right button activated (M90/T90.2: it presses nothing)");
 
     f.click();
+    assert_eq!(f.app.clicks, 1, "setup: a left click at the same point activates");
     assert_eq!(f.app.seen_button, PointerButton::Left);
 }
 

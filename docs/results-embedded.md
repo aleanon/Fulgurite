@@ -1146,14 +1146,22 @@ on `firmware` and `firmware_cascade`, **+180 B** on `firmware_interactive`,
 buys back 48 B of stack per derived level ("The stack, measured", above).
 Printed by `just firmware-delta e77b7b2` (K4's default), with
 `firmware_interactive` at **17,760 B** of headroom.
+Rewritten by M90/T90.2 (a secondary button stops in dispatch before
+pass 1; `docs/results-desktop-integration.md` T90.2): **−4 B** on
+`firmware_interactive`, +0 on the other three, `.rodata` +0. The filter
+links (it is in `pass::dispatch`, which that binary calls) and its hover
+update is the move's own, now one function, so the dedup pays for the
+branch; the context request is behind `std`. Printed by `just
+firmware-delta baa18ce firmware=0 firmware_interactive=256` (K90a), with
+`firmware_interactive` at **17,764 B** of headroom.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ | T86.1 Δ | T85.1 stack fix Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 31,306 | 38.2% | 50,614 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 | +40 | +168 |
-| `firmware_interactive` | **64,160** | **78.3%** | **17,760** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** | **+60** | **+180** |
-| `firmware_bind` | 34,678 | 42.3% | 47,242 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 | +36 | +184 |
-| `firmware_cascade` | 33,398 | 40.8% | 48,522 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 | +44 | +168 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ | T86.1 Δ | T85.1 stack fix Δ | T90.2 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,306 | 38.2% | 50,614 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 | +40 | +168 | +0 |
+| `firmware_interactive` | **64,156** | **78.3%** | **17,764** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** | **+60** | **+180** | **−4** |
+| `firmware_bind` | 34,678 | 42.3% | 47,242 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 | +36 | +184 | +0 |
+| `firmware_cascade` | 33,398 | 40.8% | 48,522 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 | +44 | +168 | +0 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

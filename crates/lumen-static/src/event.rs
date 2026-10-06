@@ -151,6 +151,16 @@ pub enum TouchPhase {
 /// Three, not five: the back and forward buttons are excluded for the
 /// same reason as media keys, and an application that wants them wants
 /// a different vocabulary than "the buttons every mouse has".
+///
+/// **Only `Left` presses anything** — M90/T90.2
+/// (`docs/plan-desktop-integration.md`, "A secondary button never
+/// reaches the press machinery"). Dispatch stops a `Right` or `Middle`
+/// `PointerDown`/`PointerUp` before pass 1: no widget receives it, no
+/// press latches, no pressed bit is set, focus does not move and a
+/// capture does not end. A `Right` press becomes one
+/// [`Event::ContextRequest`] at its point; its release and every `Middle`
+/// event reach nothing. Middle-click paste and right-button drags are
+/// therefore not supported (the reopen condition is in the plan).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "observe", derive(serde::Serialize, serde::Deserialize))]
 pub enum PointerButton {
@@ -325,6 +335,25 @@ pub enum Event {
     /// so a tree with none pays nothing per node. Never enqueued by a
     /// host's input path. `Event` stays 16 B (`tests/modifiers.rs`).
     Visibility { visible: bool },
+    /// **Open a context menu here** — M90/T90.2
+    /// (`docs/plan-desktop-integration.md`, "Every route to a context
+    /// menu becomes one event"). `x`, `y` are the window point it asks
+    /// about, in logical px.
+    ///
+    /// Synthesised by dispatch, never by a host's input path: a right
+    /// press becomes one, at the press, after the outside-press
+    /// dismissal a left press runs (so a right click outside an open menu
+    /// closes it, and one elsewhere moves it). Offered to the node under
+    /// the point (overlays first) and then to each ancestor until one
+    /// consumes it, like [`Event::Linger`]; `ctx.pos` is the point and
+    /// `ctx.local` is re-derived at each node. A tree with no consumer
+    /// answers `false` and nothing else happens: **a secondary button
+    /// never presses anything** ([`PointerButton`]).
+    ///
+    /// The keyboard (Shift+F10, the Menu key), a touch held still and an
+    /// assistive technology's "show context menu" reach the same event
+    /// from M90/T90.3. `Event` stays 16 B (`tests/modifiers.rs`).
+    ContextRequest { x: f32, y: f32 },
 }
 
 /// What an assistive technology asked a node to do — M54/T54.4.
@@ -395,6 +424,7 @@ impl Event {
             | Event::PointerCancel { x, y }
             | Event::Hover { x, y }
             | Event::Touch { x, y, .. }
+            | Event::ContextRequest { x, y }
             | Event::Scroll { x, y, .. } => Some(Point { x, y }),
             Event::Key { .. }
             | Event::Text { .. }
@@ -470,6 +500,9 @@ pub struct EventCtx {
     /// container read its child's coordinates as its own.
     pub local: Point,
     /// Which button, for a pointer event; [`PointerButton::Left`] otherwise.
+    /// Since M90/T90.2 a widget is only ever handed a `Left` press or
+    /// release: dispatch stops the others before pass 1
+    /// ([`PointerButton`]).
     pub button: PointerButton,
     /// 1, 2 or 3 for a `PointerDown`; 0 for anything else (T14.3).
     ///

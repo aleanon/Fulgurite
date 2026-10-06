@@ -34,7 +34,10 @@ true}`, through the same route the window's IME takes).
 and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 `input.click`, `input.pointerDown` and `input.pointerUp` take `button`
 (`"left"`, the default, `"right"` or `"middle"`) and echo it in the
-reply; any other value is refused naming it (M90/T90.1).
+reply; any other value is refused naming it (M90/T90.1). Since
+M90/T90.2 a `"right"` press reaches no widget as a press: it is one
+context request at its point, which `handled` reports only if something
+consumed it, and a `"middle"` press reaches nothing.
 
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`, and after a panic `app.failure` and `app.retry`
@@ -87,7 +90,10 @@ and `input.fill` feed long text in chunks and pump between them. The
 `input.type` reply's `chars` is the number of characters that reached
 the queue — `sent` less `dropped` — and `app.diagnostics` carries the
 host's `dropped_inputs` count, ever. A fill the queue cut short is an
-error that says so, rather than blaming the control.
+error that says so, rather than blaming the control. It also carries
+`open_overlays`, how many popups the last frame painted (M90/T90.2):
+a press outside every open one dismisses them, so a drive asks before it
+sends a press whose meaning depends on it.
 
 **What the endpoint refuses.** The socket speaks one JSON object per
 line, and **a line that is anything else ends the connection** after a

@@ -304,6 +304,12 @@ scale factor does not change the feel (M10b).
 three clicks inside the threshold report 1, 2, 3 and a fourth outside
 it reports 1; a click 6 px away restarts the count.
 
+**Superseded in part by M90/T90.2 (2026-10-06):** a right press no
+longer reaches any handler as a press. It is one `Event::ContextRequest`
+at its point, and a right or middle release activates nothing
+(`docs/plan-desktop-integration.md`, "A secondary button never reaches
+the press machinery"; `docs/results-desktop-integration.md` T90.2).
+
 **Done**, with two corrections to the design as planned.
 
 **The type is `PointerButton`, not `Button`** — the prelude already

@@ -775,6 +775,11 @@ impl Agent {
                 // M44/T44.5: input the host's queue lost for want of
                 // room, ever; `null` from a host that cannot say.
                 result["dropped_inputs"] = json!(host.dropped_inputs());
+                // M90/T90.2: how many overlays the last frame painted,
+                // `null` from a host that cannot say. A right press
+                // outside an open one dismisses it, so the secondary-button
+                // leg of `just widget-drive` reads this before it sends one.
+                result["open_overlays"] = json!(host.open_overlays());
             }
             return reply;
         }
@@ -2183,6 +2188,20 @@ pub trait AgentHost {
     /// for a host that cannot say, which the replies report as `null`
     /// rather than as zero.
     fn dropped_inputs(&self) -> Option<u32> {
+        None
+    }
+
+    /// How many overlays — popups, menus, veils — the last painted frame
+    /// deferred — M90/T90.2, the `open_overlays` field of
+    /// `app.diagnostics`. `None` by default, for a host that cannot say,
+    /// reported as `null`; provided for the reason
+    /// [`AgentHost::process_info`] gives (every implementor is a leaf).
+    ///
+    /// It exists for the secondary-button leg of `just widget-drive`: a
+    /// right press outside every open overlay dismisses them, as a left
+    /// press does, so "a right click changes nothing" is a claim only
+    /// about a window with none open.
+    fn open_overlays(&self) -> Option<usize> {
         None
     }
 }

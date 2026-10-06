@@ -1,22 +1,24 @@
-//! **What a secondary button does today** — M90/T90.0's pins
+//! **What a secondary button does** — M90's gates
 //! (`docs/plan-desktop-integration.md`, "A secondary button never reaches
 //! the press machinery").
 //!
 //! Every gate here builds its host with `Program::host`, the function the
 //! window's session boots through, and drives it with `post` and `pump`,
-//! under `Everything` and `Boundaries<256>`. Each one **pins today's
-//! behaviour green** and names the task that flips it
-//! (`docs/plan-iced-roadmap.md` §3.1): a right release activates (pass
-//! 2's `activates` matches `PointerUp { .. }` for any button), a right
-//! press acts in pass 1 on every widget that matches `PointerDown { .. }`,
-//! and a right release mid-drag ends a left drag's capture. T90.2 flips
-//! all three. A primary touch held for 600 ms is still a tap — its `End`
-//! is a release, so a `Button` under it activates — and a press-acting
-//! control has acted at `Begin`; T90.3 flips the first and keeps the
-//! second (second review P16).
+//! under `Everything` and `Boundaries<256>`.
 //!
-//! Each pin asserts its setup landed (the left button at the same point
-//! changes the same effect) and prints the quantity it pins.
+//! T90.0 pinned today's behaviour green (`docs/plan-iced-roadmap.md`
+//! §3.1): a right release activated, a right press acted in pass 1 on
+//! every widget that matched `PointerDown { .. }`, and a right release
+//! mid-drag ended a left drag's capture. **T90.2 flipped all three**: a
+//! `Right` or `Middle` press or release stops in dispatch before pass 1
+//! (`pass::secondary`), so it runs no handler, latches no press, sets no
+//! pressed bit, moves no focus and ends no capture. A primary touch held
+//! for 600 ms is still a tap — its `End` is a release, so a `Button` under
+//! it activates — and a press-acting control has acted at `Begin`; T90.3
+//! flips the first and keeps the second (second review P16).
+//!
+//! Each gate asserts its setup landed (the left button at the same point
+//! changes the same effect) and prints the quantity it checks.
 
 use lumen_static::event::{EventCtx, PointerButton, TouchPhase};
 use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
@@ -126,60 +128,110 @@ fn effect<I: Invalidation>(h: &H<I>, name: &str) -> f32 {
     }
 }
 
-/// A press and a release with `button` at the widget's target point, in
-/// one pump. Answers `(handled, effect before, effect after)`.
-fn click<I: Invalidation>(name: &str, button: PointerButton) -> (bool, f32, f32) {
+/// The node whose focus a press would move away from: another
+/// focusable control, so "focus did not move" is a claim a press could
+/// break (a press on the field focuses the field; on anything else, the
+/// field is where focus starts).
+fn focus_start(name: &str) -> &'static str {
+    if name == "TextInput" { "button" } else { "field" }
+}
+
+/// What a press and a release with `button` at the widget's target point
+/// did, the press and the release each pumped on its own so the state
+/// between them can be read.
+struct Clicked {
+    handled: bool,
+    before: f32,
+    after: f32,
+    /// After the press: `input.pressed`, any node's pressed bit, and
+    /// whether a press was latched.
+    pressed: Option<u32>,
+    any_bit: bool,
+    latched: bool,
+    /// Focus before the press and after the release.
+    focus: (Option<u32>, Option<u32>),
+}
+
+fn click<I: Invalidation>(name: &str, button: PointerButton) -> Clicked {
     let mut h: H<I> = program().host();
     h.pump();
     h.pump();
     let (wid, fx, fy) = target(name);
     let (x, y) = at(&h, wid, fx, fy);
+    h.input.focus = Some(index(focus_start(name)) as u32);
+    h.pump();
     let before = effect(&h, name);
+    let focus0 = h.input.focus;
     h.post(Event::PointerMove { x, y });
     h.pump();
     h.post(Event::PointerDown { x, y, button, clicks: 1 });
+    let down = h.pump();
+    let pressed = h.input.pressed;
+    let any_bit = h.states.iter().any(|s| s.pressed);
+    let latched = h.input.press.is_some();
     h.post(Event::PointerUp { x, y, button });
-    let handled = h.pump();
-    (handled, before, effect(&h, name))
+    let up = h.pump();
+    Clicked {
+        handled: down || up,
+        before,
+        after: effect(&h, name),
+        pressed,
+        any_bit,
+        latched,
+        focus: (focus0, h.input.focus),
+    }
 }
 
 const WIDGETS: [&str; 6] = ["Button", "CheckBox", "Slider", "Collapsible", "Tabs", "TextInput"];
 
-fn right_press_and_release_acts<I: Invalidation>(strategy: &str) {
+fn secondary_presses_nothing<I: Invalidation>(strategy: &str) {
     let mut wrong = Vec::new();
     for name in WIDGETS {
         // Setup landed: the left button at the same point changes the
         // effect, so the point is on the control and the effect is one a
         // press there moves.
-        let (lh, lb, la) = click::<I>(name, PointerButton::Left);
-        assert!(lh && la != lb, "setup [{strategy}]: a left click on {name} did not act (handled {lh}, {lb} -> {la})");
-        let (rh, rb, ra) = click::<I>(name, PointerButton::Right);
-        println!(
-            "[{strategy}] {name:<11}: right press+release handled {rh}, effect {rb} -> {ra} \
-             (left: handled {lh}, {lb} -> {la})"
+        let l = click::<I>(name, PointerButton::Left);
+        assert!(
+            l.handled && l.after != l.before && l.latched,
+            "setup [{strategy}]: a left click on {name} did not act (handled {}, {} -> {}, latched {})",
+            l.handled,
+            l.before,
+            l.after,
+            l.latched
         );
-        if !(rh && ra == la) {
-            wrong.push(name);
+        for button in [PointerButton::Right, PointerButton::Middle] {
+            let r = click::<I>(name, button);
+            println!(
+                "[{strategy}] {name:<11} {button:?}: handled {}, effect {} -> {}; after the press pressed {:?}, \
+                 any bit {}, latched {}; focus {:?} -> {:?} (left: handled {}, {} -> {})",
+                r.handled, r.before, r.after, r.pressed, r.any_bit, r.latched, r.focus.0, r.focus.1, l.handled, l.before, l.after
+            );
+            if r.handled || r.after != r.before || r.pressed.is_some() || r.any_bit || r.latched || r.focus.0 != r.focus.1 {
+                wrong.push(format!("{name} ({button:?})"));
+            }
         }
     }
     assert!(
         wrong.is_empty(),
-        "GAP pinned [{strategy}]: a right press and release acts like a left one today -- \
-         a right release activates and a right press acts in pass 1; T90.2 flips this. \
-         These no longer act as a left click: {wrong:?}"
+        "[{strategy}] a secondary press and release acted (handled, an effect, a pressed bit, a \
+         latched press or a focus move) on: {wrong:?}"
     );
 }
 
-/// **A right press and release acts like a left one** on all six
-/// widgets — the release-acting two (a right release activates) and the
-/// press-acting four (a right press acts in pass 1). T90.2 flips it.
+/// **A secondary press and release presses nothing** — M90/T90.2, the
+/// flip of T90.0's pin. On all six widgets, for `Right` and `Middle`:
+/// `handled` false, no handler ran (the effect is unchanged), no pressed
+/// bit or latched press after the press, and focus did not move. The
+/// left button at the same point acts (the accept direction).
+// ANCHOR: secondary_presses_nothing
 #[test]
-fn a_right_press_and_release_acts_like_a_left_one_today() {
-    right_press_and_release_acts::<Everything>("Everything");
-    right_press_and_release_acts::<Boundaries<256>>("Boundaries");
+fn a_secondary_press_and_release_presses_nothing() {
+    secondary_presses_nothing::<Everything>("Everything");
+    secondary_presses_nothing::<Boundaries<256>>("Boundaries");
 }
+// ANCHOR_END: secondary_presses_nothing
 
-fn right_release_mid_drag<I: Invalidation>(strategy: &str) {
+fn right_click_mid_drag<I: Invalidation>(strategy: &str) {
     let mut h: H<I> = program().host();
     h.pump();
     h.pump();
@@ -195,6 +247,7 @@ fn right_release_mid_drag<I: Invalidation>(strategy: &str) {
     let dragged = h.app.ui.slider.value();
     // Setup landed: the left drag captured and the value followed it.
     assert!(h.input.capture.is_some() && dragged > pressed, "setup [{strategy}]: the left drag did not capture ({pressed} -> {dragged})");
+    h.post(Event::PointerDown { x: x1, y, button: PointerButton::Right, clicks: 1 });
     h.post(Event::PointerUp { x: x1, y, button: PointerButton::Right });
     h.pump();
     let held = h.input.capture.is_some();
@@ -203,23 +256,25 @@ fn right_release_mid_drag<I: Invalidation>(strategy: &str) {
     let after = h.app.ui.slider.value();
     h.post(Event::up(x2, y));
     h.pump();
+    let ended = h.input.capture.is_none();
     println!(
-        "[{strategy}] slider drag: press {pressed:.3}, dragged {dragged:.3}; a right release, capture held {held}; \
-         the next move to 0.9 reads {after:.3}"
+        "[{strategy}] slider drag: press {pressed:.3}, dragged {dragged:.3}; a right press+release, capture held {held}; \
+         the next move to 0.9 reads {after:.3}; the left release ends it: {ended}"
     );
     assert!(
-        !held && after == dragged,
-        "GAP pinned [{strategy}]: a right release ends a left drag's capture today, so the value \
-         no longer follows -- T90.2 flips this; capture held {held}, value {dragged:.3} -> {after:.3}"
+        held && after > dragged,
+        "[{strategy}] a right press and release ended a left drag: capture held {held}, value {dragged:.3} -> {after:.3}"
     );
+    assert!(ended, "[{strategy}] the left release did not end the drag");
 }
 
-/// **A right release during a left slider drag ends the drag** — the
-/// capture arm matches `PointerUp { .. }` for any button. T90.2 flips it.
+/// **A right press and release during a left slider drag leave the drag
+/// alone** — M90/T90.2, the flip of T90.0's pin: the capture is held and
+/// the next move changes the value. The left release then ends it.
 #[test]
-fn a_right_release_ends_a_left_drag_today() {
-    right_release_mid_drag::<Everything>("Everything");
-    right_release_mid_drag::<Boundaries<256>>("Boundaries");
+fn a_right_click_leaves_a_left_drag_alone() {
+    right_click_mid_drag::<Everything>("Everything");
+    right_click_mid_drag::<Boundaries<256>>("Boundaries");
 }
 
 /// A primary touch at the widget's target point, held for 600 ms by

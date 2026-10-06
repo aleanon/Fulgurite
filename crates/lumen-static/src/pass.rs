@@ -366,6 +366,13 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
 ) -> bool {
     use crate::event::{Event, Key};
 
+    // **A secondary button never reaches the press machinery** —
+    // M90/T90.2. Before the release-swallowing below, too: a right press
+    // resets nothing a left press set up.
+    if let Some(handled) = secondary(state, style, st, input, ov, ev, consumed) {
+        return handled;
+    }
+
     // **The release of a press that dismissed an overlay is consumed
     // too** — M33/T33.3. The press was eaten below; without this the
     // release activated whatever it landed on, so the click that closed
@@ -416,39 +423,9 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     // first, and is *consumed* — the click that closes a menu should
     // not also press the button underneath it, which is what every
     // desktop toolkit does and what a user expects.
-    if matches!(ev, Event::PointerDown { .. }) && !ov.is_empty() {
-        if let Some(p) = ev.position() {
-            let inside = (0..ov.len()).any(|k| overlay_hit(state.tree(), st, ov.entry(k), p.x, p.y).is_some());
-            if !inside {
-                // A passive overlay (a tooltip) closes without taking the
-                // press: if every overlay this closed was passive, the
-                // press goes on to ordinary dispatch below.
-                let mut consumes_press = false;
-                // Topmost first, so the focus the *bottom* overlay opened
-                // over is the one that is kept (T44.9).
-                let mut back = input.focus;
-                for k in (0..ov.len()).rev() {
-                    let at = ov.entry(k);
-                    let i = at.node as usize;
-                    let Some((node, _, _)) = overlay_node(state.tree(), st, at) else { continue };
-                    if !node.dismissed_by_outside_press() {
-                        continue;
-                    }
-                    let consumes = node.dismissal_consumes_press();
-                    if overlay_dismiss(state.tree_mut(), at) {
-                        consumes_press |= consumes;
-                        consumed.push(i);
-                        tell_owner(state, at, ev, input);
-                        back = take_return(state, style, st, input, i as u32);
-                    }
-                }
-                if consumes_press {
-                    input.focus = back;
-                    input.swallow_release = true;
-                    return true;
-                }
-            }
-        }
+    if matches!(ev, Event::PointerDown { .. }) && dismiss_outside(state, style, st, input, ov, ev, consumed) {
+        input.swallow_release = true;
+        return true;
     }
 
     // **Tab and the topmost overlay** — M44/T44.9
@@ -566,6 +543,198 @@ fn overlaid<S: crate::event::App, O: crate::overlay::OverlaySink>(
     }
 
     dispatch_at(state, style, st, input, ev, on_overlay, consumed)
+}
+
+/// **A press outside every open overlay dismisses them**, topmost first
+/// — the body of [`dispatch_overlaid`]'s dismissal, shared by a left
+/// press and (M90/T90.2) a right one. Answers whether a dismissed
+/// overlay consumes the press; then focus has gone back to where the
+/// bottom one opened over (T44.9). A passive overlay (a tooltip) closes
+/// without taking the press, so a press that closed only passive ones
+/// answers `false` and goes on.
+fn dismiss_outside<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+    consumed: &mut Consumed,
+) -> bool {
+    if ov.is_empty() {
+        return false;
+    }
+    let Some(p) = ev.position() else { return false };
+    if (0..ov.len()).any(|k| overlay_hit(state.tree(), st, ov.entry(k), p.x, p.y).is_some()) {
+        return false;
+    }
+    let mut consumes_press = false;
+    // Topmost first, so the focus the *bottom* overlay opened over is the
+    // one that is kept (T44.9).
+    let mut back = input.focus;
+    for k in (0..ov.len()).rev() {
+        let at = ov.entry(k);
+        let i = at.node as usize;
+        let Some((node, _, _)) = overlay_node(state.tree(), st, at) else { continue };
+        if !node.dismissed_by_outside_press() {
+            continue;
+        }
+        let consumes = node.dismissal_consumes_press();
+        if overlay_dismiss(state.tree_mut(), at) {
+            consumes_press |= consumes;
+            consumed.push(i);
+            tell_owner(state, at, ev, input);
+            back = take_return(state, style, st, input, i as u32);
+        }
+    }
+    if consumes_press {
+        input.focus = back;
+    }
+    consumes_press
+}
+
+/// **A secondary button never reaches the press machinery** — M90/T90.2
+/// (`docs/plan-desktop-integration.md`, P28, C16). `None` for anything
+/// but a `Right` or `Middle` `PointerDown`/`PointerUp`, which dispatch
+/// then handles as before; `Some(handled)` for one of those, which
+/// stops here.
+///
+/// Before pass 1, not in pass 2: a right *release* used to activate
+/// (pass 2's `activates` took any button), and a right *press* acted in
+/// pass 1 on every widget matching `PointerDown { .. }` — collapsibles
+/// toggled, tabs selected, sliders captured, fields moved their caret —
+/// while dispatch latched `pressed` and the press for it. So none of
+/// that is reached: no `swallow_release` reset, no press latch, no
+/// pressed bit, no focus move, and **no capture end** (a right release
+/// during a left slider drag used to end the drag through the capture
+/// arm). Hover is updated as a move updates it: not while a capture
+/// holds the pointer.
+///
+/// A `Right` press then runs the outside-press dismissal a left press
+/// runs ([`dismiss_outside`]) and is delivered as
+/// [`Event::ContextRequest`](crate::event::Event::ContextRequest) from
+/// the node under it, overlays first — both behind `std`, since a
+/// `no_std` host feeds only `Left`. Its release and every `Middle` event
+/// reach nothing and answer `false`.
+fn secondary<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    style: &[Style],
+    st: &mut [NodeState],
+    input: &mut crate::event::InputState,
+    ov: &O,
+    ev: &crate::event::Event,
+    consumed: &mut Consumed,
+) -> Option<bool> {
+    use crate::event::{Event, PointerButton};
+    let (x, y) = match *ev {
+        Event::PointerDown { x, y, button, .. } | Event::PointerUp { x, y, button } if button != PointerButton::Left => (x, y),
+        _ => return None,
+    };
+    let hit = hit_test_overlaid(state.tree(), st, ov, x, y);
+    if input.capture.is_none() {
+        track_hover(state, st, Hover::of(input), hit, Point { x, y }, consumed);
+    }
+    #[cfg(feature = "std")]
+    if matches!(*ev, Event::PointerDown { button: PointerButton::Right, .. }) {
+        settle_overlays(state, style, st, input, ov);
+        let dismissed = dismiss_outside(state, style, st, input, ov, ev, consumed);
+        // What is under the point now: a dismissed overlay is still in
+        // `ov` until the next paint, and the request belongs to what the
+        // person sees once it has gone.
+        let hit = if dismissed { state.tree().hit(st, 0, x, y) } else { hit };
+        let asked = hit.is_some_and(|h| request_context(state, st, input, h.node, Point { x, y }, consumed));
+        return Some(dismissed || asked);
+    }
+    let _ = style;
+    Some(false)
+}
+
+/// **The pointer is over `hit` now** — the hover state a move updates
+/// (C6, M44/T44.6, M57/B50): `input.hovered` and its bit, the pointer,
+/// and [`Event::Leave`](crate::event::Event::Leave) to the node it left.
+///
+/// Takes the fields it writes rather than the whole `InputState`, so
+/// [`dispatch_at`] can call it while it holds `focus` and `capture`.
+fn track_hover<S: crate::event::App>(
+    state: &mut S,
+    st: &mut [NodeState],
+    hover: Hover<'_>,
+    hit: Option<crate::hit::Hit>,
+    p: Point,
+    consumed: &mut Consumed,
+) {
+    use crate::event::{Event, EventCtx};
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let was = *hover.hovered;
+    *hover.hovered = hit.map(|h| h.node);
+    *hover.inner = hit.and_then(|h| h.inner);
+    *hover.pointer = Some(p);
+    hover.writes.add(set_hovered(st, was, *hover.hovered));
+    if let Some(l) = was.filter(|&l| Some(l) != *hover.hovered && (l as usize) < table.len()) {
+        let lctx = EventCtx::for_event_with(l, Event::Leave, hover.mods);
+        if state.tree_mut().node_mut(l as usize).on_event(&Event::Leave, &lctx) {
+            consumed.push(l as usize);
+        }
+    }
+}
+
+/// The `InputState` fields [`track_hover`] writes.
+struct Hover<'a> {
+    hovered: &'a mut Option<u32>,
+    inner: &'a mut Option<crate::hit::Inner>,
+    pointer: &'a mut Option<Point>,
+    writes: &'a mut crate::event::WriteCount,
+    mods: crate::event::Mods,
+}
+
+impl<'a> Hover<'a> {
+    fn of(input: &'a mut crate::event::InputState) -> Self {
+        Hover {
+            hovered: &mut input.hovered,
+            inner: &mut input.hover_inner,
+            pointer: &mut input.pointer,
+            writes: &mut input.state_writes,
+            mods: input.mods,
+        }
+    }
+}
+
+/// **Offer [`Event::ContextRequest`](crate::event::Event::ContextRequest)
+/// at `p` to `node`, then to each ancestor until one consumes it** —
+/// M90/T90.2, [`deliver`] with the point: `ctx.pos` is `p` and
+/// `ctx.local` is re-derived at each node. A disabled node takes nothing
+/// (M57/A16), as it takes no press. Answers whether anything took it.
+#[cfg(feature = "std")]
+fn request_context<S: crate::event::App>(
+    state: &mut S,
+    st: &[NodeState],
+    input: &crate::event::InputState,
+    node: u32,
+    p: Point,
+    consumed: &mut Consumed,
+) -> bool {
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let start = node as usize;
+    if start >= table.len() || start >= st.len() || disabled_at(table, st, start) {
+        return false;
+    }
+    let ev = crate::event::Event::ContextRequest { x: p.x, y: p.y };
+    let mut ctx = crate::event::EventCtx::for_event_with(node, ev, input.mods);
+    ctx.pos = p;
+    ctx.target_is_control = table[start].is_focusable();
+    let mut i = start;
+    loop {
+        ctx.node = i as u32;
+        ctx.local = Point { x: p.x - st[i].pos.x, y: p.y - st[i].pos.y };
+        if state.tree_mut().node_mut(i).on_event(&ev, &ctx) {
+            consumed.push(i);
+            return true;
+        }
+        if table[i].parent == crate::desc::NO_PARENT {
+            return false;
+        }
+        i = table[i].parent as usize;
+    }
 }
 
 /// Hit-test with the overlays from the last [`paint_overlaid`] on top.
@@ -731,6 +900,14 @@ fn dispatch_at<S: crate::event::App>(
     use crate::widget::Widget;
 
     let table = <S::Tree as Widget>::SUB_TABLE;
+
+    // **A secondary button never reaches the press machinery** —
+    // M90/T90.2, for a caller that skips overlays ([`dispatch`], which is
+    // what a firmware links). `dispatch_overlaid` filters before it
+    // reaches here.
+    if let Some(handled) = secondary(state, style, st, input, &crate::overlay::NoOverlays, ev, consumed) {
+        return handled;
+    }
 
     // Modifier state is carried *in* the queue and tracked here, so a
     // recorded session replays with the modifiers it was recorded with
@@ -1100,18 +1277,15 @@ fn dispatch_at<S: crate::event::App>(
             // twice per move.
             match ev {
                 Event::PointerMove { .. } => {
-                    let was = input.hovered;
-                    input.hovered = hit.map(|h| h.node);
-                    input.hover_inner = hit.and_then(|h| h.inner);
-                    input.pointer = Some(p);
-                    input.state_writes.add(set_hovered(st, was, input.hovered));
                     // **The node the pointer left is told** — M57/B50.
-                    if let Some(l) = was.filter(|&l| Some(l) != input.hovered && (l as usize) < table.len()) {
-                        let lctx = EventCtx::for_event_with(l, Event::Leave, mods);
-                        if state.tree_mut().node_mut(l as usize).on_event(&Event::Leave, &lctx) {
-                            consumed.push(l as usize);
-                        }
-                    }
+                    let hover = Hover {
+                        hovered: &mut input.hovered,
+                        inner: &mut input.hover_inner,
+                        pointer: &mut input.pointer,
+                        writes: &mut input.state_writes,
+                        mods,
+                    };
+                    track_hover(state, st, hover, hit, p, consumed);
                 }
                 Event::PointerDown { .. } => {
                     let was = input.hovered;
@@ -1305,7 +1479,10 @@ fn dispatch_at<S: crate::event::App>(
     // These stay *click* handlers, which is what every one written so
     // far assumes: `|c, _| c.count += 1` ignores the ctx entirely, so
     // routing arbitrary keys to it would make every keystroke press
-    // every button. Enter and Space on the focused node activate too —
+    // every button. A **left** release activates: a `Right` or `Middle`
+    // one never gets this far, stopped before pass 1 by `secondary`
+    // (M90/T90.2), so the `PointerUp { .. }` below is a left one. Enter
+    // and Space on the focused node activate too —
     // keyboard activation, which is what makes a `Button` reachable
     // without a pointer at all, and Space is what every desktop toolkit
     // toggles a checkbox with. (Space arrived with `Key::Space` in

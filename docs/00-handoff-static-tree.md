@@ -619,6 +619,18 @@ questions are two events: *you are being dragged* is a `PointerMove`,
 match it is unaffected, which is the safe default. `Event` is still 16
 bytes (`tests/gesture.rs`), so `InputQueue`'s size is unchanged.
 
+**DECIDED 2026-10-06 (M90/T90.2): a secondary button presses nothing.**
+A `Right` or `Middle` `PointerDown`/`PointerUp` stops in dispatch before
+pass 1 — no widget receives it, no press latches, no pressed bit, no
+focus move, no capture end. A right press runs the outside-press
+dismissal a left press runs and is then delivered as
+`Event::ContextRequest { x, y }`, bubbling from the node under it; its
+release and every middle event reach nothing. A right release used to
+activate and a right press acted in pass 1 on every widget matching
+`PointerDown { .. }`. Middle-click paste and right-button drags are not
+supported; `docs/plan-desktop-integration.md` (Decisions) has the reopen
+condition, `docs/results-desktop-integration.md` T90.2 the gates.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind
