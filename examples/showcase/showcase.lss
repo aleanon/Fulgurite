@@ -90,6 +90,7 @@ DLabel { width: 320px; }
 DSelectable { width: 320px; }
 DRichText { width: 420px; }
 DMarkdown { width: 420px; }
+DMdLinks { width: 420px; }
 DRichTextEditor { width: 420px; }
 DPaintBox { width: 320px; }
 DPaneGrid { width: 480px; }

@@ -95,6 +95,14 @@ pub struct DMarkdown {
     pub a: Markdown,
 }
 
+/// M87/T87.3: links that run the application's handler.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DMdLinks {
+    #[widget_id("d_mdlinks_a")]
+    pub a: LinkedMarkdown<Store>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct DRichTextEditor {
@@ -922,6 +930,7 @@ demos! {
     PaneGrid(DPaneGrid),
     RichText(DRichText),
     Markdown(DMarkdown),
+    MdLinks(DMdLinks),
     RichTextEditor(DRichTextEditor),
     PaintBox(DPaintBox),
     VectorText(DVectorText),
@@ -952,5 +961,5 @@ impl Default for Demo {
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
 // M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout; M85/T85.2's Pin;
-// M85/T85.4's Pop.
-pub const DEMOS: usize = 62 + cfg!(feature = "shader") as usize;
+// M85/T85.4's Pop; M87/T87.3's LinkedMarkdown.
+pub const DEMOS: usize = 63 + cfg!(feature = "shader") as usize;

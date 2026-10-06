@@ -5,14 +5,15 @@
 //! Every gate here was committed **green** (`docs/plan-iced-roadmap.md`
 //! §3.1): gates 1–4 pinned T87.0's gap — they asserted the value then and
 //! printed it — and the task that closes each one flips its assertion to
-//! the bound written beside it. Gates 1 and 2 are flipped (T87.1). Gate 5 pins the default display list
+//! the bound written beside it. Gates 1 and 2 are flipped (T87.1), gate 3
+//! by T87.3. Gate 5 pins the default display list
 //! before `MarkdownTheme` (T87.2) moves anything.
 //!
 //! | gate | pinned today | flipped by | bound |
 //! |---|---|---|---|
 //! | 1 `every_word_is_kept` | 192 spans of 1,000 words | T87.1 (flipped) | spans = words |
 //! | 2 `set_str_is_linear` | ratio > 25 | T87.1 (flipped) | ratio ≤ 25 |
-//! | 3 `link_markup_is_not_drawn` | `](` drawn | T87.3 | no `[`, `](` or target |
+//! | 3 `link_markup_is_not_drawn` | `](` drawn | T87.3 (flipped) | no `[`, `](` or target |
 //! | 4 `image_markup_is_not_drawn` | `](` drawn | T87.4 | no `![`, `](` or name |
 //! | 5 `default_theme_is_todays` | the two folds below | — | unchanged |
 //!
@@ -111,15 +112,22 @@ fn set_str_is_linear() {
     assert!(r <= 25.0, "set_str grows faster than its text: ratio {r:.1}, bound 25");
 }
 
-/// Gate 3. **Pinned**: the parser has no link markup, so `[the` and
-/// `docs](https://a.example)` are drawn as words. T87.3 flips it: no
-/// `[`, `](` or target bytes in what is drawn.
+/// Gate 3. **Link markup is not drawn** — flipped by T87.3. T87.0 pinned
+/// it drawn: the parser had no links, so `[the` and
+/// `docs](https://a.example)` were words. Now the words are `the` and
+/// `docs`, both in link 0, and the target is the link's, not the text's.
 #[test]
 fn link_markup_is_not_drawn() {
     let m = Markdown::new("see [the docs](https://a.example) now");
     let d = drawn(&m);
-    println!("link_markup_is_not_drawn: drawn {d:?} (pinned today: contains \"](\")");
-    assert!(d.contains("]("), "pinned: link markup is drawn today, and {d:?} has none");
+    let links: Vec<u16> = m.rich().spans().iter().map(|s| s.link).collect();
+    println!(
+        "link_markup_is_not_drawn: drawn {d:?}, link per span {links:?}, link 0 -> {:?} (bound: no `[`, `](` or target)",
+        m.link(0)
+    );
+    assert!(!d.contains('[') && !d.contains("](") && !d.contains("a.example"), "link markup is drawn: {d:?}");
+    assert_eq!(d, "see|the|docs|now", "the words are not the link's text and its neighbours");
+    assert_eq!(m.link(0), Some("https://a.example"), "the link's target was not kept");
 }
 
 /// Gate 4. The same for an image. T87.4 flips it.

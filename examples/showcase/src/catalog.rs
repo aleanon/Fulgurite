@@ -134,6 +134,19 @@ are the subset a user interface actually renders.\n\n- a label\n- an \
 identifier\n- a list\n\n> A quote is set apart by a bar and a quieter \
 colour.";
 
+/// M87/T87.3's linked markdown: two links among plain words. Each link's
+/// text is one word, so the drive can name it with `~=`, which takes no
+/// spaces.
+const MDLINKS: &str = "Read the [guide](https://lumen.example/guide) or the \
+[changelog](https://lumen.example/changes) before you file an issue.";
+
+/// The link demo's handler: which link, from `ctx.row` — the readout looks
+/// its target up in [`MDLINKS`] with `link_target`, since a handler is
+/// handed the store and not the tree.
+fn follow_link(s: &mut Store, cx: &EventCtx) {
+    s.link = cx.row.map(|n| n as usize);
+}
+
 /// **The showcase's shader table** -- M83/T83.6, behind its `shader`
 /// feature. One entry: a vertical blend between two colours packed one per
 /// `u32` (R, G, B, A in byte order, which `unpack4x8unorm` reads), the
@@ -524,6 +537,10 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
         none),
+    entry!("Text", "LinkedMarkdown", "Links that run the application's handler.",
+        false,
+        |s| on(s, Demo::MdLinks(DMdLinks { a: LinkedMarkdown::linked(MDLINKS, follow_link) })),
+        |s| s.store.link.and_then(|n| lumen_static_widgets::link_target(MDLINKS, n)).map(|t| format!("link: {t}")).unwrap_or_default()),
     entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
         false,
         |s| on(s, Demo::RichTextEditor(DRichTextEditor {

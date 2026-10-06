@@ -19,13 +19,14 @@
   "M85/T85.1 added Layout: a static geometry check that a flexible(1) bar with 80 px of content is min(80, row/2) wide beside a fill that takes the rest, on one line.",
   "M85/T85.2 added Pin: a static check that the pinned button sits at the pin's origin plus (112, 64), inside the pin; and a click on it moves the press counter by one with the damage over the pin at 1.00x the button's own box.",
   "M85/T85.4 added Pop: a static check that the placeholder starts below the fold of a view shorter than the window, both heights printed; and PageDown until it is in view makes the application say loaded, with the loading frame's damage over the view at 1.00x the placeholder's box.",
-  "M87/T87.2 added Markdown's static quote check: in both palettes the demo's least contrasting run is a quote word, at AA or better, and its colour differs between the two (the quote colour follows the palette)."
+  "M87/T87.2 added Markdown's static quote check: in both palettes the demo's least contrasting run is a quote word, at AA or better, and its colour differs between the two (the quote colour follows the palette).",
+  "M87/T87.3 added LinkedMarkdown: a click on the `~=changelog` Link child runs the handler with that link, and the readout names its target; a press on the plain first word runs nothing (the isolate)."
  ],
  "counts": {
-  "entries": 52,
-  "actions": 164,
-  "landed_checked": 127,
-  "isolated": 69
+  "entries": 53,
+  "actions": 165,
+  "landed_checked": 128,
+  "isolated": 70
  },
  "entries": {
   "Selectable": [
@@ -162,6 +163,9 @@
   "Markdown": [
    "the markers are markup, not text",
    "a quote is drawn in its own colour"
+  ],
+  "LinkedMarkdown": [
+   "a click on a link runs the handler with that link"
   ],
   "RichTextEditor": [
    "typing markup updates the preview under it",

@@ -38,9 +38,10 @@
 //! stack's rather than this widget's — a slant belongs beside
 //! `FontStack`, next to the weight axis it would join.
 //!
-//! Headings, `**bold**`, `` `code` ``, bullets and paragraphs are the
-//! subset, which is what a UI actually renders: labels, emphasis, an
-//! identifier, a list.
+//! Headings, `**bold**`, `` `code` ``, bullets, paragraphs, and since
+//! M87 blockquotes and `[links](target)`, are the subset, which is what a
+//! UI actually renders: labels, emphasis, an identifier, a list, an aside,
+//! a reference.
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -76,6 +77,11 @@ pub struct Span {
     /// first word sets `bullet` for its indent and draws a bar instead of
     /// a dot.
     pub kind: u8,
+    /// Which link this word is part of, or [`Span::NO_LINK`] — M87/T87.3.
+    /// The index is the link's order of appearance in the source, the
+    /// same count [`link_target`] makes, so a handler that receives it in
+    /// `ctx.row` can find the target from the application's own source.
+    pub link: u16,
 }
 
 impl Span {
@@ -83,9 +89,11 @@ impl Span {
     pub const TEXT: u8 = 0;
     /// A word of a blockquote (`> ` at a line's start) — M87/T87.2.
     pub const QUOTE: u8 = 1;
+    /// `link` for a word that is in no link.
+    pub const NO_LINK: u16 = u16::MAX;
 
     pub const fn plain(range: (u32, u32)) -> Span {
-        Span { range, scale: 1.0, weight: 400.0, code: false, br: false, bullet: false, space: true, kind: Span::TEXT }
+        Span { range, scale: 1.0, weight: 400.0, code: false, br: false, bullet: false, space: true, kind: Span::TEXT, link: Span::NO_LINK }
     }
 }
 
@@ -112,6 +120,13 @@ pub struct RichText {
     /// display scale, folded; a still frame measures nothing.
     widths: Vec<(f32, f32)>,
     measured_under: u64,
+    /// The last kept layout's padding origin, font size and line ratio —
+    /// M87/T87.3: what turns a point in the node into a placed word
+    /// ([`RichText::link_at`]) for a hit and for `cursor_at`, which is
+    /// handed no `NodeState`.
+    pad: (f32, f32),
+    font_size: f32,
+    ratio: f32,
 }
 
 impl RichText {
@@ -172,6 +187,32 @@ impl RichText {
     /// reads the breaker's own answer here rather than re-deriving it.
     pub fn placed(&self) -> &[(f32, f32, f32)] {
         &self.placed
+    }
+
+    /// Span `k`'s box from the node's origin, as the last layout placed
+    /// it — and, when the next word is in the same link, across the gap to
+    /// it, so a multi-word link is one target and one underline.
+    fn span_rect(&self, k: usize) -> [f32; 4] {
+        let (x, y, w) = self.placed[k];
+        let sp = self.spans[k];
+        let joined = sp.link != Span::NO_LINK
+            && sp.space
+            && self.spans.get(k + 1).is_some_and(|n| n.link == sp.link && !n.br && self.placed[k + 1].1 == y);
+        let w = w + if joined { self.widths[k].1 } else { 0.0 };
+        let h = self.font_size * sp.scale * self.ratio;
+        let (x0, y0) = (self.pad.0 + x, self.pad.1 + y);
+        [x0, y0, x0 + w, y0 + h]
+    }
+
+    /// The link under a point given from the node's origin, if any —
+    /// M87/T87.3. One function for `Markdown`'s hit and its `cursor_at`,
+    /// so the pointer shape and what a click reaches cannot disagree.
+    pub fn link_at(&self, x: f32, y: f32) -> Option<u16> {
+        (0..self.spans.len().min(self.placed.len())).find_map(|k| {
+            let n = self.spans[k].link;
+            let r = self.span_rect(k);
+            (n != Span::NO_LINK && x >= r[0] && x < r[2] && y >= r[1] && y < r[3]).then_some(n)
+        })
     }
 
     /// Append a span. **Never refuses** since M87/T87.1: the store grows,
@@ -335,6 +376,11 @@ impl RichText {
         // cleared by the next line break.
         let mut hang = 0.0f32;
         let ratio = line_ratio(me.line_height);
+        if keep {
+            self.pad = (me.padding.left, me.padding.top);
+            self.font_size = me.font_size;
+            self.ratio = ratio;
+        }
         let mut line_h = me.font_size * ratio;
         self.lines = if count == 0 { 0 } else { 1 };
         for k in 0..count {
@@ -386,7 +432,18 @@ impl RichText {
     /// because a `Span` carries none and `paint` has no style array: the
     /// part's `NodeState::fg` is the only place the cascade's answer for
     /// it lands.
-    fn draw(&self, st: &[NodeState], i: usize, out: &mut dyn Painter, quote: Color) {
+    ///
+    /// A link's words are drawn in `link` over a 1 px underline, 2 px for
+    /// the `active` one — the link the keyboard is on (M87/T87.3).
+    fn draw(
+        &self,
+        st: &[NodeState],
+        i: usize,
+        out: &mut dyn Painter,
+        quote: Color,
+        link: Color,
+        active: Option<u16>,
+    ) {
         let s = &st[i];
         let r = lumen_static::ops::rect_of(s);
         if r[2] <= r[0] || r[3] <= r[1] {
@@ -402,7 +459,13 @@ impl RichText {
         for (k, (&sp, &(x, y, w))) in self.spans.iter().zip(&self.placed).enumerate() {
             let size = s.font_size * sp.scale;
             let h = size * line_ratio(s.line_height);
-            let ink = if sp.kind == Span::QUOTE { quote } else { s.fg };
+            let ink = if sp.link != Span::NO_LINK {
+                link
+            } else if sp.kind == Span::QUOTE {
+                quote
+            } else {
+                s.fg
+            };
             if sp.kind == Span::QUOTE {
                 // **A 2 px bar down the quote's left edge**, one segment
                 // per visual line: drawn by the first quote word on each
@@ -439,6 +502,15 @@ impl RichText {
                 sp.weight,
                 ink,
             );
+            if sp.link != Span::NO_LINK {
+                // Just under the baseline: the renderer centres capitals in
+                // the line box, so the baseline is about 0.36 em below
+                // its middle.
+                let t = if active == Some(sp.link) { 2.0 } else { 1.0 };
+                let b = self.span_rect(k);
+                let uy = y0 + y + h / 2.0 + size * 0.45;
+                out.rect([x0 + x, uy, r[0] + b[2], uy + t], ink);
+            }
         }
         out.pop_clip();
     }
@@ -477,7 +549,7 @@ impl Node for RichText {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        self.draw(st, i, out, st[i].fg);
+        self.draw(st, i, out, st[i].fg, st[i].fg, None);
     }
 
     lumen_static::leaf_common!(RichText, 0);
@@ -640,22 +712,197 @@ impl Default for MarkdownTheme {
 /// from it unless the theme fixes them. A blockquote is its words in the
 /// quote colour behind a 2 px bar of the same colour, indented like a
 /// bullet; a quote that wraps hangs.
-#[derive(Default)]
-pub struct Markdown {
+///
+/// # Links — M87/T87.3
+///
+/// `[text](target)` is a link: its words are drawn in the link colour,
+/// underlined, and the markup and target are not drawn. A target holds no
+/// whitespace, and `![` is an image's (T87.4), not a link's. A plain
+/// `Markdown` draws links and does nothing with them; [`LinkedMarkdown`]
+/// makes them **activate**: a click on a link, or Enter on the link the
+/// arrows made active, runs its `on_link` handler with the link's index
+/// in `ctx.row` — positional detail in the context, rule 2, the shape a
+/// repeater's row handler has. The handler finds the target with
+/// [`link_target`] over the application's own source, because a handler
+/// receives the application's state and, under a `#[state]` split, the
+/// tree is not reachable from it at all.
+pub struct Markdown<S: 'static = (), const LINKS: bool = false> {
     inner: RichText,
     theme: MarkdownTheme,
+    /// Each link's markup and target byte ranges and the spans its text
+    /// became, in source order. Sized at parse time, like the span store.
+    links: Vec<Link>,
+    /// The link the arrows are on (`LINKS` only) — what Enter activates,
+    /// and what `paint` underlines at 2 px.
+    active: Option<u16>,
+    on_link: fn(&mut S, &lumen_static::event::EventCtx),
 }
 
-impl Markdown {
+/// A `Markdown` whose links activate: `on_link` runs with the link's
+/// index in `ctx.row` — M87/T87.3. Built with [`Markdown::linked`].
+pub type LinkedMarkdown<S> = Markdown<S, true>;
+
+/// One link — M87/T87.3. Byte offsets into the source: `[` at `open`, `]`
+/// at `close`, the markup ends at `end` (one past `)`), and `target` is
+/// what is between the parentheses. `spans` is the half-open range of
+/// spans its text became.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Link {
+    open: u32,
+    close: u32,
+    end: u32,
+    target: (u32, u32),
+    spans: (u32, u32),
+}
+
+/// Links past this many are drawn as text: a link index is a `u16`, and
+/// [`Span::NO_LINK`] is the last one.
+const MAX_LINKS: usize = Span::NO_LINK as usize;
+
+fn no_link<S>(_: &mut S, _: &lumen_static::event::EventCtx) {}
+
+impl<S: 'static, const LINKS: bool> Default for Markdown<S, LINKS> {
+    fn default() -> Self {
+        Markdown {
+            inner: RichText::default(),
+            theme: MarkdownTheme::DEFAULT,
+            links: Vec::new(),
+            active: None,
+            on_link: no_link::<S>,
+        }
+    }
+}
+
+impl Markdown<(), false> {
+    /// **On the concrete type, not the generic one**: a default type
+    /// parameter does not drive inference in expression position, so
+    /// `Markdown::new(DOC)` must name exactly one `new`. Which is also why
+    /// the linked constructor is [`Markdown::linked`] and not a second
+    /// `new` — two would make every `Markdown::new` ambiguous (E0034).
     pub fn new(src: &str) -> Self {
         let mut m = Markdown::default();
         m.set_str(src);
         m
     }
+}
+
+impl<S: 'static> Markdown<S, true> {
+    /// A `Markdown` whose links run `on_link` — M87/T87.3.
+    pub fn linked(src: &str, on_link: fn(&mut S, &lumen_static::event::EventCtx)) -> Self {
+        let mut m = Markdown { on_link, ..Markdown::default() };
+        m.set_str(src);
+        m
+    }
+
+    /// The link the arrows are on.
+    pub fn active(&self) -> Option<u16> {
+        self.active
+    }
+}
+
+/// Each link in `line`, in order, as four byte offsets: where `[` is,
+/// where `](` is, where the target starts, and one past `)` (the target
+/// ends just before `)`). **The one scanner**, which
+/// `Markdown::set_str` and [`link_target`] both call, so the index a
+/// handler is handed and the target it looks up cannot disagree.
+fn scan_links(line: &str, mut f: impl FnMut(usize, usize, usize, usize)) {
+    let b = line.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'[' && (i == 0 || b[i - 1] != b'!') {
+            if let Some((close, t, end)) = link_from(b, i) {
+                f(i, close, t, end);
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
+
+/// The link opening at `open`, if one does: a non-empty text with no `[`
+/// in it, `](` straight after, and a non-empty target with no whitespace
+/// up to `)`.
+fn link_from(b: &[u8], open: usize) -> Option<(usize, usize, usize)> {
+    let mut j = open + 1;
+    while j < b.len() && b[j] != b']' {
+        if b[j] == b'[' {
+            return None;
+        }
+        j += 1;
+    }
+    if j >= b.len() || j == open + 1 || b.get(j + 1) != Some(&b'(') {
+        return None;
+    }
+    let t = j + 2;
+    let mut k = t;
+    while k < b.len() && b[k] != b')' {
+        if b[k].is_ascii_whitespace() {
+            return None;
+        }
+        k += 1;
+    }
+    (k < b.len() && k > t).then_some((j, t, k + 1))
+}
+
+/// Link `n`'s target in `src` — M87/T87.3: the `n`th `[text](target)` in
+/// source order, counted the way `Markdown` counts it (the same scanner
+/// over the same lines), so a `LinkedMarkdown` handler handed `n` in
+/// `ctx.row` reads the target from the source its application already
+/// holds. `None` past the last link.
+pub fn link_target(src: &str, n: usize) -> Option<&str> {
+    let mut seen = 0usize;
+    let mut at = 0usize;
+    let mut found = None;
+    for line in src.split('\n') {
+        let base = at;
+        at += line.len() + 1;
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if found.is_some() || trimmed.is_empty() {
+            continue;
+        }
+        scan_links(trimmed, |_, _, t, end| {
+            if seen == n && found.is_none() && seen < MAX_LINKS {
+                found = Some((base + indent + t, base + indent + end - 1));
+            }
+            seen += 1;
+        });
+    }
+    found.and_then(|(a, b)| src.get(a..b))
+}
+
+impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
 
     /// The rendered text and its spans.
     pub fn rich(&self) -> &RichText {
         &self.inner
+    }
+
+    /// How many links the source holds.
+    pub fn link_count(&self) -> usize {
+        self.links.len()
+    }
+
+    /// Link `n`'s target — the same answer [`link_target`] gives over the
+    /// source, for a test or an `after_update` that holds the widget.
+    pub fn link(&self, n: usize) -> Option<&str> {
+        let l = self.links.get(n)?;
+        self.inner.text.get(l.target.0 as usize..l.target.1 as usize)
+    }
+
+    /// Link `n`'s text as drawn, words joined as the layout spaces them.
+    pub fn link_text(&self, n: usize) -> String {
+        let mut out = String::new();
+        if let Some(l) = self.links.get(n) {
+            for k in l.spans.0 as usize..(l.spans.1 as usize).min(self.inner.spans.len()) {
+                if k > l.spans.0 as usize && self.inner.spans[k - 1].space {
+                    out.push(' ');
+                }
+                out.push_str(self.inner.span_str(k));
+            }
+        }
+        out
     }
 
     /// The theme in force.
@@ -686,6 +933,7 @@ impl Markdown {
         self.inner.text.clear();
         self.inner.text.push_str(src);
         self.inner.clear();
+        self.links.clear();
         let text = core::mem::take(&mut self.inner.text);
         let theme = self.theme;
         let mut blank_pending = false;
@@ -724,6 +972,24 @@ impl Markdown {
             };
             let body = &trimmed[skip..];
             let body_at = base + indent + skip;
+            // This line's links, found before its words are: a link's text
+            // can span words, and its markup is stripped wherever a word
+            // reaches it, like a `**` pair (M87/T87.3).
+            let mut next_link = self.links.len();
+            let line_at = base + indent;
+            let links = &mut self.links;
+            scan_links(trimmed, |o, c, t, e| {
+                if links.len() < MAX_LINKS {
+                    links.push(Link {
+                        open: (line_at + o) as u32,
+                        close: (line_at + c) as u32,
+                        end: (line_at + e) as u32,
+                        target: ((line_at + t) as u32, (line_at + e - 1) as u32),
+                        spans: (0, 0),
+                    });
+                }
+            });
+            let mut in_link: Option<usize> = None;
             // **Carried across words, because a span is a word.**
             // `**two whole words**` opens on the first and closes on
             // the last, and every word between them is bold too — which
@@ -759,7 +1025,17 @@ impl Markdown {
                 let mut k = 0usize;
                 let mut first_seg = true;
                 loop {
-                    let marker = if word[k..].starts_with("**") {
+                    // A link's `[` opens it and its `](target)` closes it:
+                    // both are markers, never drawn.
+                    let p = (body_at + at + k) as u32;
+                    let link_mark = match in_link {
+                        Some(n) if self.links[n].close == p => Some((self.links[n].end - p) as usize),
+                        None if next_link < self.links.len() && self.links[next_link].open == p => Some(1),
+                        _ => None,
+                    };
+                    let marker = if link_mark.is_some() {
+                        link_mark
+                    } else if word[k..].starts_with("**") {
                         Some(2usize)
                     } else if word[k..].starts_with('`') {
                         Some(1usize)
@@ -780,6 +1056,11 @@ impl Markdown {
                                 sp.scale = scale * theme.code.0;
                                 w = w.max(theme.code.1);
                             }
+                            if let Some(n) = in_link {
+                                sp.scale *= theme.link.0;
+                                w = w.max(theme.link.1);
+                                sp.link = n as u16;
+                            }
                             if bold {
                                 w = w.max(700.0);
                             }
@@ -795,10 +1076,21 @@ impl Markdown {
                             self.inner.push(sp);
                             first_seg = false;
                         }
-                        match marker {
-                            Some(2) => bold = !bold,
-                            Some(_) => code = !code,
-                            None => break,
+                        match (link_mark, marker) {
+                            (Some(_), _) => match in_link {
+                                Some(n) => {
+                                    self.links[n].spans.1 = self.inner.spans.len() as u32;
+                                    in_link = None;
+                                }
+                                None => {
+                                    self.links[next_link].spans = (self.inner.spans.len() as u32, self.inner.spans.len() as u32);
+                                    in_link = Some(next_link);
+                                    next_link += 1;
+                                }
+                            },
+                            (None, Some(2)) => bold = !bold,
+                            (None, Some(_)) => code = !code,
+                            (None, None) => break,
                         }
                         k += marker.unwrap_or(0);
                         seg = k;
@@ -819,6 +1111,9 @@ impl Markdown {
         }
         self.inner.text = text;
         self.inner.fit();
+        if self.active.is_some_and(|a| a as usize >= self.links.len()) {
+            self.active = None;
+        }
     }
 }
 
@@ -833,33 +1128,40 @@ fn heading(line: &str, theme: &MarkdownTheme) -> Option<((f32, f32), usize)> {
     None
 }
 
-impl Widget for Markdown {
+/// `Markdown`'s table and seed, shared by both of its forms: one node,
+/// focusable when its links activate (the arrows walk them, Enter runs
+/// one).
+const MD_TABLE: [NodeDesc; 1] = [NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+const MD_TABLE_LINKED: [NodeDesc; 1] = [NodeDesc::new(0, NO_PARENT, 0, 0, NodeDesc::FOCUSABLE)];
+const MD_SEEDS: [Seed; 1] = [Seed::new(
+    "markdown",
+    <RichText as Widget>::type_defaults, Fields::of(&[
+    Fields::WIDTH,
+    Fields::HEIGHT,
+    Fields::PADDING,
+    Fields::BACKGROUND,
+    Fields::BORDER,
+    Fields::COLOR,
+    Fields::FONT_SIZE,
+    Fields::FONT_WEIGHT,
+    Fields::RADIUS,
+    Fields::VISIBLE,
+])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
+
+impl<S: 'static, const LINKS: bool> Widget for Markdown<S, LINKS> {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = false;
-    const SUB_TABLE: &'static [NodeDesc] = &[NodeDesc::new(0, NO_PARENT, 0, 0, 0)];
+    const SUB_TABLE: &'static [NodeDesc] = if LINKS { &MD_TABLE_LINKED } else { &MD_TABLE };
     const KIND: &'static str = "markdown";
-    const SEEDS: &'static [Seed] = &[Seed::new(
-        <Markdown as Widget>::KIND,
-        <Markdown as Widget>::type_defaults, Fields::of(&[
-        Fields::WIDTH,
-        Fields::HEIGHT,
-        Fields::PADDING,
-        Fields::BACKGROUND,
-        Fields::BORDER,
-        Fields::COLOR,
-        Fields::FONT_SIZE,
-        Fields::FONT_WEIGHT,
-        Fields::RADIUS,
-        Fields::VISIBLE,
-    ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
+    const SEEDS: &'static [Seed] = &MD_SEEDS;
 
     fn type_defaults() -> Style {
         <RichText as Widget>::type_defaults()
     }
 }
 
-impl Node for Markdown {
+impl<S: 'static, const LINKS: bool> Node for Markdown<S, LINKS> {
     lumen_static::node_count!();
     fn kind_name(&self) -> &'static str {
         <Self as Widget>::KIND
@@ -899,14 +1201,80 @@ impl Node for Markdown {
         self.inner.place(at, style, st, i)
     }
 
-    /// The inner `RichText`'s paint, with a quote in the theme's quote
-    /// colour over this node's own (`MarkdownTheme::quote_ink`).
+    /// The inner `RichText`'s paint, with a quote and a link in the
+    /// theme's colours over this node's own (`MarkdownTheme::quote_ink`,
+    /// `link_ink`), and the active link underlined at 2 px.
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        self.inner.draw(st, i, out, self.theme.quote_ink(st[i].fg))
+        let fg = st[i].fg;
+        let active = if LINKS { self.active } else { None };
+        self.inner.draw(st, i, out, self.theme.quote_ink(fg), self.theme.link_ink(fg), active)
     }
 
+    /// The node, and — for a `LinkedMarkdown`, over a link's words — the
+    /// link: `inner: Some(Inner { row: n, node: 0 })`, so the pass sets
+    /// `ctx.row = Some(n)` and asks [`Handlers::handler`] with it, and the
+    /// press latch refuses a press on one link released on another (rows
+    /// differ). Over plain text, `inner` is `None`, no handler answers,
+    /// and the press bubbles as it always did.
+    ///
+    /// [`Handlers::handler`]: lumen_static::event::Handlers::handler
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
-        self.inner.hit(st, i, x, y)
+        let h = self.inner.hit(st, i, x, y)?;
+        if LINKS {
+            if let Some(n) = self.inner.link_at(h.local.x, h.local.y) {
+                return Some(lumen_static::Hit {
+                    inner: Some(lumen_static::hit::Inner { row: n as u64, node: 0 }),
+                    ..h
+                });
+            }
+        }
+        Some(h)
+    }
+
+    /// `Pointer` over a link of a `LinkedMarkdown` (M57/B48's hook, from
+    /// the same [`RichText::link_at`] the hit asks), the style's cursor
+    /// elsewhere.
+    fn cursor_at(&self, local: Point) -> Option<lumen_static::style::Cursor> {
+        (LINKS && self.inner.link_at(local.x, local.y).is_some()).then_some(lumen_static::style::Cursor::Pointer)
+    }
+
+    /// Up and Down walk a `LinkedMarkdown`'s links, so the arrows never
+    /// move focus off it (`owns_arrows`).
+    fn owns_arrows(&self) -> bool {
+        LINKS
+    }
+
+    /// The link the arrows made active, as the row Enter activates —
+    /// M44/T44.10's path: the pass builds the selection a click on that
+    /// link would have and sets `ctx.row` to it. `None` for a plain
+    /// `Markdown`, and before the first arrow.
+    fn active_row(&self) -> Option<lumen_static::hit::Inner> {
+        if !LINKS {
+            return None;
+        }
+        self.active.map(|n| lumen_static::hit::Inner { row: n as u64, node: 0 })
+    }
+
+    /// Down to the next link (the first, from none), Up to the previous.
+    /// Answers whether the active link moved, which is also the mark.
+    fn on_event(&mut self, ev: &lumen_static::Event, _cx: &lumen_static::event::EventCtx) -> bool {
+        use lumen_static::event::Key;
+        if !LINKS || self.links.is_empty() {
+            return false;
+        }
+        let last = (self.links.len() - 1) as u16;
+        let next = match ev {
+            lumen_static::Event::Key { key: Key::Down, down: true } => {
+                Some(self.active.map_or(0, |a| (a + 1).min(last)))
+            }
+            lumen_static::Event::Key { key: Key::Up, down: true } => {
+                Some(self.active.map_or(0, |a| a.saturating_sub(1)))
+            }
+            _ => return false,
+        };
+        let moved = next != self.active;
+        self.active = next;
+        moved
     }
 
     fn node(&self, _k: usize) -> &dyn Node {
@@ -917,6 +1285,11 @@ impl Node for Markdown {
         self
     }
 
+    /// The rendered text as one `Paragraph` value, and for a
+    /// `LinkedMarkdown` one `Link` child per link: its text as the label,
+    /// the bounds of its first word, a `Click` action, and the id
+    /// `instance_id(id, n, 0)` — so the agent's `~=` finds a link by its
+    /// text and a platform click lands on it.
     #[cfg(feature = "a11y")]
     fn observe(
         &self,
@@ -926,16 +1299,54 @@ impl Node for Markdown {
         node: &mut accesskit::Node,
         extra: &mut alloc::vec::Vec<(accesskit::NodeId, accesskit::Node)>,
     ) {
-        self.inner.observe(st, i, id, node, extra)
+        self.inner.observe(st, i, id, node, extra);
+        let s = &st[i];
+        if !LINKS || s.size.w <= 0.0 || s.size.h <= 0.0 {
+            return;
+        }
+        for (n, l) in self.links.iter().enumerate() {
+            if l.spans.1 <= l.spans.0 || l.spans.0 as usize >= self.inner.placed.len() {
+                continue;
+            }
+            let r = self.inner.span_rect(l.spans.0 as usize);
+            let mut c = accesskit::Node::new(accesskit::Role::Link);
+            c.set_label(self.link_text(n));
+            c.set_bounds(accesskit::Rect {
+                x0: (s.pos.x + r[0]) as f64,
+                y0: (s.pos.y + r[1]) as f64,
+                x1: (s.pos.x + r[2]) as f64,
+                y1: (s.pos.y + r[3]) as f64,
+            });
+            c.add_action(accesskit::Action::Click);
+            let cid = accesskit::NodeId(lumen_static::observe::instance_id(id, n as u64, 0));
+            extra.push((cid, c));
+            node.push_child(cid);
+        }
     }
 }
 
-impl<S> lumen_static::event::Handlers<S> for Markdown {
+impl<S> lumen_static::event::Handlers<S> for Markdown<(), false> {
     fn handler(
         &self,
         _sel: lumen_static::event::NodeSel,
     ) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         None
+    }
+}
+
+/// `on_link`, for a selection that names one of this widget's links —
+/// never for the node itself (a click on plain text), and never for a
+/// dismissal or visibility question, whose sentinel rows are past any
+/// link.
+impl<S: 'static> lumen_static::event::Handlers<S> for Markdown<S, true> {
+    fn handler(
+        &self,
+        sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
+        match sel.inner {
+            Some((row, 0)) if (row as usize) < self.links.len() => Some(self.on_link),
+            _ => None,
+        }
     }
 }
 

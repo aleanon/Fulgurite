@@ -122,6 +122,9 @@ const ROWS: &[Row] = &[
     row("DataGrid", "DataGrid", Role::Grid, false),
     row("RichText", "RichText", Role::Paragraph, false),
     row("Markdown", "Markdown", Role::Paragraph, false),
+    // M87/T87.3: the same impl with links that activate; each link is a
+    // `Link` child (`a_linked_markdown_publishes_its_links`).
+    row("LinkedMarkdown", "Markdown", Role::Paragraph, false),
     row("RichTextEditor", "RichTextEditor", Role::TextInput, false),
     row("PaintBox", "PaintBox", Role::Canvas, false),
     // M82/T82.8: text at an angle is still text a reader hears.
@@ -369,4 +372,44 @@ fn every_published_action_is_handled() {
     println!("all rows: published: {total_p}, handled: {total_h} (bound: equal)");
     assert!(total_p >= 20, "setup: only {total_p} actions published across the catalogue");
     assert!(bad.is_empty(), "{} row(s) publish what they do not handle:\n  {}", bad.len(), bad.join("\n  "));
+}
+
+/// **A `LinkedMarkdown` publishes each link as a `Link` child** — M87/T87.3:
+/// the link's text as its label, the bounds of its first word (inside the
+/// paragraph's), a `Click` action, and the instance id `instance_id(id, n,
+/// 0)` — which is what lets the agent's `~=` address a link at all, since
+/// the paragraph itself is one value. A plain `Markdown` publishes none.
+/// Injection (recorded in the commit): push no link children — 0 links.
+#[test]
+fn a_linked_markdown_publishes_its_links() {
+    let mut ui = build();
+    let styles = pass::default_styles(&ui);
+    let mut st = vec![lumen_static::NodeState::default(); <Ui as Widget>::NODE_COUNT];
+    pass::layout(&mut ui, &styles, &mut st, Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 20000.0 });
+    let table = <Ui as Widget>::SUB_TABLE;
+    let id = |i: usize| (i + 1) as u64;
+    let mut out: Vec<(NodeId, AkNode)> = Vec::new();
+    emit_root(table, &ui, &st, &id, &mut out);
+    let by_id: BTreeMap<u64, AkNode> = out.into_iter().map(|(i, n)| (i.0, n)).collect();
+    let i = lumen_static::style::index_of_wid(table, "LinkedMarkdown").expect("#LinkedMarkdown");
+    let para = &by_id[&(i as u64 + 1)];
+    let kids: Vec<u64> = para.children().iter().map(|c| c.0).collect();
+    let links: Vec<&AkNode> = kids.iter().filter_map(|k| by_id.get(k)).filter(|n| n.role() == Role::Link).collect();
+    let plain = lumen_static::style::index_of_wid(table, "Markdown").expect("#Markdown");
+    let plain_links = by_id[&(plain as u64 + 1)].children().len();
+    println!(
+        "LinkedMarkdown: {} Link child(ren) (bound 1), label {:?} (bound \"docs\"), ids {kids:?} (bound [{}]); plain Markdown children {plain_links} (bound 0)",
+        links.len(),
+        links.first().and_then(|n| n.label()),
+        lumen_static::observe::instance_id(i as u64 + 1, 0, 0)
+    );
+    assert_eq!(links.len(), 1, "the link was not published as a Link child");
+    let l = links[0];
+    assert_eq!(l.label(), Some("docs"));
+    assert_eq!(kids, [lumen_static::observe::instance_id(i as u64 + 1, 0, 0)], "the link's id is not instance_id(id, 0, 0)");
+    assert!(l.supports_action(lumen_static::observe::accesskit::Action::Click), "a link offers no Click");
+    let (b, pb) = (l.bounds().expect("bounds"), para.bounds().expect("paragraph bounds"));
+    println!("link bounds {b:?} inside the paragraph's {pb:?}");
+    assert!(b.x1 > b.x0 && b.x0 >= pb.x0 && b.x1 <= pb.x1 && b.y0 >= pb.y0 && b.y1 <= pb.y1, "the link's bounds are not inside its paragraph");
+    assert_eq!(plain_links, 0, "a plain Markdown published link children");
 }

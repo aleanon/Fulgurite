@@ -152,3 +152,41 @@ the drive's after-every-action check printed "no text in the widget's
 box" and passed. The session scales the rect now
 (`crates/lumen-static-shell/tests/contrast_scale.rs`: one run, `"second"`,
 at scale 1 and 2; with the rect left logical, scale 2 measures **0**).
+
+## T87.3 — links
+
+`[text](target)` parses for every `Markdown`: the markup and target are
+not drawn, the words are drawn in `MarkdownTheme::link_ink` over a 1 px
+underline (2 px for the active link). `LinkedMarkdown<S>` (`Markdown<S,
+true>`, built by `Markdown::linked`) makes them activate: `hit` over a
+link answers `Inner { row: n }`, the pass hands `on_link` `ctx.row =
+Some(n)`, and `link_target(src, n)` reads the target from the source.
+
+| gate | measured | injection (red) |
+|---|---|---|
+| gate 3 `link_markup_is_not_drawn`, flipped | drawn `see\|the\|docs\|now`, links `[-, 0, 0, -]`, link 0 `https://a.example` | `scan_links` finds nothing: `see\|[the\|docs](https://a.example)\|now` |
+| click at link 1's word centre (187.5, 12.2) | `handled` **true**, `last_link` **Some(1)**, `link_target(DOC, 1)` `https://lumen.example/changes` | `hit` with `inner: None`: handled false, `None`; `hit` with the previous index: `Some(0)`, `.../guide` |
+| the same click 4 px past the link | `handled` **false**, state unchanged | — (the accept-and-refuse pair) |
+| press on link 0, release on link 1 | handler ran **0** times; a press and release on link 1 runs it once | `hit` reporting row 0 for every link: **1** |
+| `Host::cursor` over link 0 / 4 px past it | **Pointer** / **Default** | `cursor_at` answering `None`: Default over the link |
+| the link's colour, LIGHT / DARK | `(32, 57, 132)` / `(139, 163, 232)` = `link_ink(Text)`; body the palette's `Text` | link painted in the node's `fg`: `(15, 23, 42)` |
+| Tab, Down, Enter | focus on the link node, active `Some(0)`, `last_link` **Some(0)**, ran once | `active_row` answering `None`: ran 0 |
+| `a_linked_markdown_publishes_its_links` | 1 `Link` child, label `docs`, id `instance_id(id, 0, 0)`, `Click`, bounds inside the paragraph; a plain `Markdown` 0 | no link children pushed: 0 |
+| `size_of::<Span>()` | **24 B** (bound 24: `link: u16` in `kind`'s padding) | — |
+
+Sizes: `RichText` 120 → **136 B** (the kept layout's padding origin, font
+size and line ratio, which `link_at` needs and `cursor_at` is not handed),
+`Markdown` 192 → **240 B** (the links `Vec`, the active link, `on_link`).
+
+**K87b — not reached.** With links reported as `Hit::inner` on a node
+that is not virtualized, `just test` is green and so is the live drive.
+
+**Live** (`scripts/widget_drive.sh LinkedMarkdown,Markdown,RichTextEditor`,
+all six legs green): a click on `#d_mdlinks_a > ~=changelog` moves the
+readout `''` → `link: https://lumen.example/changes`, its damage the
+readout's own box at **1.00x**, the window's pixels changed; a press on
+the plain first word leaves it there (the isolate). M57's D3 pass: Tab
+reaches `#d_mdlinks_a` in one press, and Down, Enter moves the readout to
+`link: https://lumen.example/guide`. The a11y sweep finds no silent leaf
+(each link is a `Link` with its text). With no link children pushed, every
+leg fails on `` `~=changelog` matched nothing ``.

@@ -44,6 +44,8 @@ ROLES = {
     "FilePicker": "ComboBox",
     "RichText": "Paragraph",
     "Markdown": "Paragraph",
+    # M87/T87.3: the paragraph; each link is a `Link` child of it.
+    "LinkedMarkdown": "Paragraph",
     "RichTextEditor": "TextInput",
     "PaintBox": "Canvas",
     # M82/T82.8: text at an angle is still a label to a reader.

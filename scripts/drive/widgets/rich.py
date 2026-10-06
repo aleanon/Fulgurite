@@ -392,4 +392,38 @@ def _decode(png: bytes):
     return w, h, bytes(out)
 
 
-ALL = [RICHTEXT, MARKDOWN, EDITOR, PAINTBOX, VECTORTEXT]
+# M87/T87.3: a LinkedMarkdown's links run the application's handler. A
+# link is a `Link` child of the paragraph, named by its text -- one word
+# each in the demo, because a `~=` term cannot hold a space -- so the
+# click is addressed to the link itself, not to a guessed coordinate.
+# The handler writes the store and the readout looks the target up with
+# `link_target`; the Markdown itself repaints nothing on a click, so the
+# readout is the action's subject.
+LINK = "#d_mdlinks_a > ~=changelog"
+CHANGES = "link: https://lumen.example/changes"
+
+LINKED_MARKDOWN = ("LinkedMarkdown", "#d_mdlinks_a", [
+    Action(
+        # The readout is the consequence, and it shows: but an empty
+        # readout chip has no area to hash before the click, so the
+        # visible check watches the window.
+        visible=True,
+        region="window",
+        subject="#readout",
+        name="a click on a link runs the handler with that link",
+        needs="a paragraph with two links, each published as a Link child named by its text",
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.click(LINK))[1],
+        expect=lambda c: (
+            c.readout() == CHANGES and c.readout() != c._r0,
+            "readout {!r} -> {!r} (bound {!r})".format(c._r0, c.readout(), CHANGES),
+        ),
+        # The first word, "Read", is plain text: a press there is the
+        # paragraph's, and no link's handler may run.
+        isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
+                           c.c.rpc("input.click", x=c.box()[0] + 8, y=c.box()[1] + 9))[1],
+        injection="push no link children in Markdown::observe (`~=changelog` then "
+                  "names no node), or hit answering inner: None",
+    ),
+])
+
+ALL = [RICHTEXT, MARKDOWN, LINKED_MARKDOWN, EDITOR, PAINTBOX, VECTORTEXT]

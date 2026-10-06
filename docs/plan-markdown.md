@@ -536,6 +536,34 @@ Appendix rows for the assembler:
   only took effect at the next `set_str` would be a write that did
   nothing visible; `set_theme` re-parses when the theme changed.
 
+- **T87.3 — the linked constructor is `linked`, not a second `new`.**
+  The Decisions put `Markdown::new` on `impl Markdown<(), false>` and
+  `LinkedMarkdown::new(src, on_link)` on `impl<S> Markdown<S, true>`; with
+  both, every `Markdown::new(DOC)` is E0034 ("multiple applicable items"),
+  because the path in expression position carries inference variables
+  for both parameters and each impl could apply. Checked with a
+  standalone file before anything was written. So it is
+  `LinkedMarkdown::linked(src, on_link)`, and `Markdown::new` keeps its
+  fifteen callers unchanged.
+- **T87.3 — a plain `Markdown` parses links too, and does nothing with
+  them.** Gate 3 is a plain `Markdown`, and markup that is drawn is the
+  defect it pins, so the parser strips link markup for both forms and
+  draws link words in the link colour, underlined. Only `LinkedMarkdown`
+  reports a link as `Hit::inner`, sets `FOCUSABLE`, walks links with the
+  arrows, shows `Pointer` over one and publishes `Link` children — a
+  plain one publishing a `Click` that runs nothing would be the
+  finished-but-unreachable shape.
+- **T87.3 — the palette gate is `link_ink`, not `DARK`'s `Accent`**, by
+  T87.2's K87c fallback: the link is the palette's `Text` mixed halfway
+  toward `LINK_TINT`, checked under both palettes beside the body.
+- **T87.3 — K87b not reached.** Reporting a link as `Hit::inner` on a
+  node that is not virtualized turned nothing red: `just test` and the
+  three-widget drive (`LinkedMarkdown`, `Markdown`, `RichTextEditor`)
+  green on all six legs (`docs/results-markdown.md` T87.3).
+- **T87.3 — the live action's `visible` region is the window.** Its
+  consequence is the readout, whose chip is empty — no area to hash —
+  before the first click.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =

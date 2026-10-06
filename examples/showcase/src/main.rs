@@ -334,6 +334,8 @@ pub struct Store {
     /// The chip demo's selected tags, a bit each, and its × presses (B2).
     tags: u8,
     removed: u32,
+    /// The linked markdown demo's last followed link (M87/T87.3).
+    link: Option<usize>,
     /// **The Pop demo** (M85/T85.4): whether its placeholder has been
     /// scrolled into view and so "loaded". Set by the pop's `on_view`;
     /// `refresh` writes the placeholder's text from it, and the entry's
@@ -1789,6 +1791,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         ("DSelectable", Length::Fixed(320.0)),
         ("DRichText", Length::Fixed(420.0)),
         ("DMarkdown", Length::Fixed(420.0)),
+        ("DMdLinks", Length::Fixed(420.0)),
         ("DRichTextEditor", Length::Fixed(420.0)),
         ("DPaintBox", Length::Fixed(320.0)),
         ("DPaneGrid", Length::Fixed(480.0)),

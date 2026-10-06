@@ -502,7 +502,7 @@ stateless! {
     [const KIND: u8] crate::chart::Chart<KIND>,
     [S: TextStorage] crate::nav::AppBar<S>,
     [S: TextStorage] crate::surface::Toast<S>,
-    [] crate::rich::Markdown,
+    [S: 'static, const LINKS: bool] crate::rich::Markdown<S, LINKS>,
     [] crate::rich::RichText,
     [] crate::rich::PaintBox,
     // M82/T82.8: its text and angle are code; its outline is a memo keyed

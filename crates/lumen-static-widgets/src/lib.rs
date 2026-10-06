@@ -178,7 +178,8 @@ pub use data::{
 pub use field::{NumberInput, RangeSlider, SearchField};
 #[cfg(feature = "alloc")]
 pub use rich::{
-    Markdown, MarkdownTheme, PaintBox, RichText, RichTextEditor, Span, MAX_EDITOR_NODES,
+    link_target, LinkedMarkdown, Markdown, MarkdownTheme, PaintBox, RichText, RichTextEditor, Span,
+    MAX_EDITOR_NODES,
 };
 #[cfg(feature = "alloc")]
 pub use pick::{
@@ -219,7 +220,7 @@ pub mod prelude {
     };
     #[cfg(feature = "alloc")]
     pub use crate::{
-        Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, Markdown, Menu,
+        Branch, ColorPicker, Combobox, DataGrid, DatePicker, FilePicker, LinkedMarkdown, Markdown, Menu,
         NumberInput, OptionList, PaintBox, Pagination, PickList, RangeSlider, RichText,
         RichTextEditor, SearchField, TimePicker, Tree, VectorText,
     };

@@ -10,7 +10,7 @@
 use lumen_static::prelude::*;
 use lumen_static_widgets::prelude::*;
 use lumen_static_widgets::{
-    Avatar, Combobox, Drawer, Markdown, Menu, Modal, Pad, PickList, Picker, Sheet, Strip,
+    Avatar, Combobox, Drawer, LinkedMarkdown, Markdown, Menu, Modal, Pad, PickList, Picker, Sheet, Strip,
     BOTTOM, COLOR, DATE, FILE, RAIL, TABS, TIME,
 };
 
@@ -147,6 +147,8 @@ pub struct Ui {
     pub rich: RichText,
     #[widget_id("Markdown")]
     pub markdown: Markdown,
+    #[widget_id("LinkedMarkdown")]
+    pub linked: LinkedMarkdown<S>,
     #[widget_id("RichTextEditor")]
     pub editor: RichTextEditor,
     #[widget_id("PaintBox")]
@@ -262,6 +264,7 @@ pub fn build() -> Ui {
     ui.grid = DataGrid::new(&["Name", "Size"], 3, 20.0, bind_row);
     ui.rich = RichText::new("some rich text");
     ui.markdown = Markdown::new("some **bold** text");
+    ui.linked = LinkedMarkdown::linked("see [docs](https://a.example) now", lumen_static_widgets::ops::ignore_click::<S>);
     ui.editor = RichTextEditor::new("edit me");
     ui.badge = Badge::new("3".into());
     ui.chip = Chip::new("tag".into());

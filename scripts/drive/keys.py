@@ -38,6 +38,10 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "Chip": ("#d_chip_a", [KeyAction("Enter selects the chip", ["Enter"])]),
     "RichTextEditor": ("#d_editor_a > #editor-input",
                        [KeyAction("typing edits the source", ["text:x"])]),
+    # M87/T87.3: Down makes the first link active, Enter follows it
+    # (M44/T44.10's active-row path) -- the readout names its target.
+    "LinkedMarkdown": ("#d_mdlinks_a",
+                       [KeyAction("Down then Enter follows the first link", ["Down", "Enter"])]),
     "Button": ("#d_button_a", [KeyAction("Enter presses it", ["Enter"])]),
     "CheckBox": ("#d_checkbox_a > #labelled-control", [KeyAction("Space ticks it", ["Space"])]),
     "Switch": ("#d_switch_a > #labelled-control", [KeyAction("Space flips it", ["Space"])]),

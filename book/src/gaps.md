@@ -39,10 +39,13 @@ compound selectors, no combinators, no `:state`, `@media`, `@keyframes`
 or `@theme`, and no classes that change at run time — each is a compile
 error that says so (`docs/plan-lss.md` §4).
 
-**Italic, and rich text beyond weight.** `RichText` and `Markdown`
-(M27/T27.12) put a bold word inside a sentence, but a span's only
-typographic axis is weight, so Markdown has no italic and says why. A
-span is a word: it never wraps inside itself.
+**Italic, and rich text beyond weight and colour.** `RichText` and
+`Markdown` (M27/T27.12) put a bold word inside a sentence, and since M87
+a `Markdown` has a per-element theme, blockquotes, and links — drawn in
+their own colour and underlined, and in a `LinkedMarkdown` running the
+application's handler with the link's index (`docs/plan-markdown.md`).
+But a span's only typographic axis is weight, so Markdown has no italic
+and says why. A span is a word: it never wraps inside itself.
 
 **Most of vector drawing.** Paths shipped in M82/T82.5: `Painter::path`
 fills and strokes moves, lines and quadratic and cubic Béziers under a
