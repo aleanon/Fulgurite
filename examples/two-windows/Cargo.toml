@@ -28,3 +28,6 @@ a11y = ["lumen-static-winit/a11y"]
 # drive's panic step (T89.3 gate 4) runs on the release window; without it
 # a release window does not catch panics, by design.
 reload = ["lumen-static-winit/reload"]
+# The GPU backend, for `just resume-drive`'s `two-windows-gpu` leg and the
+# per-window `VmRSS` rows (M89b/T89.9, `docs/results-windows.md`).
+gpu = ["lumen-static-winit/gpu"]

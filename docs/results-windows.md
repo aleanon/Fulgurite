@@ -255,3 +255,70 @@ and no agent call that runs a frame: `app.reloads` 2 after 1.0 s.
 The existing `hot`, `static` and `everything` legs passed unchanged on the
 fixture with its panel. The GPU legs were not run (no adapter on the
 private display; T89.7 names none).
+
+## T89.9 — M89b's baselines, one GPU context per window (2026-10-06)
+
+Read on the user's display (`:0`, the RTX 4070: Xephyr has no adapter),
+off the monitor being read and without focus (`scripts/drive_window.sh`).
+Every GPU window still makes a context of its own; T89.10 shares one, and
+K89a and K89b (`docs/plan-windows.md`, "Kill rules") are judged against
+these rows.
+
+**`just resume-drive`'s `two-windows-gpu` leg** (`scripts/resume_windows.py`;
+a debug `examples/two-windows` with `LUMEN_BACKEND=gpu`, the list and an
+opened detail, one `LUMEN_TEST_RESUME` round trip at 8,000 ms; each window
+found again by its process and title and read back with `xwd -id`):
+
+| quantity | read | bound |
+|---|---|---|
+| window 1 (list, 340 × 440): differing pixels after the round trip | **0** / 149,600 (0.0000%) | 0.1% (149) |
+| window 2 (detail, 300 × 400): differing pixels after the round trip | **0** / 120,000 (0.0000%) | 0.1% (120) |
+| backends made before it / by it | **2 / 2** (one per window per resume) | 2 / 2 |
+| setup: distinct colours before → after (list / detail) | 532 → 532 / 450 → 450 | > 1 |
+| setup: the first reads, before the round trip | 4.20 s into the drive | before the hook's line |
+
+- **The leg found a defect on its first green attempt**: both windows
+  came back one flat colour, **100%** of their pixels differing (149,600
+  and 120,000). A GPU backend asked its session for damage at age 1 on
+  every present, so a backend made by a resume — whose target holds no
+  frame — presented an empty target under a `Boundaries` session with
+  nothing new to draw. Its first present now asks for age 0, the whole
+  surface (`GpuBackend::present`). glasswall's `gpu-resume` leg never saw
+  it: its 997 px window is resized by the window manager on the 1,080 px
+  monitor, and a resize resets retention.
+- **Injection** (the plan's: skip the second slot's `resume_backend`):
+  window 2 differs on 120,000 / 120,000 (100.0%, 43 distinct colours, the
+  X server's uninitialised window), window 1 on 0, and backends read
+  "2 before the round trip and 1 by it (want 2 and 2)"; the leg fails
+  naming both.
+- The hook is at 8,000 ms, not glasswall's 4,000: a debug launch opening
+  two contexts took most of 4 s, and the first reads straddled the round
+  trip (`docs/plan-windows.md`, What building found).
+
+**`just windows-rss`** (`scripts/windows_rss.sh`; release
+`examples/two-windows`, `VmRSS` 4 s after start with one window and 4 s
+after the click on `#row2` opened the second, median of three launches,
+`docs/results-gpu.md` §5's method):
+
+| backend | one window | two windows | second window's delta |
+|---|---:|---:|---:|
+| software | 29.6 MB | 104.0 MB | **+74.5 MB** |
+| GPU, a context per window | 197.8 MB | 290.3 MB | **+91.9 MB** |
+| GPU over software | +168.2 MB | | **+17.5 MB** |
+
+Raw launches, kB (one → two): GPU 236,268 → 328,600, 202,500 → 296,624,
+202,352 → 297,316; software 30,180 → 106,468, 30,304 → 106,492, 30,264 →
+106,516.
+
+- **The first GPU window's +168.2 MB** is §5's context cost (174 MB on
+  `examples/minimal`, `docs/results-gpu.md` §5), re-read on this example.
+- **The second window's delta is mostly not the GPU's.** The software
+  canvas pays +74.5 MB for it too: the detail lays an Arabic label out,
+  so its font stacks (the session's and the renderer's, one per slot)
+  load fallback faces until one has Arabic. The second GPU context's own
+  share is the difference of the two medians, **+17.5 MB**. K89b's
+  comparison is printed both ways — half of the raw delta, 46.0 MB, and
+  half of the GPU share, 8.7 MB — because a shared second window still
+  pays the 74.5 MB the software one pays, so the raw form could not tell
+  a shared context from a separate one (`docs/plan-windows.md`, What
+  building found).

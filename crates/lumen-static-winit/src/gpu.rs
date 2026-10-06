@@ -32,6 +32,15 @@ pub struct GpuBackend {
     /// M88/T88.2. Owned here so the call can lend it out; **re-read on
     /// every call**, never on a frame nobody asked about.
     shot: Vec<u8>,
+    /// **No frame has been drawn into this renderer's target yet** —
+    /// M89b/T89.9. Its first present asks the session for age 0 (the
+    /// whole surface), every later one for age 1. A backend is made per
+    /// window and per resume, and a resumed window's session is mid-life:
+    /// asked for age 1, an unchanged `Boundaries` session answered no
+    /// damage, and the new, empty target was presented as it was — both
+    /// windows of `just resume-drive`'s `two-windows-gpu` leg came back
+    /// one flat colour (100% of their pixels differing).
+    fresh: bool,
 }
 
 impl GpuBackend {
@@ -55,6 +64,7 @@ impl GpuBackend {
             name,
             masks_logged: false,
             shot: Vec::new(),
+            fresh: true,
         })
     }
 
@@ -117,7 +127,7 @@ impl Backend for GpuBackend {
         let (width, height) = self.gpu.size();
         let viewport = [0.0, 0.0, width as f32, height as f32];
 
-        // **Age 1, always.** This is the one real difference from the
+        // **Age 1, after the first frame.** This is the one real difference from the
         // softbuffer path, and it is a simplification rather than an
         // assumption: the renderer draws into a texture it owns and
         // blits *that* to the swapchain, so the surface it accumulates
@@ -132,7 +142,14 @@ impl Backend for GpuBackend {
         // at opposite corners of a window bound to the whole window,
         // which is the merging cost M18 removed on the software path
         // and which this quietly re-introduced.
-        let regions = crate::regions_for(host.take_damage_for_age(1), viewport);
+        //
+        // **Except the first** (M89b/T89.9): a new target holds no frame at
+        // all, which is age 0 — what softbuffer reports for a new buffer —
+        // so the whole surface is drawn. Without it a backend made by a
+        // resume presented an empty target under a session with nothing
+        // new to draw.
+        let age = if core::mem::take(&mut self.fresh) { 0 } else { 1 };
+        let regions = crate::regions_for(host.take_damage_for_age(age), viewport);
 
         let t = Instant::now();
         let render_ns = if regions.is_empty() {

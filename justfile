@@ -800,6 +800,13 @@ idle-count seconds="60":
 resume-drive:
     ./scripts/resume_drive.sh
 
+# M89b/T89.9: what each window costs resident -- examples/two-windows,
+# release, VmRSS with one window and with two, median of three launches
+# (docs/results-gpu.md §5's method), on the GPU and the software canvas.
+# K89b reads the second GPU window's delta. Needs a display with an adapter.
+windows-rss:
+    ./scripts/windows_rss.sh
+
 # M83/T83.7: examples/shader -- an animated WGSL plasma in a `ShaderView`
 # behind a `Glass` card -- live: the fallback on the software canvas and
 # the plasma on the GPU (read back with `xwd`), 0 px changed outside the

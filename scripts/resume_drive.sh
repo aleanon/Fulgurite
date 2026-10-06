@@ -19,6 +19,12 @@
 # match the `xwd` readback of the same still frame within 1 per channel
 # (the software still leg's must match exactly).
 #
+# M89b/T89.9: `two-windows-gpu`, a debug examples/two-windows on the GPU
+# with both windows open across the round trip, each read back with
+# `xwd -id` and its differing pixels printed against 0.1%, and the
+# backends counted: two before it and two made by it, one per window
+# (scripts/resume_windows.py). K89a reads this leg.
+#
 # Each leg names the process it drove (M42/T42.2, scripts/live/launch.py).
 # Needs a display; skips with exit 77 without one (M43 §2).
 set -euo pipefail
@@ -56,4 +62,18 @@ $LAUNCH --leg gpu-resume --exe target/debug/glasswall \
     --expect-strategy Boundaries --expect-features "" \
     -- python3 scripts/resume_drive.py {port} gpu-resume resume xwd
 
-echo "resume-drive: images survived suspend and resume on every leg"
+# M89b/T89.9: two windows, one GPU backend each, across one round trip.
+# Placed off the monitor the user reads, without focus, as the other
+# multi-window drives are (scripts/drive_window.sh), in a subshell so the
+# glasswall legs keep their placement.
+echo "== two-windows-gpu =="
+cargo build -q -p two-windows --features gpu
+(
+    . scripts/drive_window.sh
+    $LAUNCH --leg two-windows-gpu --exe target/debug/two-windows \
+        --env LUMEN_BACKEND=gpu --env LUMEN_TEST_RESUME=8000 \
+        --expect-strategy Boundaries --expect-features shaping \
+        -- python3 scripts/resume_windows.py {port} {pid} {log}
+)
+
+echo "resume-drive: images survived suspend and resume on every leg, and two windows on the GPU came back"

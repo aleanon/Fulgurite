@@ -1078,3 +1078,33 @@ the first review's findings of the same name.
   (`WindowApp`, as the plan says): `examples/two-windows`' detail and
   `examples/daemon`'s panel derive it with every field `fresh`, because
   `two-windows --features reload` turns the shell's `reload` on.
+- **T89.9, the resume leg found a defect before it could pass.** Its
+  first green attempt read both windows 100% different after the round
+  trip, one flat colour each: `GpuBackend` asked its session for damage
+  at age 1 on every present, and a backend made by a resume has a target
+  holding no frame, so an unchanged `Boundaries` session drew nothing
+  into it and the empty target was presented. Its first present now asks
+  for age 0 (softbuffer's answer for a new buffer). glasswall's
+  `gpu-resume` leg could not see it: the window manager resizes its
+  997 px window on a 1,080 px monitor, and a resize resets retention.
+  The defect's red run is that attempt; the plan's injection (skip slot
+  2's `resume_backend`) reads window 2 at 100% and "1 by it (want 2)".
+- **T89.9, the leg's hook is at 8,000 ms, not 4,000.** `LUMEN_TEST_RESUME`
+  counts from `Win::new`, and a debug launch that opens two GPU contexts,
+  one per window, used most of 4 s: the first reads straddled the round
+  trip (`xwd -id` met a BadWindow error on a window the suspend had destroyed).
+  The leg polls the detail's first present instead of sleeping, and
+  refuses a read the hook's line precedes or interrupts.
+- **T89.9, `xwd -id` is found again after the round trip.** `resumed`
+  makes a new X window per slot, so the leg finds both windows by
+  `_NET_WM_PID` and title before each read rather than holding an id.
+- **T89.9, K89b's quantity holds 74.5 MB the GPU does not cost.** The
+  second window's `VmRSS` delta is +91.9 MB on the GPU, but +74.5 MB on
+  the software canvas too: the detail lays Arabic out, and each slot's
+  font stacks load fallback faces until one has it. A shared context
+  cannot remove what the software window also pays, so half of the raw
+  delta (46.0 MB) is a bound a shared second window would exceed by its
+  fonts alone — a bound computed from the wrong quantity. `just
+  windows-rss` prints the GPU's share beside it, the difference of the
+  two backends' second-window medians (+17.5 MB), and T89.10 reads K89b
+  on both.
