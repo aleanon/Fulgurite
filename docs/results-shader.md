@@ -215,3 +215,65 @@ pixel and no frame changes; the live call sites are driven by T83.7
 | — glasswall's `Counting` forwards `Backend::set_shaders` | compiles, `dev-shape`'s `custom-backend` clippy line clean | — | forward deleted: **E0046** "missing: `set_shaders`" |
 | lint (`dev-shape`): `cargo clippy -p lumen-static-shell -p lumen-static-winit --all-targets --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader` | clean | -D warnings | an unused binding in `Host::set_shaders`: the new line fails `unused variable: injected`, the workspace `--features lumen-static/shader` line stays green |
 | firmware (K83b, K4): `just firmware-delta e339bc1 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (nothing in the firmware's graph changed: the shell, winit and reload crates only) |
+
+## T83.5 — the GPU split, at `4700b1d` + T83.5 (2026-10-06)
+
+`lumen-static-wgpu`'s default-off `shader` (winit's `shader` now forwards
+it in a `gpu` build): `Gpu::set_shaders` compiles each table entry as
+`src/prelude.wgsl` + its WGSL (vertex `lumen_vs`, fragment `fs_main`)
+with an explicit per-shader bind group layout — binding 0 the prelude's
+32 B `LumenFrame`, binding 1 `min_binding_size = uniform_size` — inside a
+validation error scope, keyed by a hash of the source and uniform size.
+A known bracket with uniforms of its shader's length becomes a
+`Split::Shader` in paint order beside the glass splits: the shapes
+pipeline runs up to it, one `LoadOp::Load` pass draws a full-target
+triangle under the scissor `snap_out(clipped(rect, clip stack))` (the
+stack starts with the damage region), and the fallback is skipped to the
+matching end. Frame and uniform slots are 256-byte aligned in one
+per-frame buffer read at dynamic offsets; no buffer or pipeline exists
+before the first entry that compiles. Everything else — unknown id,
+refused entry, wrong uniform length (counted in `ShaderStats::mismatches`)
+— draws the fallback clipped to the rect, as the canvas does.
+
+**K83a — the pass split's cost** (`cargo run --release -p
+lumen-static-wgpu --features shader --example shader_cost`, 1080p, 32
+trivial 64 × 64 shaders less the same list drawing their fallbacks, best
+of 50 with `Gpu::wait`; passes counted 32 per frame, 1,696 over the run).
+
+| adapter | 32 shaders | their fallbacks | per shader node | bound | verdict |
+|---|---:|---:|---:|---|---|
+| RTX 4070 (Vulkan, `DiscreteGpu`), three runs | 333.4, 336.7, 331.0 µs | 131.8, 147.1, 131.3 µs | **6.30**, 5.93, 6.24 µs | 50 µs | **does not fire** |
+| llvmpipe (Vulkan, `Cpu`), for the record | 4,455.3 µs | 901.7 µs | 111.05 µs | — | not the rule's adapter |
+
+The bound is derived from the RTX 4070's glass pass (`docs/results-glass.md`
+§0h), so the discrete row is the rule's. llvmpipe is a CPU rasteriser,
+which M51 §0 rule 1 says is not evidence about a GPU and which
+`Prefer::Auto` never opens (it keeps the software canvas); there a
+scissored full-target triangle costs 18× the discrete figure, and a
+window that asks for it with `LUMEN_BACKEND=gpu` pays that per shader.
+
+**Allocation.** The plan's bound, "≤ the empty frame's floor", cannot
+hold with nothing of this crate's in it: a bracket is a render pass, and
+wgpu allocates per pass — the two-shader frame (three passes) reads **98**
+against the one-pass floor's **61** on both adapters. The gate measures
+the frame minus `Gpu::resubmit`, wgpu's own submission of the same
+instances, splits, slots and passes (`submit_floor`'s M51/T51.4 method
+for a multi-pass frame); see the plan's "What building found".
+
+**Gates** (`crates/lumen-static-wgpu/tests/shader.rs` unless named;
+headless `Gpu`, 300 × 300; green on the RTX 4070 and on llvmpipe with the
+same numbers, `just gpu` exit 0).
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| scissor | shader colour inside **10,000** (setup), fallback pixels **0** (setup), ink outside **0**, passes 1 | 0 | `set_scissor_rect` skipped: outside **80,000**, red |
+| clip | inside the clip **5,000** (setup), outside **0** | 0 | scissor from `rect ∩ region` without the open clips: outside **5,000**, red |
+| region | B inside the region **5,000** (setup), B outside **0**, A kept **5,000** | 0 | scissor ignores the region: B outside **5,000**, A kept 0, red |
+| parity (`tests/parity.rs`, `shader` region `[8, 44, 62, 58]`, `--features shader`) | **0** px over 8 (bound `2 × 0 + 2` = **2**, baseline 0 on discrete and on cpu), worst 0; GPU shader passes **1** (setup ≥ 1); page outside every region 0 | 2 | `collect` skips the bracket and runs no pipeline: passes **0**, red at the setup line; with the setup assertion disabled the region reads **500** px over 8 (the 50 × 10 rect left page-coloured), red |
+| refusal | `set_shaders` answers **2**; one line each, naming `"broken"` (naga: "expected global item … found \"this\"") and `"oversize"` ("Buffer structure size 32 … greater than the given `min_binding_size`, which is 16"); then fallback pixels **20,000** (setup) and **0** px differ from the canvas | 2; 0 | error scope removed: the test panics in wgpu's handler, "**wgpu error: Validation Error**", red; binding 1's `min_binding_size: None`: answers **1** (the oversize struct accepted), red. (Dropping the guard instead of removing the scope pops it on drop and discards the error: "answered 0", red, but that is not the plan's injection) |
+| uniform length | 8 bytes to a 16-byte shader: fallback **10,000**, shader colour 0, `mismatches` **1**, passes 0; accept: 16 bytes draw the shader on **10,000** px | as stated | the length check removed: fallback **0**, passes **1**, red |
+| content key | id 0 red source → `(220, 30, 40)`; id 0 blue source → `(30, 60, 220)` | the new colour | cache keyed on `ShaderId`: the second frame stays `(220, 30, 40)`, red |
+| order | glass panel (half-white tint) over a shader: GPU centre `[131, 212, 154]`, canvas over the identical fallback `[131, 211, 154]`, distance **1** (bound 8); setup: canvas panel over the page `[252, 252, 252]`, distance 121 | 8 | shader splits run after every glass split: GPU centre `[20, 160, 60]` (the raw shader over the panel), distance **111**, red. LIQUID's own 18/255 tint left that injection at distance 9, one over the bound, so the panel carries a half-white tint |
+| allocation (`tests/alloc.rs`, `--features shader`) | two-shader frame **98**, wgpu's submission of the same frame **98**, difference **0**; shader passes in the frame 2 (setup); one-pass floor 61 for the record | 0 | each bracket's uniforms staged through a fresh `Vec`: 100 vs 98, difference **2**, red |
+| lint (`just gpu`): `cargo clippy -p lumen-static-wgpu --features shader --all-targets -- -D warnings`, and the feature's `cargo doc -D warnings` | clean | -D warnings | an unused binding in `Gpu::set_shaders`: the new line fails `unused variable: injected`, the `--features lumen-static/shader` line stays green (`custom.rs` is not compiled there) |
+| firmware (K83b, K4): `just firmware-delta 4700b1d firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (nothing in the firmware's graph changed: the wgpu and winit crates only) |

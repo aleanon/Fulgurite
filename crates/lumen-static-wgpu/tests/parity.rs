@@ -76,9 +76,11 @@ fn kind(c: &Cmd) -> (usize, &'static str, Option<&'static str>) {
         // tolerance, cache and tile gates are `paths_agree_across_backends`
         // and the two after it.
         Cmd::Path { .. } => (11, "Path", None),
-        // M83/T83.3: in the frame, as the bracket around the clip scope.
-        // Both backends draw a bracket as a clip until T83.5 gives the GPU
-        // its pass split, so the clip scope's region compares them.
+        // M83/T83.3: in the frame, as the bracket around the clip scope,
+        // whose id no backend knows, so both draw its fallback as a clip
+        // and the clip scope's region compares them. With this crate's
+        // `shader` (T83.5) the frame also holds a bracket the GPU runs,
+        // compared in the `shader` region.
         #[cfg(lumen_shader)]
         Cmd::Shader { .. } => (12, "Shader", None),
         #[cfg(lumen_shader)]
@@ -108,7 +110,11 @@ struct Region {
     bbox: [u32; 4],
 }
 
-const REGIONS: [Region; 11] = [
+/// 12 with this crate's `shader` (M83/T83.5): the frame gains a bracket
+/// whose shader the GPU runs.
+const NREG: usize = 11 + cfg!(feature = "shader") as usize;
+
+const REGIONS: [Region; NREG] = [
     Region { name: "rect", bbox: [8, 8, 62, 42] },
     Region { name: "rounded rect", bbox: [68, 8, 132, 47] },
     Region { name: "clip scope", bbox: [138, 2, 232, 58] },
@@ -120,6 +126,11 @@ const REGIONS: [Region; 11] = [
     Region { name: "image", bbox: [86, 138, 126, 176] },
     Region { name: "border", bbox: [150, 123, 234, 172] },
     Region { name: "path", bbox: [128, 132, 150, 176] },
+    // M83/T83.5: a bracket the GPU draws with its shader and the canvas
+    // with its fallback, identical in effect (a solid fill of the uniform
+    // colour), in the gap between the rect and the text.
+    #[cfg(feature = "shader")]
+    Region { name: "shader", bbox: [8, 44, 62, 58] },
 ];
 
 /// Per-region baselines, pixels over 8, in [`REGIONS`]' order — measured
@@ -137,8 +148,19 @@ const REGIONS: [Region; 11] = [
 /// is llvmpipe's 56-px whole-frame baseline in the review). The row it
 /// decides is below the card, so it shows; `docs/results-gpu.md` §2 has
 /// the rest.
-const BASE_DISCRETE: [usize; 11] = [0, 0, 0, 0, 54, 4, 0, 0, 0, 0, 0];
-const BASE_CPU: [usize; 11] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+///
+/// The shader region's 0 on both classes was measured at M83/T83.5
+/// (`docs/results-shader.md`): a whole-pixel scissor over a solid fill.
+const BASE_DISCRETE: [usize; NREG] = [
+    0, 0, 0, 0, 54, 4, 0, 0, 0, 0, 0,
+    #[cfg(feature = "shader")]
+    0,
+];
+const BASE_CPU: [usize; NREG] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    #[cfg(feature = "shader")]
+    0,
+];
 
 fn bound(i: usize) -> usize {
     2 * BASE_DISCRETE[i].max(BASE_CPU[i]) + 2
@@ -160,16 +182,29 @@ fn frame() -> DisplayList {
     // stack is exercised on both backends.
     //
     // M83/T83.3: in a `lumen_shader` build the scope sits inside a shader
-    // bracket narrower than the clip, with an id no backend knows, so what
-    // shows is the fallback cut to the bracket's rect -- and a backend
-    // whose bracket arm did not clip would paint the clip's wider box.
+    // bracket narrower than the clip, with an id no backend knows (the
+    // table, under `shader`, has one entry), so what shows is the fallback
+    // cut to the bracket's rect -- and a backend whose bracket arm did not
+    // clip would paint the clip's wider box.
     #[cfg(lumen_shader)]
-    l.shader([155.0, 15.0, 185.0, 45.0], lumen_static::display::ShaderId(0), &[]);
+    l.shader([155.0, 15.0, 185.0, 45.0], lumen_static::display::ShaderId(9), &[]);
     l.push_clip([150.0, 10.0, 190.0, 50.0]);
     l.rect([140.0, 4.0, 230.0, 56.0], Color(120, 120, 120, 255));
     l.pop_clip();
     #[cfg(lumen_shader)]
     l.shader_end();
+    // M83/T83.5: shader 0 of [`SHADERS`] writes its uniform colour, and
+    // its fallback fills the same colour: the GPU runs the pipeline under
+    // a scissor, the canvas draws the fallback, and the region holds them
+    // to one another. A GPU that skipped the bracket would leave the page.
+    #[cfg(feature = "shader")]
+    {
+        let c = SHADER_FILL;
+        let bytes: Vec<u8> = [c.0, c.1, c.2, c.3].iter().flat_map(|v| (*v as f32 / 255.0).to_le_bytes()).collect();
+        l.shader([10.0, 46.0, 60.0, 56.0], lumen_static::display::ShaderId(0), &bytes);
+        l.rect([10.0, 46.0, 60.0, 56.0], c);
+        l.shader_end();
+    }
     l.text([10.0, 60.0, 140.0, 78.0], "parity", 14.0, Color(0, 0, 0, 255));
     l.shadow([160.0, 70.0, 230.0, 110.0], 8.0, 10.0);
     l.rounded_rect([160.0, 70.0, 230.0, 110.0], Color(30, 38, 54, 255), 8.0);
@@ -199,6 +234,21 @@ fn frame() -> DisplayList {
     l
 }
 
+/// The shader region's colour (M83/T83.5).
+#[cfg(feature = "shader")]
+const SHADER_FILL: Color = Color(150, 60, 170, 255);
+
+/// The frame's shader table (M83/T83.5): one shader writing its uniform
+/// colour, the parity twin of a solid fill.
+#[cfg(feature = "shader")]
+const SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] = [lumen_static_shell::shader::ShaderDesc::new(
+    "parity solid",
+    "struct U { color: vec4<f32> };
+     @group(0) @binding(1) var<uniform> u: U;
+     @fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> { return u.color; }",
+    16,
+)];
+
 /// Whether the recipe that runs this demands an adapter (M43/T43.10):
 /// `just gpu` sets LUMEN_REQUIRE_GPU=1 unless LUMEN_ALLOW_SKIP=1. A plain
 /// `cargo test` keeps the skip, because a developer's partial run is not
@@ -224,6 +274,8 @@ fn gpu_sized(w: u32, h: u32) -> Option<Gpu> {
                 g.set_font(f);
             }
             g.set_images(Box::new(Card::new()));
+            #[cfg(feature = "shader")]
+            assert_eq!(g.set_shaders(lumen_static_shell::shader::ShaderTable::new(&SHADERS)), 0, "the parity shader was refused");
             Some(g)
         }
         None => {
@@ -250,7 +302,7 @@ fn canvas() -> Canvas {
 
 /// Which baseline row applies to the adapter that ran, from the device
 /// type the adapter line carries (M51 §0 rule 1).
-fn baseline_for(adapter: &str) -> (&'static str, Option<&'static [usize; 11]>) {
+fn baseline_for(adapter: &str) -> (&'static str, Option<&'static [usize; NREG]>) {
     if adapter.contains("DiscreteGpu") {
         ("discrete", Some(&BASE_DISCRETE))
     } else if adapter.contains("Cpu") {
@@ -385,6 +437,14 @@ fn every_region_is_within_its_own_bound() {
     let gp = g.read_rgba();
     let (class, base) = baseline_for(g.adapter());
     println!("adapter: {} -- baselines: {class}", g.adapter());
+    // M83/T83.5: the shader region's setup -- the GPU ran its pipeline
+    // rather than the fallback both backends would agree on anyway.
+    #[cfg(feature = "shader")]
+    {
+        let passes = g.shader_stats().passes;
+        println!("shader passes in the GPU frame: {passes} (setup >= 1)");
+        assert!(passes >= 1, "the GPU drew the shader region's fallback, not its pipeline");
+    }
 
     let mut red = Vec::new();
     for (i, r) in REGIONS.iter().enumerate() {

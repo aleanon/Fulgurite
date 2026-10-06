@@ -116,3 +116,78 @@ fn a_caret_frame_allocates_nothing_this_crate_owns() {
     );
     assert_eq!(diff, 0, "the caret frame allocated {diff} more than the empty frame's floor");
 }
+
+/// M83/T83.5: a warm frame with **two** custom shaders allocates nothing
+/// this crate owns (`docs/plan-gpu-extension.md`, T83.5, "Allocation").
+///
+/// **Not against the empty frame's floor, as the plan wrote**: each
+/// bracket is a render pass of its own, and wgpu allocates per pass
+/// (measured: the two-shader frame's three passes read 98 against the
+/// one-pass floor's 61 on the RTX 4070, `docs/results-shader.md` T83.5),
+/// so that bound fails with nothing of this crate's in it. The quantity is
+/// the frame minus [`Gpu::resubmit`] — wgpu's own submission of the same
+/// instances, splits, slots and passes, nothing rebuilt — which is
+/// `submit_floor`'s method (M51/T51.4) for a frame of several passes. The
+/// slots are staged in the frame scratch and written with one
+/// `write_buffer`; each pass binds a group built at `set_shaders`, with
+/// dynamic offsets from a fixed array.
+///
+/// Injection: stage each bracket's uniforms through a fresh `Vec`, and
+/// the difference reads 2 (one per bracket).
+#[cfg(feature = "shader")]
+#[test]
+fn a_frame_with_two_shaders_allocates_nothing_this_crate_owns() {
+    use lumen_static::display::ShaderId;
+    use lumen_static_shell::shader::{ShaderDesc, ShaderTable};
+    let Some(mut g) = Gpu::headless(W, H) else {
+        assert!(std::env::var("LUMEN_REQUIRE_GPU").as_deref() != Ok("1"), "LUMEN_REQUIRE_GPU=1 but no adapter");
+        eprintln!("gpu: no adapter — skipping");
+        return;
+    };
+    eprintln!("gpu: {}", g.adapter());
+    const SOLID: &str = "struct U { color: vec4<f32> };
+        @group(0) @binding(1) var<uniform> u: U;
+        @fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> { return u.color; }";
+    const TABLE: [ShaderDesc; 2] = [ShaderDesc::new("a", SOLID, 16), ShaderDesc::new("b", SOLID, 16)];
+    assert_eq!(g.set_shaders(ShaderTable::new(&TABLE)), 0);
+    let empty = DisplayList::new();
+    let mut two = DisplayList::new();
+    let bytes = [0x3fu8; 16];
+    for (k, x) in [(0u16, 20.0f32), (1, 160.0)] {
+        two.shader([x, 20.0, x + 100.0, 100.0], ShaderId(k), &bytes);
+        two.rect([x, 20.0, x + 100.0, 100.0], Color(90, 90, 90, 255));
+        two.shader_end();
+    }
+    let whole = [[0.0, 0.0, W as f32, H as f32]];
+    let mut totals = Vec::new();
+    let mut alone = Vec::new();
+    for _ in 0..50 {
+        let t = count(|| g.draw_regions(&two, &whole, Some(PAGE)));
+        g.wait();
+        let a = count(|| g.resubmit());
+        g.wait();
+        totals.push(t);
+        alone.push(a);
+        let n = totals.len();
+        if n >= 3 && totals[n - 1] == totals[n - 2] && alone[n - 1] == alone[n - 2] {
+            break;
+        }
+    }
+    let floor = count(|| g.draw_regions(&empty, &whole, Some(PAGE)));
+    g.wait();
+    let passes_before = g.shader_stats().passes;
+    let total = count(|| g.draw_regions(&two, &whole, Some(PAGE)));
+    g.wait();
+    let passes = g.shader_stats().passes - passes_before;
+    let wgpu_only = count(|| g.resubmit());
+    g.wait();
+    let diff = total as i64 - wgpu_only as i64;
+    eprintln!(
+        "two shaders: total {total}, wgpu's submission of the same frame {wgpu_only}, difference {diff} \
+         (bound 0); one-pass empty floor {floor}, for the record; shader passes in the frame {passes} \
+         (setup 2); settled after {} frames, totals {totals:?}",
+        totals.len()
+    );
+    assert_eq!(passes, 2, "the shaders did not run -- the setup did not happen");
+    assert_eq!(diff, 0, "the two-shader frame allocated {diff} around wgpu's own submission of it");
+}

@@ -138,7 +138,6 @@ PAINTBOX                       # proposed by M82
 PopTransform                   # proposed by M82
 PushTransform                  # proposed by M82
 VECTORTEXT                     # built by M82/T82.8 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as PAINTBOX)
-LUMEN_GPU_BAD_SHADER           # proposed by M83
 RunId                          # proposed by M83
 ShaderView                     # proposed by M83
 AnimatedImage                  # proposed by M84

@@ -40,6 +40,10 @@
 //! the same `FontStack::place_run` the software path shapes with, and
 //! rasterised only on a miss.
 //!
+//! Two things split that one pass, both in paint order: a glass panel's
+//! backdrop passes (M22/T22.6), and, under this crate's `shader` feature,
+//! a custom shader's scissored pass (M83/T83.5, `Gpu::set_shaders`).
+//!
 //! # No `unsafe`
 //!
 //! Like the rest of `crates/*/src`, checked by `scripts/check_no_unsafe.sh`.
@@ -48,6 +52,10 @@
 #![forbid(unsafe_code)]
 
 pub mod atlas;
+#[cfg(feature = "shader")]
+mod custom;
+#[cfg(feature = "shader")]
+pub use custom::ShaderStats;
 
 /// Re-exported so a caller of [`accept_adapter`] can name a device type
 /// without a second, possibly different, `wgpu` in its manifest.
@@ -182,6 +190,23 @@ struct Globals {
     viewport: [f32; 2],
     _pad: [f32; 2],
 }
+
+/// Straight (non-premultiplied) source over, and an alpha channel that
+/// converges to opaque — what `Canvas::blend` does when it writes 255 into
+/// the alpha byte unconditionally. The shapes pipeline's, and since
+/// M83/T83.5 every custom shader's too.
+const SHAPES_BLEND: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::SrcAlpha,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+};
 
 fn linear(c: Color) -> [f32; 4] {
     [c.0 as f32 / 255.0, c.1 as f32 / 255.0, c.2 as f32 / 255.0, c.3 as f32 / 255.0]
@@ -321,6 +346,10 @@ pub struct Gpu {
     /// steady-state caret frame allocated in this crate on top of wgpu's
     /// own floor. Cleared per frame, so their capacity is reused.
     frame: FrameScratch,
+    /// The program's compiled custom shaders — M83/T83.5 (`custom.rs`).
+    /// No pipeline and no buffer until a table compiles one.
+    #[cfg(feature = "shader")]
+    shaders: custom::Shaders,
 }
 
 /// [`Gpu`]'s per-frame buffers — M51/T51.4.
@@ -334,6 +363,10 @@ struct FrameScratch {
     shape: lumen_static_shell::text::ShapeScratch,
     /// `rasterize_path`'s buffers, for a path-mask miss (M82/T82.6).
     path: lumen_static_shell::software::PathScratch,
+    /// The custom shaders' frame and uniform slots, 256-byte aligned
+    /// (M83/T83.5): staged here and written to the GPU once per frame.
+    #[cfg(feature = "shader")]
+    slots: Vec<u8>,
 }
 
 /// How often the atlases ran out of room, and what was done about it —
@@ -373,15 +406,34 @@ const SRC_TARGET: usize = 0;
 const SRC_SCRATCH_A: usize = 1;
 const SRC_SCRATCH_B: usize = 2;
 
-/// Where a glass command splits the frame, and which instances blur its
-/// backdrop first.
-struct Split {
-    /// Instance index of the glass quad itself.
-    glass: u32,
-    /// Instance indices of its blur passes, in order. Six of them: three
-    /// box passes each way, at the widths SVG specifies and
-    /// `software::box_windows` computes.
-    blur: [u32; 6],
+/// Where the frame leaves the shapes pipeline, **in paint order**: a
+/// glass command, or (M83/T83.5) a custom shader's bracket. `submit` runs
+/// the shapes pipeline up to each split, the split's own passes, and
+/// resumes, so a panel over a shader blurs the shader and a shader over a
+/// panel covers it.
+enum Split {
+    /// A backdrop filter.
+    Glass {
+        /// Instance index of the glass quad itself.
+        glass: u32,
+        /// Instance indices of its blur passes, in order. Six of them:
+        /// three box passes each way, at the widths SVG specifies and
+        /// `software::box_windows` computes.
+        blur: [u32; 6],
+    },
+    /// A custom shader's pass (`custom.rs`), drawn after the instances
+    /// before `at` and before the instances from `at` on.
+    #[cfg(feature = "shader")]
+    Shader {
+        at: u32,
+        /// Index of the compiled pipeline.
+        pipe: u32,
+        /// Byte offsets of the bracket's `LumenFrame` and uniform slots.
+        frame: u32,
+        uniforms: u32,
+        /// `[x, y, w, h]`, whole pixels inside the target.
+        scissor: [u32; 4],
+    },
 }
 
 /// Whether a renderer should open on an adapter of type `device` —
@@ -642,22 +694,7 @@ impl Gpu {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: TARGET_FORMAT,
-                    // Straight (non-premultiplied) source over, and an
-                    // alpha channel that converges to opaque — which is
-                    // what `Canvas::blend` does when it writes 255 into
-                    // the alpha byte unconditionally.
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    }),
+                    blend: Some(SHAPES_BLEND),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -772,6 +809,8 @@ impl Gpu {
             atlas_stats: AtlasStats { glyph_size: glyph_start, ..AtlasStats::default() },
             max_atlas,
             frame: FrameScratch::default(),
+            #[cfg(feature = "shader")]
+            shaders: custom::Shaders::default(),
         })
     }
 
@@ -898,7 +937,10 @@ impl Gpu {
     /// **No scissor is needed**, and that is a property of this
     /// backend: a quad carries its own `clip` in its vertex data, so a
     /// region is expressed by building the frame's quads once per
-    /// region with that region's clip. Regions are **disjoint by
+    /// region with that region's clip — **except a user shader's pass,
+    /// which draws a full-target triangle and is bounded by its scissor
+    /// alone** (M83/T83.5, `custom.rs`): rect ∩ open clips ∩ this region,
+    /// in whole pixels, one pass per bracket per region. Regions are **disjoint by
     /// construction** — `retain::Regions` merges overlapping ones as
     /// they are added — so nothing is drawn twice and a translucent
     /// command cannot be blended into the same pixel from two regions.
@@ -937,6 +979,8 @@ impl Gpu {
         fr.grads.clear();
         fr.mats.clear();
         fr.splits.clear();
+        #[cfg(feature = "shader")]
+        fr.slots.clear();
         let r = snap_out(rect);
         fr.quads.push(Quad {
             rect: r,
@@ -947,7 +991,24 @@ impl Gpu {
             kind: KIND_ROUNDED,
             _pad: [0; 3],
         });
-        self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
+        self.submit(&fr);
+        self.frame = fr;
+    }
+
+    /// **wgpu's own cost of the last frame, alone** — for `tests/alloc.rs`
+    /// (M83/T83.5).
+    ///
+    /// Submits the retained frame scratch again, exactly as the last
+    /// [`Gpu::draw_regions`] left it: the same instances, splits and slots,
+    /// the same passes, nothing rebuilt. A frame with custom shaders runs a
+    /// render pass per bracket and wgpu allocates per pass, so it cannot sit
+    /// at the one-pass floor [`Gpu::submit_floor`] measures; what
+    /// `draw_regions` adds around wgpu's submission of the same frame is
+    /// "the frame minus this", and must be 0. Not for applications.
+    #[doc(hidden)]
+    pub fn resubmit(&mut self) {
+        let fr = std::mem::take(&mut self.frame);
+        self.submit(&fr);
         self.frame = fr;
     }
 
@@ -971,6 +1032,8 @@ impl Gpu {
             // on an atlas reset is a different command every time.
             fr.mats.clear();
             fr.splits.clear();
+            #[cfg(feature = "shader")]
+            fr.slots.clear();
             // **Once per region.** A quad carries its own clip, so a
             // region is expressed by building the frame's quads again
             // with that region's clip — no scissor, and no second pass.
@@ -1003,7 +1066,7 @@ impl Gpu {
             }
             let overflow = match outcome {
                 Ok(()) => {
-                    self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
+                    self.submit(fr);
                     return;
                 }
                 Err(o) => o,
@@ -1034,7 +1097,7 @@ impl Gpu {
                     self.max_atlas,
                 );
             }
-            self.submit(&fr.quads, &fr.grads, &fr.mats, &fr.splits);
+            self.submit(fr);
             return;
         }
     }
@@ -1067,7 +1130,17 @@ impl Gpu {
         damage: Option<Rect>,
         fr: &mut FrameScratch,
     ) -> Result<(), Overflow> {
-        let FrameScratch { quads: out, grads, mats, splits, clip, shape: shaping, path } = fr;
+        let FrameScratch {
+            quads: out,
+            grads,
+            mats,
+            splits,
+            clip,
+            shape: shaping,
+            path,
+            #[cfg(feature = "shader")]
+            slots,
+        } = fr;
         // Taken for the pass and put back at the end, like the software
         // canvas does: the source is a field and the atlas needs
         // `&mut self`.
@@ -1078,8 +1151,22 @@ impl Gpu {
             clip.push(d);
         }
         let mut result = Ok(());
+        // Depth inside a bracket a custom shader drew (M83/T83.5): its
+        // fallback, and any bracket nested in it, is skipped to the
+        // matching end.
+        #[cfg(feature = "shader")]
+        let mut skip = 0u32;
 
         for c in &list.cmds {
+            #[cfg(feature = "shader")]
+            if skip > 0 {
+                match c {
+                    Cmd::Shader { .. } => skip += 1,
+                    Cmd::ShaderEnd => skip -= 1,
+                    _ => {}
+                }
+                continue;
+            }
             match c {
                 Cmd::Rect { rect, color } => {
                     if let Some(r) = clipped(*rect, clip) {
@@ -1222,7 +1309,7 @@ impl Gpu {
                         kind: KIND_GLASS,
                         _pad: [0; 3],
                     });
-                    splits.push(Split { glass, blur });
+                    splits.push(Split::Glass { glass, blur });
                 }
                 Cmd::Shadow { rect, color, radius, spread } => {
                     let reach =
@@ -1362,13 +1449,24 @@ impl Gpu {
                         clip.pop();
                     }
                 }
-                // **A shader bracket is a clip here, for now** (M83/T83.3):
-                // the fallback recorded inside it is drawn clipped to the
-                // rect, as the software canvas draws it. T83.5 makes it a
-                // real pass split that runs the pipeline and skips the
-                // fallback.
+                // **A shader bracket** (M83/T83.3, T83.5): with this crate's
+                // `shader`, a shader the table compiled, handed uniforms of
+                // its own size, is a pass split (`custom.rs`) and its
+                // fallback is skipped to the matching end. Anything else --
+                // no `shader` feature, an unknown id, a refused shader, a
+                // uniform-length mismatch -- draws the fallback clipped to
+                // the rect, as the software canvas does.
                 #[cfg(lumen_shader)]
-                Cmd::Shader { rect, .. } => clip.push(*rect),
+                Cmd::Shader { rect, id, uniforms } => {
+                    #[cfg(feature = "shader")]
+                    if self.shader_split(list, *rect, *id, *uniforms, clip, out.len() as u32, splits, slots) {
+                        skip = 1;
+                        continue;
+                    }
+                    #[cfg(not(feature = "shader"))]
+                    let _ = (id, uniforms);
+                    clip.push(*rect)
+                }
                 #[cfg(lumen_shader)]
                 Cmd::ShaderEnd => {
                     if clip.len() > damage.is_some() as usize {
@@ -1550,11 +1648,23 @@ impl Gpu {
     /// then six blur passes ping-ponging between the two scratch
     /// targets, then the panel itself — repeated per panel, then the
     /// remainder. `G + 1` main passes and `6G` blur passes.
-    fn submit(&mut self, quads: &[Quad], grads: &[Grad], mats: &[Mat], splits: &[Split]) {
-        if quads.is_empty() {
+    ///
+    /// **And one pass per custom shader split** (M83/T83.5): the shapes
+    /// pipeline runs up to the split's instance, one `LoadOp::Load` pass
+    /// draws the user pipeline's full-target triangle under the split's
+    /// scissor, and the shapes pipeline resumes. Glass and shader splits
+    /// are one list in paint order.
+    fn submit(&mut self, fr: &FrameScratch) {
+        let (quads, grads, mats, splits) = (&fr.quads[..], &fr.grads[..], &fr.mats[..], &fr.splits[..]);
+        #[cfg(feature = "shader")]
+        let shading = splits.iter().any(|s| matches!(s, Split::Shader { .. }));
+        #[cfg(not(feature = "shader"))]
+        let shading = false;
+        if quads.is_empty() && !shading {
             return;
         }
-        if !splits.is_empty() && self.scratch.is_none() {
+        let glassy = splits.iter().any(|s| matches!(s, Split::Glass { .. }));
+        if glassy && self.scratch.is_none() {
             // The first backdrop filter this renderer has drawn.
             self.scratch = Some(make_scratch(&self.device, self.size.0, self.size.1));
             self.rebuild_src_binds();
@@ -1595,7 +1705,15 @@ impl Gpu {
                 _pad: [0.0; 2],
             }),
         );
-        self.queue.write_buffer(&self.quads, 0, bytemuck::cast_slice(quads));
+        if !quads.is_empty() {
+            self.queue.write_buffer(&self.quads, 0, bytemuck::cast_slice(quads));
+        }
+        #[cfg(feature = "shader")]
+        if shading {
+            self.upload_shader_slots(&fr.slots);
+            let n = splits.iter().filter(|s| matches!(s, Split::Shader { .. })).count();
+            self.count_shader_passes(n as u64);
+        }
         if !grads.is_empty() {
             self.queue.write_buffer(&self.grads, 0, bytemuck::cast_slice(grads));
         }
@@ -1646,26 +1764,41 @@ impl Gpu {
 
         let mut at = 0u32;
         for sp in splits {
-            let Some((_, scratch_view)) = &self.scratch else { break };
-            // Everything under the panel, into the target. **Up to the
-            // first blur instance, not up to the glass**: the six blur
-            // quads are pushed immediately before the panel and belong
-            // to their own passes, so a range that ran to `glass` would
-            // draw them into the target and paint the frame with the
-            // backdrop filter's intermediates.
-            run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..sp.blur[0]);
-            // Capture and blur. The first pass reads the target itself,
-            // so no copy is needed: a render pass may sample a texture
-            // it is not writing.
-            let mut src = SRC_TARGET;
-            for (i, b) in sp.blur.iter().enumerate() {
-                let dst = if i % 2 == 0 { 1usize } else { 0usize };
-                run(&mut enc, &scratch_view[dst], src, *b..*b + 1);
-                src = if dst == 1 { SRC_SCRATCH_B } else { SRC_SCRATCH_A };
+            match sp {
+                Split::Glass { glass, blur } => {
+                    let Some((_, scratch_view)) = &self.scratch else { break };
+                    // Everything under the panel, into the target. **Up to
+                    // the first blur instance, not up to the glass**: the
+                    // six blur quads are pushed immediately before the
+                    // panel and belong to their own passes, so a range
+                    // that ran to `glass` would draw them into the target
+                    // and paint the frame with the backdrop filter's
+                    // intermediates.
+                    run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..blur[0]);
+                    // Capture and blur. The first pass reads the target
+                    // itself, so no copy is needed: a render pass may
+                    // sample a texture it is not writing.
+                    let mut src = SRC_TARGET;
+                    for (i, b) in blur.iter().enumerate() {
+                        let dst = if i % 2 == 0 { 1usize } else { 0usize };
+                        run(&mut enc, &scratch_view[dst], src, *b..*b + 1);
+                        src = if dst == 1 { SRC_SCRATCH_B } else { SRC_SCRATCH_A };
+                    }
+                    // The panel, reading whichever scratch the last pass
+                    // wrote.
+                    run(&mut enc, &self.target_view, src, *glass..*glass + 1);
+                    at = *glass + 1;
+                }
+                #[cfg(feature = "shader")]
+                Split::Shader { at: here, pipe, frame, uniforms, scissor } => {
+                    // Everything painted before the bracket, then the
+                    // shader over it; what follows the bracket's end
+                    // resumes from the same instance.
+                    run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..*here);
+                    self.shader_pass(&mut enc, *pipe, *frame, *uniforms, *scissor);
+                    at = *here;
+                }
             }
-            // The panel, reading whichever scratch the last pass wrote.
-            run(&mut enc, &self.target_view, src, sp.glass..sp.glass + 1);
-            at = sp.glass + 1;
         }
         run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..quads.len() as u32);
         self.queue.submit([enc.finish()]);

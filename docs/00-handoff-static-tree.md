@@ -143,9 +143,14 @@ The four properties that produce the performance, in rough order of importance:
    is a bracket in the one display list, behind the core's `shader`.**
    `Cmd::Shader { rect, id, uniforms }` … `Cmd::ShaderEnd` holds the
    shader's fallback, recorded at paint time; a backend that runs the
-   shader skips it, and one that cannot (the software canvas, SVG, the
-   GPU until T83.5) draws it clipped to the rect, so the journal and
-   retention do not depend on the backend. The uniforms are hashed by
+   shader skips it, and one that cannot (the software canvas, SVG, a GPU
+   that does not know the id, refused the WGSL or was handed the wrong
+   uniform length) draws it clipped to the rect, so the journal and
+   retention do not depend on the backend. **Since M83/T83.5 the GPU runs
+   a registered shader** as a pass split with `LoadOp::Load`, bounded by
+   a scissor of rect ∩ clips ∩ damage region, and compiles the table
+   inside a validation error scope, so invalid WGSL draws the fallback
+   instead of panicking (`docs/results-shader.md` T83.5). The uniforms are hashed by
    content, never by offset. With the feature off neither the variants nor
    `Painter::shader`/`shader_end` exist, and every arm outside the core is
    `cfg(lumen_shader)`, which the core's `links` build script hands its

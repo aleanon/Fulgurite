@@ -67,11 +67,11 @@ shaping = ["lumen-static-shell/shaping"]
 vector-text = ["lumen-static-shell/vector-text"]
 # Custom shaders (M83, docs/plan-gpu-extension.md, owner decision D3):
 # forwards the shell's default-off `shader` -- `ShaderDesc`, the contents of
-# the `ShaderTable` the window hands each backend (`Backend::set_shaders`),
-# and `GpuBackend`'s owned copy of it. Added by M83/T83.4, one task before
-# the plan's Decisions list it, because `GpuBackend` stores the table here
-# until T83.5, which appends `"lumen-static-wgpu?/shader"`. Adds no crate.
-shader = ["lumen-static-shell/shader"]
+# the `ShaderTable` the window hands each backend (`Backend::set_shaders`)
+# -- and, in a `gpu` build, `lumen-static-wgpu`'s, so `GpuBackend` compiles
+# the table and runs each bracket's pass (M83/T83.5). Added by M83/T83.4
+# with the shell half only; T83.5 appended the wgpu half. Adds no crate.
+shader = ["lumen-static-shell/shader", "lumen-static-wgpu?/shader"]
 # Clipboard is default-ON: arboard costs **5 crates** (91 -> 96 for this
 # crate, 2026-10-04, K2's method: `cargo tree -p lumen-static-winit -e
 # normal --prefix none`, `(*)` markers stripped, deduplicated --

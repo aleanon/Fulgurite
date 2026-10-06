@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`). M83b: T83.3 and T83.4 landed 2026-10-06.** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3, T83.4 and T83.5 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1219,6 +1219,56 @@ task and is recorded in `docs/results-shader.md` with the number).
   without the feature) is what `Local::shaders` reads, a name the plan
   needed and did not give. `Session::shaders` is not guarded: it reads a
   field and runs no application code, as `shaping` does.
+
+- T83.5: **the allocation bound "≤ the empty frame's floor" cannot hold
+  with nothing of this crate's in it.** A bracket is a render pass, and
+  wgpu allocates per pass: the two-shader frame (three passes) reads 98
+  allocations against the one-pass floor's 61, on the RTX 4070 and on
+  llvmpipe alike. The gate measures the frame minus a new
+  `#[doc(hidden)] Gpu::resubmit`, which submits the retained frame scratch
+  again — the same instances, splits, slots and passes, nothing rebuilt —
+  so what `draw_regions` adds around wgpu's own submission is the quantity,
+  `submit_floor`'s M51/T51.4 method for a frame of several passes. The
+  plan's injection (a per-frame staging `Vec`) reads +2, one per bracket.
+- T83.5: **the order gate's quantity was changed.** "The panel's centre
+  differs from the page colour" stays green under its own injection: a
+  shader pass deferred past every glass split draws the raw shader over
+  the panel, which differs from the page too. The gate compares the GPU's
+  panel centre with the canvas's panel over the identical fallback (bound
+  8, the glass parity's per-pixel tolerance), with "the canvas panel over
+  the shader differs from the canvas panel over the page" as its setup;
+  and the panel carries a half-white tint, because LIQUID's 18/255 left
+  the injection at distance 9, one level over the bound (green 1, red 111).
+- T83.5: **`LumenFrame::scale` is 1.0.** Neither `Backend` nor
+  `FrameSource` carries the display scale, and the list already arrives in
+  device pixels, so the prelude documents 1.0 rather than a new seam being
+  invented here; a shader that needs logical units is T83.7's to ask for.
+- T83.5: **three names the plan did not give.** `Gpu::shader_stats`
+  (`ShaderStats { passes, mismatches }`: "the uniform-length check …
+  counted" needed somewhere to count, and every gate's setup reads
+  `passes`), `#[doc(hidden)] Gpu::shader_refusals` (the lines printed, so
+  the refusal gate can see each name its shader in-process) and
+  `Gpu::resubmit` (above). The uniform-length check got a gate of its own
+  (fallback drawn, `mismatches` 1, passes 0; injection: the check removed,
+  passes 1).
+- T83.5: **"remove the error scope" is not "drop the guard".** wgpu 30's
+  error-scope guard pops its scope on drop and discards what it caught, so
+  an injection that only skips the `pop` leaves every refusal silent
+  ("answered 0"). The recorded injection deletes the push as well, and the
+  test dies in wgpu's handler with `wgpu error: Validation Error`.
+- T83.5: **the parity frame's existing bracket moved to `ShaderId(9)`.**
+  With a one-entry table installed under `shader`, id 0 is known, and
+  T83.3's clip-scope bracket exists to compare the *fallback* arms; it now
+  names an id no table has, and the `shader` region (`[8, 44, 62, 58]`,
+  the gap between the rect and the text) holds the bracket the GPU runs.
+- T83.5: **a refusal's message is one line**: wgpu's multi-line error
+  joined with ` / `, its code-frame drawing dropped, so "one stderr line
+  naming the shader and wgpu's message" holds for a naga parse error too.
+- T83.5: **K83a on llvmpipe reads 111 µs per node**, over the 50 µs bound,
+  and is recorded, not taken as the rule firing: the bound is derived from
+  the RTX 4070's glass pass, M51 §0 rule 1 says a CPU rasteriser is not
+  evidence about a GPU, and `Prefer::Auto` never opens one. The rule's
+  adapter reads 6.30 µs (`docs/results-shader.md` T83.5).
 
 **What the review found (M83).**
 

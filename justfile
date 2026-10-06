@@ -439,6 +439,13 @@ gpu:
     # M83/T83.4: `GpuBackend::set_shaders` keeps its owned copy under the
     # window crate's `shader`, which only a GPU build compiles.
     cargo clippy -p lumen-static-winit --features gpu,shader --all-targets -- -D warnings
+    # M83/T83.5: the GPU split -- scissor, clip, region, refusal, content
+    # key, order (`tests/shader.rs`); the `shader` parity region and the
+    # two-shader allocation gate; the feature linted and its rustdoc built.
+    cargo test -p lumen-static-wgpu --features shader --test shader
+    cargo test -q -p lumen-static-wgpu --features shader --test parity --test alloc -- --nocapture 2>&1 | grep -E '^shader|two shaders|test result'
+    cargo clippy -p lumen-static-wgpu --features shader --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-wgpu --no-deps --features shader
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
 # bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the

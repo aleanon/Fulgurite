@@ -36,6 +36,19 @@ bytemuck = { version = "1", features = ["derive"] }
 # tests (T81.3's shaped parity region). The backend itself shapes through
 # `FontStack::place_run_into` either way.
 shaping = ["lumen-static-shell/shaping"]
+# M83/T83.5 (docs/plan-gpu-extension.md, owner decision D3): custom
+# shaders -- `Gpu::set_shaders` compiles a program's `ShaderTable` into
+# pipelines under a validation error scope, and a `Cmd::Shader` bracket
+# splits the frame into a scissored pass instead of drawing its fallback.
+# Turns the shell's `shader` on, hence the core's, hence `cfg(lumen_shader)`
+# here (`build.rs`). Default-off, and adds no crate.
+shader = ["lumen-static-shell/shader"]
 
 [dev-dependencies]
 lumen-static-shell = { path = "../lumen-static-shell", features = ["truetype"] }
+
+# M83/T83.5: K83a's measurement names `Gpu::set_shaders`, which exists only
+# under `shader`.
+[[example]]
+name = "shader_cost"
+required-features = ["shader"]
