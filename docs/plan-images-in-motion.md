@@ -1041,6 +1041,29 @@ task and is recorded with its number in `docs/results-images.md`):
   unobserved — the panic drive has no GPU leg.
 - **T84.6: panic-app's job trigger moved to 11**, since site 10 is
   `App::images`; the drive's `// SITE n` scan takes two digits.
+- **T84.7: a stopped job is not re-issued across a swap.** Not in the
+  plan. Stopping a subscription takes it off `running`, so its job, still
+  unsettled, became an ordinary job in flight to `Host::reissuable`, and a
+  swap would have restarted the stream the application stopped (true
+  before T84.7 too; the flag makes it visible). `Ledger::unsettled` leaves
+  a stopped job out; `reissue.rs`'s gate went red with the filter removed
+  (`[8, 14]` against `[14]`).
+- **T84.7: the gate waits 35 ms before the stopping frame.** The first
+  message's frame un-declares and the next frame stops it about a
+  millisecond later, so the inbox was empty at the stop and the plan's
+  injection 1 (the drain ignores `stop`) could not fire. With the wait,
+  three messages are waiting (asserted as setup from iterations less
+  landed, not from the mechanism) and injection 1 reads 3 applied, by
+  name. The iterations assertion runs before the messages one, so
+  injection 2 is named by the iterations (20) and injection 1 by the
+  messages.
+- **T84.7: `settled` is unchanged; M88/T88.1 carries progress-after-stop**
+  (Decisions, M11), as T84.5 found. A stopped job settles the ordinary
+  way once its body returns and the drain has consumed what it sent;
+  T88.1's slot drain honours `stop` and makes `settled` treat a stopped
+  job as settled.
+- **T84.7: the drain checks the epoch first.** A result both stale and
+  stopped is counted in `Inbox::stale`, not `stopped_dropped`.
 
 **What the review found (M84).**
 

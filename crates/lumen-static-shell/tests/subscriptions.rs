@@ -11,8 +11,10 @@
 //! restart every subscription on reload, and two that format it the same
 //! would silently share one.
 //!
-//! **M84/T84.5: a stopped subscription's job is not stopped** — pinned
-//! green below, flipped by T84.7 (`docs/plan-images-in-motion.md`).
+//! **M84/T84.7: a stopped subscription stops** — its job is told through
+//! `JobTrack::stop`, returns on `Sender::is_stopped`, and the drain drops
+//! what it sent (`Host::stopped_dropped`). T84.5 pinned the gap green;
+//! T84.7 flipped it (`docs/plan-images-in-motion.md`).
 
 use lumen_static::event::App;
 use lumen_static::prelude::*;
@@ -23,8 +25,8 @@ use lumen_static_shell::Host;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const KIND: u64 = 5;
-/// T84.5's subscription: a job that keeps sending until it is told
-/// otherwise, which today nothing can do.
+/// T84.5/T84.7's subscription: a job that keeps sending until it is
+/// told to stop.
 const TICKER: u64 = 6;
 
 #[derive(StaticTree, Default)]
@@ -42,6 +44,9 @@ struct Work {
     /// T84.5: the application un-declares its subscriptions once the
     /// first message has landed.
     stop_after_first: bool,
+    /// T84.7's re-key: once the first message has landed, the
+    /// application declares the ticker under this key instead.
+    rekey_after_first: Option<u64>,
 }
 
 fn stream(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
@@ -50,17 +55,26 @@ fn stream(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
     let _ = tx.send(d.payload);
 }
 
-/// The ticker's iterations, counted on the worker. Only T84.5's test
-/// starts a `TICKER`, so a static is not shared between tests.
-static TICKS: AtomicUsize = AtomicUsize::new(0);
-/// The most iterations a ticker runs, so the worker ends even while the
-/// gap stands: 400 ms at 10 ms.
-const TICKER_LIMIT: u64 = 40;
+/// The ticker's iterations, counted on the worker **per key**: each test
+/// that starts a `TICKER` uses its own keys, so tests running in parallel
+/// do not share a counter.
+static TICKS: [AtomicUsize; 8] = [const { AtomicUsize::new(0) }; 8];
+/// The most iterations a ticker runs, so a worker nobody stops still
+/// ends: 500 ms at 10 ms, and the 50 the accept direction counts.
+const TICKER_LIMIT: u64 = 50;
+
+fn ticks(key: u64) -> usize {
+    TICKS[key as usize].load(Ordering::SeqCst)
+}
 
 fn ticker(d: Descriptor, tx: &lumen_static::inbox::Sender<u64>) {
     for n in 0..TICKER_LIMIT {
-        TICKS.fetch_add(1, Ordering::SeqCst);
-        // A dropped inbox is the only end a job is told of today.
+        // **The cooperative half** (T84.7): asked before each unit of
+        // work, so a stop costs at most the iteration already under way.
+        if tx.is_stopped() {
+            return;
+        }
+        TICKS[d.payload as usize].fetch_add(1, Ordering::SeqCst);
         if let Err(lumen_static::inbox::SendError::Disconnected(_)) = tx.send(d.payload * 1000 + n) {
             return;
         }
@@ -86,6 +100,10 @@ impl App for Work {
         this.landed.push(m);
         if this.stop_after_first && this.landed.len() == 1 {
             this.subs.clear();
+        }
+        if let (Some(k), 1) = (this.rekey_after_first, this.landed.len()) {
+            this.subs.clear();
+            this.subs.declare(TICKER, k);
         }
         true
     }
@@ -212,42 +230,51 @@ fn the_set_refuses_past_capacity_and_counts() {
     assert_eq!(s.len(), Subs::CAPACITY, "a refusal must not evict");
 }
 
-/// **M84/T84.5: a stopped subscription stops — pinned: today it does
-/// not.** A ticker sends every 10 ms; the application un-declares it
-/// when the first message lands, and the next frame's diff stops it.
-///
-/// Stopping today only forgets the entry (`diff_subscriptions` takes it
-/// off `running` and counts it): the worker runs on and the host applies
-/// what it sends. So this pins both halves of the gap green — messages
-/// applied after the stop are more than 0, and the job keeps iterating
-/// — and T84.7, which gives a job a stop flag the host sets and the
-/// drain honours, flips them to 0 messages and at most 1 iteration
-/// (`docs/plan-images-in-motion.md` T84.5, T84.7).
-///
-/// "After the stop" is from the frame whose diff stops it: that frame's
-/// drain runs after its diff, so a message it applies was applied after
-/// the stop, which is the ordering T84.7's drain check relies on.
-#[test]
-fn a_stopped_subscription_keeps_delivering_today() {
-    let mut h: Host<Work, Rebuild> = Host::new(Work { stop_after_first: true, ..Work::default() }, 100, 50);
+/// A host on real workers, with the ticker declared under `key`, pumped
+/// until its first message lands. Whatever the application does in that
+/// first `apply` (stop, re-key) has been decided, and the diff that acts
+/// on it is the next pump's.
+fn ticking(app: Work, key: u64) -> Host<Work, Rebuild> {
+    let mut h: Host<Work, Rebuild> = Host::new(app, 100, 50);
     h.set_spawner(Box::new(Threads::new()));
     h.pump();
-    h.app.subs.declare(TICKER, 1);
-
-    // Start it, and pump until the first message lands; that frame's
-    // apply un-declares it.
+    h.app.subs.declare(TICKER, key);
     let begun = std::time::Instant::now();
     while h.app.landed.is_empty() {
         assert!(begun.elapsed().as_secs() < 5, "setup: the ticker's first message never landed");
         h.pump();
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
+    h
+}
+
+/// **M84/T84.7: a stopped subscription stops.** A ticker sends every
+/// 10 ms; the application un-declares it when the first message lands,
+/// and the next frame's diff stops it. T84.5 pinned the opposite green
+/// (a_stopped_subscription_keeps_delivering_today: 20 messages applied
+/// and 20 iterations after the stop); T84.7 flipped it.
+///
+/// "After the stop" is from the frame whose diff stops it: that frame's
+/// drain runs after its diff (`Host::pump_with`), so a message it applies
+/// was applied after the stop, and the drain sees the flag the diff just
+/// set. **The test waits 35 ms before that frame**, so the ticker has
+/// sent into the inbox meanwhile and the drain's drop has something to
+/// drop — without the wait the stopping frame finds the queue empty and
+/// a drain that ignored the flag would pass. That something was waiting
+/// (iterations before the stop exceed what landed) is asserted as setup
+/// for that reason, and `stopped_dropped` must account for it.
+#[test]
+fn a_stopped_subscription_stops() {
+    const KEY: u64 = 1;
+    let mut h = ticking(Work { stop_after_first: true, ..Work::default() }, KEY);
     assert!(h.app.subs.as_slice().is_empty(), "setup: the application did not un-declare its subscription");
     assert_eq!(h.subscription_counts(), (1, 0), "setup: stopped before the next frame's diff");
 
+    std::thread::sleep(std::time::Duration::from_millis(35));
     // The frame that stops it, and everything from it on.
     let landed_at_stop = h.app.landed.len();
-    let ticks_at_stop = TICKS.load(Ordering::SeqCst);
+    let ticks_at_stop = ticks(KEY);
+    let dropped_at_stop = h.stopped_dropped();
     h.pump();
     assert_eq!(h.subscription_counts(), (1, 1), "setup: the diff did not stop the subscription");
     for _ in 0..20 {
@@ -255,20 +282,101 @@ fn a_stopped_subscription_keeps_delivering_today() {
         h.pump();
     }
     let after = h.app.landed.len() - landed_at_stop;
-    let ticks_after = TICKS.load(Ordering::SeqCst) - ticks_at_stop;
+    let ticks_after = ticks(KEY) - ticks_at_stop;
+    let dropped = h.stopped_dropped() - dropped_at_stop;
+    // Sent before the stop and not yet applied: what the stopping frame's
+    // drain has to drop. One message per iteration, so it is the
+    // iterations less what landed, read without the mechanism under test.
+    let pending = ticks_at_stop - landed_at_stop;
     println!(
-        "first message landed {:?}; after the stop, over 200 ms: {after} messages applied, \
-         {ticks_after} job iterations (pinned > 0 and > 1; T84.7 bounds them at 0 and <= 1)",
+        "first message landed {:?}; {} iterations before the stop; after it, over 200 ms: \
+         {after} messages applied (bound 0), {ticks_after} job iterations (bound <= 1), \
+         {dropped} dropped at the drain ({pending} were waiting)",
         &h.app.landed[..landed_at_stop],
+        ticks_at_stop,
     );
     assert!(
-        after > 0,
-        "pinned (T84.5): a stopped subscription's messages are applied after the stop -- \
-         {after} were; T84.7 flips this to 0"
+        pending > 0,
+        "setup: nothing was waiting in the inbox at the stop, so the drain's drop could not be seen \
+         ({ticks_at_stop} iterations, {landed_at_stop} landed)"
+    );
+    // The job first, so each half of the stop fails under its own name:
+    // a host that never sets the flag leaves the job iterating (and its
+    // messages applied), a drain that ignores it leaves only the
+    // messages.
+    assert!(
+        ticks_after <= 1,
+        "a stopped subscription's job must return within one iteration -- it ran {ticks_after}"
+    );
+    assert_eq!(
+        after, 0,
+        "a stopped subscription's messages must not be applied after the stop -- {after} were"
     );
     assert!(
-        ticks_after > 1,
-        "pinned (T84.5): a stopped subscription's job runs on -- {ticks_after} iterations \
-         after the stop; T84.7 flips this to <= 1"
+        dropped >= pending,
+        "the drain dropped {dropped} of the {pending} messages waiting at the stop"
     );
+}
+
+/// **Accept direction** (T84.7): a subscription still declared keeps
+/// delivering — every message its job sends is applied, 50 of 50, and
+/// nothing is dropped as stopped.
+#[test]
+fn a_declared_subscription_keeps_delivering() {
+    const KEY: u64 = 2;
+    let mut h = ticking(Work::default(), KEY);
+    let begun = std::time::Instant::now();
+    while h.app.landed.len() < TICKER_LIMIT as usize {
+        assert!(
+            begun.elapsed().as_secs() < 5,
+            "a declared subscription stopped delivering at {} of {TICKER_LIMIT}",
+            h.app.landed.len()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        h.pump();
+    }
+    println!(
+        "declared throughout: {} of {TICKER_LIMIT} messages applied, {} iterations, {} dropped as stopped",
+        h.app.landed.len(),
+        ticks(KEY),
+        h.stopped_dropped()
+    );
+    assert_eq!(h.app.landed.len(), TICKER_LIMIT as usize);
+    assert_eq!(ticks(KEY), TICKER_LIMIT as usize, "the job ran every iteration");
+    assert_eq!(h.stopped_dropped(), 0, "nothing of a declared subscription is dropped");
+    assert_eq!(h.subscription_counts(), (1, 0), "and it was never stopped");
+}
+
+/// **Re-key** (T84.7): the same kind under a new key is a new
+/// subscription. After the change only the new key's messages are
+/// applied; the old key's job is told to stop like any other.
+#[test]
+fn a_rekeyed_subscription_delivers_only_the_new_key() {
+    const OLD: u64 = 3;
+    const NEW: u64 = 4;
+    let mut h = ticking(Work { rekey_after_first: Some(NEW), ..Work::default() }, OLD);
+    assert_eq!(h.app.subs.as_slice(), &[(TICKER, NEW)], "setup: the application did not re-key");
+
+    std::thread::sleep(std::time::Duration::from_millis(35));
+    let landed_at_change = h.app.landed.len();
+    let old_ticks_at_change = ticks(OLD);
+    h.pump();
+    assert_eq!(h.subscription_counts(), (2, 1), "setup: the diff did not stop the old key and start the new");
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        h.pump();
+    }
+    let after = &h.app.landed[landed_at_change..];
+    let old_after = after.iter().filter(|m| **m / 1000 == OLD).count();
+    let new_after = after.iter().filter(|m| **m / 1000 == NEW).count();
+    let old_ticks_after = ticks(OLD) - old_ticks_at_change;
+    println!(
+        "after the change {OLD} -> {NEW}: key {OLD} applied {old_after} (bound 0), key {NEW} applied \
+         {new_after} (want > 0); key {OLD}'s job iterated {old_ticks_after} more (bound <= 1), \
+         {} dropped as stopped",
+        h.stopped_dropped()
+    );
+    assert_eq!(old_after, 0, "the old key's messages were applied after the change");
+    assert!(new_after > 0, "the new key delivered nothing after the change");
+    assert!(old_ticks_after <= 1, "the old key's job ran on: {old_ticks_after} iterations");
 }

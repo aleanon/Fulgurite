@@ -160,6 +160,13 @@ not stopped. A thread already running runs to completion and its output
 is discarded. Stopping work needs cooperation from the job body, which
 this plan does not design — §4.
 
+**Built since, for one job at a time — M84/T84.7** (`docs/plan-images-in-motion.md`,
+`docs/results-tasks.md` T84.7): a job's `JobTrack` carries a `stop` flag
+the host sets when the subscription it serves is no longer declared. The
+body reads it through `Sender::is_stopped` and returns; the drain drops
+what a stopped job sent and counts it (`Host::stopped_dropped`). The
+epoch is unchanged and still cancels everything at once.
+
 ### 2.4 Subscriptions are diffed by data, not by a hash of code
 
 iced hashes a recipe to decide which streams keep running. Here identity
@@ -497,8 +504,12 @@ running job (§2.3).
 - **A real async runtime behind the spawner seam.** When something needs
   what threads cannot express. §0.3's crate budget is the bar, and it
   wants a measurement nobody has taken.
-- **Cooperative cancellation** — a job that can be *told* to stop.
-  When a long job exists whose wasted work is worth the interface.
+- ~~**Cooperative cancellation** — a job that can be *told* to stop.
+  When a long job exists whose wasted work is worth the interface.~~
+  **Built, M84/T84.7**, for subscriptions: its condition is met by
+  M84/T84.8's video feed, a decoder whose seek re-declares its
+  subscription under a new key (§2.3; `docs/results-tasks.md` T84.7).
+  A one-shot task still cannot be stopped, only cancelled by epoch.
 - **Structured concurrency**: a batch cancelled as a unit.
 - **Streaming results** — a task that yields many values. A subscription
   is the shape for that today; a streaming task needs back-pressure this

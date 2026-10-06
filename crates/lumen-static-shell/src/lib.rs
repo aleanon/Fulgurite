@@ -1467,12 +1467,17 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             _ => return,
         };
 
-        // Stopped: running and no longer declared.
+        // Stopped: running and no longer declared. **The job is told**
+        // (M84/T84.7): its `JobTrack` flag is set, so the body's next
+        // `Sender::is_stopped` answers true and this frame's drain — which
+        // runs after this diff — drops anything it sent. Until T84.7 the
+        // entry was only forgotten, and the worker ran on into the inbox.
         let stopped: Vec<(u64, u64)> =
             self.running.iter().copied().filter(|r| !declared.contains(r)).collect();
         for s in &stopped {
             self.running.retain(|r| r != s);
             self.sub_stopped += 1;
+            self.ledger.stop(lumen_static::spawn::Descriptor { kind: s.0, step: 0, payload: s.1 });
         }
 
         // Started: declared and not already running. A subscription is
@@ -1502,6 +1507,15 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// Subscriptions started and stopped since this host was made.
     pub fn subscription_counts(&self) -> (usize, usize) {
         (self.sub_started, self.sub_stopped)
+    }
+
+    /// Results dropped at the drain because the job that sent them had
+    /// been stopped — M84/T84.7: a subscription no longer declared, whose
+    /// job was told through its `JobTrack` and whose unapplied messages
+    /// are discarded rather than applied. Monotonic; a test reads it as a
+    /// difference. Counted apart from the epoch's drops ([`Inbox::stale`](lumen_static::inbox::Inbox::stale)).
+    pub fn stopped_dropped(&self) -> usize {
+        self.inbox.stopped_dropped()
     }
 
     /// Hand every descriptor a handler pushed to the spawner, pairing
@@ -1601,7 +1615,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// A subscription's job is left out for the reason
     /// [`Host::in_flight_unsubscribed`] leaves it out: the new build
     /// starts what its application declares, and re-issuing it too would
-    /// run the stream twice.
+    /// run the stream twice. A **stopped** subscription's job, still
+    /// unsettled, is left out too (M84/T84.7, by
+    /// [`Ledger::unsettled`](lumen_static::spawn::Ledger::unsettled)): the
+    /// application ended it, and re-issuing it would restart it.
     ///
     /// **Delivery is at least once** across the swap: the old build's
     /// worker is not stopped (a thread cannot be), so a job that was

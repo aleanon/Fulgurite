@@ -161,3 +161,34 @@ fn the_new_build_reissues_through_its_own_table_once() {
     assert_eq!(landed, vec![5, 5, 6], "each job ran once through this build's table");
     assert_eq!(h.in_flight(), 0);
 }
+
+/// **A stopped subscription's job is not carried** — M84/T84.7.
+///
+/// Stopping a subscription takes it off `running`, so before T84.7 its
+/// job, still unsettled, was an ordinary job in flight to
+/// `Host::reissuable` — and a swap restarted a stream the application had
+/// stopped. `Ledger::unsettled` now leaves a stopped job out. The ordinary
+/// job beside it is the accept direction: it is still carried.
+#[test]
+fn a_stopped_subscription_is_not_carried_across_a_swap() {
+    let mut h = host();
+    h.app.subs.declare(SUB, 8);
+    h.pump(); // starts the subscription's job, which `Queued` holds
+    spawn(&mut h, ECHO, 14);
+    h.app.subs.clear();
+    h.pump(); // the diff stops (SUB, 8)
+    assert_eq!(h.subscription_counts(), (1, 1), "setup: the subscription was not stopped");
+    let listed: Vec<u64> = h.ledger().descriptors().map(|d| d.payload).collect();
+    let carried: Vec<u64> = h.reissuable().iter().map(|d| d.payload).collect();
+    println!("listed {listed:?}; re-issued at the save {carried:?} (want [14])");
+    assert!(listed.contains(&8), "setup: the stopped subscription's job is not listed, so this cannot test it");
+    assert!(!carried.contains(&8), "a stopped subscription's job was re-issued: {carried:?}");
+    assert_eq!(carried, vec![14], "the ordinary job in flight is still carried");
+
+    // Its body runs late and sends; the drain drops it, counted.
+    h.run_pending_jobs();
+    h.pump();
+    println!("landed {:?}; dropped as stopped {}", h.app.landed, h.stopped_dropped());
+    assert_eq!(h.app.landed, vec![14], "the stopped job's late result was applied");
+    assert_eq!(h.stopped_dropped(), 1);
+}

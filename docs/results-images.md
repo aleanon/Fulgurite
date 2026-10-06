@@ -297,7 +297,7 @@ M84b's only gate that compiles before M84b's code: the others name
 
 | gate | prints today | flipped by |
 |---|---|---|
-| `crates/lumen-static-shell/tests/subscriptions.rs` `a_stopped_subscription_keeps_delivering_today`: a ticker sends every 10 ms under `Threads`; the application un-declares it when the first message lands; the next frame's diff stops it, `subscription_counts()` (1, 1); then 20 frames 10 ms apart | after the stop: **20** messages applied (pinned > 0), **20** job iterations (pinned > 1) | T84.7: 0 messages, ≤ 1 iteration |
+| `crates/lumen-static-shell/tests/subscriptions.rs`, the pin a_stopped_subscription_keeps_delivering_today (renamed `a_stopped_subscription_stops` by T84.7, `docs/results-tasks.md` T84.7): a ticker sends every 10 ms under `Threads`; the application un-declares it when the first message lands; the next frame's diff stops it, `subscription_counts()` (1, 1); then 20 frames 10 ms apart | after the stop: **20** messages applied (pinned > 0), **20** job iterations (pinned > 1) | T84.7: 0 messages, 0 iterations (bound ≤ 1), measured |
 
 Perturbations, each a miniature of what T84.7 builds, put in
 `Host::diff_subscriptions` where it stops a subscription and then

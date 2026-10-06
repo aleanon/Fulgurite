@@ -201,6 +201,15 @@ against what is already running. iced hashes a recipe; hashing code
 would mean two builds that format a URL differently restart every
 subscription on reload.
 
+A subscription that is no longer declared is **told to stop**, which an
+epoch cannot do for a single job (M84/T84.7). The host sets a flag on
+that job; the body asks `Sender::is_stopped` between units of work and
+returns, and the drain drops anything it sent that had not been applied,
+counted as `Host::stopped_dropped`. The stop is cooperative: a body that
+never asks runs on, but its results are still never applied. A re-keyed
+subscription is a stop and a start, so a seek's old stream ends rather
+than interleaving with the new one (`docs/results-tasks.md` T84.7).
+
 A timer is a **deadline**, not a thread that sleeps. The host publishes
 its earliest pending deadline and the window's loop waits until that
 instant — without which a timer on an idle window would never be

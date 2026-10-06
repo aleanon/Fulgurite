@@ -1123,3 +1123,47 @@ so the old build's worker finishes into an inbox nobody drains, and the
 job runs again under the new build. In the gate, v1's worker is released
 after the swap, and its late `p + 1` never reaches v2's frame.
 
+
+## M84/T84.7 — a stopped subscription stops
+
+`docs/plan-images-in-motion.md` T84.7. A subscription that is no longer
+declared has its job's `JobTrack::stop` set by the host's diff; the body
+returns on `Sender::is_stopped`, and the drain drops what it sent
+(`Host::stopped_dropped`). M84/T84.5 had pinned the gap green: **20**
+messages applied and **20** job iterations in the 200 ms after the stop.
+
+| gate (`crates/lumen-static-shell/tests/`) | measured | bound |
+|---|---:|---:|
+| `subscriptions.rs` `a_stopped_subscription_stops`: messages applied after the stop | **0** | 0 |
+| the same: job iterations after the stop | **0** | ≤ 1 |
+| the same: waiting at the stop / dropped at the drain | 3 / 3 | dropped ≥ waiting |
+| `a_declared_subscription_keeps_delivering` (accept) | **50 of 50** applied, 0 dropped | 50 |
+| `a_rekeyed_subscription_delivers_only_the_new_key`: old key / new key after the change | **0** / 21 | 0 / > 0 |
+| `reissue.rs` `a_stopped_subscription_is_not_carried_across_a_swap` | re-issued `[14]`, not the stopped `8` | — |
+
+Injections, each red by name and restored green:
+
+| injection | fires as |
+|---|---|
+| the drain ignores `stop` | `messages must not be applied after the stop -- 3 were`; re-key: `old key's messages were applied` (3) |
+| the host never sets `stop` | `job must return within one iteration -- it ran 20` (23 messages applied) |
+| `Ledger::unsettled` keeps stopped jobs | `a stopped subscription's job was re-issued: [8, 14]` |
+| T84.5's pinned test against the new code | `pinned (T84.5): ... 0 were` — its job never asks, so it still iterated 20 times: the drain's half alone holds for a body that does not cooperate |
+
+**Waiting before the stop is what lets the drain's injection fire.** The
+ticker sends every 10 ms and the stop's frame follows the first message
+by about a millisecond, so without the test's 35 ms wait the inbox is
+empty at the stop and a drain that ignored the flag passed. That
+something was waiting is asserted as setup, from the iterations less
+what landed, which does not read the mechanism under test.
+
+**K3, `benches --bin spawn -- pool`, eight runs a side under
+`just bench-lock`, alternated, all quiet:** parent 1,747.70–3,064.70 ns
+(median 2,025), T84.7 median **2,505** ns (1,853.14–3,223.75). Inside the
+parent's spread; the added work is one atomic load per drained result
+from a tracked job.
+
+**Progress after stop** (M11) is not here: M88/T88.1's progress slot has
+not landed, so T88.1 carries that gate and makes `settled` treat a
+stopped job as settled. Today a stopped job settles the ordinary way,
+once its body returns and the drain has consumed what it sent.

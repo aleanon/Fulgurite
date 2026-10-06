@@ -65,6 +65,10 @@ pub struct Inbox<M> {
     /// a host can drain while holding `&mut` to the state being applied
     /// to. The counter is the only thing the drain writes to the inbox.
     stale: core::cell::Cell<usize>,
+    /// Results dropped because the job that sent them had been told to
+    /// stop — M84/T84.7, read as `Host::stopped_dropped`. A `Cell` for
+    /// the reason `stale` is one.
+    stopped_dropped: core::cell::Cell<usize>,
 }
 
 impl<M> Inbox<M> {
@@ -131,14 +135,40 @@ type Item<M> = (u64, Option<Arc<JobTrack>>, M);
 /// Three counters rather than a message at the end, because a "done"
 /// marker would have to go through the bounded channel, where it could
 /// be refused — and a refused marker is a job listed for ever.
+///
+/// **And one flag the other way, since M84/T84.7: `stop`.** The host
+/// sets it ([`JobTrack::stop`]) when a subscription the job serves is
+/// no longer declared; the job body reads it through
+/// [`Sender::is_stopped`] and returns, and the drain drops whatever the
+/// job sent that had not yet been applied (`Host::stopped_dropped`
+/// counts it). The stop is **cooperative**: a body that never asks runs
+/// on, and only the drain's half holds for it — its results are never
+/// applied, but its work is not saved. One byte, in the padding after
+/// `finished`.
 #[derive(Debug, Default)]
 pub struct JobTrack {
     sent: AtomicUsize,
     consumed: AtomicUsize,
     finished: core::sync::atomic::AtomicBool,
+    stop: core::sync::atomic::AtomicBool,
 }
 
 impl JobTrack {
+    /// Tell the job to stop — M84/T84.7. Called by the host on the
+    /// frame's thread; idempotent.
+    ///
+    /// `Release`, so a body that reads the flag `true` also sees
+    /// everything the frame wrote before it (nothing it needs today; the
+    /// ordering costs nothing on the one store).
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Release);
+    }
+
+    /// Whether the host has told this job to stop.
+    pub fn is_stopped(&self) -> bool {
+        self.stop.load(Ordering::Acquire)
+    }
+
     /// Whether the job has finished and its every result has been
     /// drained. Read on the frame's thread.
     ///
@@ -242,6 +272,19 @@ impl<M> Sender<M> {
     pub fn refused(&self) -> usize {
         self.refused.load(Ordering::Relaxed)
     }
+
+    /// Whether the host has told this sender's job to stop — M84/T84.7.
+    ///
+    /// The cooperative half of a stop: a long job (a subscription's
+    /// stream, a decoder) asks between units of work and returns when
+    /// this answers `true`. Whatever it sends after the stop is dropped
+    /// at the drain anyway, so asking saves the work, not correctness.
+    ///
+    /// A sender with no job — [`Inbox::sender`], [`Inbox::post`]'s path
+    /// — answers `false` always: there is nothing a host could stop.
+    pub fn is_stopped(&self) -> bool {
+        self.track.as_ref().is_some_and(|t| t.is_stopped())
+    }
 }
 
 impl<M> Default for Inbox<M> {
@@ -261,6 +304,7 @@ impl<M> Inbox<M> {
             unmodelled: Arc::new(AtomicUsize::new(0)),
             epoch: 0,
             stale: core::cell::Cell::new(0),
+            stopped_dropped: core::cell::Cell::new(0),
         }
     }
 
@@ -298,6 +342,13 @@ impl<M> Inbox<M> {
     /// here is: a silent drop is what a gate exists to make visible.
     pub fn stale(&self) -> usize {
         self.stale.get()
+    }
+
+    /// How many results were dropped because their job had been told to
+    /// stop ([`JobTrack::stop`]) — M84/T84.7. Monotonic. A result both
+    /// stale and stopped is counted as stale: the epoch is checked first.
+    pub fn stopped_dropped(&self) -> usize {
+        self.stopped_dropped.get()
     }
 
     /// How many sends have been refused for want of capacity.
@@ -395,11 +446,18 @@ impl<M> Inbox<M> {
                     // result carrying any epoch but the current one is
                     // dropped. Equality, not an ordering test: see
                     // `Inbox::cancel`.
-                    if e == self.epoch {
+                    if e != self.epoch {
+                        self.stale.set(self.stale.get() + 1);
+                    } else if track.as_ref().is_some_and(|t| t.is_stopped()) {
+                        // **A stopped job's result, at the drain** —
+                        // M84/T84.7. Whatever it sent and nobody has
+                        // applied yet is dropped, so the stop holds from
+                        // the frame that set it even for a body that
+                        // never asks `Sender::is_stopped`.
+                        self.stopped_dropped.set(self.stopped_dropped.get() + 1);
+                    } else {
                         apply(state, m);
                         n += 1;
-                    } else {
-                        self.stale.set(self.stale.get() + 1);
                     }
                     // Consumed either way: a stale result is as landed as
                     // it will ever be (M47/T47.3).

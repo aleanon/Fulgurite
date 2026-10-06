@@ -656,6 +656,15 @@ worker cannot be stopped, so a job with a side effect may perform it
 twice. Until then a chain in flight at a window swap was dropped silently,
 and the docs credited M28/T28.7 with carrying it.
 
+**DECIDED 2026-10-06 (M84/T84.7, `docs/results-tasks.md` T84.7):** a
+subscription that is no longer declared **stops**. Its job's `JobTrack`
+gains a `stop` flag the host sets in the diff; the body asks
+`Sender::is_stopped` and returns, and the drain drops what it sent and
+counts it (`Host::stopped_dropped`). The stop is cooperative, so a body
+that never asks runs on with its results discarded. A stopped job is
+not re-issued across a swap. Until T84.7 the host only forgot the
+entry, and the worker's messages kept being applied.
+
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
 required, and `suspended` takes the source back before the backend is

@@ -401,8 +401,37 @@ impl Ledger {
     /// saving itself for a swap. An entry that settled since the last
     /// prune has had its result applied, and re-issuing it would apply
     /// it twice.
+    ///
+    /// **A stopped job is not listed** (M84/T84.7): its results are
+    /// dropped at the drain and the application asked for it to end, so
+    /// re-issuing it to a new build would restart a stream the
+    /// application had stopped.
     pub fn unsettled(&self) -> impl Iterator<Item = Descriptor> + '_ {
-        self.entries.iter().filter(|(_, t)| !t.settled()).map(|(d, _)| *d)
+        self.entries.iter().filter(|(_, t)| !t.settled() && !t.is_stopped()).map(|(d, _)| *d)
+    }
+
+    /// Tell every listed job described by `desc` to stop
+    /// ([`JobTrack::stop`](crate::inbox::JobTrack::stop)) — M84/T84.7.
+    /// Returns how many were told.
+    ///
+    /// The host calls this when a subscription is no longer declared,
+    /// with its `(kind, key)` at step 0. Every match is stopped, not the
+    /// first: a stream stopped and declared again before its old job
+    /// returned has two entries, and the old one is already stopped,
+    /// which a second store leaves as it was. The new one is spawned
+    /// after this call, so it is never among them. A one-shot job pushed
+    /// with the very same descriptor cannot be told apart from the
+    /// subscription's and is stopped with it — the ambiguity the host's
+    /// "a subscription's job is its `(kind, key)` at step 0" already has.
+    pub fn stop(&self, desc: Descriptor) -> usize {
+        let mut n = 0;
+        for (d, t) in &self.entries {
+            if *d == desc && !t.settled() {
+                t.stop();
+                n += 1;
+            }
+        }
+        n
     }
 }
 
