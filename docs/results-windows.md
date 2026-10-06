@@ -86,3 +86,38 @@ that the slot's frame never reads or clears. `motion-present [Everything]:
 presents 200 for 200 motions (bound 2); redraws that presented nothing 0`,
 and the assertion fires by name.
 
+## T89.3 — window programs, open and close (2026-10-06)
+
+**The `OpenProgram` cost, recorded** (`docs/plan-windows.md`, "A window
+program is a table the program carries"): `OpenProgram::session(recover)`
+instantiates both `Local<_, Recovering>` and `Local<_, Crashing>` for each
+table entry, so a release build **without** `reload` that declares window
+programs links M36's recovery code. Counted as `just release-window-shape`
+counts it (`nm -C`, defined `lumen_static_shell::recover::` symbols):
+
+| release build, no `reload` | `recover::` symbols | bytes | `.text` |
+|---|---:|---:|---:|
+| `examples/minimal` (no window table; `just release-window-shape`) | **0** | 0 | 2,828,326 |
+| `examples/two-windows` (one table entry) | **9** | 13,708 | 3,850,342 |
+
+`examples/minimal` stays at 0, the bound `release-window-shape` holds;
+two-windows' `.text` is not comparable with minimal's (it links the
+shaper for its `Complex` detail). The reopen condition is the plan's: a
+request for multi-window in a release build where M52's bytes matter.
+
+**The live gates** (`just windows-drive` phase 2, `examples/two-windows`,
+release with `reload`; Everything and Boundaries<256> alike; Xephyr):
+
+| gate | read | bound |
+|---|---|---|
+| a click on `#row2`: the reply's `opened`, `#opened`, `app.windows` | `[2]`, `2`, [1] → [1, 2] | `[2]` |
+| `#detail-bump` with `"window": 2`; the list untouched | detail 1; list (`0`, `2`) unchanged | 1 |
+| XTest click at `#detail-bump` in window 2 | detail 2 | 2 |
+| `#rtl` (Complex) ink against its box | 82.0 px in 84.0 px, \|Δ\| 2.0 | ≤ 3.0 |
+| listening sockets of the process | 1 | 1 |
+| panic in window 2: R pressed there (XTest) | failure cleared; window 1 never failed | cleared |
+| `app.close` 2, Escape in 3, `#detail-close` in 4 | `app.windows` [1] each, list answers | [1] |
+| `app.close` on window 1 | exited, < 1 ms after the reply | 2000 ms |
+
+`just a11y-drive`'s two-windows leg: two frames for the pid, 5 and 3 push
+buttons, equal to each window's agent `Button` count.

@@ -1233,11 +1233,19 @@ The years go to:
   application reaches them and `run`/`Program` route none of them
   (`docs/plan-capabilities.md` T15.7, T15.10, T15.11;
   `docs/plan-a11y-platform.md` §2.5). HiDPI and clipboard are reached.
-  **Multi-window: OPEN, planned as M89** (`docs/plan-windows.md`;
-  M89/T89.0, 2026-10-06). The reopen gate is one agent port with windows
-  addressed by a `window` field, and a close that leaves the other
-  answering (`docs/plan-a11y-platform.md` §4, amended); `just
-  windows-drive` phase 0 pins the one-window behaviour it starts from.
+  **Multi-window: DECIDED, M89/T89.3** (`docs/plan-windows.md`;
+  2026-10-06). A program carries a window table (`Program::windows`), a
+  handler asks for one of its entries with `Request::OpenWindow`, and
+  the window creates it and answers `WindowOpened` inside the drain that
+  took the request. One agent port addresses every window by a
+  `"window"` member (T89.2); closing a window closes that window, and
+  closing the primary ends the process (`docs/plan-windows.md`, "Closing
+  a window and quitting are different"). The reopen gate — one port, a
+  close that leaves the other answering (`docs/plan-a11y-platform.md`
+  §4, amended) — is `just windows-drive` phase 2 on
+  `examples/two-windows`; `just a11y-drive` lists a frame per window.
+  Data between windows (`Request::Post`), daemons and hot reload with
+  several windows are T89.4, T89.6 and T89.7.
 
 None of these get easier because the tree is static. **Strong recommendation:**
 compose rather than build. Take an existing shaping and rasterization stack and

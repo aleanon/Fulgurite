@@ -1,0 +1,30 @@
+[package]
+name = "two-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M89/T89.3 (docs/plan-windows.md): a list window (program 0) whose rows
+# open a detail window (program 1) -- two windows, one process, one agent
+# port. `just windows-drive` drives it.
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+# `shaping`: the detail program lays its right-to-left label out
+# `Shaping::Complex` while the list stays `Basic` -- each window renders
+# with its own program's stack (second review X2, T89.3 gate 7).
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "shaping"] }
+
+[features]
+default = []
+# Both programs under `Everything`, so the drive runs both strategies -- a
+# compile-time choice made in `main.rs`, as examples/tasks-demo's is.
+everything = []
+# The platform accessibility adapter, one per window (T89.3 gate 6).
+a11y = ["lumen-static-winit/a11y"]
+# M36's recovery in a release build (`lumen-static-winit/reload`), so the
+# drive's panic step (T89.3 gate 4) runs on the release window; without it
+# a release window does not catch panics, by design.
+reload = ["lumen-static-winit/reload"]

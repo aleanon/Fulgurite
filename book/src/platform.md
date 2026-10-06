@@ -6,24 +6,43 @@ That is not modesty, it is what keeps the `no_std` profile honest.
 
 ## Multi-window
 
-**Not reachable from an application yet**: `run` and a `Program` open
-one window. M89 is building the rest (`docs/plan-windows.md`), and its
-first step is already in: the window crate holds one `WindowSlot` per
-window, with what the process has one of (the clipboard, the reload
-state, the agent's `app.quit`) beside the slots rather than inside them.
-A window event finds its slot by window id, and a worker's wake carries
-its window's key, so it asks *its own* window for a frame.
+A program can open more windows than its own (M89, `docs/plan-windows.md`).
+Each window runs **its own program** — a `Program` like the one you
+already write — and the main program lists them in a **window table**:
 
-`Host` is already one tree and one surface, which turns out to be the
-right unit. A second window is a **second session** — its own tree,
-stylesheet and damage stream — not a `Host` with two of anything, and
-the core learns nothing about it. A slot holds its session behind the
-same `Session` seam a hot library uses, so the window's state is never
-loader-side code that a reload could not replace.
+```text
+{{#include ../../examples/two-windows/src/main.rs:windows}}
+```
 
-The practical consequence: two windows share nothing except what your
-application passes between them, and M89 makes that a message rather
-than shared state.
+A handler asks for entry `n` by pushing
+`Request::OpenWindow { program: n, tag }` onto its `Requests`, and the
+window creates the window and answers `Answer::WindowOpened { window }`
+with its key **before the drain that took the request returns**, so
+nothing is pending when a hot swap lands. An index the table has no
+entry for answers `NoSuchProgram`. When a window you opened closes, you
+hear `WindowClosed` under the unasked tag, `request::UNSOLICITED`.
+
+**Closing a window and quitting are different.** `KeyOutcome::Quit`
+from a key hook and `Request::Close` close the window they came from;
+`Request::CloseWindow { window }` closes another; closing the **primary**
+window — the program's own — ends the process, and so does
+`Request::Quit` from anywhere.
+
+A second window is a **second session** — its own tree, stylesheet,
+damage stream, renderer face and accessibility adapter — not a `Host`
+with two of anything, and the core learns nothing about it. The window
+crate holds one `WindowSlot` per window, with what the process has one
+of (the clipboard, the reload state, `app.quit`) beside the slots. A
+window event finds its slot by window id, and a worker's wake carries
+its window's key, so it asks *its own* window for a frame. A slot holds
+its session behind the same `Session` seam a hot library uses.
+
+**One agent port addresses every window**, by a `"window"` member on the
+request (`agent.md`); only the primary program's address and
+accessibility setting apply. `examples/two-windows` is the worked
+example, and `just windows-drive` drives it under both strategies. What
+two windows share is what your application passes between them, and
+M89's next step makes that a message (`Request::Post`), not shared state.
 
 ## Clipboard
 
@@ -106,12 +125,12 @@ Four capabilities, four different mechanisms, one rule:
 
 | capability | mechanism | why | reachable |
 |---|---|---|---|
-| multi-window | none needed | a second `Host` was already the right shape | no: types only |
+| multi-window | a window table and three requests | a second session was already the right shape | yes, since M89/T89.3 |
 | clipboard | default-on feature | small, and close to table stakes | yes |
 | dialogs | default-off feature | large dependency, measured | no: types only |
 | cursors | a `Style` field | cascades, and fits in existing padding | yes |
 
-Platform drag and drop is in the same state as multi-window and dialogs:
+Platform drag and drop is in the same state as dialogs:
 `translate::dropped` exists behind `dnd`, and the turnkey window routes
 no drop (`docs/plan-a11y-platform.md` §2.5).
 

@@ -895,3 +895,57 @@ the first review's findings of the same name.
 - **T89.2, `ui.tree` appears nowhere as a method name**: a grep of the
   repository for it in backticks or quotes finds only this plan's own
   instruction, so "`ui.getTree` everywhere" needed no edit.
+- **T89.3, `OpenProgram::hot` and `WindowApp` wait for T89.7.** `hot`
+  calls the boot that T89.7 moves into the shell, so the trait lands
+  with `spec` and `session` only and `Program<A, I>` implements it for
+  any `A: App`. Until T89.7 a hot window's swap step touches the primary
+  slot only: the reloader boots the library's program 0, and swapping a
+  window program's slot would replace it with the primary's application.
+- **T89.3, `WindowSpec` carries the entry's `agent` address.** The plan's
+  spec is width, height, page, `Prefer` and images; the address is added
+  so the window can print the one stderr line that it ignored it, and so
+  gate 5's injection ("start `agent::serve` for a secondary program's
+  address") has the address to start.
+- **T89.3, gate 2's assertion could not fire under its injection.** A
+  sequential `ui.resolve #opened` after the click's reply read `2` with
+  the open deferred to `about_to_wait`: the loop goes idle between the
+  reply and the next request, and the deferred open answers and asks a
+  redraw too, so every later read converges. A read sent on a second
+  connection 3 ms into the click also stayed green (the click is handled
+  in under 3 ms). The only instant that differs is the click's own reply,
+  so **a call whose drain opened windows carries `"opened": [keys]`**
+  (`Win::answer_agent`), and the gate asserts it: green `[2]`; under the
+  injection `None`, with `#opened` still reading `2`, which is the
+  finding.
+- **T89.3, gate 4's injection could not move `app.presents`.** With
+  `failed()` read from slot 0 for every slot, window 2's panic screen
+  still presented, and so did every later own redraw of it: a panicked
+  session's frames carry their own damage, so `present_needed`'s forced
+  flag never decided them. The per-slot read that *is* observable is the
+  input swallow, M36's R-to-retry: R pressed in window 2 through XTest
+  clears its failure, and under the injection the R is posted to the
+  failed session as input and the failure stays (printed). The gate is
+  that.
+- **T89.3, gate 2's routing injection was narrowed.** "`window_event`
+  hands every event to slot 0" also hands window 2's resize and redraw
+  to slot 0, so window 2 never lays out and the drive fails at the
+  agent's click, before the XTest step. Handing only pointer input to
+  slot 0 leaves the agent path intact and fails the XTest step by name.
+- **T89.3, the drive runs a release build with `reload`.** A release
+  window without it does not catch panics (M36), so gate 4's panic would
+  end the process; `examples/two-windows` gains a `reload` pass-through,
+  as `fixtures/panic-app` has, and the launcher declares `reload` and
+  `shaping` for every phase-2 leg.
+- **T89.3, the firmware `nm` count cannot fire, as at T88.3.** With
+  `Requests` ungated and an `OpenWindow` pushed from the embedded
+  fixture's `on_inc`, the push inlines and leaves no symbol (0 on all
+  four), while `.text` grows +88 / +84 / +84 / +84 B. The strict
+  `just firmware-delta`, 0 on all four, is the gate; the count is
+  printed beside it, with its positive control (3 symbols in the
+  `window_programs` test binary).
+- **T89.3, `Request::tag` answers `Option<u64>`.** `CloseWindow`,
+  `Close` and `Quit` are never answered and carry no tag; the three
+  callers that answered every request by its tag say so with `expect`.
+- **T89.3, `WindowClosed` is sent on every close of a window that has
+  an opener**, not only a close by the user: one rule, and an opener
+  that closed a window itself learns it landed.

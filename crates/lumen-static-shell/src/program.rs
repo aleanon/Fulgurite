@@ -56,9 +56,14 @@ pub enum KeyOutcome {
     /// handled event is: a split application's bindings mark the nodes
     /// they write, an unsplit one's whole tree is marked.
     Handled,
-    /// The application asks to close. [`Host::quit_requested`] turns
-    /// true, and a window exits at its next `about_to_wait`; a headless
-    /// host only records it. Counted as handled, and marks nothing.
+    /// The application asks to close **the window it came from**.
+    /// [`Host::quit_requested`] turns true, and the window closes at its
+    /// next `about_to_wait` — which ends the process only when it is a
+    /// non-daemon program's primary window (M89/T89.3,
+    /// `docs/plan-windows.md`, "Closing a window and quitting are
+    /// different"); ending the process from any window is
+    /// `Request::Quit`. A headless host only records it. Counted as
+    /// handled, and marks nothing.
     Quit,
 }
 
@@ -335,6 +340,10 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     /// no face has no stack to choose for.
     #[cfg(feature = "truetype")]
     pub shaping: crate::text::Shaping,
+    /// [`Program::windows`]' table — M89/T89.3. Behind `truetype`, as
+    /// [`OpenProgram`] is.
+    #[cfg(feature = "truetype")]
+    windows: Option<WindowTable>,
     /// The application's source directory, from `application`'s caller —
     /// M36: a panic report's application frame is found under it.
     source_root: Option<&'static str>,
@@ -379,6 +388,8 @@ where
         #[cfg(feature = "shader")]
         shaders: &[],
         agent: None,
+        #[cfg(feature = "truetype")]
+        windows: None,
         strategy: core::marker::PhantomData,
         accessible: cfg!(feature = "a11y"),
         #[cfg(feature = "truetype")]
@@ -414,6 +425,8 @@ impl<A: App, I: Invalidation> Program<A, I> {
             #[cfg(feature = "shader")]
             shaders: self.shaders,
             agent: self.agent,
+            #[cfg(feature = "truetype")]
+            windows: self.windows,
             source_root: self.source_root,
             strategy: core::marker::PhantomData,
             accessible: self.accessible,
@@ -703,6 +716,43 @@ impl<A: App, I: Invalidation> Program<A, I> {
         self
     }
 
+    /// **The program's other windows** — M89/T89.3
+    /// (`docs/plan-windows.md`, "A window program is a table the program
+    /// carries"). `table(n)` answers the program window `n` runs, for
+    /// `n` from 1; [`Request::OpenWindow`](lumen_static::request::Request::OpenWindow)
+    /// names `n`, and the window opens it.
+    ///
+    /// **An ordinary `fn` the program holds, and data everywhere else**:
+    /// a job, a request and the loader hold only the index, never this
+    /// pointer, and the window calls only the table of the program it was
+    /// started with — loader code, never swapped. Only the primary
+    /// program's agent address and accessibility setting apply: an entry
+    /// that sets an address is ignored, with one line on stderr.
+    #[cfg(feature = "truetype")]
+    pub fn windows(mut self, table: WindowTable) -> Self {
+        self.windows = Some(table);
+        self
+    }
+
+    /// Program window `index` of [`Program::windows`]' table, booted from
+    /// nothing yet — `None` for an index the table has no entry for, for a
+    /// program with no table, and for 0, which is this program itself and
+    /// not a table entry.
+    #[cfg(feature = "truetype")]
+    pub fn window_program(&self, index: u16) -> Option<Box<dyn OpenProgram>> {
+        if index == 0 {
+            return None;
+        }
+        self.windows.and_then(|table| table(index))
+    }
+
+    /// The table [`Program::windows`] set, if any — what a window keeps to
+    /// answer `Request::OpenWindow` (M89/T89.3).
+    #[cfg(feature = "truetype")]
+    pub fn window_table(&self) -> Option<WindowTable> {
+        self.windows
+    }
+
     /// The application's source directory as the compiler spelled it
     /// (`examples/x`, relative to where cargo ran) — M36 finds panic
     /// frames under it, and M37's window rebuilds the crate there.
@@ -752,3 +802,76 @@ impl<A: App, I: Invalidation> Program<A, I> {
         host
     }
 }
+
+/// **What a window program's window looks like** — M89/T89.3: its size
+/// in logical pixels, the page cleared behind its damage, the renderer it
+/// prefers and the images its backend is handed. Read by the window from
+/// the **loader's** table, never a hot library's, because an
+/// `ImageSource` from a library would be library code held across a swap
+/// (`docs/plan-windows.md`, hot reload).
+///
+/// `agent` is the entry's own address, kept only so the window can say
+/// it ignored it: **one agent port**, the primary program's (M15, T89.3
+/// gate 5).
+#[cfg(feature = "truetype")]
+pub struct WindowSpec {
+    pub width: u32,
+    pub height: u32,
+    pub page: Color,
+    pub backend: Prefer,
+    pub images: Option<Box<dyn lumen_static::ImageSource>>,
+    pub agent: Option<String>,
+}
+
+/// **A program a window can be opened on** — M89/T89.3
+/// (`docs/plan-windows.md`). Object-safe, so a window table is a list of
+/// boxes of different application types.
+///
+/// - [`spec`](Self::spec) takes the window's settings out (the images
+///   are moved, so it is asked once);
+/// - [`session`](Self::session) boots the program into a session the
+///   window drives. `recover` is the window's panic policy
+///   (`lumen-static-winit`'s `Policy`), as a value, because the trait
+///   object cannot carry its type parameter.
+///
+/// **Cost, recorded rather than hidden**: `session(recover)` instantiates
+/// both `Local<_, Recovering>` and `Local<_, Crashing>` for each entry, so
+/// a release build without `reload` that declares window programs links
+/// M36's recovery code (`docs/results-windows.md`, T89.3).
+///
+/// The hot-reload method the plan names, `hot(saved)`, lands with
+/// T89.7, together with the boot it calls (`docs/plan-windows.md`, What
+/// building found).
+#[cfg(feature = "truetype")]
+pub trait OpenProgram {
+    fn spec(&mut self) -> WindowSpec;
+    fn session(self: Box<Self>, recover: bool) -> Box<dyn crate::session::Session>;
+}
+
+#[cfg(feature = "truetype")]
+impl<A: App + 'static, I: Invalidation + 'static> OpenProgram for Program<A, I> {
+    fn spec(&mut self) -> WindowSpec {
+        WindowSpec {
+            width: self.width,
+            height: self.height,
+            page: self.page,
+            backend: self.backend,
+            images: self.images.take(),
+            agent: self.agent.take(),
+        }
+    }
+
+    fn session(self: Box<Self>, recover: bool) -> Box<dyn crate::session::Session> {
+        use crate::session::{Crashing, Local, Recovering};
+        if recover {
+            Box::new(Local::from_program(*self, Recovering))
+        } else {
+            Box::new(Local::from_program(*self, Crashing))
+        }
+    }
+}
+
+/// **A program's window table** — M89/T89.3: `table(n)` is the program
+/// window `n` (from 1) runs, or `None`. Set with [`Program::windows`].
+#[cfg(feature = "truetype")]
+pub type WindowTable = fn(u16) -> Option<Box<dyn OpenProgram>>;

@@ -20,6 +20,12 @@ and a push button named NAME exists when `--button` is given.
 the application is missing, printing XFAIL, and fails as XPASS the moment
 it appears, so the expectation cannot be left stale.
 
+`--open SEL` (M89/T89.3 gate 6): click SEL in the primary window first,
+which opens a second window, then require **one frame per open window**
+on the bus for the pid (`app.windows`), each frame's push-button count
+equal to its own window's agent `Button` count (the agent's `"window"`
+member), and none of them zero -- each window has its own adapter.
+
 Exit 77, with the reason, when there is no AT-SPI to walk: no `gi`
 bindings, or a desktop with no applications on it.
 """
@@ -54,10 +60,13 @@ except (ImportError, ValueError) as e:  # pragma: no cover - environment
     skip(f"no AT-SPI bindings (python3-gi with Atspi 2.0): {e}")
 
 
-def rpc(port: int, method: str, params: dict | None = None) -> dict:
+def rpc(port: int, method: str, params: dict | None = None, window: int | None = None) -> dict:
     with socket.create_connection(("127.0.0.1", port), timeout=15) as s:
         f = s.makefile("rwb")
-        f.write((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}) + "\n").encode())
+        req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+        if window is not None:
+            req["window"] = window
+        f.write((json.dumps(req) + "\n").encode())
         f.flush()
         r = json.loads(f.readline())
     if "error" in r:
@@ -96,6 +105,8 @@ def main() -> int:
     ap.add_argument("--expect", choices=("present", "absent"), required=True)
     ap.add_argument("--button")
     ap.add_argument("--timeout", type=float, default=10.0)
+    ap.add_argument("--open", help="click this selector in window 1, then require a frame per open "
+                                    "window, each with its own buttons (M89/T89.3)")
     ap.add_argument("--act", help="perform the named push button's AT-SPI action, and require the "
                                    "application's tree to change (M54/T54.4)")
     a = ap.parse_args()
@@ -106,6 +117,9 @@ def main() -> int:
     listed = apps()
     if not listed:
         skip("the AT-SPI desktop lists no applications (no accessibility bus or registry)")
+
+    if a.open:
+        return per_window(a, pid)
 
     # The agent's view: visible buttons. A hidden node is marked hidden
     # and the platform tree leaves it out, so it is not counted.
@@ -156,6 +170,44 @@ def main() -> int:
         print(f"a11y-drive: push button {a.button!r} found")
     if a.act:
         act(found[2], a.act, a.port)
+    return 0
+
+
+def per_window(a, pid: int) -> int:
+    """M89/T89.3 gate 6: a frame per window, each with its own buttons."""
+    r = rpc(a.port, "input.click", {"selector": a.open})
+    if r.get("handled") is not True:
+        fail(f"--open: the click on {a.open} was not handled ({r}) -- the setup did not land")
+    keys = [w["key"] for w in rpc(a.port, "app.windows")["windows"]]
+    if len(keys) < 2:
+        fail(f"--open: app.windows {keys} after clicking {a.open} -- no second window, nothing to compare")
+    want = {k: sum(1 for n in rpc(a.port, "ui.getTree", window=k)["nodes"]
+                   if n.get("role") == "Button" and not n.get("hidden")) for k in keys}
+    deadline = time.monotonic() + a.timeout
+    frames: list[tuple[str, int]] = []
+    while True:
+        found = next((x for x in apps() if x[0] == pid), None)
+        frames = []
+        if found:
+            app = found[2]
+            for i in range(app.get_child_count()):
+                c = app.get_child_at_index(i)
+                if c is None:
+                    continue
+                nodes: list[tuple[str, str]] = []
+                walk(c, nodes)
+                frames.append((c.get_name() or "", sum(1 for r_, _ in nodes if r_ == "push button")))
+        counts = sorted(n for _, n in frames)
+        if counts == sorted(want.values()) or time.monotonic() > deadline:
+            break
+        time.sleep(0.25)
+    print(f"a11y-drive: pid {pid}: windows {keys}, agent buttons per window {want}; "
+          f"AT-SPI frames {frames} ({len(frames)} frames, want {len(keys)})")
+    if len(frames) != len(keys):
+        fail(f"{len(frames)} frames on the bus for {len(keys)} windows -- a window has no adapter")
+    if sorted(n for _, n in frames) != sorted(want.values()) or 0 in want.values():
+        fail(f"per-frame push buttons {frames} do not match the agent's per-window counts {want}")
+    print("a11y-drive: every window is on the bus as its own frame, with its own buttons")
     return 0
 
 

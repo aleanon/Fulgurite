@@ -62,7 +62,7 @@ fn session(h: &mut Host<Fx>, site: u8) {
         // (M88/T88.3): site 11.
         let answered = h.guard(|h| {
             for o in h.take_requests() {
-                h.answer(o.request.tag(), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+                h.answer(o.request.tag().expect("every request here carries a tag"), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
             }
         });
         if answered.is_none() {

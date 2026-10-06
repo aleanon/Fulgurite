@@ -13,7 +13,9 @@
 #                                    there;
 #   showcase --features agent        a `Program` application, the front
 #                                    door since M32 -- on the bus since
-#                                    T54.2 (it was absent: R15-F1).
+#                                    T54.2 (it was absent: R15-F1);
+#   two-windows --features a11y      two windows of one process (M89/T89.3):
+#                                    a frame each, each with its buttons.
 #
 # Needs a display and an AT-SPI bus: exits 77 without either, which
 # `just live` counts as not run, never as a pass (M43 §2.2).
@@ -51,4 +53,10 @@ entry=$(target/release/showcase --entries | awk -F'\t' '$1 == "Button" && !f {pr
 $LAUNCH --leg showcase --exe target/release/showcase --arg "$entry" \
     -- python3 scripts/a11y_drive.py {port} --expect present --button Primary --act Primary
 
-echo "a11y-drive: counter-window and showcase (a Program) are on the bus, buttons matching the agent"
+# M89/T89.3 gate 6: two windows of one process, each with its own adapter
+# -- a frame per window on the bus, each with its own window's buttons.
+cargo build --release -q -p two-windows --features a11y
+$LAUNCH --leg two-windows --exe target/release/two-windows --expect-features shaping \
+    -- python3 scripts/a11y_drive.py {port} --expect present --open "#row2"
+
+echo "a11y-drive: counter-window, showcase (a Program) and two-windows' two frames are on the bus, buttons matching the agent"

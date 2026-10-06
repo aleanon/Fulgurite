@@ -201,6 +201,12 @@ unicode-bidi = "0.3"
 name = "shadow"
 required-features = ["shadow-oracle"]
 
+# M89/T89.3: a program's window table boots a session (`OpenProgram`),
+# which exists with a session at all (`truetype`).
+[[test]]
+name = "window_programs"
+required-features = ["truetype"]
+
 # M39/T39.0: drives `Session::agent`, which exists with the agent built in
 # and a session at all (`truetype`).
 [[test]]

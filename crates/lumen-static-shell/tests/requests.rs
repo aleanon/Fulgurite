@@ -194,7 +194,7 @@ fn a_ninth_push_is_refused_and_counted() {
     assert_eq!(pushed.iter().filter(|&&p| !p).count(), 1, "the ninth push was not refused");
     assert_eq!(refused, 1);
     assert_eq!(taken.len(), Requests::CAPACITY);
-    assert_eq!(taken.iter().map(|o| o.request.tag()).collect::<Vec<_>>(), (0..8).collect::<Vec<_>>(), "oldest first");
+    assert_eq!(taken.iter().map(|o| o.request.tag().unwrap()).collect::<Vec<_>>(), (0..8).collect::<Vec<_>>(), "oldest first");
 }
 
 #[test]

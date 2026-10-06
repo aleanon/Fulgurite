@@ -147,14 +147,8 @@ KEYS                           # built by M87/T87.3 in scripts/drive/keys.py, a 
 LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as VECTORTEXT)
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
-CloseWindow                    # proposed by M88
-OpenWindow                     # proposed by M88
 GpuContext                     # proposed by M89
-OpenProgram                    # proposed by M89
-WindowApp                      # proposed by M89
-WindowClosed                   # proposed by M89
-WindowSpec                     # proposed by M89
-WindowTable                    # proposed by M89
+WindowApp                      # proposed by M89; deferred to T89.7 with OpenProgram::hot (docs/plan-windows.md, What building found)
 CommandList                    # proposed by M90
 ContextMenu                    # proposed by M90
 ContextRequest                 # proposed by M90
@@ -164,8 +158,6 @@ MenuMask                       # proposed by M90
 RegisteredStatusNotifierItems  # proposed by M90
 TrayModel                      # proposed by M90
 TraySpec                       # proposed by M90
-NoSuchProgram        # proposed by M89: Answer variant for an unknown program index
-WindowOpened         # proposed by M89: Answer variant carrying the new window's key
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
 Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it

@@ -30,6 +30,13 @@
 //! there is exactly one slot, key 1, and a one-window program behaves as
 //! it did; routing by id is observable only with two windows (T89.3's
 //! XTest click).
+//!
+//! **More than one since M89/T89.3**: a `Request::OpenWindow` drained from
+//! any slot's session pushes a slot for the window program it names, keyed
+//! by the next unused key, and creates its window inside the same drain;
+//! a closed window's slot is removed. Closing the primary (key 1) of a
+//! program that is not a daemon ends the process (`docs/plan-windows.md`,
+//! "Closing a window and quitting are different").
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -52,10 +59,18 @@ pub struct WindowSlot {
     /// This window's key (module doc): 1 for the primary.
     pub(crate) key: u32,
     /// The program this window runs: 0 for the program itself, 1 and up
-    /// for its window table's entries (T89.3). `app.windows` reports it
-    /// (M89/T89.2) — read only by the agent until T89.3 opens windows.
+    /// for its window table's entries (M89/T89.3). `app.windows` reports
+    /// it (M89/T89.2).
     #[cfg_attr(not(feature = "agent"), allow(dead_code))]
     pub(crate) program: u16,
+    /// Who opened this window and with which tag: the opener's key and
+    /// its `Request::OpenWindow` tag (M89/T89.3). `None` for the primary.
+    /// Closing this window tells the opener, `Answer::WindowClosed`.
+    pub(crate) opener: Option<(u32, u64)>,
+    /// The window's size in logical pixels, its page and its renderer
+    /// preference: the primary's from the program's `Config`, a window
+    /// program's from its `WindowSpec` (M89/T89.3).
+    pub(crate) spec: (u32, u32, lumen_static::Color, crate::Prefer),
     /// The application this window runs, whichever strategy it chose.
     pub(crate) session: Box<dyn Session>,
     /// `None` until `resumed`; winit owns window creation.
@@ -132,6 +147,8 @@ impl WindowSlot {
         WindowSlot {
             key,
             program: 0,
+            opener: None,
+            spec: (640, 480, lumen_static::Color(255, 255, 255, 255), crate::Prefer::Auto),
             session,
             window: None,
             backend: None,

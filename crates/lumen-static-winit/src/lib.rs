@@ -431,6 +431,11 @@ pub struct Config {
     /// with the `a11y` feature. From `Program::accessible`; `true` by
     /// default wherever the feature is on.
     pub accessible: bool,
+    /// The program's window table (`Program::windows`, M89/T89.3): what
+    /// a `Request::OpenWindow` opens. Moved here once by `run_program`
+    /// from the static binary's program — loader code, never a hot
+    /// library's.
+    pub windows: Option<lumen_static_shell::program::WindowTable>,
 }
 
 impl Default for Config {
@@ -446,6 +451,7 @@ impl Default for Config {
             backend_with: None,
             agent: None,
             accessible: cfg!(feature = "a11y"),
+            windows: None,
         }
     }
 }
@@ -487,6 +493,11 @@ use lumen_static::invalidate::Invalidation;
 pub use lumen_static_shell::session::Recovering as Policy;
 #[cfg(not(all(panic = "unwind", any(debug_assertions, feature = "reload"))))]
 pub use lumen_static_shell::session::Crashing as Policy;
+
+/// [`Policy`] as a value, for a window program's session — M89/T89.3.
+/// `OpenProgram::session` is called through a trait object, which cannot
+/// carry the policy's type, so it takes this and instantiates both.
+const CATCHES_PANICS: bool = cfg!(all(panic = "unwind", any(debug_assertions, feature = "reload")));
 
 /// Open a window on an already-built application, with no stylesheet.
 ///
@@ -540,6 +551,8 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
             std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy(), slot.key));
         slot.set_waker(waker);
     }
+    // …and every window opened later gets its own (M89/T89.3).
+    win.wake_proxy = Some(event_loop.create_proxy());
     #[cfg(feature = "hot")]
     if let Some(dir) = hot {
         match hot::crate_at(&dir) {
@@ -655,6 +668,12 @@ struct Win {
     quit: bool,
     /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
     frames: (u64, u64),
+    /// The key the next window opened gets (M89/T89.3): from 2, never
+    /// reused in a process (`windows` module doc).
+    next_key: u32,
+    /// The proxy each window's keyed [`ProxyWaker`] is built over —
+    /// installed by `start`, so a window opened later wakes itself.
+    wake_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     /// The proxy the accessibility adapters report through (M54/T54.2).
     #[cfg(feature = "a11y")]
     proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
@@ -670,8 +689,10 @@ impl Win {
         // that slot's `resumed` makes is handed them, and its `suspended`
         // takes them back.
         let images = config.images.take();
+        let mut primary = WindowSlot::new(windows::PRIMARY, session, images);
+        primary.spec = (config.width, config.height, config.page, config.backend);
         Win {
-            slots: vec![WindowSlot::new(windows::PRIMARY, session, images)],
+            slots: vec![primary],
             config,
             clipboard: Clipboard::new(),
             #[cfg(debug_assertions)]
@@ -684,6 +705,8 @@ impl Win {
             journal: false,
             quit: false,
             frames: (0, 0),
+            next_key: windows::PRIMARY + 1,
+            wake_proxy: None,
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
             #[cfg(feature = "a11y")]
             proxy: None,
@@ -763,8 +786,9 @@ impl Win {
         }
     }
 
-    /// One frame of slot `i`'s window.
-    fn redraw(&mut self, i: usize) {
+    /// One frame of slot `i`'s window. `event_loop` is in hand because
+    /// the frame's drain may open a window (M89/T89.3).
+    fn redraw(&mut self, event_loop: &ActiveEventLoop, i: usize) {
         let slot = &mut self.slots[i];
         let (Some(window), Some(backend)) = (slot.window.clone(), slot.backend.as_mut()) else {
             return;
@@ -783,8 +807,12 @@ impl Win {
         // session's kept state, **this slot's** keyed waker, scale and
         // size (M89/T89.1; T89.7 moves the swap to a step over every
         // slot).
+        //
+        // **The primary's only, until T89.7** (M89/T89.3): the reloader
+        // boots the library's program 0, so swapping a window program's
+        // slot would replace it with the primary's application.
         #[cfg(feature = "hot")]
-        if let Some(hot) = self.hot.as_mut() {
+        if let Some(hot) = self.hot.as_mut().filter(|_| slot.key == windows::PRIMARY) {
             let (waker, scale) = (slot.waker.clone(), window.scale_factor() as f32);
             if hot.reloader.swap(&mut slot.session, |s| {
                 if let Some(waker) = waker {
@@ -933,12 +961,12 @@ impl Win {
             let presented = match (bar, self.hot.as_mut()) {
                 (Some((head, body)), Some(hot)) => {
                     let mut b = hot::Barred::new(&mut *slot.session, head, &body, w, h, &mut hot.metrics);
-                    backend.present(&mut b, self.config.page, start)
+                    backend.present(&mut b, slot.spec.2, start)
                 }
-                _ => backend.present(&mut *slot.session, self.config.page, start),
+                _ => backend.present(&mut *slot.session, slot.spec.2, start),
             };
             #[cfg(not(feature = "hot"))]
-            let presented = backend.present(&mut *slot.session, self.config.page, start);
+            let presented = backend.present(&mut *slot.session, slot.spec.2, start);
             presented
         };
         // **A dropped present asks again** (M47/T47.4): the frame was
@@ -965,7 +993,16 @@ impl Win {
         // so nothing is drained while M36's screen is up; and before
         // `next_frame` reads `more_deferred`, which an applied answer
         // sets.
-        Self::serve_requests(&mut *slot.session, &mut **backend, &mut self.clipboard);
+        let key = slot.key;
+        let windows = Self::serve_requests(&mut *slot.session, &mut **backend, &mut self.clipboard);
+        // **Window requests, inside the same drain** (M89/T89.3): a window
+        // is opened and its opener answered before this returns. A `Close`
+        // from this window removes its slot, and the frame ends here.
+        if !windows.is_empty() {
+            let _opened = self.window_requests(event_loop, key, windows);
+        }
+        let Some(i) = self.slot_keyed(key) else { return };
+        let slot = &mut self.slots[i];
         slot.place_ime(&window);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
@@ -1037,20 +1074,124 @@ impl Win {
         }
     }
 
-    /// **Close slot `i`'s window** — `app.close` (M89/T89.2). The
-    /// primary's window is the program's: closing it ends the process
-    /// (`docs/plan-windows.md`, "Closing a window and quitting are
-    /// different"), at the next `about_to_wait`, as `app.quit` does. Any
-    /// other window's slot is dropped, and with it its window, its
-    /// renderer and its session.
-    #[cfg(feature = "agent")]
+    /// **Close slot `i`'s window** — `app.close` (M89/T89.2), and since
+    /// T89.3 every other way a window closes: `CloseRequested`,
+    /// `Request::CloseWindow`, `Request::Close`, and the window's own
+    /// `KeyOutcome::Quit` (`Session::wants_quit`).
+    ///
+    /// **Closing a window and quitting are different** (X5,
+    /// `docs/plan-windows.md`): the primary's window is the program's, and
+    /// closing it ends the process at the next `about_to_wait`, as
+    /// `app.quit` does. Any other window's slot is dropped — its window,
+    /// renderer, adapter and session with it — and its opener, if still
+    /// open, is told `Answer::WindowClosed` under the unsolicited tag.
     fn close_window(&mut self, i: usize) {
         if self.slots[i].key == windows::PRIMARY {
             self.quit = true;
             self.slots[i].ask_redraw();
             return;
         }
-        drop(self.slots.remove(i));
+        let slot = self.slots.remove(i);
+        let (key, opener) = (slot.key, slot.opener);
+        drop(slot);
+        if let Some((opener, _)) = opener {
+            use lumen_static::request::{Answer, UNSOLICITED};
+            self.answer_window(opener, UNSOLICITED, Answer::WindowClosed { window: key });
+        }
+    }
+
+    /// **Answer `tag` into window `key`'s session, and ask that window for
+    /// a frame** (M89/T89.3; second review A10): `Session::answer` applies
+    /// the message at once, but only the window's own next frame shows it,
+    /// and an idle window draws none unless asked. A closed key's answer
+    /// is dropped.
+    fn answer_window(&mut self, key: u32, tag: u64, a: lumen_static::request::Answer<'_>) {
+        if let Some(i) = self.slot_keyed(key) {
+            let slot = &mut self.slots[i];
+            slot.session.answer(tag, a);
+            slot.ask_redraw();
+        }
+    }
+
+    /// **The window requests one drain took from window `from`** —
+    /// M89/T89.3 (`docs/plan-windows.md`). Called by every drain site
+    /// before it returns, with the event loop in hand, so:
+    ///
+    /// | request | done |
+    /// |---|---|
+    /// | `OpenWindow { program, tag }` | the window created **now** and `from` answered `WindowOpened` — or `NoSuchProgram` — before the drain returns, so no open is pending at a swap (second review A19, P10) |
+    /// | `CloseWindow { window }` | [`Win::close_window`] on that key; a key no window has does nothing |
+    /// | `Close` | [`Win::close_window`] on `from` itself |
+    /// | `Quit` | the process ends at the next `about_to_wait` |
+    ///
+    /// Answers the keys of the windows it opened, which the agent site puts
+    /// on the reply of the call whose drain opened them (`"opened"`).
+    fn window_requests(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        from: u32,
+        requests: Vec<lumen_static::request::Request>,
+    ) -> Vec<u32> {
+        use lumen_static::request::Request;
+        let mut opened = Vec::new();
+        for r in requests {
+            match r {
+                Request::OpenWindow { program, tag } => opened.extend(self.open_program(event_loop, from, program, tag)),
+                Request::CloseWindow { window } => {
+                    if let Some(i) = self.slot_keyed(window) {
+                        self.close_window(i);
+                    }
+                }
+                Request::Close => {
+                    if let Some(i) = self.slot_keyed(from) {
+                        self.close_window(i);
+                    }
+                }
+                Request::Quit => self.quit = true,
+                // `serve_requests` answered every other request itself.
+                _ => {}
+            }
+        }
+        opened
+    }
+
+    /// **Open a window on program `program` of the window table**, for
+    /// window `from`'s `Request::OpenWindow` with `tag` (M89/T89.3).
+    ///
+    /// The table is the loader's (`Config::windows`). The new slot gets the
+    /// next key, the entry's `WindowSpec` (size, page, renderer, images),
+    /// its own keyed waker, a face built in its own session's shaping
+    /// (second review X2) and, when the primary's is on, its own
+    /// accessibility adapter. **Only the primary's agent address
+    /// applies**: an entry's is ignored with one line on stderr (M15).
+    /// Answers the new window's key, `None` for a program with no entry.
+    fn open_program(&mut self, event_loop: &ActiveEventLoop, from: u32, program: u16, tag: u64) -> Option<u32> {
+        use lumen_static::request::Answer;
+        let entry = self.config.windows.filter(|_| program != 0).and_then(|table| table(program));
+        let Some(mut entry) = entry else {
+            self.answer_window(from, tag, Answer::NoSuchProgram { program });
+            return None;
+        };
+        let spec = entry.spec();
+        if let Some(addr) = &spec.agent {
+            eprintln!(
+                "lumen-static: window program {program} asks for an agent endpoint on {addr}; ignored -- \
+                 one port, the primary program's, addresses every window by its `window` member"
+            );
+        }
+        let key = self.next_key;
+        self.next_key += 1;
+        let mut slot = WindowSlot::new(key, entry.session(CATCHES_PANICS), spec.images);
+        slot.program = program;
+        slot.opener = Some((from, tag));
+        slot.spec = (spec.width, spec.height, spec.page, spec.backend);
+        if let Some(proxy) = self.wake_proxy.clone() {
+            slot.set_waker(Arc::new(ProxyWaker::new(proxy, key)));
+        }
+        self.slots.push(slot);
+        self.open_window(event_loop, self.slots.len() - 1);
+        self.answer_window(from, tag, Answer::WindowOpened { window: key });
+        Some(key)
     }
 
     /// The soonest of every slot's deadlines (M47/T47.1, per slot since
@@ -1148,10 +1289,17 @@ impl ApplicationHandler<UserEvent> for Win {
         // `app.quit`, or the application's key hook answering `Quit`
         // (M60/T60.1) — asked of the session after every batch of
         // events, so a key the window posted and one the agent's
-        // `input.key` pumped both close the window the same way. (Which
-        // window `wants_quit` closes is T89.3's; with one window it is the
-        // process.)
-        if self.quit || self.slots.iter().any(|s| s.session.wants_quit()) {
+        // `input.key` pumped both close the window the same way.
+        //
+        // **`wants_quit` closes the window it came from** (M89/T89.3, X5):
+        // only the primary's ends the process ([`Win::close_window`]).
+        let quitting: Vec<u32> = self.slots.iter().filter(|s| s.session.wants_quit()).map(|s| s.key).collect();
+        for key in quitting {
+            if let Some(i) = self.slot_keyed(key) {
+                self.close_window(i);
+            }
+        }
+        if self.quit {
             event_loop.exit();
             return;
         }
@@ -1212,7 +1360,10 @@ impl ApplicationHandler<UserEvent> for Win {
     /// **One impl since M28/T28.1**, where there were two: one over
     /// `agent::UserEvent` under that feature and one over winit's
     /// default `()` without it.
-    fn user_event(&mut self, _e: &ActiveEventLoop, ev: UserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, ev: UserEvent) {
+        // Only the agent's requests may open a window from here.
+        #[cfg(not(feature = "agent"))]
+        let _ = event_loop;
         match ev {
             // A worker queued something. Ask **its own window** for a
             // frame (M89/T89.1: the key is the waker's) and let the
@@ -1227,7 +1378,7 @@ impl ApplicationHandler<UserEvent> for Win {
                 }
             }
             #[cfg(feature = "agent")]
-            UserEvent::Agent(rpc) => self.answer_agent(rpc),
+            UserEvent::Agent(rpc) => self.answer_agent(event_loop, rpc),
             #[cfg(feature = "hot")]
             UserEvent::Building => {
                 if let Some(h) = self.hot.as_mut() {
@@ -1317,7 +1468,7 @@ impl Win {
     /// **Every reply names the window that answered** with a top-level
     /// `"window": key` (G24, A28), so a drive prints who answered; the
     /// `-32602` for a window nobody has is the one reply without it.
-    fn answer_agent(&mut self, rpc: agent::Rpc) {
+    fn answer_agent(&mut self, event_loop: &ActiveEventLoop, rpc: agent::Rpc) {
         let id = rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null);
         let method = rpc.req.get("method").and_then(|m| m.as_str()).unwrap_or("").to_string();
         let open: Vec<u32> = self.slots.iter().map(|s| s.key).collect();
@@ -1465,7 +1616,7 @@ impl Win {
         // **The requests the call left** — M88/T88.3, the agent site: an
         // `input.*` pumps and presents inside the request, so a handler's
         // request is answered here, from the frame that call presented.
-        Self::serve_requests(&mut *slot.session, &mut *backend, &mut self.clipboard);
+        let windows = Self::serve_requests(&mut *slot.session, &mut *backend, &mut self.clipboard);
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0", "id": id,
@@ -1482,8 +1633,23 @@ impl Win {
                 slot.place_ime(&window);
             }
         }
+        // **Window requests, before the reply** (M89/T89.3, second review
+        // A19): a click that opened a window is answered `WindowOpened`
+        // inside this drain, and **the reply says so**: `"opened"` lists
+        // the keys this call's drain opened. It is the one observation
+        // that can tell "inside the drain" from "later" — every read after
+        // the reply converges, because the loop idles between the two.
+        let mut resp = resp;
+        if !windows.is_empty() {
+            let opened = self.window_requests(event_loop, key, windows);
+            if let (false, Some(o)) = (opened.is_empty(), resp.as_object_mut()) {
+                o.insert("opened".into(), opened.into());
+            }
+        }
         send(resp);
-        self.slots[i].ask_redraw();
+        if let Some(i) = self.slot_keyed(key) {
+            self.slots[i].ask_redraw();
+        }
     }
 }
 
@@ -1512,11 +1678,25 @@ impl Win {
     /// ([`Clipboard::is_open`] false) answers `Refused(Failed)`.
     ///
     /// The answers go to the same session that drained them.
-    fn serve_requests(session: &mut dyn Session, backend: &mut dyn Backend, clipboard: &mut Clipboard) {
+    ///
+    /// **The window requests are returned, not answered** (M89/T89.3):
+    /// `OpenWindow`, `CloseWindow`, `Close` and `Quit` act on `Win`, which
+    /// this function does not hold, so the caller hands them to
+    /// [`Win::window_requests`] before its own drain returns. Empty —
+    /// no allocation — when there are none.
+    fn serve_requests(
+        session: &mut dyn Session,
+        backend: &mut dyn Backend,
+        clipboard: &mut Clipboard,
+    ) -> Vec<lumen_static::request::Request> {
         use lumen_static::request::{Answer, ClipFormat, ClipKind, Refusal, Request};
         use lumen_static_shell::request::Payload;
+        let mut windows = Vec::new();
         for out in session.take_requests() {
             match out.request {
+                r @ (Request::OpenWindow { .. } | Request::CloseWindow { .. } | Request::Close | Request::Quit) => {
+                    windows.push(r);
+                }
                 Request::Screenshot { tag } => {
                     let scale = session.scale();
                     match backend.frame_rgba() {
@@ -1581,6 +1761,7 @@ impl Win {
                 }
             }
         }
+        windows
     }
 
     fn title_now(&self, i: usize) -> String {
@@ -1604,26 +1785,28 @@ impl Win {
         }
     }
 
-    /// Create slot `i`'s window and its backend. The primary's size and
-    /// backend preference are the program's `Config`.
+    /// Create slot `i`'s window and its backend, at the slot's size and
+    /// on its preferred renderer: the program's `Config` for the primary,
+    /// a window program's `WindowSpec` for the others (M89/T89.3).
     fn open_window(&mut self, event_loop: &ActiveEventLoop, i: usize) {
+        let (width, height, _, backend) = self.slots[i].spec;
         let mut attrs = Window::default_attributes()
             .with_title(self.title_now(i))
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                self.config.width as f64,
-                self.config.height as f64,
-            ));
+            .with_inner_size(winit::dpi::LogicalSize::new(width as f64, height as f64));
         // **Where a window opens, and whether it takes focus** — for the
         // live drives, which open a window per pass on a desktop someone
         // may be reading. `LUMEN_WINDOW_POS=x,y` asks for that position in
         // physical screen pixels (a monitor's origin, as xrandr reports it), and
         // `LUMEN_WINDOW_INACTIVE=1` asks not to be activated on opening.
-        // Both are requests: the window manager decides.
+        // Both are requests: the window manager decides. **Each later key
+        // opens 40 px further right and down** (M89/T89.3), so a second
+        // window does not land exactly on the first.
         if let Some((x, y)) = std::env::var("LUMEN_WINDOW_POS").ok().and_then(|v| {
             let (x, y) = v.split_once(',')?;
             Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
         }) {
-            attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+            let step = 40 * self.slots[i].key.saturating_sub(windows::PRIMARY) as i32;
+            attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x + step, y + step));
         }
         if std::env::var("LUMEN_WINDOW_INACTIVE").as_deref() == Ok("1") {
             attrs = attrs.with_active(false);
@@ -1643,7 +1826,7 @@ impl Win {
         // physical, and this is the only thing that relates them (M10b).
         slot.session.set_scale(window.scale_factor() as f32);
 
-        let prefer = Prefer::from_env(self.config.backend);
+        let prefer = Prefer::from_env(backend);
         // **The target, built once from the window** (M83/T83.1): its raw
         // handles, its physical size and the slot's face. Every
         // constructor reads it and nothing else of the window.
@@ -1687,8 +1870,8 @@ impl Win {
         // piles up in the queue to replay into the application on retry.
         if self.slots[i].session.failed() {
             match event {
-                WindowEvent::CloseRequested => event_loop.exit(),
-                WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(i),
+                WindowEvent::CloseRequested => self.close_window(i),
+                WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(event_loop, i),
                 WindowEvent::KeyboardInput { event, .. }
                     if event.state == winit::event::ElementState::Pressed
                         && matches!(
@@ -1705,7 +1888,9 @@ impl Win {
             return;
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            // **Closes this window** (M89/T89.3): the process ends only
+            // when it is the primary ([`Win::close_window`]).
+            WindowEvent::CloseRequested => self.close_window(i),
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 // A window can be dragged between monitors.
@@ -1738,9 +1923,9 @@ impl Win {
             // must be presented whatever the damage says (M53/T53.4).
             WindowEvent::Resized(_) => {
                 self.slots[i].must_present = true;
-                self.redraw(i)
+                self.redraw(event_loop, i)
             }
-            WindowEvent::RedrawRequested => self.redraw(i),
+            WindowEvent::RedrawRequested => self.redraw(event_loop, i),
 
             ref event if self.clipboard_shortcut(i, event) => {
                 self.slots[i].ask_redraw();
@@ -1937,6 +2122,7 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
         backend_with: program.backend_with.take(),
         agent: program.agent.take(),
         accessible: program.accessible,
+        windows: program.window_table(),
     };
     start(session(program), config, hot);
 }

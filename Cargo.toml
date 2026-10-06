@@ -24,6 +24,7 @@ members = [
     "examples/showcase",
     "examples/glass",
     "examples/shader",
+    "examples/two-windows",
     "fixtures/hot-app",
     "fixtures/miri-smoke",
     "fixtures/miri-reload",

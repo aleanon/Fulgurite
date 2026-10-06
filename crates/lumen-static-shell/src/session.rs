@@ -305,8 +305,11 @@ pub trait Session: FrameSource {
     /// the author id and a `#a > #b` path are the names that survive.
     fn shape(&self) -> u64;
     /// **The application asked to close** — M60/T60.1: its key hook
-    /// answered `KeyOutcome::Quit` (`Host::quit_requested`). The window
-    /// exits at its next `about_to_wait`, as it does for `app.quit`.
+    /// answered `KeyOutcome::Quit` (`Host::quit_requested`). **The window
+    /// it came from closes** at its next `about_to_wait` (M89/T89.3): the
+    /// process ends only when that is a non-daemon program's primary
+    /// window, as `app.close` on it does; `app.quit` and
+    /// `Request::Quit` end it from anywhere.
     fn wants_quit(&self) -> bool;
     /// **How this session lays text out** — M81/T81.4
     /// (`docs/plan-shaped-paint.md`, "Choosing is a `Program` setting"):

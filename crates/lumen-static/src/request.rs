@@ -79,15 +79,44 @@ pub enum Request {
     /// Read `kind` as `format`. Answered [`Answer::Text`],
     /// [`Answer::Html`] or [`Answer::Image`], or refused.
     ClipboardRead { tag: u64, kind: ClipKind, format: ClipFormat },
+    /// **Open a window on program `program`** of this program's window
+    /// table (M89/T89.3, `docs/plan-windows.md`): 1 and up are the table's
+    /// entries, 0 is the program itself and is never opened again. The
+    /// window is created, and answered [`Answer::WindowOpened`] with its
+    /// key, **inside the drain that took this request** — so no open is
+    /// pending at a hot swap — or [`Answer::NoSuchProgram`] when the
+    /// table has no entry `program`.
+    OpenWindow { program: u16, tag: u64 },
+    /// Close the window with key `window`. Unanswered; a key no open
+    /// window has does nothing. The window's opener is told
+    /// ([`Answer::WindowClosed`]). Closing a non-daemon program's primary
+    /// window (key 1) ends the process.
+    CloseWindow { window: u32 },
+    /// Close **the window this application runs in** — the session that
+    /// drained it. Unanswered. The primary's ends the process.
+    Close,
+    /// **End the process** — every window. Unanswered.
+    Quit,
 }
 
-const _: () = assert!(core::mem::size_of::<Request>() == 16, "Request is 16 B in M88 (M89 re-asserts 32)");
+const _: () = assert!(core::mem::size_of::<Request>() == 16, "Request is 16 B through M89/T89.3 (T89.4's Post makes it 32)");
+
+/// **The tag an unasked answer carries** — `u64::MAX`, reserved by M89
+/// (`docs/plan-iced-roadmap.md` §2.8): [`Answer::WindowClosed`] arrives
+/// at a window's opener with it, since nothing the opener pushed is being
+/// answered. An application chooses its own tags below it.
+pub const UNSOLICITED: u64 = u64::MAX;
 
 impl Request {
-    /// The application's tag, whichever variant carries it.
-    pub fn tag(&self) -> u64 {
+    /// The application's tag, for the variants that carry one; `None` for
+    /// the window requests that are never answered (M89/T89.3).
+    pub fn tag(&self) -> Option<u64> {
         match *self {
-            Request::Screenshot { tag } | Request::ClipboardWrite { tag, .. } | Request::ClipboardRead { tag, .. } => tag,
+            Request::Screenshot { tag }
+            | Request::ClipboardWrite { tag, .. }
+            | Request::ClipboardRead { tag, .. }
+            | Request::OpenWindow { tag, .. } => Some(tag),
+            Request::CloseWindow { .. } | Request::Close | Request::Quit => None,
         }
     }
 }
@@ -204,4 +233,16 @@ pub enum Answer<'a> {
     /// A clipboard write landed.
     Written,
     Refused(Refusal),
+    /// [`Request::OpenWindow`] opened window `window` (its key, as the
+    /// agent's `app.windows` reports it) — answered with the request's
+    /// tag, inside the drain that took it (M89/T89.3).
+    WindowOpened { window: u32 },
+    /// Window `window`, which this application opened, was closed — by
+    /// the user, by `Request::CloseWindow`, by its own `Request::Close` or
+    /// key hook, or by the agent's `app.close`. **Unasked: it carries
+    /// [`UNSOLICITED`]** as its tag (M89/T89.3).
+    WindowClosed { window: u32 },
+    /// [`Request::OpenWindow`] named a program the window table has no
+    /// entry for — answered with the request's tag (M89/T89.3).
+    NoSuchProgram { program: u16 },
 }

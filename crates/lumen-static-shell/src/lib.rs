@@ -469,8 +469,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         self.on_key = Some(hook);
     }
 
-    /// Whether the key hook asked to close — M60/T60.1. A window exits
-    /// on it (`Session::wants_quit`); nothing clears it.
+    /// Whether the key hook asked to close — M60/T60.1. The window it
+    /// came from closes on it (`Session::wants_quit`; since M89/T89.3 that
+    /// ends the process only for a non-daemon program's primary window);
+    /// nothing clears it.
     pub fn quit_requested(&self) -> bool {
         self.quit
     }

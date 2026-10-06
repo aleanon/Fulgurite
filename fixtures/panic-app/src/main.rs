@@ -38,7 +38,7 @@ fn main() {
         // And the requests a window answers after a frame (M88/T88.3):
         // site 11.
         for o in h.take_requests() {
-            h.answer(o.request.tag(), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+            h.answer(o.request.tag().expect("every request here carries a tag"), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
         }
     }
     println!("no panic");

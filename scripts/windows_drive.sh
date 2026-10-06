@@ -9,6 +9,16 @@
 # launcher's `--stop quit`). It inverts T89.0's phase 0, which pinned the
 # one-window router.
 #
+# Phase 2 (T89.3) is examples/two-windows, under both strategies: a row
+# opens a detail window answered inside the drain, the detail's counter is
+# reached by the agent's `window` member and by a real XTest click, the
+# detail paints its RTL label with its own program's stack, the process
+# listens on one port, a panic in the detail is shown there while the list
+# answers, three kinds of close each leave the list answering, and closing
+# the list ends the process with status 0. Built with `reload` so a
+# release window catches the detail's panic (M36), and `shaping` for the
+# detail's `Shaping::Complex`; XTest needs python3-xlib, a prerequisite.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`. Needs a display; skips with exit 77 without
 # one (M43 §2). Opens one window per leg (scripts/drive_window.sh places
@@ -34,4 +44,22 @@ for leg in everything boundaries; do
         -- python3 scripts/windows_drive.py {port} 1
 done
 
-echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0)"
+for leg in everything boundaries; do
+    echo "== phase 2: two-windows, $leg =="
+    case "$leg" in
+    everything)
+        cargo build --release -q -p two-windows --features reload,everything
+        strategy=Everything ;;
+    boundaries)
+        cargo build --release -q -p two-windows --features reload
+        strategy=Boundaries ;;
+    esac
+    # The drive's last step closes the primary, so the process exits by
+    # itself (`--expect-exit 0`); its one panic is the detail's, on purpose.
+    $LAUNCH --leg "phase2-$leg" --exe target/release/two-windows \
+        --expect-strategy "$strategy" --expect-features shaping,reload \
+        --expect-exit 0 --expect-panics 1 \
+        -- python3 scripts/windows_drive.py {port} 2
+done
+
+echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close)"

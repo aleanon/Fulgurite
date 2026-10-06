@@ -63,7 +63,11 @@ every live drive opens its windows without focus. A key no open window
 has answers `-32602`, and the message names `app.windows`. **Every reply
 names the window that answered** with its own top-level `"window"`, so a
 drive's output says who answered; the `-32602` for a window nobody has
-is the one reply without it. `app.quit` still ends the process whichever
+is the one reply without it. A call whose drain opened windows — a click
+on a button whose handler pushed `Request::OpenWindow` — also carries
+`"opened": [keys]`, the windows that drain created (M89/T89.3): the one
+observation that can tell a window opened inside the call from one
+opened just after it. `app.quit` still ends the process whichever
 window it names, and closing one window is `app.close`, never `app.quit`
 with a field: a method whose meaning flipped on an optional member would
 let a stale script close a window where it meant to exit.

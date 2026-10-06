@@ -116,7 +116,8 @@ caret focused and while a panic is shown; M80/T80.5), and `app.windows`
 M89/T89.2. **A request's top-level `"window"` member names its window**
 by key (absent: the primary, key 1, never the focused one); a key no
 open window has is `-32602` naming `app.windows`, and every reply carries
-`"window": key`, the window that answered. `input.compose` takes `{text, commit}` or
+`"window": key`, the window that answered; a call whose drain opened
+windows also carries `"opened": [keys]` (M89/T89.3). `input.compose` takes `{text, commit}` or
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
