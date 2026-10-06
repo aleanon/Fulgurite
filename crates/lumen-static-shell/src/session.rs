@@ -1239,6 +1239,12 @@ pub fn abi_fields() -> Vec<(&'static str, String)> {
         // `TextMeasure`'s vtable, the `DisplayList` -- is the core's, under
         // the source hash (M49). An entry would refuse a swap that is safe.
         //
+        // M84/T84.1: **`image` is not here either, by the same recorded
+        // exception** (docs/plan-iced-roadmap.md §2.3,
+        // docs/plan-images-in-motion.md, review A25). It adds the decoders
+        // and `DecodedImage`; an `ImageStore` crosses the seam only as
+        // `&dyn ImageSource`, a core trait under the source hash.
+        //
         // M83/T83.3: **two entries for shaders** (docs/plan-iced-roadmap.md
         // §2.3, second review A7). `lumen_shader` is the core's variant set
         // -- `Cmd::Shader` exists when the core's `shader` is on anywhere in

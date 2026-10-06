@@ -140,11 +140,8 @@ PushTransform                  # proposed by M82
 VECTORTEXT                     # built by M82/T82.8 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as PAINTBOX)
 RunId                          # proposed by M83
 AnimatedImage                  # proposed by M84
-DecodedImage                   # proposed by M84
 GifFeed                        # proposed by M84
 ImageChain                     # proposed by M84
-ImageError                     # proposed by M84
-ImageStore                     # proposed by M84
 VideoFeed                      # proposed by M84
 VideoFrame                     # proposed by M84
 CountingLeaf                   # proposed by M85

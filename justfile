@@ -155,6 +155,14 @@ dev-shape:
     # M83/T83.8: fixtures/hot-window's default-off `shader` (`#swatch` and the
     # program's table), which no line above turns on.
     cargo clippy -q -p hot-window --all-targets --features hot,agent,shader -- -D warnings
+    # M84/T84.1 (docs/plan-iced-roadmap.md §3.1): the shell's default-off
+    # `image` -- the PNG and GIF decoders and their gates, linted and
+    # documented with the feature on, since the workspace lines build the
+    # shell without it. Here rather than beside `just simd`'s clippy line,
+    # which `just test` does not run.
+    cargo test -q -p lumen-static-shell --features image --test image_decode
+    cargo clippy -q -p lumen-static-shell --features image --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features image
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An

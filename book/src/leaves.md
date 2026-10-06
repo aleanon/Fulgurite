@@ -70,6 +70,23 @@ not be if the widget owned a decoder.
 
 `Fit` decides how the pixels sit in the box the layout gave them.
 
+Decoding is the desktop shell's, behind its default-off `image` feature
+(M84): `decode_png` and `decode_gif` turn a file's bytes into RGBA8
+frames, and an `ImageStore` — which needs no decoder, so it is there
+without the feature — holds them by id and is what a renderer asks. A
+GIF frame may cover only part of the picture and say what happens to it
+afterwards, so the decoder composites each frame over what the previous
+one left before handing it out, and every frame it returns is a whole
+picture:
+
+```text
+{{#include ../../crates/lumen-static-shell/src/image.rs:composite}}
+```
+
+What the feature costs — nine crates, and about 200 KB in a program that
+calls both decoders, nothing in one that calls neither — is in
+`docs/results-images.md` T84.1.
+
 ## What a leaf owes the framework
 
 If you write one — [Writing your own widget](./custom-widget.md) is the

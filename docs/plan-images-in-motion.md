@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. M84a building: T84.0 landed 2026-10-06.** The shared byte inventory, seams (S1,
+> its own file. M84a building: T84.0 and T84.1 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -831,6 +831,35 @@ task and is recorded with its number in `docs/results-images.md`):
   invocation against `1024cba` printed `.text` +1,264 on `firmware`
   (+1,472 / +1,208 / +1,240 on the other three) and failed by name. Run
   at T84.0 rather than deferred to T84.2, since it costs one build.
+- **T84.1: K84a counts 9, not 10, because the lock holds `flate2` at
+  1.1.9.** `flate2` 1.1.10 moved to `miniz_oxide` 0.9 while `png` 0.18
+  asks for 0.8, which put both in the graph. `gif` is taken without its
+  default `color_quant` (encoder only). `docs/results-images.md` T84.1
+  lists the nine.
+- **T84.1: a PNG missing only its end chunk's CRC decodes.** `png` has
+  read every pixel by then, and the answer is the whole picture. The
+  truncation gate therefore holds the GIF to the plan's "every prefix is
+  an error" (133 of 133) and the PNG to "never a panic, and any answer is
+  the whole picture" (4 of 97 prefixes answer, all 93–96).
+- **T84.1: K2's exception, measured.** A probe program with `image` on
+  and no decoder called links a `.text` byte-identical to the feature
+  off; the stripped file is +1,648 B, all `.gcc_except_table`. Calling
+  both decoders costs +200,232 B. The crate count remains the only gate
+  that can see the feature.
+- **T84.1: the API's small additions, not in the plan's list.**
+  `ImageStore::insert` refuses a frame whose length is not `w × h × 4`
+  (a renderer reads a short slice as a missing image, so storing one
+  would blank it silently); `ImageStore::frames` reaches an animated
+  image's later frames until T84.2's `frame` does; `insert_decoded` sits
+  behind the feature beside the type it takes; and a decode refuses more
+  than `MAX_DECODED_BYTES` (256 MiB across all frames) with
+  `ImageError::TooLarge`, since compositing a GIF allocates a full canvas
+  per frame.
+- **T84.1: the feature's lines are in `dev-shape`**, so `just test` runs
+  them, not beside `just simd`'s clippy line (`check-extra` only). And
+  `pub mod image` carries a `//` comment, not `///`: an outer doc joins
+  the module's inner one, whose intra-doc links then failed to resolve
+  under `cargo doc -D warnings`.
 
 **What the review found (M84).**
 

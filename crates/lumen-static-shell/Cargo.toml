@@ -40,6 +40,11 @@ ttf-parser = { version = "0.25", optional = true, default-features = false, feat
 # and wgpu, so the window's graph gains none (K83d,
 # docs/results-shader.md T83.1).
 raw-window-handle = { version = "0.6", features = ["std"], optional = true }
+# M84/T84.1 (docs/plan-images-in-motion.md): the decoders behind `image`
+# below. Pure Rust; gif without its default `color_quant`, which only its
+# encoder uses.
+png = { version = "0.18", optional = true }
+gif = { version = "0.14", optional = true, default-features = false, features = ["std"] }
 
 [features]
 default = []
@@ -151,6 +156,22 @@ raster-counters = []
 # behind it (`src/shader.rs`). The `Cmd::Shader` arms in this crate are `cfg(lumen_shader)` (from
 # `build.rs`), never this feature: the core's can be on while this is off.
 shader = ["lumen-static/shader"]
+# M84/T84.1 (docs/plan-images-in-motion.md): `image::decode_png` and
+# `image::decode_gif`, pure Rust (`png`, `gif`), into the `DecodedImage`
+# an `ImageStore` holds. **Default-OFF.** `ImageStore` is not behind it:
+# it needs no decoder. The feature gates crates and compile time, not
+# linked bytes -- a build that calls no decoder links none whatever this
+# says (M30, docs/results-widget-crate.md), which is why it is K2's
+# recorded `nm` exception and its falsifiable half is
+# scripts/check_default_crates.sh (docs/plan-iced-roadmap.md K2). Its
+# price, measured 2026-10-06 (docs/results-images.md T84.1): **9** new
+# packages by K2's method (96 -> 105 on `lumen-static-winit`, K84a's
+# bound 15; the shell alone 8 -> 19), and a stripped release program
+# that decodes a PNG and a GIF +200,232 B over the same program without
+# the calls (with the feature on and no call, `.text` is identical).
+# Not in the ABI stamp's feature list (`session::abi_fields`): nothing it
+# adds crosses the seam.
+image = ["dep:png", "dep:gif"]
 
 [dev-dependencies]
 # `observe` since M48/T48.9: the tests built with `live-agent` turn the
@@ -265,3 +286,9 @@ required-features = ["shader", "truetype"]
 [[test]]
 name = "image_frame"
 required-features = ["truetype"]
+
+# M84/T84.1: the decoders exist only under `image`; `just test` runs this
+# with the feature named.
+[[test]]
+name = "image_decode"
+required-features = ["image"]

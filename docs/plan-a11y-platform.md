@@ -25,8 +25,9 @@
 >   `Dropped::File`.
 > - **T54.8** — `arboard` target-gated; the default features check for
 >   Android.
-> - **T54.9** — `Drag<()>` is 24 B; image decoding is not built; a
->   feature named in a comment must exist.
+> - **T54.9** — `Drag<()>` is 24 B; image decoding is not built (true
+>   then; built since M84/T84.1, behind the shell's `image`,
+>   `docs/results-images.md`); a feature named in a comment must exist.
 >
 > **Written 2026-09-24.** Closes R15-F1, R15-F2, R15-F3,
 > R15-F5, R15-F8, R15-F9, R16-F8, R16-F9 and R12-F6 from M38's deep
@@ -723,6 +724,8 @@ it an absolute assertion with the size printed against a bound of 24.
 threshold) and that no tree carries one unless the application adds it.
 `image.rs:10-12` says decoding is planned (T15.2, not built) and that
 an application supplies decoded pixels through `ImageSource` today.
+*(Superseded 2026-10-06: M84/T84.1 built decoding behind the shell's
+`image` feature, and `image.rs` now names it; `docs/results-images.md`.)*
 `scripts/check_doc_identifiers.sh` gains a feature-name rule: a
 backticked name followed by "feature" in a comment must be a key in
 some `[features]` table.

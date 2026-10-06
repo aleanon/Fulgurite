@@ -31,6 +31,11 @@ pub mod contrast;
 pub mod frame_cost;
 /// M12/T12.2: golden images, with a diff artifact.
 pub mod golden;
+// M84/T84.1: `ImageStore`, the images an application owns, and behind
+// the default-off `image` feature the PNG and GIF decoders that fill it.
+// A line comment, not `///`: an outer doc joins the module's own, whose
+// links then resolve from the crate root and break.
+pub mod image;
 /// M61/T61.5: a `.lss` sheet read at run time — reached only through
 /// `Program::live_lss`, which the window calls in debug and `reload`
 /// builds (kill rule K3, `docs/plan-lss.md` §5).

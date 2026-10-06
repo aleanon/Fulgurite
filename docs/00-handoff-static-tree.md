@@ -1358,6 +1358,19 @@ remains** — which is why §10 Step 1 is the kill criterion.
    so its ink stays inside its box. A measurer with no outlines gets the
    string drawn level. Numbers in `docs/results-paint-vocabulary.md`
    T82.7 and T82.8.
+
+   **Image decoding is DECIDED — the shell's default-off `image`,
+   M84/T84.1, 2026-10-06** (`docs/plan-images-in-motion.md`). The core
+   still never decodes: `lumen_static_shell::image::decode_png` and
+   `decode_gif` (pure Rust, `png` and `gif`) answer full-size RGBA8
+   frames, a GIF's composited at decode time with its disposals applied,
+   and `ImageStore` — unconditional, since it needs no decoder — holds
+   them by id as an `ImageSource`. The feature gates crates, not linked
+   bytes (an uncalled decoder links nothing either way), so its gate is
+   the default window's crate count against the parent commit's
+   (`scripts/check_default_crates.sh`), and it is not in the ABI stamp.
+   JPEG and WebP are not decoded. Numbers in `docs/results-images.md`
+   T84.1.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

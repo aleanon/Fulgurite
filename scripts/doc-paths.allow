@@ -6,7 +6,6 @@
 
 # M80–M90 (docs/plan-iced-roadmap.md): results docs each milestone's first
 # measuring task creates. Remove each entry in the commit that writes it.
-docs/results-images.md             # M84 (docs/plan-images-in-motion.md)
 docs/results-layout-input.md       # M85 (docs/plan-layout-input.md)
 docs/results-transitions.md        # M86 (docs/plan-transitions.md)
 docs/results-markdown.md           # M87 (docs/plan-markdown.md)

@@ -317,8 +317,11 @@ because a bilinear resample is four fetches and three lerps per pixel
 for a smoothness nothing has asked for, in a canvas whose point is
 predictable cost.
 
-**Still to do here:** decoding behind the shell's `image` feature, and
-the embedded fixture drawing from a `const` slice.
+**Still to do here:** the embedded fixture drawing from a `const` slice.
+**Decoding is built (M84/T84.1, 2026-10-06)**: PNG and GIF behind the
+shell's default-off `image` feature, into `lumen_static_shell::image`'s
+`ImageStore` (`docs/results-images.md` T84.1). JPEG and WebP are not
+decoded; an application with them decodes itself.
 
 ### T15.3 — vector drawing — **LINES AND GRADIENTS DONE 2026-09-07**
 
