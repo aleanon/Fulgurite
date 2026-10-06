@@ -125,7 +125,6 @@ MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 map
 # --- M80–M90 (docs/plan-iced-roadmap.md and its eleven milestone plans):
 # names the plans propose, not built. Delete each entry in the commit whose
 # task builds it; a built name left here is reported as stale by this script.
-DEFAULT                        # proposed by ?
 GstFeed                        # deferred by M84/T84.10 (K84b fired); docs/results-images.md T84.10
 LineHeight                     # proposed by ?
 LinuxClipboardKind             # proposed by ?
@@ -146,7 +145,6 @@ KEYS                           # proposed by M87
 LINKED_MARKDOWN                # proposed by M87
 LINKS                          # proposed by M87
 LinkedMarkdown                 # proposed by M87
-MarkdownTheme                  # proposed by M87
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 ClipFormat                     # proposed by M88

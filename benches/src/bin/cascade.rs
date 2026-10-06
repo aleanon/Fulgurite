@@ -7,9 +7,11 @@ use lumen_static_widgets::Markdown;
 
 /// **Sixteen `Markdown`s in a derived column** — K87c's arm (M87/T87.1,
 /// `docs/plan-markdown.md`). `Ten10`, which every other row times, holds no
-/// `Markdown`, so no existing row could see the two part nodes T87.2 adds
-/// to each one; this tree is where they land. `NODE_COUNT` is asserted
-/// before timing: 17 here, 49 once each `Markdown` is three nodes.
+/// `Markdown`, so no existing row could see the two part nodes T87.2 built
+/// into each one; this tree is where they landed. `NODE_COUNT` is asserted
+/// before timing: 17. **K87c fired** (T87.2): with the parts the tree was
+/// 49 nodes and this row 3.4x its parent's, so the parts were withdrawn
+/// and a `Markdown` is one node again (`docs/results-markdown.md`, K87c).
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct Md16 {
@@ -19,7 +21,8 @@ struct Md16 {
     m12: Markdown, m13: Markdown, m14: Markdown, m15: Markdown,
 }
 
-/// The `Markdown` table's node count this arm expects; T87.2 makes it 49.
+/// The `Markdown` table's node count this arm expects: 17, one node per
+/// `Markdown` (49 while T87.2's withdrawn parts were built).
 const MD16_NODES: usize = 17;
 
 fn main() {
@@ -115,9 +118,11 @@ fn main() {
 
     // ---- K87c's arm — M87/T87.1 ----------------------------------------
     //
-    // One `Kind` rule per kind the tree will hold: the widget and the two
-    // parts T87.2 adds (`markdown-link`, `markdown-quote`), which match
-    // nothing until then. T87.2 measures this row against T87.1's commit.
+    // One `Kind` rule per kind the tree held: the widget and the two parts
+    // T87.2 built (`markdown-link`, `markdown-quote`). Measured against
+    // T87.1's commit, the parts tripped K87c and were withdrawn, so the
+    // two part rules match nothing; they stay, so the row is the one K87c
+    // was judged on.
     let md_sheet: Vec<Rule> = vec![
         Rule::new(Selector::Kind("markdown"), Patch::new().font_size(15.0)),
         Rule::new(Selector::Kind("markdown-link"), Patch::new().color(Color(37, 99, 235, 255))),

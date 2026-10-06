@@ -7,7 +7,7 @@ claims is therefore a property of the **rendered** text — the value the
 widget publishes is what a reader sees, not what the source says — and
 for `Markdown` that difference is every asterisk.
 """
-from harness import Action
+from harness import Action, Failed
 
 
 def _words(c, sel=None):
@@ -46,7 +46,51 @@ MARKDOWN = ("Markdown", "#d_markdown_a", [
         static=True,
         injection="keep each word's markers in the range that is drawn",
     ),
+    # M87/T87.2: the demo's last line is a blockquote. Its colour is the
+    # theme's quote colour, derived from the body's, so it must be the
+    # *least* contrasting run in the demo -- and still read at AA -- in
+    # both palettes, and differ between them (it follows the palette).
+    # Contrast alone cannot see a quote drawn in the body colour, which
+    # reads; naming the quote as the minimum is what can. The dark
+    # palette is measured in `setup`, before the change window opens, so
+    # its full repaint is not this action's damage.
+    Action(
+        name="a quote is drawn in its own colour",
+        needs="a document whose last line is a blockquote, in either palette",
+        setup=lambda c: c.__dict__.__setitem__("_dark", _palette_min(c, "dark")),
+        do=lambda c: c.hover(),
+        expect=lambda c: _quote_is_the_minimum(c),
+        static=True,
+        injection="paint a quote span in the node's own colour (Markdown::paint "
+                  "passes st[i].fg to RichText::draw)",
+    ),
 ])
+
+# The quote line's words that appear nowhere else in the demo (`a` and
+# `and` are body words too).
+QUOTE_WORDS = {"A", "quote", "is", "set", "apart", "by", "bar", "quieter", "colour."}
+
+
+def _palette_min(c, name):
+    """The demo's least contrasting text run under palette `name`, with the
+    window put back on the light palette afterwards."""
+    r = c.c.rpc("app.setPalette", name=name)
+    if r.get("applied") is not True:
+        raise Failed(f"the window did not take the {name} palette: {r!r}")
+    m = c.c.rpc("ui.contrast", selector=c.sel).get("min") or {}
+    c.c.rpc("app.setPalette", name="light")
+    return m
+
+
+def _quote_is_the_minimum(c):
+    light = c.c.rpc("ui.contrast", selector=c.sel).get("min") or {}
+    dark = c._dark
+    lr, dr = float(light.get("ratio") or 0.0), float(dark.get("ratio") or 0.0)
+    ok = (light.get("text") in QUOTE_WORDS and dark.get("text") in QUOTE_WORDS
+          and lr >= 4.5 and dr >= 4.5 and light.get("fg") != dark.get("fg"))
+    return ok, ("least contrasting run: light {!r} at {:.2}:1 fg {}, dark {!r} at {:.2}:1 fg {} "
+                "(bound: a quote word, >= 4.5, and the two fg differ)").format(
+        light.get("text"), lr, light.get("fg"), dark.get("text"), dr, dark.get("fg"))
 
 EDITOR = ("RichTextEditor", "#d_editor_a", [
     Action(

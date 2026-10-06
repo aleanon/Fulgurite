@@ -127,10 +127,12 @@ const RICH: &str = "A span here is a word, and a word never breaks inside \
 itself; the line breaker only ever decides whether the next one fits on \
 this line or opens another.";
 
-/// And its markdown.
+/// And its markdown. The quote line is M87/T87.2's: its words and bar
+/// are drawn in the theme's quote colour, which the drive checks.
 const DOC: &str = "# Markdown\n\nHeadings, **bold**, `code` and bullets \
 are the subset a user interface actually renders.\n\n- a label\n- an \
-identifier\n- a list";
+identifier\n- a list\n\n> A quote is set apart by a bar and a quieter \
+colour.";
 
 /// **The showcase's shader table** -- M83/T83.6, behind its `shader`
 /// feature. One entry: a vertical blend between two colours packed one per
@@ -518,7 +520,7 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::RichText(DRichText { a: RichText::new(RICH) })),
         none),
-    entry!("Text", "Markdown", "Headings, bold, code, bullets.",
+    entry!("Text", "Markdown", "Headings, bold, code, bullets, quotes.",
         false,
         |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
         none),

@@ -1249,7 +1249,16 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
     /// Measured on the frame's own display list (M54/T54.5): each text
     /// run whose centre lies in `rect` against the opaque fill under it,
     /// with the page behind everything.
+    ///
+    /// **`rect` is logical and the list is physical** — M87/T87.2. The
+    /// host paints through `Scaled`, so at scale 2 every run's rect is
+    /// twice its logical one, and a selector's logical bounds held almost
+    /// none of their own text: the drive's after-every-action contrast
+    /// check read "no text in the widget's box" on the whole scale-2 leg
+    /// and passed. The rect is scaled into the list's space here.
     fn contrast(&self, rect: Option<[f32; 4]>) -> Option<serde_json::Value> {
+        let k = self.host.scale();
+        let rect = rect.map(|q| [q[0] * k, q[1] * k, q[2] * k, q[3] * k]);
         let r = crate::contrast::text_contrast(&self.host.list, self.page);
         let inside = |b: &[f32; 4]| {
             let (x, y) = ((b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0);

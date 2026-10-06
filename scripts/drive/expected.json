@@ -18,11 +18,12 @@
   "M84/T84.8 added Video: play changes the picture within 250 ms; pause flips the button to Play and holds the picture over 500 ms; a press at 75% of the track hands on_seek 0.75 and shows frame 3 at 300 ms; a drag 25% -> 50% while playing ends at 50% with no frame from a stopped feed; and the static check that a press on the picture is not handled and changes nothing.",
   "M85/T85.1 added Layout: a static geometry check that a flexible(1) bar with 80 px of content is min(80, row/2) wide beside a fill that takes the rest, on one line.",
   "M85/T85.2 added Pin: a static check that the pinned button sits at the pin's origin plus (112, 64), inside the pin; and a click on it moves the press counter by one with the damage over the pin at 1.00x the button's own box.",
-  "M85/T85.4 added Pop: a static check that the placeholder starts below the fold of a view shorter than the window, both heights printed; and PageDown until it is in view makes the application say loaded, with the loading frame's damage over the view at 1.00x the placeholder's box."
+  "M85/T85.4 added Pop: a static check that the placeholder starts below the fold of a view shorter than the window, both heights printed; and PageDown until it is in view makes the application say loaded, with the loading frame's damage over the view at 1.00x the placeholder's box.",
+  "M87/T87.2 added Markdown's static quote check: in both palettes the demo's least contrasting run is a quote word, at AA or better, and its colour differs between the two (the quote colour follows the palette)."
  ],
  "counts": {
   "entries": 52,
-  "actions": 163,
+  "actions": 164,
   "landed_checked": 127,
   "isolated": 69
  },
@@ -159,7 +160,8 @@
    "it publishes what a reader sees, and wraps to fit"
   ],
   "Markdown": [
-   "the markers are markup, not text"
+   "the markers are markup, not text",
+   "a quote is drawn in its own colour"
   ],
   "RichTextEditor": [
    "typing markup updates the preview under it",
@@ -320,6 +322,7 @@
   "FilePicker/a press outside closes it and changes nothing",
   "RichText/it publishes what a reader sees, and wraps to fit",
   "Markdown/the markers are markup, not text",
+  "Markdown/a quote is drawn in its own colour",
   "PaintBox/the application's drawing is on screen and inside the box",
   "PaintBox/the star path is filled inside its own outline",
   "Card/the content is inset by the card's padding",

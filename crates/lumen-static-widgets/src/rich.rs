@@ -70,11 +70,22 @@ pub struct Span {
     /// A gap after this word. False at the end of a line's last word,
     /// so a trailing space cannot push a line over its width.
     pub space: bool,
+    /// What the word is part of: [`Span::TEXT`] or [`Span::QUOTE`] —
+    /// M87/T87.2. A quote's words are drawn in the quote colour, which a
+    /// `Markdown` reads from its `markdown-quote` part, and a quote line's
+    /// first word sets `bullet` for its indent and draws a bar instead of
+    /// a dot.
+    pub kind: u8,
 }
 
 impl Span {
+    /// An ordinary word.
+    pub const TEXT: u8 = 0;
+    /// A word of a blockquote (`> ` at a line's start) — M87/T87.2.
+    pub const QUOTE: u8 = 1;
+
     pub const fn plain(range: (u32, u32)) -> Span {
-        Span { range, scale: 1.0, weight: 400.0, code: false, br: false, bullet: false, space: true }
+        Span { range, scale: 1.0, weight: 400.0, code: false, br: false, bullet: false, space: true, kind: Span::TEXT }
     }
 }
 
@@ -153,6 +164,14 @@ impl RichText {
     /// Lines the last layout produced.
     pub fn lines(&self) -> usize {
         self.lines
+    }
+
+    /// Where the last layout put each span, relative to the content box
+    /// (inside the padding): `(x, y, w)`, in step with [`RichText::spans`].
+    /// A test that asks "how tall is this line" or "where is that word"
+    /// reads the breaker's own answer here rather than re-deriving it.
+    pub fn placed(&self) -> &[(f32, f32, f32)] {
+        &self.placed
     }
 
     /// Append a span. **Never refuses** since M87/T87.1: the store grows,
@@ -359,6 +378,72 @@ impl RichText {
     }
 }
 
+impl RichText {
+    /// Paint, with a quote's words in `quote` — M87/T87.2. `RichText`
+    /// passes its own `fg` (it parses no quotes); a `Markdown` passes its
+    /// `markdown-quote` part's, which the cascade resolved from the
+    /// palette's `Muted` role. **The colour comes in as an argument**
+    /// because a `Span` carries none and `paint` has no style array: the
+    /// part's `NodeState::fg` is the only place the cascade's answer for
+    /// it lands.
+    fn draw(&self, st: &[NodeState], i: usize, out: &mut dyn Painter, quote: Color) {
+        let s = &st[i];
+        let r = lumen_static::ops::rect_of(s);
+        if r[2] <= r[0] || r[3] <= r[1] {
+            return;
+        }
+        lumen_static::ops::fill(st, i, out);
+        if s.bg.3 > 0 {
+            out.rounded_rect(r, s.bg, s.radius);
+        }
+        lumen_static::ops::border(st, i, out);
+        out.push_clip(r);
+        let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
+        for (k, (&sp, &(x, y, w))) in self.spans.iter().zip(&self.placed).enumerate() {
+            let size = s.font_size * sp.scale;
+            let h = size * line_ratio(s.line_height);
+            let ink = if sp.kind == Span::QUOTE { quote } else { s.fg };
+            if sp.kind == Span::QUOTE {
+                // **A 2 px bar down the quote's left edge**, one segment
+                // per visual line: drawn by the first quote word on each
+                // line, so a quote that wraps is barred on every line it
+                // takes and consecutive quote lines join up.
+                let first_on_line = k == 0
+                    || self.spans[k - 1].kind != Span::QUOTE
+                    || self.placed[k - 1].1 != y;
+                if first_on_line {
+                    let bx = x0 + x - BULLET_X;
+                    out.rounded_rect([bx + 2.0, y0 + y, bx + 4.0, y0 + y + h], ink, 1.0);
+                }
+            } else if sp.bullet {
+                let mid = y0 + y + h / 2.0 + size * BULLET_DROP;
+                out.rounded_rect(
+                    [x0 + x - BULLET_X + 2.0, mid - 2.0, x0 + x - BULLET_X + 6.0, mid + 2.0],
+                    s.fg,
+                    2.0,
+                );
+            }
+            let mut tx = x0 + x;
+            if sp.code {
+                out.rounded_rect(
+                    [tx, y0 + y + 1.0, tx + w, y0 + y + h - 1.0],
+                    Color(ink.0, ink.1, ink.2, 0x1a),
+                    4.0,
+                );
+                tx += CHIP;
+            }
+            out.text_weighted(
+                [tx, y0 + y + h / 2.0 - size * 0.6, x0 + x + w, y0 + y + h],
+                self.span_str(k),
+                size,
+                sp.weight,
+                ink,
+            );
+        }
+        out.pop_clip();
+    }
+}
+
 impl Node for RichText {
     fn layout(
         &mut self,
@@ -392,47 +477,7 @@ impl Node for RichText {
     }
 
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        let s = &st[i];
-        let r = lumen_static::ops::rect_of(s);
-        if r[2] <= r[0] || r[3] <= r[1] {
-            return;
-        }
-        lumen_static::ops::fill(st, i, out);
-        if s.bg.3 > 0 {
-            out.rounded_rect(r, s.bg, s.radius);
-        }
-        lumen_static::ops::border(st, i, out);
-        out.push_clip(r);
-        let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
-        for (k, (&sp, &(x, y, w))) in self.spans.iter().zip(&self.placed).enumerate() {
-            let size = s.font_size * sp.scale;
-            let h = size * line_ratio(s.line_height);
-            if sp.bullet {
-                let mid = y0 + y + h / 2.0 + size * BULLET_DROP;
-                out.rounded_rect(
-                    [x0 + x - BULLET_X + 2.0, mid - 2.0, x0 + x - BULLET_X + 6.0, mid + 2.0],
-                    s.fg,
-                    2.0,
-                );
-            }
-            let mut tx = x0 + x;
-            if sp.code {
-                out.rounded_rect(
-                    [tx, y0 + y + 1.0, tx + w, y0 + y + h - 1.0],
-                    Color(s.fg.0, s.fg.1, s.fg.2, 0x1a),
-                    4.0,
-                );
-                tx += CHIP;
-            }
-            out.text_weighted(
-                [tx, y0 + y + h / 2.0 - size * 0.6, x0 + x + w, y0 + y + h],
-                self.span_str(k),
-                size,
-                sp.weight,
-                s.fg,
-            );
-        }
-        out.pop_clip();
+        self.draw(st, i, out, st[i].fg);
     }
 
     lumen_static::leaf_common!(RichText, 0);
@@ -481,16 +526,124 @@ impl<S> lumen_static::event::Handlers<S> for RichText {
 
 // ---- Markdown --------------------------------------------------------
 
+/// A `Markdown`'s per-element scale, weight and colour — M87/T87.2.
+///
+/// Each `(scale, weight)` entry belongs to an element. A line's kind picks
+/// its entry — `h1` to `h3` for `#` to `###`, `quote` for `> `, `body`
+/// for everything else (a bullet included) — and the scale multiplies the
+/// node's own `font_size`, so a stylesheet that resizes the widget resizes
+/// its headings with it. `code` is an **inline** element and so relative
+/// to its line: its scale multiplies the line's, and its weight is the
+/// larger of its own and the line's, so `` `x` `` in a heading stays a
+/// heading's size and weight under [`MarkdownTheme::DEFAULT`]. `**bold**`
+/// is weight 700 at least, as ever, and is not an entry. `link` is the
+/// same shape as `code`, and is read once links parse (M87/T87.3).
+///
+/// # The two colours, and why they are not the cascade's
+///
+/// `quote_color` and `link_color` are `None` by default, and then
+/// **derived from the node's own colour** — the cascade's `color`, the
+/// palette's `Text` role — so they follow a palette switch with no node
+/// of their own: a quote is that colour at [`QUOTE_ALPHA`], a link that
+/// colour mixed halfway toward [`LINK_TINT`]. `Some(c)` is a **fixed**
+/// colour, and **does not follow the palette**: `Host::set_palette`
+/// leaves it where the theme put it.
+///
+/// That is kill rule K87c's fallback (`docs/plan-markdown.md`), with one
+/// deviation recorded there. The plan was two zero-size part nodes,
+/// `markdown-link` and `markdown-quote`, seeded with the `Accent` and
+/// `Muted` roles so the cascade would resolve them; built, they made
+/// `--bin cascade`'s `cascade_deep (markdown x16)` row 3.4x its parent's,
+/// far outside the parent's spread (`docs/results-markdown.md`, K87c).
+/// The rule's fallback is fixed colour fields, and those are here — but
+/// as the *override*, because no single fixed colour reads at AA's 4.5:1
+/// on both the showcase's light and dark surfaces (M57's D4 gate,
+/// `every_demo_text_reads_in_both_palettes`), so a fixed default would
+/// fail that gate in one palette or the other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkdownTheme {
+    pub h1: (f32, f32),
+    pub h2: (f32, f32),
+    pub h3: (f32, f32),
+    pub body: (f32, f32),
+    pub code: (f32, f32),
+    pub link: (f32, f32),
+    pub quote: (f32, f32),
+    /// A link's words and underline (M87/T87.3): `None` derives it from
+    /// the node's colour (this type's doc), `Some` fixes it.
+    pub link_color: Option<Color>,
+    /// A quote's words and its bar: `None` derives it from the node's
+    /// colour, `Some` fixes it.
+    pub quote_color: Option<Color>,
+}
+
+/// A derived quote colour's alpha: the node's own colour at 70%, which
+/// reads at AA in both built-in palettes and both of the showcase's
+/// (`docs/results-markdown.md`, T87.2).
+pub const QUOTE_ALPHA: u8 = 0xb3;
+
+/// What a derived link colour is mixed halfway toward: a blue, so a link
+/// reads as one in either palette while keeping most of the text colour's
+/// contrast.
+pub const LINK_TINT: Color = Color(0x31, 0x5c, 0xde, 0xff);
+
+impl MarkdownTheme {
+    /// A quote's colour over a node whose own colour is `fg`.
+    pub fn quote_ink(&self, fg: Color) -> Color {
+        self.quote_color.unwrap_or(Color(fg.0, fg.1, fg.2, (fg.3 as u16 * QUOTE_ALPHA as u16 / 255) as u8))
+    }
+
+    /// A link's colour over a node whose own colour is `fg`.
+    pub fn link_ink(&self, fg: Color) -> Color {
+        let mix = |a: u8, b: u8| ((a as u16 + b as u16) / 2) as u8;
+        self.link_color.unwrap_or(Color(mix(fg.0, LINK_TINT.0), mix(fg.1, LINK_TINT.1), mix(fg.2, LINK_TINT.2), fg.3))
+    }
+}
+
+impl MarkdownTheme {
+    /// What `Markdown` drew before it had a theme: headings at 1.5, 1.25
+    /// and 1.1 at weight 700, everything else 1.0 at 400. **Pinned**: the
+    /// default display list is byte-identical to the one before T87.2
+    /// (`tests/markdown_m69.rs`, `default_theme_is_todays`). The two
+    /// colours are new, and derived from the node's — the type's doc says
+    /// why.
+    pub const DEFAULT: MarkdownTheme = MarkdownTheme {
+        h1: (1.5, 700.0),
+        h2: (1.25, 700.0),
+        h3: (1.1, 700.0),
+        body: (1.0, 400.0),
+        code: (1.0, 400.0),
+        link: (1.0, 400.0),
+        quote: (1.0, 400.0),
+        link_color: None,
+        quote_color: None,
+    };
+}
+
+impl Default for MarkdownTheme {
+    fn default() -> Self {
+        MarkdownTheme::DEFAULT
+    }
+}
+
 /// `RichText` with a parser in front of it.
 ///
 /// The subset is what a UI renders: `# heading` (three levels),
-/// `**bold**`, `` `code` ``, `- bullet`, and blank-line-separated
-/// paragraphs. **Not italic** — see this module's header: the painter
-/// has a weight axis and no slant, and markup that renders identically
-/// to plain text claims to have done something it did not.
+/// `**bold**`, `` `code` ``, `- bullet`, `> quote`, and blank-line-
+/// separated paragraphs. **Not italic** — see this module's header: the
+/// painter has a weight axis and no slant, and markup that renders
+/// identically to plain text claims to have done something it did not.
+///
+/// Size, weight and the quote and link colours per element are a
+/// [`MarkdownTheme`] ([`Markdown::set_theme`]); the body colour is the
+/// node's own, from the cascade, and the quote and link colours derive
+/// from it unless the theme fixes them. A blockquote is its words in the
+/// quote colour behind a 2 px bar of the same colour, indented like a
+/// bullet; a quote that wraps hangs.
 #[derive(Default)]
 pub struct Markdown {
     inner: RichText,
+    theme: MarkdownTheme,
 }
 
 impl Markdown {
@@ -505,6 +658,24 @@ impl Markdown {
         &self.inner
     }
 
+    /// The theme in force.
+    pub fn theme(&self) -> MarkdownTheme {
+        self.theme
+    }
+
+    /// Replace the theme, and re-parse if it changed — a span's scale and
+    /// weight are decided when it is parsed, so a theme that only took
+    /// effect at the next `set_str` would be a setter that did nothing
+    /// visible. The same theme again is free.
+    pub fn set_theme(&mut self, theme: MarkdownTheme) {
+        if theme == self.theme {
+            return;
+        }
+        self.theme = theme;
+        let src = core::mem::take(&mut self.inner.text);
+        self.set_str(&src);
+    }
+
     /// Re-parse. The editor calls this on every keystroke, which is why
     /// the parser reuses its stores' capacity and **walks once**: each
     /// line's byte offset is carried from the last, where until M87/T87.1
@@ -516,6 +687,7 @@ impl Markdown {
         self.inner.text.push_str(src);
         self.inner.clear();
         let text = core::mem::take(&mut self.inner.text);
+        let theme = self.theme;
         let mut blank_pending = false;
         let mut next = 0usize;
         for line in text.split('\n') {
@@ -541,10 +713,14 @@ impl Markdown {
                 self.inner.push(gap);
                 blank_pending = false;
             }
-            let (scale, weight, skip, bullet) = match heading(trimmed) {
-                Some(h) => h,
-                None if trimmed.starts_with("- ") => (1.0, 400.0, 2, true),
-                None => (1.0, 400.0, 0, false),
+            // The line's kind: its theme entry, the bytes its marker
+            // takes, whether its first word is indented (a bullet's dot,
+            // a quote's bar), and the span kind its words carry.
+            let ((scale, weight), skip, lead, kind) = match heading(trimmed, &theme) {
+                Some((sw, skip)) => (sw, skip, false, Span::TEXT),
+                None if trimmed.starts_with("- ") => (theme.body, 2, true, Span::TEXT),
+                None if trimmed.starts_with("> ") => (theme.quote, 2, true, Span::QUOTE),
+                None => (theme.body, 0, false, Span::TEXT),
             };
             let body = &trimmed[skip..];
             let body_at = base + indent + skip;
@@ -595,11 +771,23 @@ impl Markdown {
                         if k > seg {
                             let mut sp = Span::plain(((body_at + at + seg) as u32,
                                                       (body_at + at + k) as u32));
+                            // Inline elements are relative to their line
+                            // (`MarkdownTheme`): a code word multiplies
+                            // the line's scale and is at least its weight.
+                            let mut w = weight;
                             sp.scale = scale;
-                            sp.weight = if bold { 700.0 } else { weight };
+                            if code {
+                                sp.scale = scale * theme.code.0;
+                                w = w.max(theme.code.1);
+                            }
+                            if bold {
+                                w = w.max(700.0);
+                            }
+                            sp.weight = w;
                             sp.code = code;
+                            sp.kind = kind;
                             sp.br = first_seg && first_in_line && !self.inner.spans.is_empty();
-                            sp.bullet = bullet && first_seg && first_in_line;
+                            sp.bullet = lead && first_seg && first_in_line;
                             // Only the word's last segment takes the
                             // gap: `**bold**,` is one word and must not
                             // render as `bold ,`.
@@ -634,16 +822,16 @@ impl Markdown {
     }
 }
 
-/// `#`, `##`, `###` — scale, weight, bytes to skip, and never a bullet.
-fn heading(line: &str) -> Option<(f32, f32, usize, bool)> {
-    for (marker, scale) in [("### ", 1.1f32), ("## ", 1.25), ("# ", 1.5)] {
+/// `#`, `##`, `###` — the theme's entry for the level, and the bytes the
+/// marker takes.
+fn heading(line: &str, theme: &MarkdownTheme) -> Option<((f32, f32), usize)> {
+    for (marker, sw) in [("### ", theme.h3), ("## ", theme.h2), ("# ", theme.h1)] {
         if line.starts_with(marker) {
-            return Some((scale, 700.0, marker.len(), false));
+            return Some((sw, marker.len()));
         }
     }
     None
 }
-
 
 impl Widget for Markdown {
     const NODE_COUNT: usize = 1;
@@ -711,8 +899,10 @@ impl Node for Markdown {
         self.inner.place(at, style, st, i)
     }
 
+    /// The inner `RichText`'s paint, with a quote in the theme's quote
+    /// colour over this node's own (`MarkdownTheme::quote_ink`).
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        self.inner.paint(st, i, out)
+        self.inner.draw(st, i, out, self.theme.quote_ink(st[i].fg))
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {

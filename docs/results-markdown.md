@@ -76,3 +76,79 @@ symbol diff against the parent puts all of it in `fit::cut`, which now
 calls `str::trim_end_matches` through a closure instead of a 198 B
 out-of-line copy — the widgets crate's codegen units were re-partitioned
 by `rich.rs`'s edit, not anything `rich.rs` contributes.
+
+## T87.2 — `MarkdownTheme` and blockquote; K87c fired
+
+**K87c — parts cost: fired.** The two zero-size part nodes
+(`markdown-link`, `markdown-quote`, seeded with the `Accent` and `Muted`
+roles) were built as planned, with the journal's all-stand-ins signing
+rule and their gates green, and the row measured eight runs a side,
+alternating, under `just bench-lock` (quiet: load 0.40 → 0.82, bound 8):
+
+| build | `NODE_COUNT` | `cascade_deep (markdown x16)`, eight medians | spread |
+|---|---:|---|---|
+| T87.1 (`2f798f3`) | 17 | 277.57, 279.94, 278.80, 278.14, 293.52, 277.44, 276.89, 274.12 ns | **274.12–293.52 ns** |
+| T87.2 with the parts | 49 | 943.86, 957.18, 945.82, 967.78, 962.20, 1004.60, 943.23, 995.16 ns | **943.23–1004.60 ns** |
+
+Every run with the parts is above the parent's whole spread, by **3.4x**
+(median of medians 278.5 → 959.7 ns): a cascade costs per node, and the
+parts triple the nodes of a `Markdown`. The arm-sensitivity injection
+(four extra parts per `Markdown`) was not needed — two already leave the
+spread by more than its width thirty times over. The rule's response is
+taken: **the parts are withdrawn** (a `Markdown` is one node, its table
+and the editor's are unchanged, and the journal needs no new rule because
+a `Markdown` is still a leaf) and the colours become fields on the theme.
+What the parts would have cost in state was 2 × (`Style` 84 + `NodeState`
+88) = **344 B per `Markdown`** (the plan's 328 B was at 80 + 84).
+
+**One deviation from the fallback's wording**, recorded in the plan's
+"What building found": the theme's `quote_color` and `link_color` are
+`Option<Color>`. `Some` is the fixed colour the rule names, which does not
+follow the palette. `None`, the default, derives the colour from the
+node's own (`MarkdownTheme::quote_ink`, `link_ink`), which the cascade
+resolves from the palette's `Text` role — because **no fixed colour reads
+at AA on both of the showcase's surfaces** (white and `#1c212b`: AA needs
+relative luminance ≤ 0.183 against the first and ≥ 0.245 against the
+second), so a fixed default fails M57's D4 gate in one palette. Checked,
+not argued: with `quote_color: Some((115, 125, 141))` as the default — the
+grey closest to balanced between the two — the showcase's
+`every_demo_text_reads_in_both_palettes` reports **24 runs under their
+bound** (the quote's twelve words in each palette, 4.16:1 on the light
+surface); with the derived default, **0 of 632**.
+
+| quantity | value | gate |
+|---|---:|---|
+| `size_of::<MarkdownTheme>()` | **68 B** (seven `(f32, f32)` + two `Option<Color>`) | printed by `a_theme_scales_its_heading` |
+| `size_of::<Markdown>()` | 120 → **192 B** | the same |
+| `size_of::<Span>()` | 20 → **24 B** (`kind: u8`) | the same |
+| heap per word | 40 → **44 B** | — |
+| default display list, `DOC` and `EVERY` | folds unchanged: `0x544b680dbb850c4e`, `0xf343b0e91944032c` | gate 5 |
+| a theme's `h1 = (2.0, 700)`: heading line over body line | **2.000** (40.60 / 20.30 px; bound 2.0 ± 0.0725) | `a_theme_scales_its_heading`; `heading()` ignoring the theme: **1.500** |
+| a quote wrapping to 5 lines at 120 px: bars, words at the 14 px indent | **5**, **5** (bound = lines) | `a_quote_is_indented_and_barred_on_every_line`; the bar skipped: 0 |
+
+**The quote's colour, and M57's D4 record** (`crates/lumen-static-shell/
+tests/markdown_quote.rs`, a `Host` under each built-in palette): the
+default quote is the body's colour at `QUOTE_ALPHA` (0xb3), so LIGHT
+`(15, 23, 42, 179)` and DARK `(230, 234, 242, 179)`, which reads at
+**6.69:1** and **8.04:1** on the page (bound AA 4.5). A fixed
+`Some((150, 60, 20))` stays that colour under both. Painting the quote in
+the node's own `fg` turns both gates red (`(15, 23, 42, 255)`, alpha 255).
+
+**Live** (`scripts/widget_drive.sh Markdown,RichTextEditor`, all six
+legs green: `Everything`, `Boundaries<256>`, the oracle, scale 2 and both
+`+shaping`): the demo's least contrasting run is the quote's first word
+in both of the showcase's palettes — light `'A'` at **6.1:1** (fg
+`[78, 85, 101]`), dark `'A'` at **6.5:1** (fg `[173, 177, 187]`), bound a
+quote word, ≥ 4.5 and the two colours different. With the quote painted
+in the node's own colour the action fails on every leg: the minimum is
+the heading `'Markdown'` at 14:1 in each palette. `RichTextEditor`'s two
+actions print as before.
+
+**The scale-2 leg's contrast check had been measuring nothing**, found by
+that action: `ui.contrast` with a selector filtered the display list —
+physical pixels, painted through `Scaled` — by the selector's logical
+bounds, so at scale 2 a widget's box held almost none of its own text and
+the drive's after-every-action check printed "no text in the widget's
+box" and passed. The session scales the rect now
+(`crates/lumen-static-shell/tests/contrast_scale.rs`: one run, `"second"`,
+at scale 1 and 2; with the rect left logical, scale 2 measures **0**).

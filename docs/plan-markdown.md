@@ -487,6 +487,55 @@ Appendix rows for the assembler:
   (`docs/results-markdown.md` T87.1), above K87's 1.5 ms; K87 is judged
   by T87.6's eight runs under `just bench-lock`, not by this row.
 
+- **T87.2 — K87c fired, and the parts are withdrawn.** Built as the
+  Decisions say — two zero-size parts, `record_painted` writing each
+  one's resolved colour into its `fg`, the journal's all-stand-ins rule,
+  and the plan's palette, table and signing gates, each green and each
+  watched red — the `cascade_deep (markdown x16)` row went from
+  274–294 ns to 943–1,005 ns, eight runs a side (3.4x;
+  `docs/results-markdown.md` K87c). A cascade costs per node and the parts
+  tripled a `Markdown`'s nodes, so no part node could have stayed inside
+  the parent's spread. K87c's response is taken: a `Markdown` is one node
+  again, the editor's table is unchanged, and the journal gets no new
+  rule (a `Markdown` is still a leaf, which the journal paints and hashes
+  already). The table, signing and `getAppliedStyles` gates have nothing
+  left to check and are not committed; the `.lss` example of
+  `markdown-quote` goes with the kind.
+- **T87.2 — the fallback's colours are an override, with a derived
+  default.** K87c says "fixed `Color` fields on the theme that do not
+  follow the palette". A fixed *default* cannot pass M57's D4 gate
+  (`every_demo_text_reads_in_both_palettes`, AA 4.5:1) in both of the
+  showcase's palettes: against its white surface a colour needs relative
+  luminance ≤ 0.183 and against its `#1c212b` surface ≥ 0.245. So
+  `quote_color` and `link_color` are `Option<Color>`: `Some` is the rule's
+  fixed colour, stated in the rustdoc as not following the palette, and
+  `None` (the default) derives from the node's own colour, which does —
+  a quote at 70% alpha, a link mixed halfway toward a blue. That needs no
+  node, so K87c's cost stays at zero. **T87.3's palette gate changes with
+  it**: the link is checked against `MarkdownTheme::link_ink` of the
+  palette's `Text` under both palettes, not against `DARK`'s `Accent`.
+- **T87.2 — the live colour check reads the contrast minimum, not a
+  part's applied style.** With no part, `ui.getAppliedStyles` has nothing
+  to address. The drive asserts instead that the demo's least contrasting
+  run is a quote word, at AA, in both palettes, and that its colour differs
+  between them — which a quote drawn in the body colour fails, because the
+  minimum is then the first run on the stage.
+- **T87.2 — `ui.contrast` was blind at scale 2.** The live quote check
+  asked for the least contrasting run and got none on the scale-2 leg:
+  the session filtered the physical display list by a selector's logical
+  bounds. Fixed in `lumen-static-shell`'s session (the rect is scaled),
+  with `tests/contrast_scale.rs`; the harness's after-every-action
+  contrast check had been passing on "no text in the widget's box" for
+  every widget on that leg.
+- **T87.2 — `Span` gained `kind` here, not in T87.3**: a quote word is
+  `Span::QUOTE`, so `Span` is 24 B already; T87.3's `link: u16` fits in
+  its padding (printed by T87.3's gate). A quote line's first word sets
+  `bullet` for the indent and hang, and draws the bar instead of the dot.
+- **T87.2 — the theme is set by `set_theme`, not written as a field.** A
+  span's scale and weight are fixed at parse time, so a `pub theme` that
+  only took effect at the next `set_str` would be a write that did
+  nothing visible; `set_theme` re-parses when the theme changed.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =

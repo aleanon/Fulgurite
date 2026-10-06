@@ -15,13 +15,16 @@
 //! | 3 `link_markup_is_not_drawn` | `](` drawn | T87.3 | no `[`, `](` or target |
 //! | 4 `image_markup_is_not_drawn` | `](` drawn | T87.4 | no `![`, `](` or name |
 //! | 5 `default_theme_is_todays` | the two folds below | — | unchanged |
+//!
+//! And T87.2's own: `a_theme_scales_its_heading` (a theme's `h1` reaches
+//! the layout) and `a_quote_is_indented_and_barred_on_every_line`.
 
 use std::time::{Duration, Instant};
 
 use lumen_static::display::{Cmd, DisplayList};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Constraints, NodeState, Point};
-use lumen_static_widgets::Markdown;
+use lumen_static_widgets::{Markdown, MarkdownTheme};
 
 fn lay<W: Widget + Node>(w: &mut W, max_w: f32) -> Vec<NodeState> {
     let styles = lumen_static::pass::default_styles(w);
@@ -173,4 +176,79 @@ fn default_theme_is_todays() {
     assert!(etexts >= 9, "setup: EVERY painted only {etexts} text runs");
     assert_eq!(doc, PINNED_DOC, "DOC's default display list moved: fold {doc:#018x}, pinned {PINNED_DOC:#018x}");
     assert_eq!(every, PINNED_EVERY, "EVERY's default display list moved: fold {every:#018x}, pinned {PINNED_EVERY:#018x}");
+}
+
+/// **A theme's `h1` reaches the layout** — M87/T87.2. With `h1 = (2.0,
+/// 700.0)` a heading's line is twice a body line's: the line heights are
+/// read off the breaker's own placements (`RichText::placed`), heading to
+/// first body line and first body line to the second. Injection (recorded
+/// in the commit): `heading()` keeps its literals and ignores the theme —
+/// the ratio is 1.5.
+#[test]
+fn a_theme_scales_its_heading() {
+    let mut m = Markdown::new("# Big\nbody one\nbody two");
+    m.set_theme(MarkdownTheme { h1: (2.0, 700.0), ..MarkdownTheme::DEFAULT });
+    let _st = lay(&mut m, 320.0);
+    let r = m.rich();
+    let words: Vec<&str> = (0..r.spans().len()).map(|k| r.span_str(k)).collect();
+    assert_eq!(words, ["Big", "body", "one", "body", "two"], "setup: the document parsed as {words:?}");
+    let y: Vec<f32> = r.placed().iter().map(|p| p.1).collect();
+    let (heading, body) = (y[1] - y[0], y[3] - y[1]);
+    assert!(body > 0.0, "setup: the body lines did not break ({y:?})");
+    let ratio = heading / body;
+    let tol = 0.05 * 1.45;
+    println!(
+        "a_theme_scales_its_heading: heading line {heading:.2} px, body line {body:.2} px, ratio {ratio:.3} \
+         (bound 2.0 ± {tol:.4}); spans {:?}",
+        r.spans().iter().map(|s| (s.scale, s.weight)).collect::<Vec<_>>()
+    );
+    assert!((ratio - 2.0).abs() <= tol, "a theme with h1 = 2.0 laid the heading at {ratio:.3} of a body line");
+    // What the theme costs, and what the withdrawn parts would have
+    // (`docs/results-markdown.md`, T87.2): two `Style`s and two
+    // `NodeState`s per `Markdown`.
+    println!(
+        "sizes: MarkdownTheme {} B, Markdown {} B, RichText {} B, Span {} B; a part node's Style + NodeState {} + {} B",
+        std::mem::size_of::<MarkdownTheme>(),
+        std::mem::size_of::<Markdown>(),
+        std::mem::size_of::<lumen_static_widgets::RichText>(),
+        std::mem::size_of::<lumen_static_widgets::Span>(),
+        std::mem::size_of::<lumen_static::Style>(),
+        std::mem::size_of::<NodeState>(),
+    );
+}
+
+/// **A blockquote is drawn, not just parsed** — M87/T87.2. `> ` is markup
+/// (no `>` among the words), every word is a quote span, the first is
+/// indented like a bullet and a wrapped line hangs under it, and the
+/// 2 px bar is painted once per visual line in the quote colour —
+/// a role nothing draws is the ghost-button shape the plan names.
+/// Injection (recorded in the commit): skip the bar in `RichText::draw` —
+/// zero bars against the line count.
+#[test]
+fn a_quote_is_indented_and_barred_on_every_line() {
+    let src = "> one two three four five six seven eight nine ten eleven twelve";
+    let mut m = Markdown::new(src);
+    let st = lay(&mut m, 120.0);
+    let r = m.rich();
+    let words: Vec<&str> = (0..r.spans().len()).map(|k| r.span_str(k)).collect();
+    assert!(!words.iter().any(|w| w.contains('>')), "the marker is drawn: {words:?}");
+    assert!(r.spans().iter().all(|s| s.kind == lumen_static_widgets::Span::QUOTE), "a word is not a quote span");
+    let xs: Vec<f32> = r.placed().iter().map(|p| p.0).collect();
+    let lines = r.lines();
+    println!("quote at 120 px: {lines} lines, word x {xs:?}");
+    assert!(lines >= 3, "setup: the quote did not wrap ({lines} lines)");
+    let mut list = DisplayList::new();
+    Node::paint(&m, &st, 0, &mut list);
+    let quote = m.theme().quote_ink(st[0].fg);
+    let x0 = st[0].pos.x + st[0].pad.0;
+    let bars = list
+        .cmds
+        .iter()
+        .filter(|c| matches!(c, Cmd::RoundedRect { rect, color, .. }
+            if *color == quote && (rect[2] - rect[0] - 2.0).abs() < 0.01 && (rect[0] - x0 - 2.0).abs() < 0.01))
+        .count();
+    let starts = xs.iter().filter(|x| (**x - 14.0).abs() < 0.01).count();
+    println!("bars {bars} (bound = lines {lines}); words at the 14 px indent {starts} (bound = lines)");
+    assert_eq!(starts, lines, "a quote line does not start at the bullet indent");
+    assert_eq!(bars, lines, "the quote bar is not drawn once per line");
 }
