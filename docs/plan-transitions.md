@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. T86.0 and T86.1 landed 2026-10-06. K86a held after one respelling; **K86b fired on the frame arm's `idle (floor)` after its written response (the blend `#[cold]`), so M86 stops at T86.1** (`docs/results-transitions.md` T86.1; "What building found" below).** The shared byte inventory, seams (S1,
+> its own file. T86.0 and T86.1 landed 2026-10-06. K86a held after one respelling; **K86b fired after its written response (the blend `#[cold]`), and fires again re-measured on a quiet machine, so M86 stops at T86.1** (`docs/results-transitions.md` T86.1; "What building found" below).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -616,6 +616,15 @@ exists there, so the new property's declaration is unconditional.*
   rather than the branch running. By the rule's written response M86
   stops at T86.1; T86.1 stands, since it adds no behaviour. Every figure
   is `docs/results-transitions.md` T86.1's.
+- **K86b re-measured on a quiet machine: it still fires.** The landing
+  measurement ran beside a `just ci`, so it was ruled not quiet and taken
+  again (load1 ≤ 1.07, two locks, base `db138c0` against `e77b7b2` and
+  against `1148444` separately, since T85.1's stack fix touches derived
+  layout). Each lock has a row above its base spread on both trees — lock
+  1 `idle (floor)` 64.00 / 63.40 µs against 55.8–61.9, lock 2 `still`
+  18,050 / 18,148 ns against 14,800–17,461 — so the stop stands, and the
+  stack fix is not the cause. The appearance rows are bimodal and both
+  modes move up, which is a cost, not a draw.
 
 **What the review found (M86).**
 

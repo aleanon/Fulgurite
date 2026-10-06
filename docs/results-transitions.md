@@ -119,11 +119,16 @@ stopped compiling to one clear of the array and became a clear per element
 plus a store per field. `pointer_mix` is a `u32` whose bits 16–31 are
 always 0 — the same 88 B, no padding — and is what shipped.
 
-**K86b — unused costs nothing: fired on `idle (floor)` after its written
-response, so M86 stops at T86.1.** Every tree at `transition == 0`, the
-shell enabling `transitions`; eight interleaved runs a side under one
-`just bench-lock` (quiet each time, load1 ≤ 2.24), the base side built at
-`db138c0`. With the blend inlined into `shaded` (first run):
+**K86b — unused costs nothing: fires after its written response, on a
+quiet machine too, so M86 stops at T86.1.** Every tree at `transition ==
+0`, the shell enabling `transitions`; eight interleaved runs a side under
+one `just bench-lock`, the base side built at `db138c0`. Two measurements,
+the first ruled invalid and the second the verdict.
+
+*The first, at landing* (bench-lock's rule called each lock quiet, load1
+≤ 2.24 — but a `just ci` run was loading the machine, so the coordinator
+ruled it not quiet and asked for a re-measure). With the blend inlined
+into `shaded`:
 
 | row | base median (spread) | tree | |
 |---|---:|---:|---|
@@ -149,6 +154,38 @@ the blend out of line, is a load, a test and a branch in `shaded` — and
 not the branch executing; `layout`, which is not a K86b row, reads 20.40
 against 19.20 in both runs B and C (inside the base's 19.0–20.8). Two of
 three re-measured runs leave the spread, so by its written response **M86
-stops at T86.1**, and T86.1 stands: it adds no behaviour, and the blend is
-what T86.2 would need. Whether run C's agreement is the row's real answer
-is a question for a re-measure, not for this commit.
+stops at T86.1** — which the re-measure below confirms.
+
+*The re-measure, on a quiet machine* (2026-10-06, 14:05–14:07; no
+`cargo`, `rustc` or `ci.sh` process; load1 **0.99 → 1.07** and **0.90 →
+1.00** across the two locks, bound 8). Three trees, each built `--release`
+from a clean `git archive` and run as copied binaries, interleaved in a
+rotated order (every tree first in some round): base `db138c0` (T86.0),
+`e77b7b2` (T86.1, the committed `#[cold]` blend), and `1148444` (T86.1 plus
+T85.1's stack fix, which touches derived layout code — measured apart so
+the two cannot be confused). Median of eight (min–max):
+
+| lock | row | base `db138c0` | `e77b7b2` | `1148444` |
+|---|---|---:|---:|---:|
+| 1 | `appearance` `still` | 17,364 ns (14,780–17,444) | **18,027** above | 16,441 inside |
+| 1 | `appearance` `hover` | 16,552 ns (14,805–17,715) | 16,116 inside | 15,844 inside |
+| 1 | frame arm `idle (floor)` | 58.60 µs (55.8–61.9) | **64.00** above | **63.40** above |
+| 2 | `appearance` `still` | 16,511 ns (14,800–17,461) | **18,050** above | **18,148** above |
+| 2 | `appearance` `hover` | 14,946 ns (14,761–17,394) | **17,993** above | 15,956 inside |
+| 2 | frame arm `idle (floor)` | 57.55 µs (52.9–61.8) | **63.85** above | 61.70 inside |
+
+Every lock has a K86b row above its base spread on both trees, so **K86b
+fires on a quiet machine**, and by its written response **M86 stops at
+T86.1; T86.1 stands** (it adds no behaviour, and the blend is what T86.2
+would need). The stack fix neither causes nor cures it: `e77b7b2` and
+`1148444` fire on the same rows within each other's spread. The
+appearance rows are bimodal on every tree (one mode near 15,000 ns, one
+near 17,500), and both modes sit higher on the trees than on the base —
+base `still`'s lower mode reads 14,780–15,644, the trees' 15,696–16,544 —
+so the median's crossing is a shift of the distribution, not one mode
+outnumbering the other. The frame arm's other rows read inside the base
+spread in lock 1 on both trees — `layout`, `+paint`, both `+render` and
+`+paint (culled)` each 1.1–2.2 µs higher at the median, the two `ALL
+rows` within −6 to +22 µs of base's 1,116 / 1,235; `idle (floor)`, which lays nothing out, reads
+63.2–64.3 µs in seven of eight runs on `1148444` against a base maximum
+of 61.9. Run C's agreement at landing was the lucky draw.
