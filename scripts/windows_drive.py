@@ -54,6 +54,27 @@ it read beside its bound (docs/plan-windows.md T89.3, gates 2-5 and 7):
   (h) `app.close` on window 1 ends the process with status 0 inside 2 s
       (the launcher's `--expect-exit 0` reads the status)
 
+Phase 3 (T89.4) is `examples/two-windows` again, under both strategies:
+data between windows is `Request::Post`, delivered as `Answer::Posted`.
+
+  (a) rows 2, 1 and 3 each open a detail (the click `handled`, the window
+      opened inside its drain, `app.windows` grown -- the setup), and each
+      detail's `#item` reads the row clicked: "item 2", "item 1", "item 3",
+      with `#from` "from 1", the sender
+  (b) an idle target: window 4, open and idle, gets no agent call while
+      `#send` on window 1 posts to it. Its `app.presents` grows by 1 (read
+      before and after; `app.presents` draws no frame), and `ui.regionHash`
+      over its `#item` -- the pixels last drawn -- changes, so the post is on
+      screen without any input to window 4; `#item` then reads "item 101"
+  (c) a post to a closed window is dropped and counted: after `app.close`
+      on window 4, `#send` leaves `app.windows`' `posts.dropped` one higher
+      and `delivered` where it was
+
+Its injections (docs/plan-windows.md T89.4): `Win` drops posts, and (a)
+times out with `#item` at its boot text "no item"; no redraw request on
+the target slot, and (b)'s present count and region hash do not move.
+The launcher stops the process with `app.quit` (`--stop quit`).
+
 Every check prints the quantity it read beside what it wanted.
 """
 import base64
@@ -523,7 +544,86 @@ def phase2():
     print("  ok  (h) closing the primary ends the process (exit status: the launcher's)")
 
 
-PHASES = {"1": phase1, "2": phase2}
+def wait_value(sel, window, want, timeout=3.0):
+    """Poll `sel`'s value on `window` until it reads `want`: (value, ms)."""
+    t0 = time.monotonic()
+    while True:
+        got = value(sel, window)
+        if got == want or time.monotonic() - t0 > timeout:
+            return got, (time.monotonic() - t0) * 1000
+        time.sleep(0.02)
+
+
+def posts():
+    return result("app.windows")["posts"]
+
+
+def phase3():
+    print("== phase 3 (T89.4): data between windows, Request::Post ==")
+    if keys() != [1]:
+        fail(f"setup: app.windows {keys()} at start, want [1]")
+
+    # (a) each row's detail shows the row clicked, posted by the list.
+    for row, key in ((2, 2), (1, 3), (3, 4)):
+        open_row(row, key, f"(a) row {row}")
+        got, ms = wait_value("#item", key, f"item {row}")
+        sender = value("#from", key)
+        print(f"  ..  (a) window {key}'s #item {got!r} after {ms:.0f} ms (want 'item {row}', bound 3000 ms); "
+              f"#from {sender!r} (want 'from 1')")
+        if got == "no item":
+            fail(f"(a) window {key}'s #item still reads its boot text 'no item' -- the post never arrived")
+        if got != f"item {row}":
+            fail(f"(a) window {key}'s #item reads {got!r}, want 'item {row}' -- the post carried another row")
+        if sender != "from 1":
+            fail(f"(a) window {key}'s #from reads {sender!r}, want 'from 1' -- Posted named the wrong sender")
+    p = posts()
+    print(f"  ..  (a) app.windows posts {p} (want delivered 3, dropped 0)")
+    if p != {"delivered": 3, "dropped": 0}:
+        fail(f"(a) posts {p}, want delivered 3 and dropped 0")
+    print("  ok  (a) each detail shows the row that opened it, posted by window 1")
+
+    # (b) an idle target: window 4 gets no agent call between the reads.
+    b = result("ui.resolve", {"selector": "#item"}, window=4)["bounds"]
+    h0 = result("ui.regionHash", {"rect": b}, window=4)
+    time.sleep(0.5)  # the redraw that call asked for, and any other, settles
+    p0 = result("app.presents", window=4)
+    click("#send", 1, "(b)")
+    time.sleep(0.5)
+    p1 = result("app.presents", window=4)
+    h1 = result("ui.regionHash", {"rect": b}, window=4)
+    got = value("#item", 4)
+    grew = p1["presents"] - p0["presents"]
+    print(f"  ..  (b) window 4 idle, #send on window 1: window 4 presents {p0['presents']} -> {p1['presents']} "
+          f"(+{grew}, want +1; skipped {p0['skipped']} -> {p1['skipped']}); #item region hash "
+          f"{h0['hash']} -> {h1['hash']} over {h1['pixels']} px (want changed); #item {got!r} (want 'item 101')")
+    if h1["pixels"] == 0:
+        fail("(b) setup: the #item region hashed 0 pixels")
+    if grew != 1:
+        fail(f"(b) window 4 presented {grew} frames for one post, want 1 -- the post did not ask the idle "
+             f"target for a frame" if grew == 0 else f"(b) window 4 presented {grew} frames for one post, want 1")
+    if h1["hash"] == h0["hash"]:
+        fail("(b) window 4's #item pixels did not change after the post -- it is not on screen")
+    if got != "item 101":
+        fail(f"(b) window 4's #item reads {got!r}, want 'item 101'")
+    print("  ok  (b) a post reaches an idle window and is drawn on its next frame")
+
+    # (c) a post to a closed window is dropped and counted.
+    r = raw("app.close", window=4)
+    if r.get("error") or r.get("window") != 4:
+        fail(f"(c) setup: app.close on window 4 answered {r}")
+    if wait_keys([1, 2, 3], "(c)") != [1, 2, 3]:
+        fail(f"(c) setup: app.windows {keys()} after closing 4, want [1, 2, 3]")
+    q0 = posts()
+    click("#send", 1, "(c)")
+    time.sleep(0.3)
+    q1 = posts()
+    print(f"  ..  (c) #send to closed window 4: posts {q0} -> {q1} (want dropped +1, delivered unchanged)")
+    if q1["dropped"] != q0["dropped"] + 1 or q1["delivered"] != q0["delivered"]:
+        fail(f"(c) a post to closed window 4: posts {q0} -> {q1}, want one more dropped and none delivered")
+    print("  ok  (c) a post to a closed window is dropped and counted")
+
+
+PHASES = {"1": phase1, "2": phase2, "3": phase3}
 if phase not in PHASES:
     fail(f"no phase {phase!r}; have {sorted(PHASES)}")
 try:

@@ -1244,8 +1244,13 @@ The years go to:
   close that leaves the other answering (`docs/plan-a11y-platform.md`
   §4, amended) — is `just windows-drive` phase 2 on
   `examples/two-windows`; `just a11y-drive` lists a frame per window.
-  Data between windows (`Request::Post`), daemons and hot reload with
-  several windows are T89.4, T89.6 and T89.7.
+  **Data between windows is `Request::Post`** (M89/T89.4): a handler
+  posts a `Descriptor` to a window by key, and the target's
+  `App::answered` turns `Answer::Posted { from, desc }` into a message
+  in the build loaded when it arrives; the target is asked for a frame,
+  so an idle window draws it with no input (`just windows-drive` phase
+  3, `docs/results-windows.md` T89.4). Daemons and hot reload with
+  several windows are T89.6 and T89.7.
 
 None of these get easier because the tree is static. **Strong recommendation:**
 compose rather than build. Take an existing shaping and rasterization stack and

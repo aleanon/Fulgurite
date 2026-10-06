@@ -202,3 +202,39 @@ impl WindowSlot {
         }
     }
 }
+
+/// What [`route_requests`] decided for one drain's posts.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct Routed {
+    /// Each delivery: the target window's key, and the answer its session
+    /// gets — `Answer::Posted` with the **sender's** key as `from`.
+    pub(crate) deliver: Vec<(u32, lumen_static::request::Answer<'static>)>,
+    /// The target key of each post no open window had: dropped, counted.
+    pub(crate) dropped: Vec<u32>,
+}
+
+/// **Where one drain's `Request::Post`s go** — M89/T89.4
+/// (`docs/plan-windows.md`, "Data between windows is `Request::Post`").
+///
+/// Pure, so the routing is testable without a window: `from` is the key of
+/// the window whose session the requests were drained from, `open` the
+/// keys of every open window. A post to an open key is delivered there as
+/// `Answer::Posted { from, desc }` — `from` is the sender, never the
+/// target, so the receiver can answer it with a post of its own; a post to
+/// a key nothing has (closed, or never opened) is dropped and its key
+/// listed. Every other request is ignored here: `Win::window_requests`
+/// acts on those itself.
+pub(crate) fn route_requests(from: u32, requests: &[lumen_static::request::Request], open: &[u32]) -> Routed {
+    use lumen_static::request::{Answer, Request};
+    let mut routed = Routed::default();
+    for r in requests {
+        if let Request::Post { window, desc } = *r {
+            if open.contains(&window) {
+                routed.deliver.push((window, Answer::Posted { from, desc }));
+            } else {
+                routed.dropped.push(window);
+            }
+        }
+    }
+    routed
+}

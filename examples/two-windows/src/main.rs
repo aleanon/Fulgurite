@@ -10,6 +10,12 @@
 //! `#detail-close` (`Request::Close`), and the list hears
 //! `WindowClosed`. Closing the list ends the process.
 //!
+//! **Data between the windows is a post** (M89/T89.4): when the list hears
+//! `WindowOpened` for a row's click, it posts the row to the new window
+//! (`Request::Post`), and the detail's `#item` shows it — "item 2" for row
+//! 2. `#send` posts again to the last window opened, so a post can reach a
+//! detail that is open and idle.
+//!
 //! The detail also lays its right-to-left label out `Shaping::Complex`
 //! while the list stays `Basic`, so each window must render with its own
 //! program's stack; and it sets an agent address that the window ignores,
@@ -18,6 +24,7 @@
 use lumen_static::display::Color;
 use lumen_static::prelude::*;
 use lumen_static::request::{Answer, Request, Requests};
+use lumen_static::spawn::Descriptor;
 use lumen_static_shell::program::{application, KeyOutcome, OpenProgram, Program};
 use lumen_static_widgets::prelude::*;
 use lumen_static_winit::Run;
@@ -47,6 +54,8 @@ pub struct ListUi {
     pub count: Label<String>,
     #[widget_id("bump")]
     pub bump: Button<List>,
+    #[widget_id("send")]
+    pub send: Button<List>,
 }
 
 /// The list's state. Unsplit (`State = Self`), so an answer's `apply`
@@ -56,17 +65,26 @@ pub struct List {
     pub ui: ListUi,
     requests: Requests,
     count: u32,
+    /// The last window a row opened: where `#send` posts.
+    last: u32,
+    /// Posts `#send` has made, so each carries a new item.
+    sent: u64,
 }
 
 /// What the window's answers become for the list.
 pub enum ListMsg {
-    Opened(u32),
+    /// A window opened, and the tag of the request that opened it — the
+    /// row clicked.
+    Opened(u32, u64),
     Closed(u32),
     NoSuch(u16),
 }
 
 /// The detail's index in the window table.
 pub const DETAIL: u16 = 1;
+
+/// A post's `kind`: "show this item"; its `payload` is the item's number.
+pub const ITEM: u64 = 1;
 
 fn open(l: &mut List, row: u64) {
     l.requests.push(Request::OpenWindow { program: DETAIL, tag: row });
@@ -90,7 +108,7 @@ impl App for List {
     }
     fn answered(_tag: u64, a: Answer<'_>) -> Option<ListMsg> {
         match a {
-            Answer::WindowOpened { window } => Some(ListMsg::Opened(window)),
+            Answer::WindowOpened { window } => Some(ListMsg::Opened(window, _tag)),
             Answer::WindowClosed { window } => Some(ListMsg::Closed(window)),
             Answer::NoSuchProgram { program } => Some(ListMsg::NoSuch(program)),
             _ => None,
@@ -98,13 +116,27 @@ impl App for List {
     }
     fn apply(this: &mut Self, m: ListMsg) -> bool {
         match m {
-            ListMsg::Opened(window) => this.ui.opened.set(format!("{window}")),
+            ListMsg::Opened(window, row) => {
+                this.ui.opened.set(format!("{window}"));
+                this.last = window;
+                post_item(this, window, row);
+            }
             ListMsg::Closed(window) => this.ui.closed.set(format!("closed {window}")),
             ListMsg::NoSuch(program) => this.ui.opened.set(format!("no program {program}")),
         }
         true
     }
 }
+
+// ANCHOR: post
+/// **Tell window `window` which item to show** — a post: data, addressed
+/// by the window's key, delivered to the detail as `Answer::Posted` and
+/// turned into the detail's own message by its `App::answered`, in the
+/// build loaded when it arrives. No state is shared between the windows.
+fn post_item(l: &mut List, window: u32, item: u64) {
+    l.requests.push(Request::Post { window, desc: Descriptor::new(ITEM, item) });
+}
+// ANCHOR_END: post
 
 fn list() -> List {
     let mut l = List::default();
@@ -127,6 +159,12 @@ fn list() -> List {
         l.count += 1;
         l.ui.count.set(format!("{}", l.count));
     };
+    l.ui.send.label = "send";
+    l.ui.send.on_click = |l, _| {
+        l.sent += 1;
+        let (window, item) = (l.last, 100 + l.sent);
+        post_item(l, window, item);
+    };
     l
 }
 
@@ -139,6 +177,12 @@ pub struct DetailUi {
     pub title: Label,
     #[widget_id("detail-count")]
     pub count: Label<String>,
+    /// The item the list posted here, or "no item".
+    #[widget_id("item")]
+    pub item: Label<String>,
+    /// Which window posted it.
+    #[widget_id("from")]
+    pub from: Label<String>,
     #[widget_id("detail-bump")]
     pub bump: Button<Detail>,
     #[widget_id("detail-close")]
@@ -163,7 +207,7 @@ impl App for Detail {
         self
     }
     type Tree = DetailUi;
-    type Msg = ();
+    type Msg = DetailMsg;
     fn tree(&self) -> &DetailUi {
         &self.ui
     }
@@ -173,15 +217,39 @@ impl App for Detail {
     fn requests(&mut self) -> Option<&mut Requests> {
         Some(&mut self.requests)
     }
-    fn apply(_: &mut Self, _: ()) -> bool {
-        false
+    // ANCHOR: posted
+    /// A post arrives under the unsolicited tag; the variant and the
+    /// descriptor's `kind` say what it is.
+    fn answered(_tag: u64, a: Answer<'_>) -> Option<DetailMsg> {
+        match a {
+            Answer::Posted { from, desc } if desc.kind == ITEM => Some(DetailMsg::Item { from, item: desc.payload }),
+            _ => None,
+        }
     }
+    // ANCHOR_END: posted
+    fn apply(this: &mut Self, m: DetailMsg) -> bool {
+        match m {
+            DetailMsg::Item { from, item } => {
+                this.ui.item.set(format!("item {item}"));
+                this.ui.from.set(format!("from {from}"));
+            }
+        }
+        true
+    }
+}
+
+/// What the window's answers become for the detail.
+pub enum DetailMsg {
+    /// Window `from` posted item `item` here.
+    Item { from: u32, item: u64 },
 }
 
 fn detail_state() -> Detail {
     let mut d = Detail::default();
     d.ui.title.set("Detail");
     d.ui.count.set("0".into());
+    d.ui.item.set("no item".into());
+    d.ui.from.set("from none".into());
     d.ui.bump.label = "bump";
     d.ui.bump.on_click = |d, _| {
         d.count += 1;
@@ -213,7 +281,7 @@ fn detail_keys(_: &mut Detail, key: lumen_static::Key, _: lumen_static::Mods) ->
 pub fn detail() -> Program<Detail> {
     application(detail_state)
         .title("two-windows — detail")
-        .size(300, 260)
+        .size(300, 300)
         .page(PAGE)
         .on_key(detail_keys)
         .shaping(lumen_static_shell::text::Shaping::Complex)
@@ -234,7 +302,7 @@ pub fn windows(index: u16) -> Option<Box<dyn OpenProgram>> {
 pub fn program() -> Program<List> {
     application(list)
         .title("two-windows — list")
-        .size(340, 380)
+        .size(340, 440)
         .page(PAGE)
         .accessible(cfg!(feature = "a11y"))
         .windows(windows)

@@ -19,6 +19,11 @@
 # release window catches the detail's panic (M36), and `shaping` for the
 # detail's `Shaping::Complex`; XTest needs python3-xlib, a prerequisite.
 #
+# Phase 3 (T89.4) is examples/two-windows again, under both strategies:
+# each row's detail shows the row posted to it (`Request::Post`), a post
+# reaches an idle detail and is drawn on its next frame with no input to
+# it, and a post to a closed window is dropped and counted.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`. Needs a display; skips with exit 77 without
 # one (M43 §2). Opens one window per leg (scripts/drive_window.sh places
@@ -62,4 +67,19 @@ for leg in everything boundaries; do
         -- python3 scripts/windows_drive.py {port} 2
 done
 
-echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close)"
+for leg in everything boundaries; do
+    echo "== phase 3: two-windows, posts, $leg =="
+    case "$leg" in
+    everything)
+        cargo build --release -q -p two-windows --features reload,everything
+        strategy=Everything ;;
+    boundaries)
+        cargo build --release -q -p two-windows --features reload
+        strategy=Boundaries ;;
+    esac
+    $LAUNCH --leg "phase3-$leg" --exe target/release/two-windows \
+        --expect-strategy "$strategy" --expect-features shaping,reload --stop quit \
+        -- python3 scripts/windows_drive.py {port} 3
+done
+
+echo "windows-drive: phase 1 passed under both strategies (app.windows [1], \"window\": 7 refused, \"window\": 1 clicks, app.quit exits 0); phase 2 passed under both (open, route, shape, one port, panic, close); phase 3 passed under both (posts: the clicked row, an idle target, a closed target)"

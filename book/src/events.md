@@ -169,7 +169,7 @@ value pushed into one:
 |---|---|---|
 | into the frame | `inbox::Inbox<A::Msg>` | results, applied by `App::apply` |
 | out of the frame | `spawn::Outbox` | requests, as `Descriptor { kind, step, payload }` |
-| out to the window | `request::Requests` | platform requests (a screenshot, a clipboard read or write), each carrying the application's tag |
+| out to the window | `request::Requests` | platform requests (a screenshot, a clipboard read or write, a window to open or close), each carrying the application's tag — and posts to another window, each carrying a `Descriptor` |
 
 The host drains the outbox *after* dispatch, so a descriptor a handler
 pushed this frame is spawned on this frame, and pairs each one with a
@@ -297,6 +297,35 @@ answers with what the renderer drew, the frame on screen:
 
 A request is not a job: a cancel drops results in flight, but it does
 not withdraw a request the window has already taken.
+
+### Data between windows is a post
+
+Two windows of one program are two applications, each with its own
+state, and nothing is shared between them: a hot library holds one copy
+of a global per loaded build, so process-wide state would split at the
+first swap. What one window tells another is a request beside the
+others, `Request::Post`, carrying the same `Descriptor` an outbox entry
+does and addressed by the target window's key (M89/T89.4,
+`docs/plan-windows.md`). In `examples/two-windows` the list posts the row
+that was clicked to the detail window it opened:
+
+```text
+{{#include ../../examples/two-windows/src/main.rs:post}}
+```
+
+The window delivers it to the target as `Answer::Posted { from, desc }`
+under the unsolicited tag, and the target's `App::answered` turns it into
+its own message, in the build loaded when it arrives, exactly as a
+platform answer is:
+
+```text
+{{#include ../../examples/two-windows/src/main.rs:posted}}
+```
+
+The target is asked for a frame, so a detail that is open and idle draws
+the post on its next frame rather than its next input; a post to a key no
+open window has is dropped and counted (`app.windows`' `posts`). `just
+windows-drive` phase 3 drives both (`docs/results-windows.md` T89.4).
 
 ### Failure is a result too
 

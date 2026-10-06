@@ -121,3 +121,30 @@ release with `reload`; Everything and Boundaries<256> alike; Xephyr):
 
 `just a11y-drive`'s two-windows leg: two frames for the pid, 5 and 3 push
 buttons, equal to each window's agent `Button` count.
+
+## T89.4 — data between windows, `Request::Post` (2026-10-06)
+
+**`Request` is 32 B** (asserted in `lumen_static::request`): `Post`'s
+24 B `Descriptor`, its `u32` key and the discriminant, padded to 8 — it
+was 16. Per `Requests` that is 8 × 32 = 256 B, not per node; the firmware
+links none of it (`nm`: 0 symbols matching
+`OpenWindow|CloseWindow|Posted|WindowOpened|OpenProgram` in each
+`scripts/lib/firmware.sh` binary, and the strict `just firmware-delta`
+reads +0 on all four).
+
+**The live gates** (`just windows-drive` phase 3, `examples/two-windows`,
+release with `reload`; Everything and Boundaries<256> alike; Xephyr):
+
+| gate | read | bound |
+|---|---|---|
+| rows 2, 1, 3 each open a detail; its `#item` / `#from` | `item 2`, `item 1`, `item 3`, each `from 1`, within 0–4 ms | the row clicked, from 1 |
+| `app.windows` `posts` after the three opens | delivered 3, dropped 0 | 3 / 0 |
+| idle window 4, `#send` on window 1: window 4's `app.presents` | +1 (Boundaries 2 → 3, Everything 3 → 4) | +1 |
+| idle window 4: `ui.regionHash` over its `#item` (1,122 px) | changed | changed |
+| `#send` to window 4 after `app.close` 4 | dropped +1, delivered unchanged | +1 / +0 |
+
+Under "no redraw request on the target slot" the present count stays
+(3 → 3) and so does the region hash, while `ui.resolve #item` already
+reads the new text — `Session::answer` applies the message at once, so the
+tree is ahead of the pixels; only the pixels and the present count can
+see a missing redraw.

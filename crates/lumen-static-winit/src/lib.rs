@@ -671,6 +671,10 @@ struct Win {
     /// The key the next window opened gets (M89/T89.3): from 2, never
     /// reused in a process (`windows` module doc).
     next_key: u32,
+    /// `Request::Post`s delivered, and dropped for want of an open target
+    /// (M89/T89.4) — `app.windows`' `posts`.
+    #[cfg_attr(not(feature = "agent"), allow(dead_code))]
+    posts: (u64, u64),
     /// The proxy each window's keyed [`ProxyWaker`] is built over —
     /// installed by `start`, so a window opened later wakes itself.
     wake_proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
@@ -706,6 +710,7 @@ impl Win {
             quit: false,
             frames: (0, 0),
             next_key: windows::PRIMARY + 1,
+            posts: (0, 0),
             wake_proxy: None,
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
             #[cfg(feature = "a11y")]
@@ -1123,6 +1128,13 @@ impl Win {
     /// | `CloseWindow { window }` | [`Win::close_window`] on that key; a key no window has does nothing |
     /// | `Close` | [`Win::close_window`] on `from` itself |
     /// | `Quit` | the process ends at the next `about_to_wait` |
+    /// | `Post { window, desc }` | `Answer::Posted { from, desc }` into `window`'s session under the unsolicited tag, and that window asked for a frame (M89/T89.4; second review A10) — or dropped and counted, when no open window has the key |
+    ///
+    /// **Posts are routed last**, against the windows open once this
+    /// drain's opens and closes are done ([`windows::route_requests`]): a
+    /// post can name only a key its sender already knows, so none names a
+    /// window opened in the same drain, and one behind a `Close` of its
+    /// target is dropped rather than handed to a session about to go.
     ///
     /// Answers the keys of the windows it opened, which the agent site puts
     /// on the reply of the call whose drain opened them (`"opened"`).
@@ -1134,6 +1146,7 @@ impl Win {
     ) -> Vec<u32> {
         use lumen_static::request::Request;
         let mut opened = Vec::new();
+        let mut posts = Vec::new();
         for r in requests {
             match r {
                 Request::OpenWindow { program, tag } => opened.extend(self.open_program(event_loop, from, program, tag)),
@@ -1148,9 +1161,23 @@ impl Win {
                     }
                 }
                 Request::Quit => self.quit = true,
+                // Routed below, once the opens and closes are done.
+                Request::Post { .. } => posts.push(r),
                 // `serve_requests` answered every other request itself.
                 _ => {}
             }
+        }
+        if !posts.is_empty() {
+            let open: Vec<u32> = self.slots.iter().map(|s| s.key).collect();
+            let routed = windows::route_requests(from, &posts, &open);
+            for &(to, a) in &routed.deliver {
+                self.answer_window(to, lumen_static::request::UNSOLICITED, a);
+            }
+            for &to in &routed.dropped {
+                eprintln!("lumen-static: a post from window {from} to window {to} was dropped -- no open window has that key");
+            }
+            self.posts.0 += routed.deliver.len() as u64;
+            self.posts.1 += routed.dropped.len() as u64;
         }
         opened
     }
@@ -1507,7 +1534,12 @@ impl Win {
                         })
                     })
                     .collect();
-                send(result(serde_json::json!({"windows": list})));
+                // `posts`: `Request::Post`s delivered, and dropped because
+                // no open window had the key (M89/T89.4).
+                send(result(serde_json::json!({
+                    "windows": list,
+                    "posts": {"delivered": self.posts.0, "dropped": self.posts.1},
+                })));
                 return;
             }
             // **`app.close`** — M89/T89.2: closes the window the request
@@ -1680,7 +1712,8 @@ impl Win {
     /// The answers go to the same session that drained them.
     ///
     /// **The window requests are returned, not answered** (M89/T89.3):
-    /// `OpenWindow`, `CloseWindow`, `Close` and `Quit` act on `Win`, which
+    /// `OpenWindow`, `CloseWindow`, `Close`, `Quit` and (T89.4) `Post` act
+    /// on `Win` or another window's session, which
     /// this function does not hold, so the caller hands them to
     /// [`Win::window_requests`] before its own drain returns. Empty —
     /// no allocation — when there are none.
@@ -1694,7 +1727,11 @@ impl Win {
         let mut windows = Vec::new();
         for out in session.take_requests() {
             match out.request {
-                r @ (Request::OpenWindow { .. } | Request::CloseWindow { .. } | Request::Close | Request::Quit) => {
+                r @ (Request::OpenWindow { .. }
+                | Request::CloseWindow { .. }
+                | Request::Close
+                | Request::Quit
+                | Request::Post { .. }) => {
                     windows.push(r);
                 }
                 Request::Screenshot { tag } => {
@@ -2735,5 +2772,39 @@ mod tests {
         assert_eq!(made, 2, "setup: two backends were made");
         assert_eq!(*log.borrow(), vec![1, 2], "backend #2 was given no images");
         assert_eq!(*shaders.borrow(), vec![1, 2], "a backend resume made was not handed the shader table");
+    }
+
+    /// **M89/T89.4: a post reaches its target, from its sender.** Window 1
+    /// posts to window 2 (open) and to window 7 (never opened), with an
+    /// `OpenWindow` between them that routing must ignore. Window 2 gets
+    /// `Posted` with `from` 1 — the sender, so it can answer with a post of
+    /// its own — and the post to 7 is dropped and counted. Setup: one
+    /// delivery and one drop, both printed.
+    #[test]
+    fn route_requests_delivers_a_post_from_its_sender_and_drops_one_to_a_closed_key() {
+        use lumen_static::request::{Answer, Request};
+        use lumen_static::spawn::Descriptor;
+        let desc = Descriptor::new(4, 2);
+        let requests = [
+            Request::Post { window: 2, desc },
+            Request::OpenWindow { program: 1, tag: 5 },
+            Request::Post { window: 7, desc: Descriptor::new(4, 3) },
+        ];
+        let r = windows::route_requests(1, &requests, &[1, 2]);
+        println!("route_requests(from 1, open [1, 2]): deliver {:?}, dropped {:?}", r.deliver, r.dropped);
+        assert_eq!(r.deliver.len(), 1, "setup: one post was to an open key");
+        let (to, a) = r.deliver[0];
+        assert_eq!(to, 2, "the post went to window {to}, not its target 2");
+        assert_eq!(
+            a,
+            Answer::Posted { from: 1, desc },
+            "the post reached window 2 with the wrong sender: want `from` 1, the window it was drained from"
+        );
+        assert_eq!(r.dropped, vec![7], "a post to a key no open window has was not dropped and counted");
+        // The accept direction for the drop: once 7 is open, it is delivered.
+        let r = windows::route_requests(1, &requests, &[1, 2, 7]);
+        println!("route_requests(from 1, open [1, 2, 7]): deliver {:?}, dropped {:?}", r.deliver, r.dropped);
+        assert_eq!(r.deliver.iter().map(|d| d.0).collect::<Vec<_>>(), vec![2, 7]);
+        assert!(r.dropped.is_empty());
     }
 }

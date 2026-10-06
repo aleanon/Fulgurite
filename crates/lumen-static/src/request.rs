@@ -60,7 +60,8 @@ pub enum ClipFormat {
     Image,
 }
 
-/// **One platform request** — `Copy`, 16 bytes (asserted below), and
+/// **One platform request** — `Copy`, 32 bytes since M89/T89.4's `Post`
+/// (16 before it; asserted below), and
 /// **append-only**: M89 appends its window variants after these, and a
 /// variant is never reordered or removed (`docs/plan-iced-roadmap.md`
 /// §2.8).
@@ -97,26 +98,46 @@ pub enum Request {
     Close,
     /// **End the process** — every window. Unanswered.
     Quit,
+    /// **Data for another window** (M89/T89.4, `docs/plan-windows.md`
+    /// P20): `desc` is delivered to window `window`'s session as
+    /// [`Answer::Posted`] with this window's key as `from`, and that
+    /// application's [`App::answered`](crate::event::App::answered) turns
+    /// it into a message **in the build loaded when it arrives** — the
+    /// window-addressed path in place of process-global state, which a hot
+    /// library holds one copy of per loaded build. A
+    /// [`Descriptor`](crate::spawn::Descriptor) because that is already
+    /// this crate's `Copy` shape for "what to do, as data".
+    ///
+    /// Unanswered: the sender is told nothing. A post to a key no open
+    /// window has — closed, or never opened — is **dropped and counted**
+    /// (`app.windows`' `posts`). The target is asked for a frame, so an
+    /// idle window shows the post on its next frame, not its next input.
+    Post { window: u32, desc: crate::spawn::Descriptor },
 }
 
-const _: () = assert!(core::mem::size_of::<Request>() == 16, "Request is 16 B through M89/T89.3 (T89.4's Post makes it 32)");
+// A 24 B `Descriptor`, a `u32` and the discriminant, padded to 8: `Post`
+// sets the size (M89/T89.4; `docs/plan-iced-roadmap.md` §2.8). Per
+// `Requests` (`CAPACITY × 32` B), not per node; the firmware links none of
+// it (behind `std`).
+const _: () = assert!(core::mem::size_of::<Request>() == 32, "Request is 32 B since M89/T89.4's Post");
 
 /// **The tag an unasked answer carries** — `u64::MAX`, reserved by M89
 /// (`docs/plan-iced-roadmap.md` §2.8): [`Answer::WindowClosed`] arrives
-/// at a window's opener with it, since nothing the opener pushed is being
-/// answered. An application chooses its own tags below it.
+/// at a window's opener with it, and [`Answer::Posted`] at a post's
+/// target, since nothing the receiver pushed is being answered. An application chooses its own tags below it.
 pub const UNSOLICITED: u64 = u64::MAX;
 
 impl Request {
     /// The application's tag, for the variants that carry one; `None` for
-    /// the window requests that are never answered (M89/T89.3).
+    /// the window requests that are never answered (M89/T89.3, and
+    /// T89.4's `Post`).
     pub fn tag(&self) -> Option<u64> {
         match *self {
             Request::Screenshot { tag }
             | Request::ClipboardWrite { tag, .. }
             | Request::ClipboardRead { tag, .. }
             | Request::OpenWindow { tag, .. } => Some(tag),
-            Request::CloseWindow { .. } | Request::Close | Request::Quit => None,
+            Request::CloseWindow { .. } | Request::Close | Request::Quit | Request::Post { .. } => None,
         }
     }
 }
@@ -245,4 +266,9 @@ pub enum Answer<'a> {
     /// [`Request::OpenWindow`] named a program the window table has no
     /// entry for — answered with the request's tag (M89/T89.3).
     NoSuchProgram { program: u16 },
+    /// Window `from` posted `desc` here ([`Request::Post`], M89/T89.4).
+    /// **Unasked: it carries [`UNSOLICITED`]** as its tag — the receiver
+    /// pushed nothing — so an application tells a post from its own
+    /// answers by the variant, and one post from another by `desc.kind`.
+    Posted { from: u32, desc: crate::spawn::Descriptor },
 }

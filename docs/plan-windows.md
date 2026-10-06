@@ -949,3 +949,30 @@ the first review's findings of the same name.
 - **T89.3, `WindowClosed` is sent on every close of a window that has
   an opener**, not only a close by the user: one rule, and an opener
   that closed a window itself learns it landed.
+- **T89.4, posts are routed last in a drain.** `Win::window_requests`
+  does a drain's opens and closes in order, then routes its posts against
+  the windows open after them (`windows::route_requests`, pure, taking
+  the open keys rather than the slots so it is testable without a
+  window). A post names only a key its sender already knows, so none can
+  name a window opened in the same drain; one behind a `Close` of its
+  target is dropped rather than handed to a session about to go.
+- **T89.4, the drop is counted on `app.windows`.** "Dropped and counted"
+  needed a place to read the count: `app.windows` answers `posts:
+  {delivered, dropped}`, and a drop prints one stderr line naming both
+  keys. Phase 3 (c) reads it live.
+- **T89.4, the idle-target injection moves the pixels, not `#item`.**
+  With no redraw request on the target slot, `ui.resolve #item` on window
+  4 read the new text anyway: `Session::answer` applies the message at
+  once, so the tree is ahead of the screen (the T89.3 shape again). What
+  the injection holds still is the present count (3 → 3) and the pixels,
+  so the gate reads `ui.regionHash` over `#item` — the canvas last
+  drawn, which draws no frame — before and after, beside
+  `app.presents`. The injection is posts-only: the A10 redraw in
+  `answer_window` serves every answer, and removing it there would also
+  break `WindowOpened`.
+- **T89.4, the list posts from its `apply`.** The post for a row is
+  pushed when the list hears `WindowOpened`, so it waits on the list's
+  queue for the list's next drain — its next frame, which the answer
+  asked for — and reaches the detail within 0–4 ms of the click's reply.
+  Phase 3 (a) polls `#item` with a 3 s bound and prints the time.
+

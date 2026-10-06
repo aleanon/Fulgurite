@@ -50,7 +50,9 @@ platform after a frame, in physical pixels, or `null` (M80/T80.5) — the
 focused field's caret, which is where an input method opens its
 candidate window. `app.windows` lists the open windows — each one's
 `key`, the `program` it runs, its `title`, and whether it is
-`windowless` — and `app.close` closes the window a request names
+`windowless` — with `posts`, the `Request::Post`s delivered and those
+dropped because no open window had the key (M89/T89.4), and `app.close`
+closes the window a request names
 (closing the primary ends the process; M89/T89.2). The list above, the
 skill's and the code are held to one another by
 `scripts/check_agent_methods.sh`.
