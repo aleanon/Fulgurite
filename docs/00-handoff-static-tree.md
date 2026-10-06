@@ -489,7 +489,12 @@ table's (`docs/plan-boundaries-repair.md` §2.3, §6).
 item 12): the host's pass lists table nodes carrying
 `NodeDesc::WATCHES_VIEW`, and arena rows are not in the table. Inside a
 repeater the signal is its window range, `first_row()..first_row() +
-window_len()`.
+window_len()`. **DECIDED 2026-10-06 (M85/T85.4): a `Pop` in an arena is refused at
+construction.** `Repeat::new`, `List::new` (and `Default`) and
+`Dyn::new` panic when their template's table has an entry carrying the
+flag (`widget::table_has_flag`, a `const fn`, so the check folds away
+for every other row), with a sentence naming the window range as the
+alternative (`crates/lumen-static-widgets/tests/pop.rs`).
 
 ---
 
@@ -1544,3 +1549,11 @@ remains** — which is why §10 Step 1 is the kill criterion.
    (`crates/lumen-static-shell/tests/pop_visibility.rs`; numbers in
    `docs/results-layout-input.md` T85.3). Arena rows are not table nodes
    and are not watched (§6, Repeaters).
+   **DECIDED 2026-10-06 (M85/T85.4): the widget is `Pop<S, W>`** —
+   one child whose own entry carries the flag, a `visible()` it records
+   from the event, and an `on_view` handler answered only for the
+   sentinel. A `Pop` in a repeater, a list or an island is refused at
+   construction (§6, Repeaters). `just widget-drive Pop` is the live gate:
+   PageDown brings a placeholder below a short view's fold into view and
+   the application says loaded, at 1.00× the placeholder's box
+   (`docs/results-layout-input.md` T85.4).

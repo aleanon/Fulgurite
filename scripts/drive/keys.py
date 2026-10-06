@@ -71,6 +71,9 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "Card": ("#d_card_go", [KeyAction("Enter presses the card's button", ["Enter"])]),
     # M85/T85.2: the button inside the Pin demo.
     "Pin": ("#d_pin_go", [KeyAction("Enter presses the pinned button", ["Enter"])]),
+    # M85/T85.4: the Pop demo's first row; PageDown brings the placeholder
+    # into view, and the readout goes from waiting to loaded.
+    "Pop": ("#d_pop_first", [KeyAction("PageDown loads the placeholder", ["PageDown"])]),
     "Toast": ("#d_toast_show", [KeyAction("Enter raises a toast", ["Enter"])]),
     "Tooltip": ("#tooltip-content", [KeyAction("focus alone shows the tip", [], "tip")]),
     "Tabs": ("#d_tabs_a", [KeyAction("Right moves the tab", ["Right"])]),

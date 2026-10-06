@@ -110,6 +110,8 @@ const ROWS: &[Row] = &[
     row("Card", "Card", Role::Group, false),
     // M85/T85.2: a box that offsets its child; the child speaks.
     row("Pin", "Pin", Role::GenericContainer, false),
+    // M85/T85.4: a box told when it enters the view; the child speaks.
+    row("Pop", "Pop", Role::GenericContainer, false),
     row("Toast", "Toast", Role::Status, false),
     row("Tooltip", "Tooltip", Role::Group, false),
     row("Modal", "Veil", Role::Dialog, false),
@@ -161,10 +163,13 @@ fn feature_on(feature: &str) -> bool {
 /// combo box), two wrappers that add paint and no meaning, a loading
 /// placeholder, a gesture wrapper around content that has its own, and a
 /// divider, which is decoration (M48/T48.6 decided it and
-/// `lumen-static-agent/tests/tree_fields.rs` allows it by name), and a
-/// pin, which only offsets its child (M85/T85.2).
-const GENERIC_BOUND: &[&str] =
-    &["Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider", "Pin"];
+/// `lumen-static-agent/tests/tree_fields.rs` allows it by name), a
+/// pin, which only offsets its child (M85/T85.2), and a pop, which only
+/// hears when its child enters the view (M85/T85.4).
+const GENERIC_BOUND: &[&str] = &[
+    "Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider", "Pin",
+    "Pop",
+];
 
 /// Lay the tree out and emit it; every node keyed by its author id.
 fn snapshot(ui: &mut Ui) -> BTreeMap<&'static str, AkNode> {

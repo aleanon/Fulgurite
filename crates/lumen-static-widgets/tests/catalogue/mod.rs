@@ -123,6 +123,10 @@ pub struct Ui {
     // M85/T85.2: a label pinned at an offset.
     #[widget_id("Pin")]
     pub pin: Pin<Label<String>>,
+    // M85/T85.4: a label told when it enters the view. In the tree, not
+    // an arena, so the arena refusal does not apply.
+    #[widget_id("Pop")]
+    pub pop: Pop<S, Label<String>>,
     #[widget_id("Toast")]
     pub toast: Toast<String>,
     #[widget_id("Tooltip")]
@@ -250,6 +254,7 @@ pub fn build() -> Ui {
     ui.appbar = AppBar::new("Title".into());
     ui.card = Card::new(Label::new("in a card".into()));
     ui.pin = Pin::new(Label::new("pinned".into()), 8.0, 4.0);
+    ui.pop = Pop::new(Label::new("popped".into()), lumen_static_widgets::ops::ignore_click::<S>);
     ui.toast = Toast::new("Saved".into());
     ui.tooltip = Tooltip::new(Label::new("anchor".into()), "a tip".into());
     ui.pagination = Pagination::new(5);

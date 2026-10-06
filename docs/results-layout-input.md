@@ -139,3 +139,37 @@ unless named.
 
 K1 holds: `Event` 16 B, no `Style` or `NodeState` byte; the host's heap
 is 4 B per watched node plus a `bool`. K4 and K85d hold.
+
+## T85.4 — `Pop<S, W>`, and the arena refusal (2026-10-06)
+
+One child whose own table entry carries `NodeDesc::WATCHES_VIEW`, with
+`visible()` recorded from `Event::Visibility` and an `on_view` handler
+answered only for `NodeSel::visibility`
+(`crates/lumen-static-widgets/src/surface.rs`); `widget::table_has_flag`,
+a `const fn`, and the refusal in `Repeat::new`, `List::new`/`Default` and
+`Dyn::new`. Gates in `crates/lumen-static-widgets/tests/pop.rs`,
+`crates/lumen-static/tests/table_invariants.rs` and live.
+
+| gate | prints | injection (red) |
+|---|---|---|
+| `table_has_flag_finds_a_flag_on_a_nested_entry` (const-evaluated) | nested **true** (bound true); plain **false** (bound false) | `table_has_flag` always answers `false`: nested false, "table_has_flag missed WATCHES_VIEW on the deepest entry" |
+| `a_repeat_of_a_row_holding_a_pop_is_refused`, `a_list_…`, `a_default_list_…`, `a_dyn_island_…` (`should_panic`) | each panics with "a Repeat row / List item / Dyn island cannot hold a node that watches its visibility …", naming the window range (or "put the `Pop` around it") | delete the `Repeat::new` call: the Repeat test "did not panic as expected", the other three green; `table_has_flag` always `false`: all four "did not panic as expected" |
+| `the_same_row_without_a_pop_constructs_in_every_arena` (accept) | Repeat count **10**, List len **2**, Dyn nodes **3** | — |
+| `a_pop_scrolled_into_view_runs_on_view_once`, `Everything` and `Boundaries<256>` | the pop is node 4, flagged; host watches **1** (bound 1); in the viewport at wheel step **13**, deadline `Some(0.0)`, loads **0** before the delivering pump (bound 0) and **1** after (bound 1), `visible()` true; the delivering frame's damage over the view `[14, 89, 84, 105]`, inside the pop, **0.39×** its 2,856 px² (bound 1.00); a click on its content: handled, presses **1**, loads still 1; wheeled back out at offset 220, hides **1**, `visible()` false | `Pop` leaves `WATCHES_VIEW` off its entry: watches **0**, "the host does not watch the Pop"; a visibility delivery that resets retention (`self.retain.reset()` after `tell_visibility`): damage the whole window, **31.51×**, "the load's frame damaged 31.51x the pop's box over the view" |
+| live, `scripts/widget_drive.sh Pop` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | viewport **180** px in a **760** px window (bound viewport < window), the placeholder at y 531..651 below the view's 339..519, readout `waiting`; one PageDown: readout **`loaded`**, the placeholder at 399..519 reads `loaded`; the journal frame holding scroll and load **69,520 px²** over the view against the placeholder's 31,200 px² = **2.23×** (harness bound 4.0); role `GenericContainer`; PageDown from `#d_pop_first` (1 Tab) moves the readout; D5 parity byte-identical; oracle 566 frames, none diverged | `Pop` leaves `WATCHES_VIEW` off its entry: readout **`waiting`** after 5 PageDowns with the placeholder in the view and its text unchanged, FAIL by name on all six legs; the keyboard pass `waiting` → `waiting`, FAIL |
+| firmware, `just firmware-delta 3c2dc3e firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** on all four `.text` and `.rodata` (`firmware_interactive` 63,912 B); K85d cumulative **+432** of 1,024 against `a21135b` | — |
+
+**Why the live frame is 2.23× and not 1.00×.** The window's input RPC
+pumps a frame the agent's journal does not record — the one whose
+`place` queues the change — and the redraw after it delivers and draws
+the load, so the scroll and the load are one journal frame and the
+region over the view is mostly the scroll's. The load's own frame is the
+headless row above (0.39×, inside the pop); `docs/plan-layout-input.md`,
+"What building found", T85.4.
+
+`a11y_roles.rs`'s `every_node_impl_has_a_row` fails by name ("Node impls
+with no row in the table: [\"Pop\"]") with the `Pop` row removed, and
+`scripts/check_observe.sh` ("no observe: …surface.rs: Pop") with its
+ALLOW line removed. K1 holds: `Event` 16 B, no `Style` or `NodeState`
+byte; a `Pop` is a `fn` pointer and a `bool` in the application's
+struct.

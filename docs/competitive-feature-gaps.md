@@ -149,6 +149,10 @@ is roughly 3× lumen-static's. Present in `iced_widget` and absent here:
 - `lazy`, `keyed`, `responsive`, `themer` — view-tree machinery with no
   analogue in a static tree (and mostly not wanted: see below).
 - `mouse_area`, `sensor` — hit-region and visibility observers.
+  (the sensor has shipped since, as `Pop<S, W>`: its handler runs when
+  its content enters or leaves the view, by a host pass over flagged
+  table nodes, and it is refused inside a repeater, whose window range
+  is the signal there — M85/T85.3, T85.4.)
 - A **theme system** with light/dark palettes and per-widget style
   functions.
 

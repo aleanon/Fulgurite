@@ -550,6 +550,40 @@ pub struct PinBody {
     pub go: Button<Store, String>,
 }
 
+/// `Pop` — M85/T85.4. Four rows and a placeholder just below them in a
+/// `ScrollView` too short for all of it: the placeholder is a `Pop`, and
+/// scrolling it into the viewport tells the application, which "loads"
+/// it (the placeholder's text, written by `refresh`). Just below the
+/// fold, so one PageDown brings it in.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 8.0)]
+pub struct PopRows {
+    #[widget_id("d_pop_first")]
+    pub r0: Button<Store, String>,
+    pub r1: Button<Store, String>,
+    pub r2: Button<Store, String>,
+    pub r3: Button<Store, String>,
+    #[widget_id("d_pop_item")]
+    pub item: Pop<Store, PopImage>,
+}
+
+/// The Pop demo's placeholder, image-sized: a raised box whose text says
+/// whether it has loaded. A container of its own, so the sheet can reach
+/// the label inside the pop by id.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct PopImage {
+    #[widget_id("d_pop_img")]
+    pub text: Label<String>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DPop {
+    #[widget_id("d_pop_a")]
+    pub a: ScrollView<PopRows>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DToast {
@@ -863,6 +897,7 @@ demos! {
     Pie(DPieChart),
     Card(DCard),
     Pin(DPin),
+    Pop(DPop),
     Toast(DToast),
     Tooltip(DTooltip),
     Number(DNumberInput),
@@ -916,5 +951,6 @@ impl Default for Demo {
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
-// M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout; M85/T85.2's Pin.
-pub const DEMOS: usize = 61 + cfg!(feature = "shader") as usize;
+// M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout; M85/T85.2's Pin;
+// M85/T85.4's Pop.
+pub const DEMOS: usize = 62 + cfg!(feature = "shader") as usize;

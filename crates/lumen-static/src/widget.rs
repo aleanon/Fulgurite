@@ -856,3 +856,50 @@ pub const fn table_is_well_formed(t: &[NodeDesc]) -> bool {
     }
     true
 }
+
+/// **Whether any entry of table `t` carries flag `f`** — M85/T85.4,
+/// beside [`table_is_well_formed`] and `const` for the same reason: it
+/// reads a widget's `SUB_TABLE`, which is known at compile time, so a
+/// check written with it folds away when the answer is `false`.
+///
+/// `f` is one of [`NodeDesc`]'s flag bits
+/// (`NodeDesc::WATCHES_VIEW`, …); a mask of several answers whether any
+/// entry carries any of them. Every entry is read, the root and the
+/// most deeply nested alike — a flag on a row's grandchild is a flag on
+/// the row.
+///
+/// Its first user is the **arena refusal**: `Repeat::new`, `List`'s
+/// constructors and `Dyn::new` assert
+/// `!table_has_flag(T::SUB_TABLE, NodeDesc::WATCHES_VIEW)`, because the
+/// host's visibility pass lists table nodes and an arena's instances are
+/// not in the table (`docs/plan-layout-input.md`, Decisions, X4). A
+/// `Pop` inside a repeater would never be told anything, so it is
+/// refused where it is built rather than silently never loading.
+pub const fn table_has_flag(t: &[crate::desc::NodeDesc], f: u8) -> bool {
+    let mut i = 0;
+    while i < t.len() {
+        if t[i].flags & f != 0 {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// **The arena refusal** — M85/T85.4. Panics when `table` (an arena's
+/// template: a repeater's row, a list's item, an island's content) has an
+/// entry carrying `NodeDesc::WATCHES_VIEW`, with `owner` and the
+/// alternative named. Called by `Repeat::new`, `List`'s constructors and
+/// `Dyn::new`; the table is a `const`, so the call folds away when it has
+/// no such entry.
+#[doc(hidden)]
+#[track_caller]
+pub fn refuse_watched_in_arena(table: &[crate::desc::NodeDesc], owner: &str, instead: &str) {
+    if table_has_flag(table, crate::desc::NodeDesc::WATCHES_VIEW) {
+        panic!(
+            "a {owner} cannot hold a node that watches its visibility (a `Pop`, \
+             NodeDesc::WATCHES_VIEW): the host's visibility pass lists table nodes, and \
+             an arena's instances are not in the table, so it would never be told. {instead}"
+        );
+    }
+}

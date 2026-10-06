@@ -459,16 +459,40 @@ pub struct List<W: Widget> {
     arena: crate::arena::Arena,
 }
 
+/// The arena refusal for a [`List`] item — M85/T85.4
+/// (`crate::widget::refuse_watched_in_arena`).
+#[cfg(feature = "alloc")]
+#[track_caller]
+fn refuse_watched_item<W: Widget>() {
+    crate::widget::refuse_watched_in_arena(
+        W::SUB_TABLE,
+        "List item",
+        "Put the `Pop` around the list, in the tree, or use a `Repeat` and read its window range.",
+    );
+}
+
 #[cfg(feature = "alloc")]
 impl<W: Widget> Default for List<W> {
+    #[track_caller]
     fn default() -> Self {
+        refuse_watched_item::<W>();
         List { items: Vec::new(), spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
     }
 }
 
 #[cfg(feature = "alloc")]
 impl<W: Widget> List<W> {
+    /// A list of `items`.
+    ///
+    /// # Panics
+    ///
+    /// **If an item watches its own visibility** (a `Pop`, a
+    /// `NodeDesc::WATCHES_VIEW` entry) — M85/T85.4, the arena refusal:
+    /// a list's items live in an arena, which the host's visibility pass
+    /// never sees. So does [`Default`].
+    #[track_caller]
     pub fn new(items: Vec<W>) -> Self {
+        refuse_watched_item::<W>();
         List { items, spacing: 0.0, arena: crate::arena::Arena::new(W::NODE_COUNT) }
     }
 
@@ -797,7 +821,18 @@ impl<S> Dyn<S> {
     /// the only depth check an island can make: `W::DEPTH` is known
     /// here, but the island's *own* position in the tree is not, because
     /// the type erasure is the point. See `content_depth`.
+    ///
+    /// **If the content watches its own visibility** (a `Pop`, a
+    /// `NodeDesc::WATCHES_VIEW` entry) — M85/T85.4, the arena refusal:
+    /// an island's nodes live in its arena, not in the table the host's
+    /// visibility pass lists.
+    #[track_caller]
     pub fn new<W: Widget + crate::event::Handlers<S> + 'static>(w: W) -> Self {
+        crate::widget::refuse_watched_in_arena(
+            W::SUB_TABLE,
+            "Dyn island",
+            "Put the `Pop` around the island, in the tree.",
+        );
         assert!(
             W::DEPTH < crate::desc::MAX_DEPTH,
             "Dyn island content is {} deep, over MAX_DEPTH ({})",

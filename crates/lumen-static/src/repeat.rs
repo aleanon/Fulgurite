@@ -98,6 +98,14 @@ pub struct Repeat<T: Widget + Default + 'static> {
     /// now refuses it — every other repeater arm in
     /// that file binds with [`noop_bind`], so until M29 nothing had ever
     /// asked what a bind that *writes* costs.
+    ///
+    /// **Which rows are on screen is the window, not a `Pop`** —
+    /// M85/T85.4. The rows this runs for are
+    /// `first_row()..first_row() + window_len()`, and that range is the
+    /// in-repeater visibility signal: an application that loads a row's
+    /// image when it scrolls into view reads it there. A `Pop` in a row
+    /// is refused by [`Repeat::new`], because recycled arena rows are
+    /// never in the host's visibility pass.
     pub bind: fn(&mut T, usize),
     window: Vec<T>,
     /// Materialized rows' state and the template style row they share.
@@ -180,7 +188,27 @@ impl<T: Widget + Default> Default for Repeat<T> {
 }
 
 impl<T: Widget + Default> Repeat<T> {
+    /// `count` rows of `T`, each `item_extent` px along the column,
+    /// configured by `bind`.
+    ///
+    /// # Panics
+    ///
+    /// **If a row watches its own visibility** — a `Pop`, or any node
+    /// whose table entry carries `NodeDesc::WATCHES_VIEW` — M85/T85.4,
+    /// the arena refusal. A repeater recycles its instances across rows
+    /// and its rows are not table nodes, so the host's visibility pass
+    /// would never tell one anything; in a repeater the signal is the
+    /// window range, `first_row()..first_row() + window_len()` (see
+    /// [`Repeat::bind`]). The row's table is a `const`, so the check folds
+    /// away for every row that has no such node.
+    #[track_caller]
     pub fn new(count: usize, item_extent: f32, bind: fn(&mut T, usize)) -> Self {
+        crate::widget::refuse_watched_in_arena(
+            T::SUB_TABLE,
+            "Repeat row",
+            "In a repeater the signal is the window range, \
+             `first_row()..first_row() + window_len()`, which the application reads.",
+        );
         Repeat {
             count,
             scroll: 0.0,

@@ -360,6 +360,26 @@ fn scroll_rows() -> ScrollRows {
     r
 }
 
+/// The Pop demo's rows: four buttons, then the pop (M85/T85.4).
+fn pop_rows() -> PopRows {
+    let mut r = PopRows::default();
+    for (k, b) in [&mut r.r0, &mut r.r1, &mut r.r2, &mut r.r3]
+        .into_iter()
+        .enumerate()
+    {
+        *b = btn(&format!("row {}", k + 1));
+    }
+    r.item = Pop::new(PopImage { text: lbl_of("loads when it scrolls into view") }, pop_seen);
+    r
+}
+
+/// The Pop demo's `on_view`: in view is loaded, and stays loaded.
+fn pop_seen(s: &mut Store, ctx: &EventCtx) {
+    if let lumen_static::Event::Visibility { visible: true } = ctx.event {
+        s.pop_loaded = true;
+    }
+}
+
 fn lbl_of(t: &str) -> Label<String> {
     let mut l = Label::<String>::default();
     l.set(t.into());
@@ -645,6 +665,15 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Pin(DPin { a: Pin::new(PinBody { go: btn("Pinned") }, 112.0, 64.0) })),
         |s| format!("presses: {}", s.store.presses)),
+    // M85/T85.4: a placeholder below the fold of a short view; scrolling
+    // it into view tells the application, which "loads" it.
+    entry!("Surface", "Pop", "A placeholder that loads when it scrolls into view.",
+        false,
+        |s| {
+            s.store.pop_loaded = false;
+            on(s, Demo::Pop(DPop { a: ScrollView::new(pop_rows()) }))
+        },
+        |s| (if s.store.pop_loaded { "loaded" } else { "waiting" }).into()),
     entry!("Surface", "Toast", "A transient message, in two lengths.",
         false,
         |s| on(s, Demo::Toast(DToast {

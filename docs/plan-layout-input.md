@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0–T85.3 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
+> the end). T85.0–T85.4 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -595,6 +595,30 @@ that adds a `Session` method…" does not touch M85: none is added.
   is dirty whenever the watched leaf below it is marked. The label now
   sits in a row of its own, which `Boundaries` skips, and the injection
   goes red with damage `None` (`docs/results-layout-input.md` T85.3).
+
+- **T85.4: the live drive cannot see the load's frame on its own, so its
+  1.00× is gated headlessly.** The window's input RPC pumps a frame the
+  agent's journal does not record — the one whose `place` queues the
+  change — and the redraw after it delivers and draws the load, so the
+  journal's frame holds the scroll and the load together and the region
+  over the view is the scroll's (`docs/results-layout-input.md` T85.4).
+  The drive asserts the application's state (readout `loaded`) and the
+  placeholder's text, and the harness bounds that combined frame against
+  the placeholder's box and where it was (bound 4.0); the load's own
+  frame — inside the pop's box, at most 1.00× of it — is
+  `crates/lumen-static-widgets/tests/pop.rs`, where the host pumps the
+  delivering frame by itself.
+- **T85.4: the drive's inventory node is the `Pop`, not the demo's
+  `ScrollView`.** `roles.py`'s row (`GenericContainer`) is checked
+  against the node the inventory names; naming the scroller read
+  `ScrollView` and failed by name. The demo is still the `ScrollView`
+  shape the plan names, and the placeholder sits just below its fold
+  (four rows) so one PageDown brings it in and the harness's bound on the
+  combined frame has margin.
+- **T85.4: the refusal covers `List::default` and `Dyn::new` too**, and
+  is one `#[track_caller]` helper beside `table_has_flag`
+  (`widget::refuse_watched_in_arena`) so the three sentences cannot
+  drift; `Repeat::default` reaches it through `Repeat::new`.
 
 **What the review found (M85).**
 

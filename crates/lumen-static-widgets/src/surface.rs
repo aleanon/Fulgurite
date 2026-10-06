@@ -1,6 +1,7 @@
 //! M27/T27.4 — the three widgets that are mostly *a box with a look*:
 //! `Card`, `Toast` and `Tooltip` — and M85/T85.2's `Pin`, the same
-//! one-child splice with an offset and a clip instead of a look.
+//! one-child splice with an offset and a clip instead of a look, and
+//! M85/T85.4's `Pop`, the same splice with a visibility flag instead.
 //!
 //! # Why a `Card` type at all
 //!
@@ -414,6 +415,189 @@ impl<W: Widget> Node for Pin<W> {
         }
         // Transparent: what the child does not take is not the pin's.
         self.content.hit(st, i + Self::AT, x, y)
+    }
+
+    fn node(&self, k: usize) -> &dyn Node {
+        if k == i_zero() {
+            self
+        } else {
+            self.content.node(k - Self::AT)
+        }
+    }
+
+    fn node_mut(&mut self, k: usize) -> &mut dyn Node {
+        if k == i_zero() {
+            self
+        } else {
+            self.content.node_mut(k - Self::AT)
+        }
+    }
+}
+
+// ---- Pop -------------------------------------------------------------
+
+/// **One child that is told when it enters or leaves the view** —
+/// M85/T85.4, iced's `pop` (its sensor).
+///
+/// The pop's own table entry carries `NodeDesc::WATCHES_VIEW`, so a
+/// `Host` lists it once at construction and, after every `place`,
+/// decides whether it is in view: not gone, and its rect meets the window
+/// and every ancestor that clips (a `ScrollView`'s viewport, so content
+/// below the fold is *not* in view however much of the window it is in).
+/// A change reaches the pop on the next pump as `Event::Visibility` —
+/// which it records, so [`Pop::visible`] answers — and then runs
+/// [`Pop::on_view`] with the event as `ctx.event`. That handler is asked
+/// with `NodeSel::visibility`, a sentinel no activation sends, so a click
+/// on the content can never run it, and it never answers a click.
+///
+/// The write reaches the screen **one frame after** the frame that placed
+/// the pop in view, because the frame that finds the change is already
+/// painted; the host's deadline answers `Some(0.0)` while one waits, so a
+/// waiting window asks for that frame at once
+/// (`crates/lumen-static-shell/tests/pop_visibility.rs`).
+///
+/// A lazily loaded image is the shape it was built for: the pop holds a
+/// placeholder of the image's size, and `on_view` starts the load.
+///
+/// **Not inside a `Repeat`, a `List` or a `Dyn`**: their instances live
+/// in an arena the host's pass never sees, so each refuses one at
+/// construction (`lumen_static::widget::table_has_flag`). In a repeater
+/// the signal is its window range, `first_row()..first_row() +
+/// window_len()`.
+///
+/// It draws nothing of its own and claims no press: its box is its
+/// content's, and a press on it is its content's or nobody's.
+pub struct Pop<S: 'static, W: Widget> {
+    pub content: W,
+    /// Run when the pop enters or leaves the view; `ctx.event` is
+    /// `Event::Visibility { visible }`. A no-op by default.
+    pub on_view: fn(&mut S, &lumen_static::event::EventCtx),
+    visible: bool,
+}
+
+impl<S: 'static, W: Widget + Default> Default for Pop<S, W> {
+    fn default() -> Self {
+        Pop { content: W::default(), on_view: crate::ops::ignore_click::<S>, visible: false }
+    }
+}
+
+impl<S: 'static, W: Widget> Pop<S, W> {
+    /// Content index, relative to this node.
+    const AT: usize = 1;
+
+    /// `content`, with `on_view` run as it enters and leaves the view.
+    pub fn new(content: W, on_view: fn(&mut S, &lumen_static::event::EventCtx)) -> Self {
+        Pop { content, on_view, visible: false }
+    }
+
+    /// Whether the last visibility the host delivered was "in view".
+    /// `false` until the first delivery: a pop never shown is never told.
+    pub fn visible(&self) -> bool {
+        self.visible
+    }
+}
+
+pub struct PopTable<S, W>(core::marker::PhantomData<(S, W)>);
+
+impl<S: 'static, W: Widget> PopTable<S, W> {
+    const ARRAY: [NodeDesc; MAX_SURFACE_NODES] = {
+        assert!(W::NODE_COUNT < MAX_SURFACE_NODES, "Pop content exceeds MAX_SURFACE_NODES");
+        let mut t = [NodeDesc::EMPTY; MAX_SURFACE_NODES];
+        // The flag on its own entry is the whole registration: the host
+        // scans the table once for it (M85/T85.3).
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER | NodeDesc::WATCHES_VIEW);
+        lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
+        t
+    };
+    pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
+
+    const SEED_ARRAY: [Seed; MAX_SURFACE_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_SURFACE_NODES];
+        // A pop paints nothing of its own, so its size is all it reads.
+        s[0] = Seed::new(
+            <Pop<S, W> as Widget>::KIND,
+            <Pop<S, W> as Widget>::type_defaults,
+            Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]),
+        );
+        lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
+}
+
+impl<S: 'static, W: Widget> Widget for Pop<S, W> {
+    const NODE_COUNT: usize = 1 + W::NODE_COUNT;
+    const DEPTH: usize = 1 + W::DEPTH;
+    /// Its box is its content's, so it is as rigid as its content.
+    const IS_RIGID: bool = W::IS_RIGID;
+    const SUB_TABLE: &'static [NodeDesc] = PopTable::<S, W>::SLICE;
+    const KIND: &'static str = "pop";
+    const SEEDS: &'static [Seed] = PopTable::<S, W>::SEED_SLICE;
+
+    /// Shrinks to its content on both axes: a pop is its content's box.
+    fn type_defaults() -> Style {
+        Style::default()
+    }
+}
+
+impl<S: 'static, W: Widget> Node for Pop<S, W> {
+    lumen_static::node_count!();
+
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
+    fn layout(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+        }
+        // Inside its own size, loose: the maximum is inherited and the
+        // minimum is not, so the content may shrink (M27/T27.5's rule).
+        let own = lumen_static::ops::within_own_size(limits, &me);
+        let inner = Constraints { min_w: 0.0, max_w: own.max_w, min_h: 0.0, max_h: own.max_h };
+        let c = self.content.layout(cx, inner, style, st, i + Self::AT);
+        let s = lumen_static::ops::resolve_self(limits, &me, c);
+        lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+
+    fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = origin;
+        self.content.place(origin, style, st, i + Self::AT);
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        self.content.paint(st, i + Self::AT, out);
+    }
+
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
+        // Transparent: what the content does not take is not the pop's.
+        self.content.hit(st, i + Self::AT, x, y)
+    }
+
+    /// Records what the host told it, and consumes it: the event is the
+    /// pop's alone, and its handler runs next (`pass::tell_visibility`).
+    fn on_event(
+        &mut self,
+        ev: &lumen_static::event::Event,
+        _cx: &lumen_static::event::EventCtx,
+    ) -> bool {
+        if let lumen_static::event::Event::Visibility { visible } = *ev {
+            self.visible = visible;
+            return true;
+        }
+        false
     }
 
     fn node(&self, k: usize) -> &dyn Node {
@@ -991,6 +1175,25 @@ where
     ) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
         if sel.i == 0 {
             return None;
+        }
+        self.content
+            .handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })
+    }
+}
+
+/// A pop's own handler answers only the host's visibility question
+/// (`NodeSel::visibility`, a sentinel no click sends); its content owns
+/// every other handler.
+impl<S: 'static, W> lumen_static::event::Handlers<S> for Pop<S, W>
+where
+    W: Widget + lumen_static::event::Handlers<S>,
+{
+    fn handler(
+        &self,
+        sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
+        if sel.i == 0 {
+            return sel.is_visibility().then_some(self.on_view);
         }
         self.content
             .handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })

@@ -53,6 +53,8 @@ ROLES = {
     "Card": "Group",
     # M85/T85.2: a box that offsets its child; the child speaks.
     "Pin": "GenericContainer",
+    # M85/T85.4: a box told when it enters the view; the child speaks.
+    "Pop": "GenericContainer",
     "Toast": "Status",
     "Tooltip": "Group",
     "TextInput": "TextInput",

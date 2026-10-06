@@ -15,6 +15,7 @@ Popup      a wrapper: its content speaks
 ScrollView a wrapper: its content speaks
 Card       a wrapper: its content speaks
 Pin        a wrapper: its content speaks
+Pop        a wrapper: its content speaks
 Tooltip    a wrapper: its control and its tip speak
 '
 

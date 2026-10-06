@@ -1,5 +1,5 @@
 """M27/T27.4 — `Card`, `Toast`, `Tooltip` against the live window, and
-M85/T85.2's `Pin`.
+M85/T85.2's `Pin` and M85/T85.4's `Pop`.
 
 The Card's one action is the claim `Dyn` failed: a control *inside* a
 wrapper must reach the application. The headless test makes it too, but
@@ -327,4 +327,108 @@ PIN = ("Pin", "#d_pin_a", [
     ),
 ])
 
-ALL = [CARD, PIN, TOAST, TOOLTIP]
+# --- Pop -----------------------------------------------------------
+# M85/T85.4: `#d_pop_a` is a 260 x 180 `ScrollView` (the ScrollView demo's
+# shape) holding four rows and `#d_pop_item`, a `Pop` around an image-sized
+# placeholder `#d_pop_img`, below its fold. The live gate for T85.3's
+# visibility pass: nothing but the pass tells the application it is in
+# view. The inventory's node is the `Pop` itself (its role is
+# GenericContainer), so the harness bounds the scroll's damage against the
+# placeholder's box and where it was and is.
+
+
+def _window_h(c) -> float:
+    """The window's height in logical px, from the screenshot."""
+    shot = c.c.rpc("ui.screenshot")
+    return shot["height"] / shot.get("scale", 1.0)
+
+
+def _meets(a, b) -> bool:
+    return max(a[0], b[0]) < min(a[2], b[2]) and max(a[1], b[1]) < min(a[3], b[3])
+
+
+def _pop_fold(c):
+    v, item, win = _box(c, "#d_pop_a"), _box(c, "#d_pop_item"), _window_h(c)
+    vh = v[3] - v[1]
+    return (
+        vh < win and not _meets(item, v) and c.readout() == "waiting",
+        f"viewport {vh:.0f} px tall in a {win:.0f} px window (bound viewport < window); "
+        f"placeholder y {item[1]:.0f}..{item[3]:.0f} against the viewport's "
+        f"{v[1]:.0f}..{v[3]:.0f} (outside); readout {c.readout()!r}",
+    )
+
+
+def _pop_reveal(c):
+    """PageDown until the readout says loaded, at most five times."""
+    c._s0 = c.mark()
+    c._pages = 0
+    while c.readout() != "loaded" and c._pages < 5:
+        c.key("PageDown")
+        c._pages += 1
+
+
+def _last_changed(c, since: int):
+    """The regions of the latest frame after `since` that changed anything,
+    and that frame's number: walk back from the newest frame until a
+    window holds a change."""
+    now = c.mark()
+    for k in range(now - 1, since - 1, -1):
+        regions = c.c.rpc("ui.lastDamage", since=k).get("regions", [])
+        if regions:
+            return regions, k + 1, now
+    return [], None, now
+
+
+def _pop_loaded(c):
+    """The application says loaded (its state, not a delivery count), the
+    placeholder is in the view and shows it, and the frame that loaded it
+    is printed with its damage over the view.
+
+    **Not bounded at 1.00x here**: the window's input RPC pumps a frame the
+    journal does not record (the one whose `place` queues the change), so
+    the scroll and the load land in one journal frame, and the region
+    over the view is the scroll's. The harness bounds that frame against
+    the placeholder's box and where it was (4.0); the load's own damage,
+    1.00x the placeholder, is gated per frame headlessly
+    (`crates/lumen-static-widgets/tests/pop.rs`)."""
+    item, v = _box(c, "#d_pop_item"), _box(c, "#d_pop_a")
+    regions, frame, now = _last_changed(c, c._s0)
+    over = [r for r in regions if _meets(r, v)]
+    worst = max((_area(r) for r in over), default=0.0)
+    return (
+        c.readout() == "loaded" and _meets(item, v) and c.value("#d_pop_img") == "loaded",
+        f"readout {c.readout()!r} after {c._pages} PageDown(s) (bound 'loaded'); placeholder y "
+        f"{item[1]:.0f}..{item[3]:.0f} in the viewport {v[1]:.0f}..{v[3]:.0f}; its text "
+        f"{c.value('#d_pop_img')!r} (bound 'loaded'); the frame that loaded it ({frame} of "
+        f"{c._s0}..{now}, scroll and load together) has {len(over)} region(s) over the view, "
+        f"the largest {worst:.0f} px² against the placeholder's {_area(item):.0f} px²",
+    )
+
+
+POP = ("Pop", "#d_pop_item", [
+    Action(
+        name="the placeholder starts below the fold of a view shorter than the window",
+        needs="a freshly seeded Pop demo",
+        do=lambda c: c.hover(),
+        expect=_pop_fold,
+        static=True,
+        injection="make the view as tall as the window -- the bound viewport < window "
+                  "fires, and no step could tell the viewport's clip from the window's",
+    ),
+    Action(
+        # Shows in the view, not in the pop's starting box: that box is
+        # below the fold, where nothing is drawn before or after.
+        visible=True,
+        region="#d_pop_a",
+        name="PageDown until the placeholder is in view loads it",
+        needs="a view at the top with focus on its first row, the placeholder waiting",
+        prep=lambda c: c.click("#d_pop_first"),
+        do=_pop_reveal,
+        expect=_pop_loaded,
+        injection="have Pop leave NodeDesc::WATCHES_VIEW off its entry -- the host never "
+                  "watches it, the readout stays 'waiting', and the action fails its "
+                  "consequence",
+    ),
+])
+
+ALL = [CARD, PIN, POP, TOAST, TOOLTIP]

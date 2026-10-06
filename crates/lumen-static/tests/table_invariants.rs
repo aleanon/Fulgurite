@@ -294,3 +294,36 @@ fn an_enum_counts_one_node_plus_every_variant() {
     assert_eq!(t[0].child_count, 3, "every variant is a child of the enum's node");
     assert!(table_is_well_formed(t));
 }
+
+// ---- `table_has_flag` — M85/T85.4 ------------------------------------
+
+/// root { a { b* } } with the flag only on `b`, the deepest entry, and
+/// the same shape with no flag anywhere — both evaluated in a `const`
+/// context, which is where the arena refusal's tables are read.
+const NESTED: [NodeDesc; 3] = [
+    NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER),
+    NodeDesc::new(2, 0, 0, 1, NodeDesc::CONTAINER),
+    NodeDesc::new(0, 1, 0, 0, NodeDesc::WATCHES_VIEW),
+];
+const PLAIN: [NodeDesc; 3] = [
+    NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER),
+    NodeDesc::new(2, 0, 0, 1, NodeDesc::CONTAINER),
+    NodeDesc::new(0, 1, 0, 0, NodeDesc::FOCUSABLE),
+];
+const NESTED_HAS: bool = lumen_static::widget::table_has_flag(&NESTED, NodeDesc::WATCHES_VIEW);
+const PLAIN_HAS: bool = lumen_static::widget::table_has_flag(&PLAIN, NodeDesc::WATCHES_VIEW);
+
+// The answers are computed in a `const` context and asserted at run time,
+// so a wrong one fails this test by name rather than the build.
+#[allow(clippy::assertions_on_constants)]
+#[test]
+fn table_has_flag_finds_a_flag_on_a_nested_entry() {
+    // The tables are well formed, so the answer is about the flag alone.
+    assert!(table_is_well_formed(&NESTED) && table_is_well_formed(&PLAIN));
+    println!("nested: {NESTED_HAS} (bound true); plain: {PLAIN_HAS} (bound false)");
+    assert!(NESTED_HAS, "table_has_flag missed WATCHES_VIEW on the deepest entry");
+    assert!(!PLAIN_HAS, "table_has_flag answered true for a table with no WATCHES_VIEW");
+    // The root's own flag counts too, and another bit is not this one.
+    assert!(lumen_static::widget::table_has_flag(&NESTED, NodeDesc::CONTAINER));
+    assert!(!lumen_static::widget::table_has_flag(&NESTED, NodeDesc::FOCUSABLE));
+}

@@ -334,6 +334,11 @@ pub struct Store {
     /// The chip demo's selected tags, a bit each, and its × presses (B2).
     tags: u8,
     removed: u32,
+    /// **The Pop demo** (M85/T85.4): whether its placeholder has been
+    /// scrolled into view and so "loaded". Set by the pop's `on_view`;
+    /// `refresh` writes the placeholder's text from it, and the entry's
+    /// seed clears it.
+    pop_loaded: bool,
     /// The toast demo: a show request, and how many were shown (B34).
     toast_request: bool,
     toasts: u32,
@@ -422,6 +427,16 @@ fn refresh(s: &mut Show) -> bool {
         if d.a.trigger.label != want {
             d.a.trigger.label.clear();
             d.a.trigger.label.push_str(want);
+            changed = true;
+        }
+    }
+    // **The Pop demo's placeholder** (M85/T85.4): its text is the
+    // store's, so the frame after the pop is scrolled into view draws it
+    // loaded. Compared first, so an unchanged frame writes nothing.
+    if let Demo::Pop(d) = &mut s.ui.main.stage.row.demo {
+        let want = if s.store.pop_loaded { "loaded" } else { "loads when it scrolls into view" };
+        if d.a.content.item.content.text.text.as_str() != want {
+            d.a.content.item.content.text.set(want.into());
             changed = true;
         }
     }
@@ -1630,6 +1645,20 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         StyleRule::new(Selector::Kind("PinBody"), Patch::new().width(Length::Shrink)),
         StyleRule::new(Selector::Id("d_pin_go"), btn().background_role(Role::Accent)
             .color_role(Role::OnAccent)),
+        // M85/T85.4: the Pop demo's view, as short as the ScrollView
+        // demo's, and its placeholder an image-sized raised box.
+        StyleRule::new(
+            Selector::Id("d_pop_a"),
+            Patch::new().width(Length::Fixed(260.0)).height(Length::Fixed(180.0)),
+        ),
+        StyleRule::new(
+            Selector::Id("d_pop_img"),
+            Patch::new()
+                .width(Length::Fixed(220.0))
+                .height(Length::Fixed(120.0))
+                .background_role(Role::Raised)
+                .radius(8.0),
+        ),
         StyleRule::new(
             Selector::Id("d_split_a"),
             Patch::new().width(Length::Fixed(360.0)).height(Length::Fixed(140.0)),
