@@ -23,8 +23,11 @@ struct OneUi {
     shown: Label,
 }
 
-#[derive(Default)]
+/// `Reloadable`, as every window program is in a `reload` build
+/// (`WindowApp`, M89/T89.7); expands to nothing without it.
+#[derive(Default, lumen_static::Reloadable)]
 struct One {
+    #[reload(fresh)]
     ui: OneUi,
 }
 

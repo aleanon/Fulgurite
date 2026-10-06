@@ -826,6 +826,10 @@ impl Win {
     /// One frame of slot `i`'s window. `event_loop` is in hand because
     /// the frame's drain may open a window (M89/T89.3).
     fn redraw(&mut self, event_loop: &ActiveEventLoop, i: usize) {
+        // **The swap, between frames** (M37 rule 3), for every session at
+        // once (M89/T89.7): taken at the start of any slot's frame.
+        #[cfg(feature = "hot")]
+        self.swap_step();
         let slot = &mut self.slots[i];
         let (Some(window), Some(backend)) = (slot.window.clone(), slot.backend.as_mut()) else {
             return;
@@ -839,67 +843,6 @@ impl Win {
         if backend.resize(w, h) {
             slot.session.resize(w, h);
         }
-        // **The swap, between frames** (M37 rule 3): a library that
-        // landed since the last frame takes over now, with the running
-        // session's kept state, **this slot's** keyed waker, scale and
-        // size (M89/T89.1; T89.7 moves the swap to a step over every
-        // slot).
-        //
-        // **The primary's only, until T89.7** (M89/T89.3): the reloader
-        // boots the library's program 0, so swapping a window program's
-        // slot would replace it with the primary's application.
-        #[cfg(feature = "hot")]
-        if let Some(hot) = self.hot.as_mut().filter(|_| slot.key == windows::PRIMARY) {
-            let (waker, scale) = (slot.waker.clone(), window.scale_factor() as f32);
-            if hot.reloader.swap(&mut slot.session, |s| {
-                if let Some(waker) = waker {
-                    s.set_waker(waker);
-                }
-                s.set_scale(scale);
-                s.resize(w, h);
-            }) {
-                eprintln!("lumen-static: reloaded ({})", hot.reloader.reloads);
-                // M49/T49.10: at least once — a job with a side effect that
-                // was running at the swap may perform it twice.
-                let r = hot.reloader.reissued;
-                if r.spawned + r.unknown > 0 {
-                    eprintln!(
-                        "lumen-static: {} task(s) in flight re-issued to the new build, {} dropped (no job for them)",
-                        r.spawned, r.unknown
-                    );
-                }
-                slot.last_frame = None;
-                // **The new build's shaders** — M83/T83.4: its program's
-                // table, re-asked from the new session and re-sent, so an
-                // edited WGSL reaches the backend with the swap. Every swap,
-                // not only one whose table changed: the backend keys what it
-                // compiles by content (T83.5), so an unchanged table costs a
-                // lookup. From M89 this is the multi-window swap's per-slot adopt step
-                // (`docs/plan-windows.md`).
-                let _refused = backend.set_shaders(slot.session.shaders());
-                // **The new build's images** — M84/T84.6 (second review
-                // A14): its application store is re-asked each present
-                // (`FrameSource::images`), but a backend that caches by
-                // `(id, frame)` — the GPU atlas, which lives on this side
-                // of the swap — would keep the old build's pixels for an
-                // unchanged pair. The swap frame repaints all anyway.
-                backend.invalidate_images();
-                // **A build may change the program's shaping** — M81/T81.4.
-                // The new session measures with its own program's mode; the
-                // backend follows it, and everything is repainted, because
-                // every run on the surface was drawn with the old stack.
-                let wanted = slot.session.shaping();
-                if let Some(font) = slot.font.as_ref().filter(|f| f.shaping() != wanted) {
-                    let font = font.clone().with_shaping(wanted);
-                    backend.set_font(font.clone());
-                    hot.metrics = Some(FontMetrics::new(font.clone()));
-                    slot.font = Some(font);
-                    slot.session.repaint_all();
-                    eprintln!("lumen-static: the new build lays text out {wanted:?}");
-                }
-            }
-        }
-
         // **A retry since the last frame** (M36, by R or by `app.retry`):
         // the store the screen did not draw may have been left mid-write,
         // and a backend that cached its pixels by `(id, frame)` must ask
@@ -1194,6 +1137,10 @@ impl Win {
     /// `Refused(Unsupported)`: it has no renderer.
     fn step_windowless(&mut self, event_loop: &ActiveEventLoop) {
         self.windowless_due = false;
+        // The swap step, at the start of a windowless step as at the start
+        // of a window's frame (M89/T89.7).
+        #[cfg(feature = "hot")]
+        self.swap_step();
         let Some(i) = self.slot_keyed(windows::WINDOWLESS) else { return };
         let slot = &mut self.slots[i];
         let start = Instant::now();
@@ -1331,11 +1278,10 @@ impl Win {
     fn open_program(&mut self, event_loop: &ActiveEventLoop, from: u32, program: u16, tag: u64) -> Option<u32> {
         use lumen_static::request::Answer;
         let entry = self.config.windows.filter(|_| program != 0).and_then(|table| table(program));
-        let Some(mut entry) = entry else {
+        let Some((session, spec)) = self.program_session(program, entry) else {
             self.answer_window(from, tag, Answer::NoSuchProgram { program });
             return None;
         };
-        let spec = entry.spec();
         if let Some(addr) = &spec.agent {
             eprintln!(
                 "lumen-static: window program {program} asks for an agent endpoint on {addr}; ignored -- \
@@ -1344,7 +1290,7 @@ impl Win {
         }
         let key = self.next_key;
         self.next_key += 1;
-        let mut slot = WindowSlot::new(key, entry.session(CATCHES_PANICS), spec.images);
+        let mut slot = WindowSlot::new(key, session, spec.images);
         slot.program = program;
         slot.opener = Some((from, tag));
         slot.spec = (spec.width, spec.height, spec.page, spec.backend);
@@ -1355,6 +1301,165 @@ impl Win {
         self.open_window(event_loop, self.slots.len() - 1);
         self.answer_window(from, tag, Answer::WindowOpened { window: key });
         Some(key)
+    }
+
+    /// **The session and window settings for window program `program`** —
+    /// `entry` is the loader's static table's (M89/T89.3); `None` when the
+    /// program has none.
+    ///
+    /// **In a hot window, a session from the build that is loaded**
+    /// (M89/T89.7, `docs/plan-windows.md`, hot reload): after the first
+    /// swap, [`Reloader::open`](lumen_static_reload::hot::Reloader::open)
+    /// boots the program from the build running, so a late window is the
+    /// new build's and never one held from the build the window started
+    /// with (rule 3); before it, the static table's entry through
+    /// `OpenProgram::hot(None)`, never `session(recover)`, so its saver is
+    /// installed and its `#[reload(keep)]` state is carried by the first
+    /// swap (second review A17). **The window's settings are always the
+    /// loader's** — an `ImageSource` from a library would be library code
+    /// held across a swap — so a program only the loaded build knows opens
+    /// at `Config::default`'s size, with a line on stderr.
+    fn program_session(
+        &mut self,
+        program: u16,
+        entry: Option<Box<dyn lumen_static_shell::program::OpenProgram>>,
+    ) -> Option<(Box<dyn Session>, lumen_static_shell::program::WindowSpec)> {
+        let mut entry = entry;
+        let spec = entry.as_mut().map(|e| e.spec());
+        #[cfg(not(feature = "hot"))]
+        let _ = program;
+        #[cfg(feature = "hot")]
+        if let Some(hot) = self.hot.as_ref() {
+            match hot.reloader.open(program) {
+                Some(Ok(session)) => {
+                    let spec = spec.unwrap_or_else(|| {
+                        eprintln!(
+                            "lumen-static: window program {program} is the loaded build's and not this binary's -- \
+                             it opens at the default size; restart to give it its own"
+                        );
+                        let d = Config::default();
+                        lumen_static_shell::program::WindowSpec {
+                            width: d.width,
+                            height: d.height,
+                            page: d.page,
+                            backend: d.backend,
+                            images: None,
+                            agent: None,
+                        }
+                    });
+                    return Some((session, spec));
+                }
+                Some(Err(report)) => {
+                    eprintln!("lumen-static: the loaded build could not open window program {program}: {report}");
+                    return None;
+                }
+                None => return Some((entry?.hot(None), spec?)),
+            }
+        }
+        Some((entry?.session(CATCHES_PANICS), spec?))
+    }
+
+    /// **The swap step: every session from the new build, or none** —
+    /// M89/T89.7 (`docs/plan-windows.md`, "Hot reload boots every window
+    /// from the build that is loaded").
+    ///
+    /// Taken at the start of any slot's frame and of a windowless step,
+    /// never inside a drain: the loop is single-threaded, so every session
+    /// is between frames here, and no request crosses a build. A library
+    /// that landed since is opened once and boots **every** session — the
+    /// windowless one and each window's, by its program index — before any
+    /// is replaced ([`lumen_static_reload::hot::Reloader::swap_all`]), so a
+    /// window program whose boot panics leaves them all on the build they
+    /// run, with the report in the bar.
+    ///
+    /// **Each session is adopted into its own slot** (second review A8):
+    /// that slot's keyed waker, its window's scale and size — a windowless
+    /// session keeps its own — and then, per slot, the new build's shaders
+    /// to its backend, its images re-asked, its shaping compared with its
+    /// own stack (`Backend::set_font` and a repaint of that slot alone),
+    /// and a frame asked for.
+    #[cfg(feature = "hot")]
+    fn swap_step(&mut self) {
+        let Some(hot) = self.hot.as_mut() else { return };
+        if hot.reloader.pending().is_none() {
+            return;
+        }
+        // What each slot's new session is adopted with, taken before the
+        // sessions are lent to the reloader.
+        let adopt: Vec<Adopt> = self
+            .slots
+            .iter()
+            .map(|s| {
+                let geometry = s.window.as_ref().map(|w| {
+                    let size = w.inner_size();
+                    (w.scale_factor() as f32, size.width.max(1), size.height.max(1))
+                });
+                (s.waker.clone(), geometry)
+            })
+            .collect();
+        let mut sessions: Vec<(u16, &mut Box<dyn Session>)> =
+            self.slots.iter_mut().map(|s| (s.program, &mut s.session)).collect();
+        let swapped = hot.reloader.swap_all(&mut sessions, |i, s| {
+            let (waker, geometry) = &adopt[i];
+            if let Some(waker) = waker.clone() {
+                s.set_waker(waker);
+            }
+            if let Some((scale, w, h)) = *geometry {
+                s.set_scale(scale);
+                s.resize(w, h);
+            }
+        });
+        if !swapped {
+            // A refusal: the bar says why, in every window.
+            for i in 0..self.slots.len() {
+                self.ask_frame(i);
+            }
+            return;
+        }
+        eprintln!("lumen-static: reloaded ({}), {} session(s)", hot.reloader.reloads, self.slots.len());
+        // M49/T49.10: at least once — a job with a side effect that was
+        // running at the swap may perform it twice.
+        let r = hot.reloader.reissued;
+        if r.spawned + r.unknown > 0 {
+            eprintln!(
+                "lumen-static: {} task(s) in flight re-issued to the new build, {} dropped (no job for them)",
+                r.spawned, r.unknown
+            );
+        }
+        let mut metrics = None;
+        for i in 0..self.slots.len() {
+            let slot = &mut self.slots[i];
+            slot.last_frame = None;
+            if let Some(backend) = slot.backend.as_mut() {
+                // **The new build's shaders** — M83/T83.4: re-asked from
+                // the new session and re-sent; the backend keys what it
+                // compiles by content (T83.5), so an unchanged table costs
+                // a lookup.
+                let _refused = backend.set_shaders(slot.session.shaders());
+                // **The new build's images** — M84/T84.6 (second review
+                // A14): a backend caching by `(id, frame)` would keep the
+                // old build's pixels for an unchanged pair.
+                backend.invalidate_images();
+                // **A build may change the program's shaping** — M81/T81.4,
+                // per slot (second review X2): compared with this slot's own
+                // stack, and only this slot repainted.
+                let wanted = slot.session.shaping();
+                if let Some(font) = slot.font.as_ref().filter(|f| f.shaping() != wanted) {
+                    let font = font.clone().with_shaping(wanted);
+                    backend.set_font(font.clone());
+                    if slot.program == 0 {
+                        metrics = Some(FontMetrics::new(font.clone()));
+                    }
+                    slot.font = Some(font);
+                    slot.session.repaint_all();
+                    eprintln!("lumen-static: the new build lays text out {wanted:?} (window {})", slot.key);
+                }
+            }
+            self.ask_frame(i);
+        }
+        if let (Some(m), Some(hot)) = (metrics, self.hot.as_mut()) {
+            hot.metrics = Some(m);
+        }
     }
 
     /// The soonest of every slot's deadlines (M47/T47.1, per slot since
@@ -1369,6 +1474,12 @@ impl Win {
         })
     }
 }
+
+/// What a slot's new session is adopted with at a swap (M89/T89.7): the
+/// slot's keyed waker, and its window's scale and physical size — `None`
+/// for the windowless session, which keeps its own.
+#[cfg(feature = "hot")]
+type Adopt = (Option<Arc<dyn lumen_static::inbox::Waker>>, Option<(f32, u32, u32)>);
 
 impl WindowSlot {
     /// **The candidate window goes beside the caret** — M80/T80.5
@@ -1578,8 +1689,11 @@ impl ApplicationHandler<UserEvent> for Win {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.building = true;
                 }
-                for slot in &mut self.slots {
-                    slot.ask_redraw();
+                // Every window redraws (the title says a build is running),
+                // and the windowless session, which has none, takes a step
+                // (M89/T89.7, second review P13).
+                for i in 0..self.slots.len() {
+                    self.ask_frame(i);
                 }
             }
             #[cfg(feature = "a11y")]
@@ -1604,8 +1718,12 @@ impl ApplicationHandler<UserEvent> for Win {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.outcome(outcome);
                 }
-                for slot in &mut self.slots {
-                    slot.ask_redraw();
+                // **The swap is taken at the start of a frame**, and a daemon
+                // with every window closed has none to ask for: its
+                // windowless session takes a step (M89/T89.7, second review
+                // P13), or it would not swap until an unrelated timer fired.
+                for i in 0..self.slots.len() {
+                    self.ask_frame(i);
                 }
             }
         }

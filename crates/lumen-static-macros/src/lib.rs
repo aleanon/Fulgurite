@@ -2175,6 +2175,7 @@ impl syn::parse::Parse for BindSpec {
 /// // #[app(tick = advance)]             // optional, fn(&mut Self, f32) -> bool
 /// // #[app(wake = next_frame)]          // optional, fn(&Self) -> Option<f32>
 /// // #[app(images = store)]             // optional, fn(&Self) -> Option<&dyn ImageSource>
+/// // #[app(requests = queue)]            // optional (std), fn(&mut Self) -> Option<&mut Requests>
 /// // #[app(msg = Msg, apply = take)]     // optional together, fn(&mut Self::State, Msg) -> bool
 /// // #[app(subscriptions = subs)]        // optional, fn(&mut Self) -> Option<&mut Subs>
 /// // #[app(jobs = job_for)]              // optional, needs msg, fn(Descriptor) -> Option<JobFn<Msg>>
@@ -2232,6 +2233,9 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     let mut tick: Option<syn::Path> = None;
     let mut wake: Option<syn::Path> = None;
     let mut images: Option<syn::Path> = None;
+    // M89/T89.7: `App::requests` for a derived application -- what a
+    // handler pushes `Request::OpenWindow` onto.
+    let mut requests: Option<syn::Path> = None;
     // M84/T84.8: deferred work for a derived application -- its message
     // type, the `apply` that interprets one, its subscriptions and the
     // jobs they run. A derived app deferred nothing until then (`Msg =
@@ -2265,6 +2269,8 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 (&mut wake, "wake")
             } else if meta.path.is_ident("images") {
                 (&mut images, "images")
+            } else if meta.path.is_ident("requests") {
+                (&mut requests, "requests")
             } else if meta.path.is_ident("apply") {
                 (&mut apply, "apply")
             } else if meta.path.is_ident("subscriptions") {
@@ -2273,7 +2279,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
                 (&mut jobs, "jobs")
             } else {
                 return Err(meta.error(
-                    "expected `after_update = path`, `tick = path`, `wake = path`, `images = path`, \
+                    "expected `after_update = path`, `tick = path`, `wake = path`, `images = path`, `requests = path`, \
                      `msg = Type`, `apply = path`, `subscriptions = path` or `jobs = path`",
                 ));
             };
@@ -2512,6 +2518,19 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         }
     });
 
+    // **M89/T89.7.** `App::requests` for a derived application: the
+    // queue a handler pushes platform requests onto (S1) -- a window to
+    // open, above all. `fixtures/hot-window` derives `App`, and its
+    // primary opens its panel through this without a hand-written impl.
+    let requests_fn = requests.map(|p| {
+        quote! {
+            fn requests(&mut self) -> ::core::option::Option<&mut ::lumen_static::request::Requests> {
+                let #hook: fn(&mut Self) -> ::core::option::Option<&mut ::lumen_static::request::Requests> = #p;
+                #hook(self)
+            }
+        }
+    });
+
     // **M84/T84.8.** Deferred work: `msg` with `apply`, and the
     // subscriptions and jobs that produce messages. Absent, a derived app
     // defers nothing (M28/T28.2): `Never` is uninhabited, so nothing can
@@ -2658,6 +2677,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             #wake_fn
 
             #images_fn
+            #requests_fn
 
             #subs_fn
 

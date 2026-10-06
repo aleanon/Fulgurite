@@ -363,7 +363,8 @@ macro_rules! export_abi_stamp {
 /// **A window's hot library, from both sides** — M37/T37.1
 /// (`docs/plan-window-reload.md`).
 ///
-/// The library side is [`boot`](hot::boot), which [`export_program!`]
+/// The library side is [`boot`](hot::boot) (in the shell since M89/T89.7,
+/// re-exported here), which [`export_program!`]
 /// calls: the library's own `program()` is booted and the saved state
 /// restored onto it, so a swap re-runs the **new** build's construction
 /// (§2.2) and never goes through a pointer held from the old one — rule
@@ -379,13 +380,8 @@ pub mod hot {
     use std::ffi::c_void;
     use std::path::{Path, PathBuf};
 
-    use lumen_static::event::App;
-    use lumen_static::reload::{symbols, Reloadable};
-    use lumen_static::spawn::Descriptor;
-    use lumen_static_shell::program::Program;
-    use lumen_static::invalidate::Invalidation;
-    use lumen_static_shell::session::{abi_fields, FrameSource, Local, Recovering, Ret, Screen, Session};
-    use lumen_static_shell::Host;
+    use lumen_static::reload::symbols;
+    use lumen_static_shell::session::{abi_fields, FrameSource, Screen, Session};
 
     /// This image's ABI stamp, with the shell's fields: what a window
     /// library exports and what its loader compares against.
@@ -393,107 +389,15 @@ pub mod hot {
         crate::abi::stamp(&abi_fields())
     }
 
-    /// The key a session's saved bytes reserve for the framework — M49/T49.10.
-    ///
-    /// `save` writes `{"$lumen": {"in_flight": [[kind, step, payload], …]},
-    /// "state": <the application's kept state>}`. The work in flight is the
-    /// host's, not the application's, so it rides beside the state rather
-    /// than inside it, and a `#[reload(keep)]` field can never collide with
-    /// it. Bytes without this key are read as the state alone.
-    pub const RESERVED: &str = "$lumen";
+    /// **Moved into the shell by M89/T89.7** (`docs/plan-windows.md`, hot
+    /// reload): `OpenProgram::hot` boots a window program from a library,
+    /// and the shell cannot depend on this crate. Re-exported here so every
+    /// caller — `export_program!`, the window, the fixtures — keeps its path.
+    pub use lumen_static_shell::session::hot::{boot, save, RESERVED};
 
-    /// **What a window saves for a swap**: the application's kept state and
-    /// the host's work in flight ([`Host::reissuable`]), under
-    /// [`RESERVED`]. The [`Saver`](lumen_static_shell::session::Saver) a hot
-    /// window and a hot library both install.
-    ///
-    /// A descriptor is three `u64`s and is written as three JSON integers
-    /// — data, never a framework type or a code reference
-    /// (`docs/events-decision.md` rule 3).
-    ///
-    /// [`Host::reissuable`]: lumen_static_shell::Host::reissuable
-    pub fn save<A: App + Reloadable, I: Invalidation>(h: &Host<A, Ret, I>) -> Vec<u8> {
-        use lumen_static::reload::{json, Value};
-        let in_flight: Vec<Value> = h.reissuable().iter().map(|d| json!([d.kind, d.step, d.payload])).collect();
-        lumen_static::reload::to_vec(&json!({
-            RESERVED: { "in_flight": in_flight },
-            "state": Reloadable::save(&h.app),
-        }))
-    }
-
-    /// Split saved bytes into the application's state and the work that
-    /// was in flight. Bytes without [`RESERVED`] are all state, and none
-    /// in flight; an entry that is not three integers is skipped.
-    fn unpack(v: lumen_static::reload::Value) -> (lumen_static::reload::Value, Vec<Descriptor>) {
-        let lumen_static::reload::Value::Object(mut m) = v else { return (v, Vec::new()) };
-        let Some(meta) = m.remove(RESERVED) else { return (lumen_static::reload::Value::Object(m), Vec::new()) };
-        let state = m.remove("state").unwrap_or(lumen_static::reload::Value::Null);
-        let descs = meta
-            .get("in_flight")
-            .and_then(|l| l.as_array())
-            .map(|l| {
-                l.iter()
-                    .filter_map(|e| match e.as_array().map(|a| a.as_slice()) {
-                        Some([k, s, p]) => Some(Descriptor { kind: k.as_u64()?, step: s.as_u64()?, payload: p.as_u64()? }),
-                        _ => None,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        (state, descs)
-    }
-
-    /// **The library side**: boot `program`, graft `saved` onto it, and
-    /// re-issue the work the previous build had in flight. Recovery is
-    /// always on — a hot library's panic must be caught in the library
-    /// (M36/T36.4) — and the session can save, for the next swap.
-    ///
-    /// **Work in flight is re-issued to this build** (M49/T49.10, R4-F3):
-    /// each descriptor [`save`] carried is spawned through *this* build's
-    /// `App::job_for`, after the restore, so a chain started under the old
-    /// build completes under the new one's step function. The old build's
-    /// inbox is dropped with its session; what was sitting in it runs
-    /// again here. Delivery across a swap is therefore **at least once**
-    /// ([`Host::reissuable`](lumen_static_shell::Host::reissuable)).
-    ///
-    /// **Generic over the program's strategy** (M81/T81.4): a library
-    /// whose `program()` says `.invalidation::<Everything>()` boots under
-    /// it, as the static window does — the `Session` hides `I`, so the
-    /// loader never sees it. Until then only `Boundaries<256>` could be
-    /// exported, and `just hot-window-drive` could not run its `Everything`
-    /// leg.
-    pub fn boot<A: App + Reloadable + 'static, I: Invalidation + 'static>(
-        program: Program<A, I>,
-        saved: Option<&[u8]>,
-    ) -> Box<dyn Session> {
-        let mut s = Local::from_program(program, Recovering).with_saver(save::<A, I>);
-        let Some(bytes) = saved else { return Box::new(s) };
-        // **Per field** (§2.4): the derive restores each kept field on its
-        // own, and one whose type changed keeps its boot value and is
-        // logged — naming the field and serde's reason. The log is this
-        // library's (a thread-local in its copy of the core), so it is
-        // drained here and handed over with the session.
-        let _ = lumen_static::reload::take_log();
-        let in_flight = match lumen_static::reload::from_slice(bytes) {
-            Some(v) => {
-                let (state, in_flight) = unpack(v);
-                s.host.restore(&state);
-                in_flight
-            }
-            None => {
-                lumen_static::reload::log_fallback("(all)", "(all)", "the saved state could not be read at all");
-                Vec::new()
-            }
-        };
-        s.note_restore(lumen_static::reload::take_log().join("\n"));
-        // After the restore, so a job's result is applied to the kept
-        // state and not overwritten by it.
-        let r = s.host.reissue(&in_flight);
-        s.note_reissue(r);
-        Box::new(s)
-    }
-
-    type BootFn = unsafe extern "C" fn(*const u8, usize) -> *mut c_void;
+    /// `lumen_boot(index, saved, len)` — indexed since M89/T89.7: 0 is the
+    /// library's `program()`, `n` its window table's entry `n`.
+    type BootFn = unsafe extern "C" fn(u16, *const u8, usize) -> *mut c_void;
     type DropFn = unsafe extern "C" fn(*mut c_void);
     type TakeFn = unsafe extern "C" fn(*mut u8, usize) -> usize;
 
@@ -519,6 +423,7 @@ pub mod hot {
     }
 
     /// One loaded build of a window library. Leaked, never unloaded.
+    #[derive(Debug)]
     pub struct Build {
         path: PathBuf,
         boot: BootFn,
@@ -557,13 +462,15 @@ pub mod hot {
             &self.path
         }
 
-        /// Boot this build's program, with `saved` restored onto it. `Err`
-        /// with the library's panic report if its boot panicked.
-        pub fn boot(&self, saved: Option<&[u8]>) -> Result<Hot, String> {
+        /// Boot this build's program `index` — 0 is its `program()`, `n`
+        /// its window table's entry `n` (M89/T89.7) — with `saved` restored
+        /// onto it. `Err` with the library's report if its boot panicked or
+        /// it has no window program `index`.
+        pub fn boot(&self, index: u16, saved: Option<&[u8]>) -> Result<Hot, String> {
             let (ptr, len) = saved.map_or((core::ptr::null(), 0), |b| (b.as_ptr(), b.len()));
             // SAFETY: `(ptr, len)` is a live slice or null; the library
             // copies what it needs before returning.
-            let p = unsafe { (self.boot)(ptr, len) };
+            let p = unsafe { (self.boot)(index, ptr, len) };
             if p.is_null() {
                 return Err(self.take_panic().unwrap_or_else(|| "the library's boot returned nothing".into()));
             }
@@ -675,6 +582,10 @@ pub mod hot {
         /// booting is retried when it is built again.
         hash: Option<u64>,
         pending: Option<(PathBuf, u64)>,
+        /// **The build running** — the one the last successful swap put in
+        /// — kept so a window opened after it boots from it
+        /// ([`Reloader::open`], M89/T89.7). `None` until the first swap.
+        build: Option<Build>,
         /// Why the last build or swap did not take: the compiler's log, a
         /// stamp refusal, a boot's panic. Cleared by a successful swap.
         pub error: Option<String>,
@@ -776,15 +687,51 @@ pub mod hot {
             }
         }
 
-        /// **At a frame boundary**: if a library is waiting, open it, boot
-        /// its program with `current`'s saved state, let `adopt` set it up
-        /// (waker, scale, size), and put it in `current`'s place. Whether
-        /// the session changed.
+        /// **A session for window program `index` from the build running**
+        /// — M89/T89.7 (`docs/plan-windows.md`, hot reload). `None` before
+        /// the first swap: the window's own static table serves until then,
+        /// through `OpenProgram::hot(None)`. `Some(Err)` with the library's
+        /// report when its boot panicked or it has no such entry.
         ///
-        /// The new session is booted **before** the old one is dropped,
-        /// so a refused or panicking build leaves the old one running —
-        /// rule 2. Both libraries stay loaded either way (§2.5).
+        /// A window opened after a swap is therefore the **new** build's
+        /// program — never one held from the build the window started with
+        /// (`docs/events-decision.md` rule 3).
+        pub fn open(&self, index: u16) -> Option<Result<Box<dyn Session>, String>> {
+            let build = self.build.as_ref()?;
+            Some(build.boot(index, None).map(|h| Box::new(h) as Box<dyn Session>))
+        }
+
+        /// **At a frame boundary, one session** — the program's own (index
+        /// 0): [`Reloader::swap_all`] over `current` alone, for a loader with
+        /// one session (`fixtures/reload-host`). `adopt` sets the new one up
+        /// (waker, scale, size). Whether it changed.
         pub fn swap(&mut self, current: &mut Box<dyn Session>, adopt: impl FnOnce(&mut dyn Session)) -> bool {
+            let mut adopt = Some(adopt);
+            self.swap_all(&mut [(0, current)], |_, s| {
+                if let Some(a) = adopt.take() {
+                    a(s)
+                }
+            })
+        }
+
+        /// **At a frame boundary, every session at once** — M89/T89.7. If a
+        /// library is waiting, open it and boot **each** of `sessions` —
+        /// `(program index, session)`, the windowless session and every
+        /// window's — from it with that session's saved state, **before any
+        /// is replaced**. One refusal, a stamp or a boot that panicked,
+        /// leaves them all on the build they run (rule 2); otherwise
+        /// `adopt(i, new)` sets each up (its own waker, scale and size) and
+        /// every one is replaced. Whether they changed.
+        ///
+        /// The shape change and re-issue reported are the first session's
+        /// (the primary, or a daemon's windowless one); the restore logs of
+        /// all are joined into [`warning`](Reloader::warning). Both
+        /// libraries stay loaded either way (§2.5).
+        pub fn swap_all(
+            &mut self,
+            sessions: &mut [(u16, &mut Box<dyn Session>)],
+            mut adopt: impl FnMut(usize, &mut dyn Session),
+        ) -> bool {
             let Some((path, h)) = self.pending.take() else { return false };
             let build = match Build::open(&path) {
                 Ok(b) => b,
@@ -793,27 +740,43 @@ pub mod hot {
                     return false;
                 }
             };
-            let saved = current.save();
-            let shape = current.shape();
-            match build.boot(Some(&saved)) {
-                Ok(hot) => {
-                    let mut next: Box<dyn Session> = Box::new(hot);
-                    adopt(&mut *next);
-                    self.shape_changed = next.shape() != shape;
-                    self.reissued = next.reissued();
-                    let log = next.take_restore_log();
-                    *current = next;
-                    self.hash = Some(h);
-                    self.reloads += 1;
-                    self.error = None;
-                    self.warning = (!log.is_empty()).then_some(log);
-                    true
-                }
-                Err(report) => {
-                    self.error = Some(format!("the new build panicked while booting: {report}"));
-                    false
+            let shape = sessions.first().map(|(_, s)| s.shape());
+            let mut next: Vec<Box<dyn Session>> = Vec::with_capacity(sessions.len());
+            for (index, current) in sessions.iter() {
+                let saved = current.save();
+                match build.boot(*index, Some(&saved)) {
+                    Ok(hot) => next.push(Box::new(hot)),
+                    Err(report) => {
+                        // Every session booted so far is dropped here, back
+                        // into the new library; none was put in place.
+                        self.error = Some(if *index == 0 {
+                            format!("the new build panicked while booting: {report}")
+                        } else {
+                            format!("the new build panicked while booting window program {index}: {report}")
+                        });
+                        return false;
+                    }
                 }
             }
+            let mut logs = Vec::new();
+            for (i, (mut s, (_, current))) in next.into_iter().zip(sessions.iter_mut()).enumerate() {
+                adopt(i, &mut *s);
+                if i == 0 {
+                    self.shape_changed = Some(s.shape()) != shape;
+                    self.reissued = s.reissued();
+                }
+                let log = s.take_restore_log();
+                if !log.is_empty() {
+                    logs.push(log);
+                }
+                **current = s;
+            }
+            self.hash = Some(h);
+            self.build = Some(build);
+            self.reloads += 1;
+            self.error = None;
+            self.warning = (!logs.is_empty()).then(|| logs.join("\n"));
+            true
         }
     }
 
@@ -979,20 +942,45 @@ pub mod hot {
 /// The stamp (with the shell's fields), `lumen_boot`, `lumen_drop` and
 /// `hot_take_panic`. Every one catches a panic inside the library
 /// (M36/T36.4); a session's own methods catch theirs in the session.
+///
+/// **`lumen_boot` takes a program index** (M89/T89.7,
+/// `docs/plan-windows.md`): 0 boots `program()`, `n` boots entry `n` of
+/// its window table through `OpenProgram::hot`. The table is resolved in
+/// the build that is loaded, so a loader holds only the number and never
+/// a pointer into a library across a swap (rule 3). An unknown `n` is
+/// null, with "no window program n" in `hot_take_panic`.
 #[cfg(feature = "window")]
 #[macro_export]
 macro_rules! export_program {
     ($program:path) => {
         $crate::export_abi_stamp!(&::lumen_static_shell::session::abi_fields());
 
-        /// Boot this build's program with the saved state (null for none).
+        /// Boot this build's program `index` with the saved state (null
+        /// for none) — M89/T89.7: 0 is `program()`, `n` its window table's
+        /// entry `n` (`Program::window_program(n)` booted through
+        /// `OpenProgram::hot`), resolved in **this** build, so a window a
+        /// loader opens after a swap runs the new build's program. An index
+        /// the table has no entry for answers null, with "no window program
+        /// n" in `hot_take_panic`.
         ///
         /// # Safety
         /// `(saved, len)` must be a valid readable range, or null.
         #[no_mangle]
-        pub unsafe extern "C" fn lumen_boot(saved: *const u8, len: usize) -> *mut ::core::ffi::c_void {
+        pub unsafe extern "C" fn lumen_boot(index: u16, saved: *const u8, len: usize) -> *mut ::core::ffi::c_void {
             let saved = (!saved.is_null()).then(|| unsafe { $crate::raw::bytes(saved, len) });
-            $crate::panic::guard(::core::ptr::null_mut(), || $crate::raw::give($crate::hot::boot($program(), saved)))
+            $crate::panic::guard(::core::ptr::null_mut(), || {
+                let program = $program();
+                if index == 0 {
+                    return $crate::raw::give($crate::hot::boot(program, saved));
+                }
+                match program.window_program(index) {
+                    ::core::option::Option::Some(entry) => $crate::raw::give(entry.hot(saved)),
+                    ::core::option::Option::None => {
+                        $crate::panic::refuse(::std::format!("no window program {index}"));
+                        ::core::ptr::null_mut()
+                    }
+                }
+            })
         }
 
         /// Drop a session this library booted.

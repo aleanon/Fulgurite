@@ -354,11 +354,14 @@ pub mod symbols {
     /// (M37/T37.0), `name=value` lines. Same two-call protocol. A loader
     /// reads it **before** calling anything that returns a Rust value.
     pub const ABI_STAMP: &[u8] = b"lumen_abi_stamp";
-    /// `fn(*const u8, usize) -> *mut c_void` — a window library's session
-    /// (M37/T37.1): its own `program()` booted, the saved bytes (null for
-    /// none) restored onto it, as a thin pointer to a
-    /// `Box<dyn lumen_static_shell::session::Session>`. Null if it
-    /// panicked; the report is in [`TAKE_PANIC`].
+    /// `fn(u16, *const u8, usize) -> *mut c_void` — a window library's
+    /// session (M37/T37.1): program `index` booted — 0 its own `program()`,
+    /// `n` entry `n` of that program's window table (M89/T89.7) — and the
+    /// saved bytes (null for none) restored onto it, as a thin pointer to a
+    /// `Box<dyn lumen_static_shell::session::Session>`. Null if it panicked
+    /// or the table has no entry `index`; the report ("no window program
+    /// n" for the second) is in [`TAKE_PANIC`]. The index is the only
+    /// thing a loader holds: the table is resolved in the build loaded.
     pub const BOOT: &[u8] = b"lumen_boot";
     /// `fn(*mut c_void)` — drop a session inside the library that built
     /// it, so its application's `Drop` impls run there, caught. Null is

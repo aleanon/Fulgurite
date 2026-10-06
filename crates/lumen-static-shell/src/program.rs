@@ -767,7 +767,10 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// **An ordinary `fn` the program holds, and data everywhere else**:
     /// a job, a request and the loader hold only the index, never this
     /// pointer, and the window calls only the table of the program it was
-    /// started with — loader code, never swapped. Only the primary
+    /// started with — loader code, never swapped — for each entry's window
+    /// settings. In a hot window the entry's *session* comes from the
+    /// build loaded, through `export_program!`'s indexed `lumen_boot`
+    /// (M89/T89.7), once one has been swapped in. Only the primary
     /// program's agent address and accessibility setting apply: an entry
     /// that sets an address is ignored, with one line on stderr.
     #[cfg(feature = "truetype")]
@@ -888,17 +891,42 @@ pub struct WindowSpec {
 /// a release build without `reload` that declares window programs links
 /// M36's recovery code (`docs/results-windows.md`, T89.3).
 ///
-/// The hot-reload method the plan names, `hot(saved)`, lands with
-/// T89.7, together with the boot it calls (`docs/plan-windows.md`, What
-/// building found).
+/// - `hot` (the `reload` feature, M89/T89.7) boots it as a
+///   hot library's session: recovery on, a saver installed, and `saved`
+///   restored onto it — what `export_program!`'s `lumen_boot(n, ..)`
+///   calls in the build that is loaded, and what a hot window opens a
+///   table entry through **before its first swap**, so the window's
+///   `#[reload(keep)]` state is carried by that swap (second review A17;
+///   `session` installs no saver, and `Session::save` without one is
+///   empty).
 #[cfg(feature = "truetype")]
 pub trait OpenProgram {
     fn spec(&mut self) -> WindowSpec;
     fn session(self: Box<Self>, recover: bool) -> Box<dyn crate::session::Session>;
+    #[cfg(feature = "reload")]
+    fn hot(self: Box<Self>, saved: Option<&[u8]>) -> Box<dyn crate::session::Session>;
 }
 
+/// **What an application must be to be a window program** — M89/T89.7:
+/// [`App`] and, with the `reload` feature, `Reloadable`, because
+/// [`OpenProgram::hot`] saves and restores it across a swap. The
+/// precedent is `lumen-static-winit`'s `impl Run for Program` under `hot`.
+/// A blanket impl, so it is never written by hand: a table entry whose
+/// application derives `Reloadable` (which expands to nothing without the
+/// core's `reload`) is one in every build.
+#[cfg(feature = "reload")]
+pub trait WindowApp: App + lumen_static::reload::Reloadable {}
+#[cfg(feature = "reload")]
+impl<T: App + lumen_static::reload::Reloadable> WindowApp for T {}
+/// [`App`] alone without the `reload` feature (see the `reload` build's
+/// definition).
+#[cfg(not(feature = "reload"))]
+pub trait WindowApp: App {}
+#[cfg(not(feature = "reload"))]
+impl<T: App> WindowApp for T {}
+
 #[cfg(feature = "truetype")]
-impl<A: App + 'static, I: Invalidation + 'static> OpenProgram for Program<A, I> {
+impl<A: WindowApp + 'static, I: Invalidation + 'static> OpenProgram for Program<A, I> {
     fn spec(&mut self) -> WindowSpec {
         WindowSpec {
             width: self.width,
@@ -917,6 +945,11 @@ impl<A: App + 'static, I: Invalidation + 'static> OpenProgram for Program<A, I> 
         } else {
             Box::new(Local::from_program(*self, Crashing))
         }
+    }
+
+    #[cfg(feature = "reload")]
+    fn hot(self: Box<Self>, saved: Option<&[u8]>) -> Box<dyn crate::session::Session> {
+        crate::session::hot::boot(*self, saved)
     }
 }
 

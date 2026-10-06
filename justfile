@@ -868,6 +868,9 @@ window-reload-demo:
 # strategies, and the edited source launched as a static window. Since
 # M83/T83.8 two GPU legs too: an edit to the copy's WGSL reaches the running
 # window with the swap, and the error bar leaves the shader's pixels alone.
+# Since M89/T89.7 a `windows` leg under both strategies (the panel opened
+# before and after a swap, every window swapped or none) and a `daemon`
+# leg (a windowless daemon swaps on the build's arrival).
 # Needs a display, and for the GPU legs `xwd` and an adapter.
 hot-window-drive:
     ./scripts/hot_window_drive.sh

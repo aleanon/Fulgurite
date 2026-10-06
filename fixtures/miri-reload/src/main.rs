@@ -47,8 +47,25 @@ unsafe extern "C" fn take_panic(buf: *mut u8, cap: usize) -> usize {
     unsafe { panic::take(buf, cap) }
 }
 
+/// `lumen_boot`'s shape since M89/T89.7: a program index, then the saved
+/// bytes. 0 boots a session from them; an index with no window program
+/// answers null and records why with `panic::refuse`, as
+/// `export_program!` does.
+unsafe extern "C" fn boot(index: u16, saved: *const u8, len: usize) -> *mut c_void {
+    let bytes = unsafe { raw::bytes(saved, len) };
+    panic::guard(core::ptr::null_mut(), || {
+        if index == 0 {
+            let session: Box<dyn Session> = Box::new(Counter(bytes.len() as u32));
+            raw::give(session)
+        } else {
+            panic::refuse(format!("no window program {index}"));
+            core::ptr::null_mut()
+        }
+    })
+}
+
 /// The shapes, by name: what `main` must reach.
-const EXPECTED: usize = 14;
+const EXPECTED: usize = 16;
 
 fn main() {
     let mut reached = Vec::new();
@@ -116,6 +133,18 @@ fn main() {
     assert!(report.contains("caught in the library"), "{report}");
     assert_eq!(unsafe { take_panic(core::ptr::null_mut(), 0) }, 0, "the report drains once");
     hit("take_panic(read, then empty)");
+
+    // `lumen_boot(index, ..)` (M89/T89.7): index 0 boots from the bytes;
+    // index 9 is null, with its refusal in `hot_take_panic`.
+    let p = unsafe { boot(0, saved.as_ptr(), saved.len()) };
+    let s = unsafe { raw::take::<Box<dyn Session>>(p) }.expect("index 0 boots");
+    assert_eq!(s.count(), saved.len() as u32);
+    hit("lumen_boot(0, saved)");
+    let p = unsafe { boot(9, core::ptr::null(), 0) };
+    assert!(p.is_null(), "an unknown window program must answer null");
+    let report = String::from_utf8(unsafe { raw::read(take_panic) }).expect("utf-8");
+    assert_eq!(report, "no window program 9", "{report}");
+    hit("lumen_boot(9): refused");
 
     reached.sort_unstable();
     reached.dedup();

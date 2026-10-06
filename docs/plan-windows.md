@@ -1039,3 +1039,42 @@ the first review's findings of the same name.
   that they schedule a windowless step (second review P13) is gated by
   T89.7's daemon leg and injection (f), and lands there with the swap step
   it serves.
+- **T89.7, the primary needed a way to ask for the panel.**
+  `fixtures/hot-window`'s application derives `App`, and the derive had no
+  `requests` key, so its handlers could push no `Request::OpenWindow`.
+  `#[app(requests = path)]` is added (`App::requests` for a derived
+  application, beside `images`), with its row in both attribute tables and
+  the unknown-key error's pin updated; the panel itself is hand-written,
+  because its `Timers` tick is not derivable either.
+- **T89.7, "before the first swap" is staged by a failing first build.**
+  The drive's warm build makes the window's own first build land within a
+  second of launch, before a drive can open and bump a panel. So the
+  copy is broken after the binary and the warm library are built: the
+  window's first build fails, nothing swaps, and the fix — written in the
+  same edit as the panel's new format — is the first swap.
+- **T89.7, injection (a) is read as "through the binary's own table".**
+  With the first successful swap carrying the edit, "the first loaded
+  build" that would show v1's format is the one the window started with;
+  the injection opens every late window through the static table, and the
+  late panel reads `panel 0`.
+- **T89.7, a refused build may be booted twice.** One edit can make the
+  watcher build twice; the second build's bytes match the refused one,
+  and `Reloader` retries a library that was refused when it is built again
+  (its rustdoc's rule), so v3's panel boot panics once or twice.
+  `scripts/live/launch.py --expect-panics` takes `N-M` for that leg (1-2);
+  every other leg stays exact.
+- **T89.7, the daemon leg runs on a copy too.** The launcher's identity
+  check is an agent call on window 0, so it takes a windowless step of
+  its own, and the first build can land before or after it: injection (f)
+  could not fire on the first swap. The drive waits for that swap, then
+  edits the copy (`target/hot-live/ws/daemon`), so the second build lands
+  with nothing else happening — under (f) it stays pending.
+- **T89.7, the root box needed something to fill it.** A column hugs its
+  content, so the panel's root box read 260 × 96 in a 260 × 180 window
+  under the committed code; a `FILL` spacer (`#panel-fill`) makes the
+  root's box the window's logical size, which is the quantity the gate
+  compares.
+- **T89.7, every window program in a `reload` build is `Reloadable`**
+  (`WindowApp`, as the plan says): `examples/two-windows`' detail and
+  `examples/daemon`'s panel derive it with every field `fresh`, because
+  `two-windows --features reload` turns the shell's `reload` on.

@@ -233,9 +233,11 @@ def main() -> int:
                          "Default: quit with an agent, kill without (M48/T48.13)")
     ap.add_argument("--expect-exit",
                     help="the app must exit by itself after the drive: an integer, or `nonzero`")
-    ap.add_argument("--expect-panics", type=int, default=0,
+    ap.add_argument("--expect-panics", default="0",
                     help="how many `panicked at` lines the log must hold -- the panics this leg "
-                         "provokes on purpose. Exact, so one more is still a failure")
+                         "provokes on purpose. Exact, so one more is still a failure; `N-M` for a "
+                         "leg whose provoked panic the app may repeat (M89/T89.7: a hot build refused "
+                         "for a panicking boot is booted again when the watcher builds it again)")
     ap.add_argument("drive", nargs=argparse.REMAINDER)
     a = ap.parse_args()
     if a.stop is None:
@@ -406,7 +408,12 @@ def main() -> int:
         logf.flush()
         text = log.read_text(errors="replace")
         panics = [ln for ln in text.splitlines() if "panicked at" in ln]
-        allowed = a.expect_panics
+        lo, _, hi = a.expect_panics.partition("-")
+        lo = int(lo)
+        hi = int(hi) if hi else lo
+        # A count inside the range is the count allowed; outside it, the
+        # range's floor is named.
+        allowed = len(panics) if lo <= len(panics) <= hi else lo
         if a.expect_exit == "nonzero" or (a.expect_exit and a.expect_exit not in ("0",)):
             allowed = max(allowed, len(panics))  # this leg exists to die
         say(tag, f"app log: {len(panics)} panic{'s' if len(panics) != 1 else ''} "

@@ -148,7 +148,6 @@ LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/ric
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 GpuContext                     # proposed by M89
-WindowApp                      # proposed by M89; deferred to T89.7 with OpenProgram::hot (docs/plan-windows.md, What building found)
 CommandList                    # proposed by M90
 ContextMenu                    # proposed by M90
 ContextRequest                 # proposed by M90

@@ -786,6 +786,7 @@ name = "daemon"
 version = "0.1.0"
 dependencies = [
  "lumen-static",
+ "lumen-static-reload",
  "lumen-static-shell",
  "lumen-static-widgets",
  "lumen-static-winit",

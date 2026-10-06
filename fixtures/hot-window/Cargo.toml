@@ -36,6 +36,9 @@ shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
 # features unify into every `--workspace` build.
 shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
 gpu = ["lumen-static-winit/gpu"]
+# M89/T89.7: both programs under `Everything`, so the drive's windows leg
+# runs both strategies (the shaping legs edit `EDIT strategy` instead).
+everything = []
 
 [dependencies]
 lumen-static = { path = "../../crates/lumen-static" }

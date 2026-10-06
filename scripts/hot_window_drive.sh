@@ -32,6 +32,17 @@
 #               the swap frame repaints the whole window; and the broken
 #               edit's bar leaves `#swatch`'s pixels as they were.
 #   gpu-everything  the same under `Everything`.
+#   windows     M89/T89.7: the copy is broken before launch, so the window's
+#               first build fails; the drive opens the panel (program 1)
+#               BEFORE any swap and bumps it, then fixes the copy and edits
+#               the panel's format in one write: the first swap boots both
+#               windows from the new build, the panel keeping its count. The
+#               panel lays out at its own size and its timer redraws it alone;
+#               a panel opened after the swap is the new build's; and a v3
+#               whose panel boot panics is refused whole, both windows on v2.
+#   windows-everything  the same under `Everything` (the fixture's feature).
+#   daemon      M89/T89.7: examples/daemon built `hot`, `--still`, no window:
+#               the build's arrival swaps it (`app.reloads` on window 0).
 # The GPU legs skip with exit 77 without `xwd` or an adapter -- and a skip
 # is not a pass (M43): `just live` refuses it unless LUMEN_ALLOW_SKIP=1.
 # `HOT_WINDOW_LEGS` picks legs (default "hot static everything gpu
@@ -44,7 +55,7 @@ LAUNCH="python3 scripts/live/launch.py --script hot-window-drive"
 $LAUNCH --display-only || exit $?
 ROOT="$(pwd)"
 WS="$ROOT/target/hot-live/ws"
-LEGS="${HOT_WINDOW_LEGS:-hot static everything gpu gpu-everything}"
+LEGS="${HOT_WINDOW_LEGS:-hot static everything gpu gpu-everything windows windows-everything daemon}"
 [ "${1:-}" = --gpu ] && LEGS="gpu gpu-everything"
 FEATURES="hot agent shaping"
 # The live hashes are compared with headless renders at scale 1.
@@ -57,10 +68,15 @@ fresh_copy() {
 }
 # The static leg alone runs on the copy a hot leg left edited.
 [ -d "$WS/app" ] || fresh_copy
+# examples/daemon, copied as the fixture is (M89/T89.7's daemon leg edits
+# the copy to make a build land with nothing else happening).
+rm -rf "$WS/daemon"
+cp -r examples/daemon "$WS/daemon"
+sed -i "s|\.\./\.\./crates|$ROOT/crates|g" "$WS/daemon/Cargo.toml"
 cat > "$WS/Cargo.toml" <<TOML
 [workspace]
 resolver = "2"
-members = ["app"]
+members = ["app", "daemon"]
 
 [workspace.package]
 version = "0.1.0"
@@ -148,3 +164,34 @@ gpu_leg() { # LEG STRATEGY
 }
 if [[ " $LEGS " == *" gpu "* ]]; then gpu_leg gpu Boundaries; fi
 if [[ " $LEGS " == *" gpu-everything "* ]]; then gpu_leg gpu-everything Everything; fi
+
+# M89/T89.7: hot reload with several windows.
+windows_leg() { # LEG STRATEGY FEATURES
+    fresh_copy
+    build_hot "$3"
+    # Broken AFTER the build: the binary and the warm library are the good
+    # source, and the window's own first build is the broken one.
+    sed -i 's|^\(\s*\)let step = 1; // EDIT handler$|\1let step: i64 = "one"; // EDIT handler|' "$WS/app/src/lib.rs"
+    grep -q 'let step: i64 = "one"; // EDIT handler' "$WS/app/src/lib.rs" \
+        || { echo "hot-window-drive: the break did not apply" >&2; exit 1; }
+    # One panic, provoked: v3's panel boot, caught in the library -- or two,
+    # when the watcher builds v3 twice and the refused build is booted again.
+    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$3" "${SCALE[@]}" \
+        --expect-panics 1-2 --expect-strategy "$2" --expect-features reload,shaping \
+        -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --windows
+}
+if [[ " $LEGS " == *" windows "* ]]; then windows_leg windows Boundaries "$FEATURES"; fi
+if [[ " $LEGS " == *" windows-everything "* ]]; then windows_leg windows-everything Everything "$FEATURES everything"; fi
+
+if [[ " $LEGS " == *" daemon "* ]]; then
+    echo "== building examples/daemon's copy with hot, and the library it will swap to =="
+    (cd "$WS" && cargo build --release -q -p daemon --features hot)
+    (cd "$WS" && cargo rustc --release -q -p daemon --lib --crate-type cdylib --features hot \
+        --target-dir "$WS/target/reload")
+    # The drive waits for the first swap, then edits the copy: that build
+    # lands with no agent call and no timer -- `--still` has none -- so only
+    # the window scheduling a windowless step on `Built` can take the swap.
+    $LAUNCH --leg daemon --exe "$WS/target/release/daemon" --arg=--still --env LUMEN_HOT_FEATURES=hot \
+        --expect-strategy Boundaries --expect-features reload \
+        -- python3 scripts/hot_window_drive.py {port} --daemon "$WS/daemon/src/lib.rs"
+fi

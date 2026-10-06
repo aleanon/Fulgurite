@@ -21,6 +21,10 @@
 //! window for that to close, so the window crate ignores it, with one line
 //! on stderr naming `Request::Quit` (second review A21).
 //!
+//! With `hot` the window crate rebuilds this crate's library and swaps it
+//! in (M89/T89.7): a daemon with no window swaps on the build's arrival,
+//! because the window schedules a windowless step for it.
+//!
 //! `daemon --steady` ticks and never opens, closes or quits;
 //! `daemon --still` does not tick at all — the two legs of `just
 //! idle-count`'s daemon phase (K89d).
@@ -77,15 +81,26 @@ pub struct DaemonUi {
 
 /// The daemon's state. Unsplit (`State = Self`), so its tick writes its
 /// labels itself.
-#[derive(Default)]
+///
+/// `Reloadable` for the `hot` build (M89/T89.7): nothing is kept — a swap
+/// boots the new build's daemon afresh, which is all `just
+/// hot-window-drive`'s daemon leg asks of it. Expands to nothing without
+/// the core's `reload`.
+#[derive(Default, lumen_static::Reloadable)]
 pub struct Daemon {
+    #[reload(fresh)]
     pub ui: DaemonUi,
+    #[reload(fresh)]
     requests: Requests,
+    #[reload(fresh)]
     mode: Mode,
     /// Milliseconds since boot, as the ticks saw them.
+    #[reload(fresh)]
     elapsed_ms: f64,
+    #[reload(fresh)]
     ticks: u64,
     /// The panel's window key while it is open.
+    #[reload(fresh)]
     open: Option<u32>,
 }
 
@@ -209,8 +224,10 @@ pub struct PanelUi {
     pub title: Label,
 }
 
-#[derive(Default)]
+/// `Reloadable`, as a window program is in a `reload` build (`WindowApp`).
+#[derive(Default, lumen_static::Reloadable)]
 pub struct Panel {
+    #[reload(fresh)]
     pub ui: PanelUi,
 }
 
@@ -268,3 +285,8 @@ fn boxed(p: Program<Panel>) -> Box<dyn OpenProgram> {
     #[cfg(not(feature = "everything"))]
     Box::new(p)
 }
+
+// A `hot` build is a library a window loads (M89/T89.7): `just
+// hot-window-drive`'s daemon leg swaps it in with no window open.
+#[cfg(feature = "hot")]
+lumen_static_reload::export_program!(program);

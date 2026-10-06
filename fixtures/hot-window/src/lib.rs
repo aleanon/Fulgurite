@@ -28,6 +28,12 @@
 //! present. Under a failed build's bar the region keeps its pixels: the
 //! bar's frame forwards the session's images. Like `#star` it sits above
 //! the bar's reach.
+//! `#open-panel` (M89/T89.7) opens the **panel**, program 1 of the window
+//! table: a second window of a different size, with its own kept count
+//! (`#panel-count`, formatted by the line marked `EDIT panel`), a bump
+//! button and a 150 ms `Timers` tick. The drive opens it before the first
+//! swap and after one, and plants a panic in its boot (`EDIT panel-boot`)
+//! to see a refused swap leave both windows on the build they run.
 
 use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -62,6 +68,9 @@ pub struct Ui {
     /// `Shaping::Complex` (M81/T81.4).
     #[widget_id("hebrew")]
     pub hebrew: Label<String>,
+    /// Opens the panel (M89/T89.7): `Request::OpenWindow { program: 1 }`.
+    #[widget_id("open-panel")]
+    pub open: Button<Tally>,
 }
 
 /// `#swatch`: a `ShaderView` running [`SHADERS`]'s one entry with the
@@ -125,13 +134,18 @@ pub const HEBREW: &str = "שלום עולם";
 #[derive(Default, Serialize, Deserialize)]
 pub struct Tally {
     pub count: i64,
+    /// Where `#open-panel` asks for the panel (M89/T89.7). Not kept: a
+    /// request is answered inside the drain that took it, so none is
+    /// pending at a swap.
+    #[serde(skip)]
+    pub requests: lumen_static::request::Requests,
 }
 
 /// `#pic`'s id in the application's store.
 pub const PIC: lumen_static::ImageId = lumen_static::ImageId(1);
 
 #[derive(DeriveApp, DeriveReloadable)]
-#[app(images = images)]
+#[app(images = images, requests = requests)]
 pub struct Counter {
     #[tree]
     pub ui: Ui,
@@ -148,6 +162,15 @@ pub struct Counter {
 /// The store the renderer reads through the frame (`App::images`).
 fn images(c: &Counter) -> Option<&dyn lumen_static::ImageSource> {
     Some(&c.store)
+}
+
+/// The queue `#open-panel` pushes onto (`App::requests`, M89/T89.7).
+fn requests(c: &mut Counter) -> Option<&mut lumen_static::request::Requests> {
+    Some(&mut c.tally.requests)
+}
+
+fn on_open(t: &mut Tally, _: &EventCtx) {
+    t.requests.push(lumen_static::request::Request::OpenWindow { program: PANEL, tag: 1 });
 }
 
 /// `#pic`'s colour in this build: the line the drive edits.
@@ -172,6 +195,8 @@ fn boot() -> Counter {
     c.ui.inc.label = "+";
     c.ui.inc.on_click = on_inc;
     c.ui.hebrew.set(HEBREW.to_owned());
+    c.ui.open.label = "panel";
+    c.ui.open.on_click = on_open;
     c.ui.star.draw = star;
     #[cfg(feature = "shader")]
     {
@@ -186,11 +211,147 @@ fn boot() -> Counter {
     c
 }
 
+// ---- the panel: program 1 of the window table (M89/T89.7) ---------------
+
+/// The panel's index in the window table.
+pub const PANEL: u16 = 1;
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 6.0)]
+pub struct PanelUi {
+    /// The kept count, in the format the `EDIT panel` line writes.
+    #[widget_id("panel-count")]
+    pub count: Label<String>,
+    #[widget_id("panel-bump")]
+    pub bump: Button<Panel>,
+    /// The timer's ticks: it keeps the panel drawing on its own.
+    #[widget_id("panel-ticks")]
+    pub ticks: Label<String>,
+    /// Fills the rest of the window, so the root's box is the window's
+    /// logical size — what the drive compares with the window it is in.
+    #[widget_id("panel-fill")]
+    pub fill: Spacer,
+}
+
+/// What the panel keeps across a swap.
+#[derive(Default, Serialize, Deserialize)]
+pub struct PanelKept {
+    pub count: i64,
+}
+
+/// The panel. Unsplit, and its `App` written by hand, because its timer
+/// (`App::timers`) is not something the derive offers.
+#[derive(DeriveReloadable)]
+pub struct Panel {
+    #[reload(fresh)]
+    pub ui: PanelUi,
+    #[reload(keep)]
+    pub kept: PanelKept,
+    #[reload(fresh)]
+    ticks: u64,
+    #[reload(fresh)]
+    outbox: lumen_static::spawn::Outbox,
+    #[reload(fresh)]
+    timers: lumen_static::spawn::Timers,
+}
+
+/// The panel's timer: a `Timers` firing is a job whose result wakes the
+/// panel's window through **its** keyed waker.
+pub const PANEL_TICK: u64 = 7;
+
+/// The panel's message: a tick arrived.
+pub struct PanelTick;
+
+fn panel_tick(_: lumen_static::spawn::Descriptor, tx: &lumen_static::inbox::Sender<PanelTick>) {
+    let _ = tx.send(PanelTick);
+}
+
+fn panel_text(p: &Panel) -> String {
+    format!("panel {}", p.kept.count) // EDIT panel
+}
+
+impl lumen_static::event::App for Panel {
+    type State = Self;
+    fn state_mut(&mut self) -> &mut Self {
+        self
+    }
+    type Tree = PanelUi;
+    type Msg = PanelTick;
+    fn tree(&self) -> &PanelUi {
+        &self.ui
+    }
+    fn tree_mut(&mut self) -> &mut PanelUi {
+        &mut self.ui
+    }
+    fn outbox(&mut self) -> Option<&mut lumen_static::spawn::Outbox> {
+        Some(&mut self.outbox)
+    }
+    fn timers(&mut self) -> Option<&mut lumen_static::spawn::Timers> {
+        Some(&mut self.timers)
+    }
+    fn job_for(d: lumen_static::spawn::Descriptor) -> Option<lumen_static::spawn::JobFn<PanelTick>> {
+        (d.kind == PANEL_TICK).then_some(panel_tick as lumen_static::spawn::JobFn<PanelTick>)
+    }
+    fn apply(this: &mut Self, _: PanelTick) -> bool {
+        this.ticks += 1;
+        this.ui.ticks.set(format!("tick {}", this.ticks));
+        true
+    }
+    /// The count's label, from the kept count, in this build's format —
+    /// after a swap, the restored count in the new build's words.
+    fn update(&mut self) -> bool {
+        let text = panel_text(self);
+        if self.ui.count.as_str() == text {
+            return false;
+        }
+        self.ui.count.set(text);
+        true
+    }
+}
+
+fn panel_boot() -> Panel {
+    let _ = (); // EDIT panel-boot
+    let mut p = Panel {
+        ui: PanelUi::default(),
+        kept: PanelKept::default(),
+        ticks: 0,
+        outbox: Default::default(),
+        timers: Default::default(),
+    };
+    p.ui.bump.label = "+";
+    p.ui.bump.on_click = |p, _| p.kept.count += 1;
+    p.ui.ticks.set("tick 0".into());
+    p.timers.every(PANEL_TICK, 1, 150.0);
+    p
+}
+
+/// The panel, described: a window program of its own size.
+pub fn panel() -> Program<Panel, Strategy> {
+    application(panel_boot)
+        .invalidation::<Strategy>()
+        .title("hot-window — panel")
+        .size(260, 180)
+        .style(|_: &Panel| vec![Rule::new(Selector::Id("panel-fill"), Patch::new().width(Length::FILL).height(Length::FILL))])
+}
+
+/// The window table: entry 1 is the panel.
+pub fn windows(index: u16) -> Option<Box<dyn lumen_static_shell::program::OpenProgram>> {
+    match index {
+        PANEL => Some(Box::new(panel())),
+        _ => None,
+    }
+}
+
 // ANCHOR: program
 /// The strategy the window runs: the drive's `Everything` leg edits this
 /// line before it builds (M81/T81.4), so both strategies see a swap that
 /// changes the program's shaping.
+#[cfg(not(feature = "everything"))]
 pub type Strategy = lumen_static_shell::program::DefaultInval; // EDIT strategy
+/// …and `Everything` with the `everything` feature (M89/T89.7), for the
+/// drive's windows leg under both strategies.
+#[cfg(feature = "everything")]
+pub type Strategy = lumen_static::Everything;
 
 /// The program, described once: the binary runs it, the library exports
 /// it, and a reload boots the new build's copy of it (§2.2).
@@ -200,6 +361,7 @@ pub fn program() -> Program<Counter, Strategy> {
             .invalidation::<Strategy>()
             .title("hot-window")
             .size(320, 400)
+            .windows(windows)
             .style(|_: &Counter| {
                 #[allow(unused_mut)]
                 let mut rules = vec![

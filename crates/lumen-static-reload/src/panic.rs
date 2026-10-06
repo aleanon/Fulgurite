@@ -73,6 +73,17 @@ pub fn guard<R>(fallback: R, f: impl FnOnce() -> R) -> R {
     }
 }
 
+/// **Record a refusal as the last report, without panicking** —
+/// M89/T89.7: `lumen_boot` asked for a window program the library's table
+/// has no entry for answers null, and the loader reads why through
+/// `hot_take_panic` as it would a panic's report. No panic, so nothing is
+/// printed and no hook runs.
+pub fn refuse(msg: String) {
+    if let Ok(mut r) = REPORT.lock() {
+        *r = Some(msg);
+    }
+}
+
 /// Drain the last report into `(buf, cap)` — the two-call protocol:
 /// returns the length, and keeps the report when `cap` is too small.
 /// Zero means no panic since the last drain.

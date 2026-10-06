@@ -1260,8 +1260,17 @@ The years go to:
   hook's `KeyOutcome::Quit` is ignored with one stderr line. The agent
   answers it as window 0 through a 1×1 offscreen screen (`just
   windows-drive` phase 5, `examples/daemon`; K89d's idle leg in `just
-  idle-count`, `docs/results-windows.md` T89.6). Hot reload with several
-  windows is T89.7.
+  idle-count`, `docs/results-windows.md` T89.6).
+  **Hot reload with several windows: DECIDED, M89/T89.7**
+  (`docs/plan-windows.md`, "Hot reload boots every window from the build
+  that is loaded"; 2026-10-06). `export_program!`'s `lumen_boot` takes a
+  program index; a swap boots every session — each window's and a
+  daemon's windowless one — from the new build before it replaces any
+  (`Reloader::swap_all`), adopting each into its own slot; a window opened
+  after a swap boots from the build loaded (`Reloader::open`), and one
+  opened before it through `OpenProgram::hot(None)`. v1 still never
+  unloads (`just hot-window-drive`'s `windows` and `daemon` legs,
+  `docs/results-windows.md` T89.7).
 
 None of these get easier because the tree is static. **Strong recommendation:**
 compose rather than build. Take an existing shaping and rasterization stack and

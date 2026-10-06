@@ -207,13 +207,20 @@ pub struct DetailUi {
     pub rtl: Label,
 }
 
-#[derive(Default)]
+/// `Reloadable` because a window program is one in a `reload` build
+/// (`WindowApp`, M89/T89.7): nothing is kept, everything is the new
+/// build's. Expands to nothing without the core's `reload`.
+#[derive(Default, lumen_static::Reloadable)]
 pub struct Detail {
+    #[reload(fresh)]
     pub ui: DetailUi,
+    #[reload(fresh)]
     requests: Requests,
+    #[reload(fresh)]
     count: u32,
     /// The last screenshot's answer, as the title shows it: its width by height and the
     /// pixels' FNV-1a hash, or "refused".
+    #[reload(fresh)]
     shot: Option<String>,
 }
 

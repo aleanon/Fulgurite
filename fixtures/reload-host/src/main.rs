@@ -69,7 +69,7 @@ fn main() {
     let v1 = open(&args[0]);
     println!("stamp: {} agreed", args[0]);
 
-    let mut a = v1.boot(None).expect("v1 boots");
+    let mut a = v1.boot(0, None).expect("v1 boots");
     a.frame(0.0, W, H);
     let before = text(&a);
     println!("v1 fresh:   {before}");
@@ -86,11 +86,11 @@ fn main() {
     drop(a); // dropped inside v1, which stays loaded (§2.5)
 
     let v2 = open(&args[1]);
-    let mut b = v2.boot(Some(&bytes)).expect("v2 boots with v1's state");
+    let mut b = v2.boot(0, Some(&bytes)).expect("v2 boots with v1's state");
     b.frame(0.0, W, H);
     let swapped = text(&b);
 
-    let mut c = v2.boot(None).expect("v2 boots fresh");
+    let mut c = v2.boot(0, None).expect("v2 boots fresh");
     c.frame(0.0, W, H);
     click(&mut c);
     // The pointer is still over the button, which is hover-shaded; the
@@ -122,7 +122,7 @@ fn main() {
     // v2's library, as a stale file from an earlier build would — and
     // the next good build must swap.
     let mut r = Reloader::new();
-    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("v1 boots"));
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(0, None).expect("v1 boots"));
     cur.frame(0.0, W, H);
     cur.post(Event::down(AT.0, AT.1));
     cur.post(Event::up(AT.0, AT.1));
@@ -325,7 +325,7 @@ fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
     // The accepting direction first: v2 with no swap completes, and its
     // ledger is empty after.
     let v2 = open(v2_path);
-    let mut d: Box<dyn Session> = Box::new(v2.boot(None).expect("chain v2 boots"));
+    let mut d: Box<dyn Session> = Box::new(v2.boot(0, None).expect("chain v2 boots"));
     d.frame(0.0, W, H);
     d.post(Event::down(CHAIN_AT.0, CHAIN_AT.1));
     d.post(Event::up(CHAIN_AT.0, CHAIN_AT.1));
@@ -338,7 +338,7 @@ fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
     // v1: click, and step 0 is in flight (blocked).
     let v1 = open(v1_path);
     let mut r = Reloader::new();
-    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     cur.frame(0.0, W, H);
     cur.post(Event::down(CHAIN_AT.0, CHAIN_AT.1));
     cur.post(Event::up(CHAIN_AT.0, CHAIN_AT.1));
@@ -404,7 +404,7 @@ fn sipper_across_a_swap(v1_path: &str, v2_path: &str) {
 
     // Accept: v2 with no swap reaches its final value.
     let v2 = open(v2_path);
-    let mut d: Box<dyn Session> = Box::new(v2.boot(None).expect("chain v2 boots"));
+    let mut d: Box<dyn Session> = Box::new(v2.boot(0, None).expect("chain v2 boots"));
     d.frame(0.0, W, H);
     d.post(Event::down(SIP_AT.0, SIP_AT.1));
     d.post(Event::up(SIP_AT.0, SIP_AT.1));
@@ -417,7 +417,7 @@ fn sipper_across_a_swap(v1_path: &str, v2_path: &str) {
     // v1: click, and the sipper blocks after reporting 5.
     let v1 = open(v1_path);
     let mut r = Reloader::new();
-    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     cur.frame(0.0, W, H);
     cur.post(Event::down(SIP_AT.0, SIP_AT.1));
     cur.post(Event::up(SIP_AT.0, SIP_AT.1));
@@ -484,7 +484,7 @@ fn ask(s: &mut dyn Session, who: &str) {
 fn request_across_a_swap(v1_path: &str, v2_path: &str) {
     // Accept: with no swap, v1 converts it.
     let v1 = open(v1_path);
-    let mut d: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut d: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     ask(&mut *d, "v1, no swap");
     d.answer(7, Answer::Text("x"));
     d.frame(16.0, W, H);
@@ -493,7 +493,7 @@ fn request_across_a_swap(v1_path: &str, v2_path: &str) {
     assert_eq!(direct, "v1:x", "accept: v1 answered with no swap");
 
     let mut r = Reloader::new();
-    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     ask(&mut *cur, "v1");
     r.outcome(Outcome::Built(std::path::PathBuf::from(v2_path)));
     assert!(r.swap(&mut cur, |s: &mut dyn Session| { s.frame(0.0, W, H); }), "chain v2 must swap");
@@ -524,7 +524,7 @@ fn request_across_a_swap(v1_path: &str, v2_path: &str) {
 fn answer_then_swap(v1_path: &str, v2_path: &str) {
     let v1 = open(v1_path);
     // Accept: with no swap, one pump shows it.
-    let mut d: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut d: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     ask(&mut *d, "v1, no swap");
     d.answer(7, Answer::Text("x"));
     d.frame(16.0, W, H);
@@ -533,7 +533,7 @@ fn answer_then_swap(v1_path: &str, v2_path: &str) {
     assert_eq!(direct, "v1:x", "accept: v1's answer after one pump");
 
     let mut r = Reloader::new();
-    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(0, None).expect("chain v1 boots"));
     ask(&mut *cur, "v1");
     cur.answer(7, Answer::Text("x"));
     // Setup landed: v1's kept field holds the answer before the swap, read

@@ -58,7 +58,12 @@ import base64, json, os, re, socket, struct, subprocess, sys, time, zlib
 
 port = int(sys.argv[1])
 static = sys.argv[2] == "--static"
-if static:
+daemon = sys.argv[2] == "--daemon"
+windows = False
+if daemon:
+    src, pid, hash_exe = sys.argv[3], None, None
+    only_shaping, save, gpu = False, None, False
+elif static:
     src, pid, hash_exe, saved = None, None, sys.argv[3], sys.argv[4]
     only_shaping, save, gpu = False, None, False
 else:
@@ -66,6 +71,7 @@ else:
     rest = sys.argv[5:]
     only_shaping = "--only-shaping" in rest
     gpu = "--gpu" in rest
+    windows = "--windows" in rest
     save = rest[rest.index("--save") + 1] if "--save" in rest else None
 
 
@@ -94,6 +100,27 @@ def call(method, params=None):
     r = rpc(method, params)
     if "error" in r:
         sys.exit(f"hot-window-drive: {method} failed: {r['error']}")
+    return r["result"]
+
+
+def rpcw(method, params=None, window=None):
+    """One request naming its window (M89/T89.2's `window` member)."""
+    n[0] += 1
+    req = {"jsonrpc": "2.0", "id": n[0], "method": method, "params": params or {}}
+    if window is not None:
+        req["window"] = window
+    f.write((json.dumps(req) + "\n").encode())
+    f.flush()
+    line = f.readline()
+    if not line:
+        sys.exit(f"hot-window-drive: {method} on window {window}: the agent endpoint closed the connection")
+    return json.loads(line)
+
+
+def callw(method, params=None, window=None):
+    r = rpcw(method, params, window)
+    if "error" in r:
+        sys.exit(f"hot-window-drive: {method} on window {window} failed: {r['error']}")
     return r["result"]
 
 
@@ -394,11 +421,184 @@ def gpu_step():
     assert r["reloads"] == k, f"fixing back to the running source swapped anyway: {r['reloads']}"
 
 
+# ---- 11 (M89/T89.7): hot reload with several windows ---------------------
+def wvalue(sel, window):
+    return callw("ui.resolve", {"selector": sel}, window).get("value", "")
+
+
+def wkeys():
+    return [w["key"] for w in call("app.windows")["windows"]]
+
+
+def wclick(sel, window, what):
+    r = rpcw("input.click", {"selector": sel}, window)
+    if "error" in r or not r["result"].get("handled") or r.get("window") != window:
+        sys.exit(f"hot-window-drive [windows]: {what}: input.click {sel} on window {window} did not land: {r!r}")
+    return r
+
+
+def open_panel(want, what):
+    r = wclick("#open-panel", 1, what)
+    print(f"hot-window-drive [windows]: {what}: #open-panel's reply opened {r.get('opened')} (want [{want}]); "
+          f"app.windows {wkeys()}")
+    if r.get("opened") != [want]:
+        sys.exit(f"hot-window-drive [windows]: {what}: the click opened {r.get('opened')}, want [{want}]")
+    time.sleep(0.6)  # the window maps and draws its first frame
+
+
+def presents(window):
+    p = callw("app.presents", None, window)
+    return p["presents"], p["skipped"]
+
+
+def windows_step():
+    leg = os.environ.get("LUMEN_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
+    # (setup) the copy was broken before launch, so the window's first build
+    # fails and nothing swaps until the drive's fix lands.
+    r, _ = wait(lambda r: not r["building"] and r["error"] is not None, "the first build's failure")
+    print(f"hot-window-drive [windows {leg}]: the first build failed on purpose; app.reloads {r['reloads']} (want 0)")
+    assert r["reloads"] == 0, f"setup: something swapped before the fix: reloads {r['reloads']}"
+
+    # (1) the panel, opened BEFORE the first swap, bumped to 3; the primary to 2.
+    open_panel(2, "(1) before the first swap")
+    for _ in range(3):
+        wclick("#panel-bump", 2, "(1) bump the panel")
+    click(); click()
+    p0, v0 = wvalue("#panel-count", 2), value()
+    print(f"hot-window-drive [windows {leg}]: (1) at app.reloads {reloads()['reloads']}: panel {p0!r} (want 'panel 3'), "
+          f"primary {v0!r} (want 'count 2')")
+    assert (p0, v0) == ("panel 3", "count 2"), f"(1) setup: panel {p0!r}, primary {v0!r}"
+
+    # (2) fix the copy and edit the panel's format in one write: the first
+    # swap carries the panel's kept count into the new format.
+    edit("handler", "let step = 1;", "panel", 'format!("panel v2: {}", p.kept.count)')
+    r, lat = wait(lambda r: r["reloads"] >= 1 and not r["building"], "the first swap")
+    assert r["error"] is None, f"(2) the first swap did not take: {r['error']}"
+    for _ in range(20):
+        p1 = wvalue("#panel-count", 2)
+        if p1 != "panel 3":
+            break
+        time.sleep(0.1)
+    v1 = value()
+    print(f"hot-window-drive [windows {leg}]: (2) swapped in {lat:.2f}s: panel {p1!r} (want 'panel v2: 3'), "
+          f"primary {v1!r} (want 'count 2')")
+    if p1 == "panel 3":
+        sys.exit("hot-window-drive [windows]: (2) the panel kept the OLD format after the swap: it was not swapped")
+    if p1 == "panel v2: 0":
+        sys.exit("hot-window-drive [windows]: (2) the panel shows the new format with count 0: its kept state was "
+                 "not carried -- a window opened before the first swap had no saver")
+    assert p1 == "panel v2: 3", f"(2) the panel reads {p1!r}"
+    assert v1 == "count 2", f"(2) the primary's own count changed: {v1!r}"
+
+    # (3) each session adopted into its own slot: the panel's layout is its
+    # own size, and its timer redraws it and not the primary.
+    root = callw("ui.getTree", {"depth": 1}, 2)["nodes"][0]["bounds"]
+    shot = callw("ui.screenshot", {}, 2)
+    k = shot.get("scale", 1.0)
+    inner = [shot["width"] / k, shot["height"] / k]
+    box = [root[2] - root[0], root[3] - root[1]]
+    print(f"hot-window-drive [windows {leg}]: (3) panel root box {box} against its inner size {inner} "
+          f"(the primary is 320x400)")
+    assert abs(box[0] - inner[0]) <= 1 and abs(box[1] - inner[1]) <= 1, \
+        f"(3) the panel lays out at {box}, not its own size {inner} -- adopted with another window's size"
+    time.sleep(0.6)
+    a1, a2 = presents(1), presents(2)
+    time.sleep(1.2)
+    b1, b2 = presents(1), presents(2)
+    print(f"hot-window-drive [windows {leg}]: (3) over 1.2 s: panel presents {a2[0]} -> {b2[0]} (want growing), "
+          f"primary redraws {sum(a1)} -> {sum(b1)} (want unchanged)")
+    assert b2[0] - a2[0] >= 3, f"(3) the panel's timer did not redraw it: presents {a2} -> {b2}"
+    assert sum(b1) == sum(a1), f"(3) the panel's timer redrew the primary: {a1} -> {b1} -- adopted with its waker"
+
+    # (4) a panel opened AFTER the swap is the loaded build's.
+    r = rpcw("app.close", None, 2)
+    assert "error" not in r, f"(4) setup: app.close 2: {r}"
+    time.sleep(0.3)
+    assert wkeys() == [1], f"(4) setup: app.windows {wkeys()}"
+    open_panel(3, "(4) after the swap")
+    p3 = wvalue("#panel-count", 3)
+    print(f"hot-window-drive [windows {leg}]: (4) the late panel reads {p3!r} (want 'panel v2: 0', the loaded build's)")
+    if p3 == "panel 0":
+        sys.exit("hot-window-drive [windows]: (4) the late panel shows v1's format: it was opened through the "
+                 "build the window started with, not the one loaded (rule 3)")
+    assert p3 == "panel v2: 0", f"(4) the late panel reads {p3!r}"
+
+    # (5) v3: the primary's format and a panic in the panel's boot, one
+    # write. The swap must refuse whole: both windows stay on v2.
+    n0 = reloads()["reloads"]
+    edit("format", '#[bind(ui.value, count, "v3 count {}")]', "panel-boot", 'panic!("the panel\'s boot panicked in v3");')
+    r, _ = wait(lambda r: not r["building"] and (r["error"] is not None or r["reloads"] != n0), "v3's outcome")
+    time.sleep(0.4)
+    v5, p5 = value(), wvalue("#panel-count", 3)
+    err = r["error"] or ""
+    print(f"hot-window-drive [windows {leg}]: (5) v3: app.reloads {n0} -> {r['reloads']} (want unchanged); "
+          f"primary {v5!r} (want v2's 'count 2'); panel {p5!r} (want 'panel v2: 0'); error {err[:100]!r}")
+    if v5 == "v3 count 2":
+        sys.exit(f"hot-window-drive [windows]: (5) the primary runs v3 ({v5!r}) while the panel runs v2 ({p5!r}): "
+                 f"sessions were replaced as each one booted")
+    assert r["reloads"] == n0, f"(5) a swap whose panel boot panicked went through: reloads {r['reloads']}"
+    assert v5 == "count 2" and p5 == "panel v2: 0", f"(5) primary {v5!r}, panel {p5!r}"
+    assert "window program 1" in err and "panicked in v3" in err, f"(5) the error does not name the panel's boot: {err[:300]}"
+    bar = foot_pixel()
+    print(f"hot-window-drive [windows {leg}]: (5) the primary's foot {bar} (want the bar's red)")
+    assert is_bar(bar), f"(5) the bar is not up: {bar}"
+
+
+
+# ---- 12 (M89/T89.7): a daemon with no window swaps on the build ----------
+def daemon_reloads(want, what):
+    """Poll `app.reloads` on window 0 -- `Win` answers it and runs no frame,
+    so the poll cannot take the step itself -- until `want` swaps, a build
+    error, or a landed build left pending for 3 s."""
+    t0, last, pend = time.time(), None, None
+    while time.time() - t0 < 600:
+        r = callw("app.reloads", None, 0)
+        last = r
+        if r["reloads"] >= want or (not r["building"] and r["error"] is not None):
+            break
+        if r["pending"] and not r["building"]:
+            pend = pend or time.time()
+            if time.time() - pend > 3:
+                break
+        else:
+            pend = None
+        time.sleep(0.2)
+    print(f"hot-window-drive [daemon]: {what}: app.reloads on window 0 {last['reloads']} (want {want}), "
+          f"building {last['building']}, pending {last['pending']}, error {last['error']!r}, "
+          f"after {time.time() - t0:.1f}s")
+    if last["reloads"] < want and last["pending"]:
+        sys.exit("hot-window-drive [daemon]: the build landed and is pending, and app.reloads on window 0 stays "
+                 f"{last['reloads']}: nothing scheduled the windowless step the swap is taken at")
+    assert last["error"] is None and last["reloads"] >= want, f"the daemon's swap: {last}"
+
+
+if daemon:
+    keys = [w["key"] for w in call("app.windows")["windows"]]
+    print(f"hot-window-drive [daemon]: app.windows {keys} (want [0]: no window open)")
+    assert keys == [0], f"setup: the daemon has windows open: {keys}"
+    # The first build may land before or after the launcher's identity
+    # check, which is an agent call on window 0 and so a step of its own;
+    # wait for it, then make a build land with nothing else happening.
+    daemon_reloads(1, "the first build")
+    time.sleep(0.5)
+    with open(src, "a") as fh:
+        fh.write("\n// touched by hot-window-drive's daemon leg\n")
+    daemon_reloads(2, "a build landed with no window, no timer and no agent call")
+    keys = [w["key"] for w in call("app.windows")["windows"]]
+    assert keys == [0], f"the daemon opened a window: {keys}"
+    print("hot-window-drive: PASS")
+    sys.exit(0)
+
 if gpu:
     r, took = wait(lambda r: r["supported"] and r["reloads"] >= 1 and not r["building"], "the first hot build")
     assert r["error"] is None, f"the first hot build did not take: {r['error']}"
     print(f"hot-window-drive [gpu]: first hot build swapped in after {took:.1f}s")
     gpu_step()
+    print("hot-window-drive: PASS")
+    sys.exit(0)
+
+if windows:
+    windows_step()
     print("hot-window-drive: PASS")
     sys.exit(0)
 

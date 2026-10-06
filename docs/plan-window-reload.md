@@ -385,6 +385,11 @@ decision.
 ## 3. What this is not
 
 - **Not unloading.** That is §2.5, deferred with its conditions.
+  **Still true with several windows** (M89/T89.7, `docs/plan-windows.md`):
+  a swap now boots every open window's session from the new library, and
+  the `Reloader` keeps the build it last swapped in to open later windows
+  from — so v1's library stays mapped as before, and so does every build
+  a window was ever booted from. v1 never unloads.
 - **Not state migration.** A changed type gets its boot value (§2.4),
   not a conversion.
 - **Not a replacement for the headless fixture.** `just hot-demo` keeps

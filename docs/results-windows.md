@@ -219,3 +219,39 @@ Xephyr):
 | skip the drain after a windowless frame | `#ticks 0 -> 26`, `app.windows [[0]]` — "app.windows stays [0] after tick 26 … never drained" |
 | treat a windowless `wants_quit` as `Request::Quit` | (b), (c) pass; "(d) the agent's port was lost after Escape on window 0" |
 | no first windowless frame asked for (the defect found) | no-endpoint leg: still running after 10 s, killed (−15) |
+
+## T89.7 — hot reload with several windows (2026-10-06)
+
+**The live gates** (`just hot-window-drive`'s `windows` legs, a copy of
+`fixtures/hot-window`, release `hot agent shaping`; Boundaries<256> and
+Everything alike; Xephyr). The copy is broken before launch, so the
+window's first build fails and nothing swaps until the drive's fix.
+
+| gate | read | bound |
+|---|---|---|
+| the panel opened at `app.reloads` 0, bumped 3; the primary bumped 2 | `panel 3`, `count 2` | setup |
+| the first swap (fix + panel format, one write): the panel / the primary | `panel v2: 3` / `count 2`, swapped in 1.05–1.28 s | the new format, the kept count; the primary's own |
+| the panel's root box against its inner size | 260 × 180 / 260 × 180 (the primary is 320 × 400) | ±1 px |
+| over 1.2 s after the swap: the panel's presents / the primary's redraws | +8 / +0 (41 → 49, 13 → 13; Everything 38 → 46, 13 → 13) | ≥ +3 / +0 |
+| a panel opened after the swap | `panel v2: 0` | the loaded build's format |
+| v3 (the primary's format and a panic in the panel's boot, one write) | `app.reloads` 1 → 1; primary `count 2`, panel `panel v2: 0`; error names window program 1; the bar up | refused whole |
+
+**The daemon leg** (`examples/daemon` built `hot`, `--still`, a copy): the
+first build swapped (`app.reloads` 1 on window 0, `app.windows` [0]); then
+the drive edited the copy, and that build landed with no window, no timer
+and no agent call that runs a frame: `app.reloads` 2 after 1.0 s.
+
+**The injections** (the plan's six, each red by name):
+
+| injection | what the drive printed |
+|---|---|
+| (a) open new windows through the build the window started with | "(4) the late panel reads 'panel 0' … shows v1's format" |
+| (b) `swap_all` swaps slot 0 only | "(2) … panel 'panel 3' … kept the OLD format after the swap" |
+| (c) replace sessions as each one boots | "(5) the primary runs v3 ('v3 count 2') while the panel runs v2 ('panel v2: 0')" |
+| (d) open pre-swap windows through `session(recover)` | "(2) … panel 'panel v2: 0' … its kept state was not carried" |
+| (e) adopt every slot with slot 0's waker and size | "(3) the panel lays out at [320.0, 400.0], not its own size [260.0, 180.0]"; with the waker alone: "(3) the panel's timer redrew the primary: (10, 8) -> (10, 16)" |
+| (f) `Built` calls only `ask_redraw` | daemon: "app.reloads on window 0 1 (want 2) … pending True … nothing scheduled the windowless step" |
+
+The existing `hot`, `static` and `everything` legs passed unchanged on the
+fixture with its panel. The GPU legs were not run (no adapter on the
+private display; T89.7 names none).

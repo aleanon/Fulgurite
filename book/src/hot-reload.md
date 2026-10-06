@@ -136,6 +136,7 @@ carries across. The application needs three things.
 # #[derive(Default)] pub struct Tally { count: i64 }
 # #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
 # fn boot() -> Counter { Counter { ui: Ui::default(), tally: Tally::default() } }
+# fn windows(_: u16) -> Option<Box<dyn lumen_static_shell::program::OpenProgram>> { None }
 # fn main() { let p = program(); assert_eq!(p.width, 320); }
 {{#include ../../fixtures/hot-window/src/lib.rs:program}}
 ```
@@ -186,6 +187,29 @@ Three things can go wrong, and none of them takes the window down:
   alone gets its boot value, and the bar says which one and why.
 - **The new code panics.** You get the panic screen, and the next good
   reload clears it.
+
+### Several windows
+
+A program with a window table (`Program::windows`, the platform chapter)
+reloads **every** window from the new build at once. The library's
+`lumen_boot` takes a program index — 0 is `program()`, `n` its window
+table's entry `n` — and a swap boots each open window's session, and a
+daemon's windowless one, from the new library **before it replaces any**.
+If one of them panics while booting, none is replaced: every window
+stays on the build it runs, and the bar says which program's boot
+failed. Each new session is adopted into its own window — its own waker,
+its window's scale and size, its own shaping — so a timer in one window
+redraws that window and no other.
+
+A window opened **after** a swap is booted from the build that is
+loaded, never from the one the window started with; before the first
+swap it is opened from the binary's own table with a saver installed, so
+the first swap carries its `#[reload(keep)]` state. The window's size and
+renderer always come from the binary's table, because an image source
+from a library would be library code held across a swap. A daemon with
+no window open swaps as soon as a build lands: the window takes a
+windowless step for it. `just hot-window-drive`'s `windows` and `daemon`
+legs drive all of this (`docs/results-windows.md` T89.7).
 
 ### A build's assets
 
