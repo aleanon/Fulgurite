@@ -588,8 +588,9 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                     //
                     // One body run twice, not two bodies, with what differs
                     // between the rounds decided out of line by
-                    // `ops::Round`: a second copy of every field's call
-                    // cost 1,616 B of firmware `.text`, over K4's 1,000
+                    // `ops::Round` (whose doc says why a body asks
+                    // `takes` and then `limits`: the stack). A second
+                    // copy of every field's call cost 1,616 B of firmware `.text`, over K4's 1,000
                     // (`docs/results-layout-input.md` T85.1). A round with
                     // no children of its kind is skipped, so a row without
                     // Flexible divides exactly as it always did, and one
@@ -620,10 +621,10 @@ fn expand(input: DeriveInput) -> syn::Result<Ts2> {
                         let mut at = i + 1;
                     #(
                         {
-                            if let Some(c) = round.limits(axis.main_len(&style[at])) {
+                            if round.takes(&style[at]) {
                                 #mut_calls
                                 #opaque_stmt
-                                let s = d.layout(cx, c, style, st, at);
+                                let s = d.layout(cx, round.limits(&style[at]), style, st, at);
                                 used += axis.main(s);
                                 flex_used += round.flexible_took(axis.main(s));
                                 if !axis.cross_len(&style[at]).is_fill() {

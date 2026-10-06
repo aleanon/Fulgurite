@@ -573,6 +573,19 @@ that adds a `Session` method…" does not touch M85: none is added.
   portions together, the fills' share computed as `free * k / portions`
   as it always was, one layout per child — so this is recorded and not
   re-decided.
+- **T85.1's out-of-line `Round::limits` cost 72 B of stack per derived
+  level, and the K4 measurement could not see it.** `.text` was the only
+  quantity the spellings above were judged by; `just stack` (in `just
+  ci`, not in a task's gates) found the sweep over the model at every
+  depth — 2,264 B at depth 6 against 2,144 — because `&self`, a `Length`
+  by reference and an `Option<Constraints>` return slot are three stack
+  temporaries in every derived `layout` frame. `fix(T85.1)` splits it
+  into `round_takes` and `round_limits` with scalar arguments and a bare
+  `Constraints` return: 48 B of the 72 back, the model unchanged, +180 B
+  of `.text` (`docs/results-embedded.md`, "The stack, measured"). **A
+  derive-emitted temporary is paid once per level of every tree**, so a
+  change to emitted layout code wants `just stack` beside
+  `just firmware-delta`.
 - **T85.1: "run scan 2a after 2b" reads 300 for the fill, not 150.** The
   plan predicted the fill would read 150; run first, the fills divide all
   of `free` among their own portions, so `[Flexible 80, FILL]` reads

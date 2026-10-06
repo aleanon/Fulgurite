@@ -45,13 +45,13 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **31,138 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at M86/T86.1 (2026-10-06; the four-binary table below, +40 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **31,306 B** (30.6 KB) | **pass**, at 38.2% of budget; re-measured at the T85.1 stack fix (2026-10-06; the four-binary table below, +168 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,348 B | of which the baked face is most; 9,010 B at T13.7; re-measured at `fix(T15.0)` after M85/T85.7, +4 B (`Painter::in_arena`'s vtable slot) |
 | Total (`size -A`) | ≤ 512 KB flash | **44,167 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.7 (44,155 B at T82.5) |
 | RAM, 100 nodes | ≤ 24 KB | **16.8 KB** state + style | **pass**; measured at M86/T86.1 (2026-10-06), below — `Style` 84 B, `NodeState` 88 B |
-| Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
+| Stack, release | ≤ 4 KB | **1,216 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; re-measured at the T85.1 stack fix (2026-10-06; 1,408 B before it, over the model, below); dev 6,996 B at M52, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
 
@@ -295,6 +295,42 @@ a 4 KB local in `TextInput::layout`: the cold frame measures **5,096 B**
 stack` fails naming `cold frame` and `warm frame`, and the compile-time
 assert stays green because `DEPTH` did not change. Skipping the paint
 makes the calibration read 61,688 B and fail before any figure is read.
+
+**M85/T85.1 outgrew the model, and the bytes were recovered rather
+than budgeted** (2026-10-06). `just ci 73f174c` failed `just stack`; run
+at each commit since `2fcb000`, the step is exactly `0307c4c` (T85.1,
+the derive's scan 2 as one body run in two rounds), with M86/T86.1 adding
+8 B a level on top. Release, cold frames, the model unchanged:
+
+| tree | `2fcb000` / `a21135b` | `0307c4c` … `73f174c` | `e77b7b2` (T86.1) | the fix | model |
+|---|---:|---:|---:|---:|---:|
+| `Device` (depth 3) | 1,184 | **1,408** | 1,408 | **1,216** | 1,328 |
+| sweep, depth 3 | 1,160 | **1,376** | 1,376 | **1,200** | 1,328 |
+| sweep, depth 4 | 1,376 | **1,672** | 1,680 | **1,440** | 1,600 |
+| sweep, depth 5 | 1,608 | **1,968** | 1,984 | **1,696** | 1,872 |
+| sweep, depth 6 | 1,840 | **2,264** | 2,288 | **1,952** | 2,144 |
+
+**The cause, from the prologues** (`sub sp` after the register saves): a
+one-child derived column's `layout` frame went from 128 B to **200 B**
+(`Ui`'s 232 → 336, `DeviceUi`'s 256 → 368). `ops::Round::limits` took
+`&self` and a `Length` by reference and returned `Option<Constraints>`
+through a slot, so every derived row's and column's frame carried a
+28 B `Round`, an 8 B `Length` and a 20 B `Option` beside the
+`Constraints` its child's `layout` is handed anyway. **The fix** keeps one
+body per field and the round's choices out of line, but asks
+`ops::round_takes` and then `ops::round_limits`, which take the round as
+scalars (registers) and return a bare `Constraints` straight into the
+argument slot: the column's frame is **152 B** (`Ui` 256, `DeviceUi`
+272), 48 of the 72 back, and the sweep's slope is about 251 B a level,
+under the model's 272. Of the shapes tried: the same helper writing
+through `&mut Constraints` kept 32 B (+328 B `.text`), the kind check
+inlined kept 40 (+180). The `.text` cost of what shipped is **+180 B**
+on `firmware_interactive` (`ops::Round::limits` −300, `round_limits`
++220, `round_takes` +30, `DeviceUi`'s `layout` +196, `DeviceControls`'
++34; the four-binary table's "T85.1 stack fix" column). **A per-level
+frame is the derive's, not a widget's**, so this is the shape the model's
+slope exists to catch: an extra temporary in emitted code costs every
+level of every tree.
 
 **The budget is a release budget.** The dev profile's frame is almost six
 times the release one, over 4 KB at every depth; a dev firmware for this
@@ -1101,14 +1137,23 @@ firmware_bind=64 firmware_cascade=96 firmware_interactive=96`, with
 `firmware_interactive` at **17,940 B** of headroom; with `transitions`
 added to the fixture's `lumen-static` line (K86a's injection) the same
 invocation prints +324 / +344 / +320 / +328 and fails all four.
+Rewritten by the T85.1 stack fix (`fix(T85.1)`, after M86/T86.1): **+168 B**
+on `firmware` and `firmware_cascade`, **+180 B** on `firmware_interactive`,
+**+184 B** on `firmware_bind`, `.rodata` +0. By a symbol diff of
+`firmware_interactive`: `ops::Round::limits` **−300**, `ops::round_limits`
+**+220**, `ops::round_takes` **+30**, `DeviceUi`'s `layout` **+196** and
+`DeviceControls`' **+34** (two calls per field where there was one). It
+buys back 48 B of stack per derived level ("The stack, measured", above).
+Printed by `just firmware-delta e77b7b2` (K4's default), with
+`firmware_interactive` at **17,760 B** of headroom.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ | T86.1 Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 31,138 | 38.0% | 50,782 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 | +40 |
-| `firmware_interactive` | **63,980** | **78.1%** | **17,940** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** | **+60** |
-| `firmware_bind` | 34,494 | 42.1% | 47,426 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 | +36 |
-| `firmware_cascade` | 33,230 | 40.6% | 48,690 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 | +44 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ | T86.1 Δ | T85.1 stack fix Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,306 | 38.2% | 50,614 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 | +40 | +168 |
+| `firmware_interactive` | **64,160** | **78.3%** | **17,760** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** | **+60** | **+180** |
+| `firmware_bind` | 34,678 | 42.3% | 47,242 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 | +36 | +184 |
+| `firmware_cascade` | 33,398 | 40.8% | 48,522 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 | +44 | +168 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

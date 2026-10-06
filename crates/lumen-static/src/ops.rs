@@ -272,13 +272,27 @@ pub fn loose_child(
 /// `Flexible` children (`fills == false`), each under a loose maximum of
 /// its share, then the `FillPortion` children (`fills == true`), each
 /// tight at its share of what the first round left. Everything that
-/// differs between the two rounds is decided here, out of line, so the
-/// body the derive emits per field carries no branch on the round for
-/// the optimiser to duplicate it by: two bodies, or one body that was
-/// unrolled or split by round, cost the embedded fixture 1,528–2,040 B of
-/// firmware `.text`, over K4's 1,000 (`docs/results-layout-input.md`
-/// T85.1).
+/// differs between the two rounds is decided out of line, in
+/// [`round_takes`] and [`round_limits`], so the body the derive emits
+/// per field carries no branch on the round for the optimiser to
+/// duplicate it by: two bodies, or one body that was unrolled or split
+/// by round, cost the embedded fixture 1,528–2,040 B of firmware
+/// `.text`, over K4's 1,000 (`docs/results-layout-input.md` T85.1).
+///
+/// **A `Round` never needs memory of its own** (the T85.1 stack fix,
+/// `docs/results-embedded.md` "The stack, measured"). Its methods are
+/// inlined façades that pass every field to the out-of-line helpers as
+/// a scalar, so the struct dissolves into registers. The first shape
+/// was one `#[inline(never)] fn limits(&self, l: Length) ->
+/// Option<Constraints>`: the `Round`, the `Length` (passed by
+/// reference) and the `Option` (returned through a slot) were three
+/// stack temporaries in every derived row's and column's `layout`
+/// frame, and `just stack` measured that frame 72 B larger per level —
+/// over the model's 272 B slope. Asking [`Round::takes`] and then
+/// [`Round::limits`], which answers a bare `Constraints` straight into
+/// the slot the child's `layout` is handed, keeps 48 B of the 72 back.
 #[doc(hidden)]
+#[derive(Clone, Copy)]
 pub struct Round {
     pub axis: Axis,
     pub inner: Constraints,
@@ -293,22 +307,26 @@ pub struct Round {
 }
 
 impl Round {
-    /// The limits for a child of main-axis length `l` in this round, or
-    /// `None` when the child is not this round's kind. A fill's share is
-    /// computed as `free * k / div` — the expression scan 2 always used,
-    /// so a row with no `Flexible` child divides bit for bit as before.
-    #[inline(never)]
-    pub fn limits(&self, l: Length) -> Option<Constraints> {
-        let k = match (self.fills, l) {
-            (true, Length::FillPortion(k)) | (false, Length::Flexible(k)) => k,
-            _ => return None,
-        };
-        let share = if self.div == 0.0 { 0.0 } else { self.free * k as f32 / self.div };
-        Some(if self.fills {
-            fill_child(self.axis, self.inner, share, self.align)
-        } else {
-            loose_child(self.axis, self.inner, share, self.align)
-        })
+    /// Whether the child styled `cs` is this round's kind: a `Flexible`
+    /// main-axis length in the first round, a `FillPortion` in the
+    /// fills'. Out of line, in [`round_takes`]; inlining it measured
+    /// worse on the stack and no better on `.text`.
+    #[inline(always)]
+    pub fn takes(&self, cs: &Style) -> bool {
+        round_takes(cs, self.axis, self.fills)
+    }
+
+    /// The limits for a child styled `cs`, which [`Round::takes`]
+    /// answered `true` for. A fill's share is computed as
+    /// `free * k / div` — the expression scan 2 always used, so a row
+    /// with no `Flexible` child divides bit for bit as before.
+    #[inline(always)]
+    pub fn limits(&self, cs: &Style) -> Constraints {
+        let i = self.inner;
+        round_limits(
+            cs, self.axis, self.align, self.fills, self.free, self.div, i.min_w, i.max_w, i.min_h,
+            i.max_h,
+        )
     }
 
     /// What a child laid out in this round leaves the fills less: its
@@ -320,6 +338,48 @@ impl Round {
         } else {
             main
         }
+    }
+}
+
+/// [`Round::takes`], out of line (see [`Round`] for why).
+#[inline(never)]
+#[doc(hidden)]
+pub fn round_takes(cs: &Style, axis: Axis, fills: bool) -> bool {
+    matches!(
+        (fills, axis.main_len(cs)),
+        (true, Length::FillPortion(_)) | (false, Length::Flexible(_))
+    )
+}
+
+/// [`Round::limits`], out of line, with the round and the content box
+/// passed as scalars so they travel in registers rather than in a struct
+/// the caller keeps on its stack (see [`Round`]). Called only for a
+/// child [`round_takes`] accepted; any other length divides nothing.
+#[inline(never)]
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn round_limits(
+    cs: &Style,
+    axis: Axis,
+    align: Align,
+    fills: bool,
+    free: f32,
+    div: f32,
+    min_w: f32,
+    max_w: f32,
+    min_h: f32,
+    max_h: f32,
+) -> Constraints {
+    let k = match axis.main_len(cs) {
+        Length::FillPortion(k) | Length::Flexible(k) => k,
+        _ => 0,
+    };
+    let inner = Constraints { min_w, max_w, min_h, max_h };
+    let share = if div == 0.0 { 0.0 } else { free * k as f32 / div };
+    if fills {
+        fill_child(axis, inner, share, align)
+    } else {
+        loose_child(axis, inner, share, align)
     }
 }
 

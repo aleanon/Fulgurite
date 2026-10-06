@@ -72,6 +72,17 @@ the paint-only `firmware`, which never linked the `dyn Node` machinery;
 the one body with its round's choices as data **+756**; and with them out
 of line in `Round::limits`, what shipped, **+436**.
 
+**That shape outgrew the stack model, found by `just ci 73f174c`.**
+`Round::limits(&self, Length) -> Option<Constraints>` kept a `Round`, a
+`Length` and an `Option` on every derived row's and column's stack: a
+one-child column's `layout` frame 128 → 200 B, and `just stack`'s depth-6
+sweep 2,264 B against the model's 2,144. `fix(T85.1)` asks
+`ops::round_takes` and then `ops::round_limits`, the round passed as
+scalars and the limits returned bare: frame 152 B, depth 6 **1,952 B**,
+for **+180 B** on `firmware_interactive` against `e77b7b2`. One body per
+field and the out-of-line decision are unchanged; the figures are
+`docs/results-embedded.md`'s ("The stack, measured").
+
 **K85a** — the frame arm, `a21135b` against this tree, eight interleaved
 invocations a side under one `just bench-lock` (quiet; load1 2.22 before,
 2.18 after, bound 8), `Flexible` unused:
