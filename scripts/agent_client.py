@@ -97,11 +97,16 @@ class AgentClient:
     def layout(self, selector: str):
         return self.rpc("ui.getLayout", selector=selector)
 
-    def click(self, selector: str, clicks: int = 1):
-        """`clicks` 2 or 3 is a double or triple click (M45/T45.6)."""
-        if clicks == 1:
-            return self.rpc("input.click", selector=selector)
-        return self.rpc("input.click", selector=selector, clicks=clicks)
+    def click(self, selector: str, clicks: int = 1, button: str = "left"):
+        """`clicks` 2 or 3 is a double or triple click (M45/T45.6);
+        `button` is "left", "right" or "middle" (M90/T90.1), sent only
+        when it is not the default."""
+        extra = {}
+        if clicks != 1:
+            extra["clicks"] = clicks
+        if button != "left":
+            extra["button"] = button
+        return self.rpc("input.click", selector=selector, **extra)
 
     def press(self, selector: str):
         """Pointer down, held. Pair with `release`."""

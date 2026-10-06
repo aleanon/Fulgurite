@@ -897,7 +897,12 @@ impl Agent {
                     )),
                 }
             }
+            // `button`: "left" (the default), "right" or "middle" — M90/T90.1
+            // (G25). Each of the three pointer methods queues the button
+            // it is asked for and echoes it in the reply; until then they
+            // all queued `Left`, so no drive could right-click at all.
             "input.click" => {
+                let (button, name) = button_param(params)?;
                 let (x, y) = self.point_param(host, params)?;
                 let n = match params.get("clicks") {
                     None => 1,
@@ -909,28 +914,31 @@ impl Agent {
                     },
                 };
                 for k in 1..=n {
-                    host.enqueue(Event::PointerDown { x, y, button: lumen_static::event::PointerButton::Left, clicks: k });
-                    host.enqueue(Event::up(x, y));
+                    host.enqueue(Event::PointerDown { x, y, button, clicks: k });
+                    host.enqueue(Event::PointerUp { x, y, button });
                 }
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y], "button": name }))
             }
             // A press held open, and its release — the two halves of a
             // click, separately. Without them an agent cannot observe a
             // pressed control at all: `input.click` queues down and up
             // into the same pump, so the frame it returns has already
             // released. `ui_check.py press` is the caller.
+            // Both take `button` as `input.click` does (M90/T90.1).
             "input.pointerDown" => {
+                let (button, name) = button_param(params)?;
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::down(x, y));
+                host.enqueue(Event::PointerDown { x, y, button, clicks: 1 });
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y], "button": name }))
             }
             "input.pointerUp" => {
+                let (button, name) = button_param(params)?;
                 let (x, y) = self.point_param(host, params)?;
-                host.enqueue(Event::up(x, y));
+                host.enqueue(Event::PointerUp { x, y, button });
                 let (f, h) = host.pump();
-                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
+                Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y], "button": name }))
             }
             "input.hover" => {
                 let (x, y) = self.point_param(host, params)?;
@@ -2719,6 +2727,23 @@ fn action_param(params: &Value) -> Result<lumen_static::Action, (i64, String, Va
             ))
         }
     })
+}
+
+/// The pointer methods' `button` — M90/T90.1 (G25): `"left"` when
+/// omitted, `"right"` or `"middle"`, and the name echoed in the reply.
+/// Anything else — another string, a number — is `INVALID_PARAMS` naming
+/// the value, never a silent left click.
+fn button_param(params: &Value) -> Result<(lumen_static::event::PointerButton, &'static str), (i64, String, Value)> {
+    use lumen_static::event::PointerButton;
+    match params.get("button") {
+        None => Ok((PointerButton::Left, "left")),
+        Some(v) => match v.as_str() {
+            Some("left") => Ok((PointerButton::Left, "left")),
+            Some("right") => Ok((PointerButton::Right, "right")),
+            Some("middle") => Ok((PointerButton::Middle, "middle")),
+            _ => Err((INVALID_PARAMS, format!("unknown button {v}: left, right or middle"), v.clone())),
+        },
+    }
 }
 
 fn selector_param(params: &Value) -> Result<&str, (i64, String, Value)> {

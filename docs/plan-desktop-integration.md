@@ -919,3 +919,15 @@ T90.0; everything else cites it.
   `Button` at its head (903 nodes), and the row prints and asserts the
   clicks consumed beside the samples. The press rows print three
   decimals, since the `PointerMove` rows' two are a 10 ns step.
+- **T90.1, `EventCtx` does carry a `button`.** The plan says it has none
+  (`event.rs`:403–426 at `553fa5e`); today's `EventCtx::button` is set
+  from the event by dispatch. The probe reads the button from
+  `ctx.event` as specified, and prints `ctx.button` beside it; both
+  read `Right`/`Middle`/`Left` as asked. The refusal answers for any
+  non-string as well (`"button": 2`), and its red run is the parser
+  answering `Left` for an unknown name.
+- **T90.1, the drive clients take the parameter too.**
+  `scripts/agent_client.py`'s `click` gains `button=` beside
+  `scripts/drive/harness.py`'s, since the harness forwards to it; both
+  send it only when it is not `"left"`, so every existing drive's
+  request is byte-identical.

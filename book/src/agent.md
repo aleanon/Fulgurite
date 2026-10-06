@@ -32,6 +32,9 @@ consequence *shows* rather than that a value moved (M57/D1).
 true}`, through the same route the window's IME takes).
 `input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only,
 and `input.click` takes `clicks` (2 or 3) for a double or triple click.
+`input.click`, `input.pointerDown` and `input.pointerUp` take `button`
+(`"left"`, the default, `"right"` or `"middle"`) and echo it in the
+reply; any other value is refused naming it (M90/T90.1).
 
 **Observe** — `app.diagnostics`, `app.logs`, `app.perf`,
 `ui.waitSettled`, and after a panic `app.failure` and `app.retry`

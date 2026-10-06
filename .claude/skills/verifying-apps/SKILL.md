@@ -124,7 +124,9 @@ windows also carries `"opened": [keys]` (M89/T89.3). `input.compose` takes `{tex
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
-`input.click` takes `clicks` (2 or 3) — M45/T45.6. `input.invokeAction`
+`input.click` takes `clicks` (2 or 3) — M45/T45.6 — and `input.click`,
+`input.pointerDown` and `input.pointerUp` take `button` (`"left"`, the
+default, `"right"`, `"middle"`), echoed in the reply — M90/T90.1. `input.invokeAction`
 takes `action` (`default`, `increment`, `decrement`, `setValue` with
 `value`, `expand`, `collapse`, `focus`) and queues the `Event::Action` a
 screen reader's request becomes, answering `handled` — M54/T54.4; it is

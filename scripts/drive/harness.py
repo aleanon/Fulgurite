@@ -254,8 +254,9 @@ class Ctx:
         return self.c.rpc("ui.lastChange").get("frame", 0)
 
     # -- inputs --------------------------------------------------------
-    def click(self, sel: str | None = None, clicks: int = 1):
-        return self.c.click(sel or self.sel, clicks)
+    def click(self, sel: str | None = None, clicks: int = 1, button: str = "left"):
+        """`button`: "left", "right" or "middle" (M90/T90.1)."""
+        return self.c.click(sel or self.sel, clicks, button)
 
     def click_outside(self, pad: float = 6.0, avoid: list | None = None):
         """The same click, `pad` px past the widget's own edge.
