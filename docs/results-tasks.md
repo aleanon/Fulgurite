@@ -1351,3 +1351,40 @@ software legs (the GPU leg runs only the pixel phases, T88.2).
 **The GPU leg's presents bound was again not checkable** (the display
 asleep, the `#shot-timer` click 854 ms against 250), as at T88.3; this
 task does not touch that leg's phases.
+
+## M88/T88.5 — `clipboard-image`
+
+`docs/plan-platform-requests.md` T88.5. `ClipFormat::Image`, `Clip::Image`
+and the shell's `Payload::Image` exist in every build; a window built with
+`lumen-static-winit`'s default-off `clipboard-image` (`clipboard` plus
+arboard's `image-data`) answers them through `Clipboard::set_image` and
+`get_image` — a read as `Answer::Image` with scale 1 — and without it
+answers both `Refused(Unsupported)`.
+
+| gate | measured | bound |
+|---|---|---|
+| K2 crate count, default build | **96 → 96** (`check_default_crates`) | 0 |
+| K2 crate count, `--features clipboard-image` | **108** (+12: `image`, `png`, `moxcms`, `pxfm`, `flate2`, `miniz_oxide`, `fdeflate`, `crc32fast`, `adler2`, `simd-adler32`, `byteorder-lite`, `num-traits`) | printed |
+| stripped release `showcase` (GNU strip, as `docs/results-a11y-platform.md` measured `a11y`) | 10,106,856 B → 10,428,136 B: **+321,280 B** | 3 MB (default-off either way) |
+| `just clipboard-image-symbols`: `image::` symbols, default showcase | **0** | 0 |
+| the same, built with `lumen-static-winit/clipboard-image` (positive control) | **168** | > 0 |
+| K88d, `cargo deny --offline --features lumen-static-winit/clipboard-image check advisories` | ok (`image@0.25.10`, `png@0.18.1` in the graph) | passes |
+| `just tasks-drive`, the `clipboard-image` leg: `#copy-image` | `Written` | `Written` |
+| `#read-image` | **`8x4 3a67c4c731ebb3a5`**; written `8x4 3a67c4c731ebb3a5` | equal |
+| accept, every software leg (built without the feature): `#copy-image` / `#read-image` | `Refused(Unsupported)` / `Refused(Unsupported)` | not `Empty` |
+| `tests/requests.rs`: an image clip | `Payload::Image` 8×4, 128 B | its shape |
+| winit `serve_requests`, closed clipboard: an image read | `Refused(Failed)` with the feature, `Refused(Unsupported)` without | as listed |
+
+The symbol pattern is anchored at the crate root: the default showcase
+holds 26 `lumen_static_shell::image::` symbols (the workspace's own image
+store), which an unanchored `image::` would have counted.
+
+Injections, each red by name and restored green:
+
+| injection | fires as |
+|---|---|
+| `clipboard-image` a default feature | `image:: symbols in the default showcase: 168 / bound 0` — `a build without clipboard-image links the image crate`; `check_default_crates` too: 108, delta 12 |
+| width and height swapped into arboard's `ImageData` | `#read-image: '4x8 3a67c4c731ebb3a5'` — `the image read back as 4x8, written 8x4 -- width and height swapped on the way` |
+| an unsupported image read asked of the clipboard anyway | software leg: `#read-image 'Refused(Empty)'` — `want Refused(Unsupported) for both` |
+| `Payload::from` swaps an image clip's width and height | `an image clip must keep its width, height and bytes` |
+| an unused binding in `set_image`'s feature-gated body | the new `just gpu` line `clippy --features clipboard-image` fails (`unused variable: unused_probe`); the default winit clippy stays green |

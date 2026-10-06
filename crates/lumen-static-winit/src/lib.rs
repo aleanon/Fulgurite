@@ -1419,14 +1419,16 @@ impl Win {
     /// |---|---|
     /// | `Screenshot` | `Backend::frame_rgba` — what the renderer drew, the frame on screen; `Refused(Unsupported)` from a backend that cannot read back |
     /// | `ClipboardWrite` | the payload `App::clip_for` gave, onto `kind` ([`Clipboard`]): `Written`, or `Refused(Failed)` when the platform did not take it (M88/T88.4) |
-    /// | `ClipboardRead` | `kind` read as `format`: `Text` or `Html`, or `Refused(Empty)` when it holds nothing in that format (M88/T88.4) |
+    /// | `ClipboardRead` | `kind` read as `format`: `Text`, `Html`, or (M88/T88.5) `Image` with scale 1, or `Refused(Empty)` when it holds nothing in that format (M88/T88.4) |
     ///
     /// **`Refused(Unsupported)`** for what this build or platform cannot
     /// do at all: any clipboard request without the `clipboard` feature
-    /// ([`Clipboard::BUILT`]), and the primary selection where there is
-    /// none ([`Clipboard::HAS_PRIMARY`]). **The primary selection carries
-    /// text only**: HTML written to or read from it is `Unsupported` —
-    /// it is the select-to-copy buffer, which a reader pastes as text.
+    /// ([`Clipboard::BUILT`]), an image without `clipboard-image`
+    /// ([`Clipboard::HAS_IMAGE`]), and the primary selection where there
+    /// is none ([`Clipboard::HAS_PRIMARY`]). **The primary selection
+    /// carries text only**: HTML or an image written to or read from it
+    /// is `Unsupported` — it is the select-to-copy buffer, which a reader
+    /// pastes as text.
     /// A clipboard the build has but the machine did not give it
     /// ([`Clipboard::is_open`] false) answers `Refused(Failed)`.
     ///
@@ -1450,7 +1452,10 @@ impl Win {
                         (Payload::Text(t), false) => Ok(clipboard.set(t)),
                         (Payload::Text(t), true) => Ok(clipboard.set_primary(t)),
                         (Payload::Html { html, alt }, false) => Ok(clipboard.set_html(html, alt)),
-                        (Payload::Html { .. }, true) => Err(Refusal::Unsupported),
+                        (Payload::Image { width, height, rgba }, false) if Clipboard::HAS_IMAGE => {
+                            Ok(clipboard.set_image(*width, *height, rgba))
+                        }
+                        (Payload::Html { .. } | Payload::Image { .. }, _) => Err(Refusal::Unsupported),
                         // `Host::take_requests` answers a write with no
                         // payload itself; nothing reaches here without one.
                         (Payload::None, _) => Err(Refusal::Empty),
@@ -1464,7 +1469,10 @@ impl Win {
                 }
                 Request::ClipboardRead { tag, kind, format } => {
                     let primary = kind == ClipKind::Primary;
-                    if !Clipboard::BUILT || (primary && (!Clipboard::HAS_PRIMARY || format == ClipFormat::Html)) {
+                    let unsupported = !Clipboard::BUILT
+                        || (format == ClipFormat::Image && !Clipboard::HAS_IMAGE)
+                        || (primary && (!Clipboard::HAS_PRIMARY || format != ClipFormat::Text));
+                    if unsupported {
                         session.answer(tag, Answer::Refused(Refusal::Unsupported));
                         continue;
                     }
@@ -1472,14 +1480,23 @@ impl Win {
                         session.answer(tag, Answer::Refused(Refusal::Failed));
                         continue;
                     }
+                    if format == ClipFormat::Image {
+                        match clipboard.get_image() {
+                            Some((width, height, rgba)) => {
+                                session.answer(tag, Answer::Image { width, height, scale: 1.0, rgba: &rgba })
+                            }
+                            None => session.answer(tag, Answer::Refused(Refusal::Empty)),
+                        }
+                        continue;
+                    }
                     let got = match (format, primary) {
                         (ClipFormat::Text, false) => clipboard.get(),
                         (ClipFormat::Text, true) => clipboard.get_primary(),
-                        (ClipFormat::Html, _) => clipboard.get_html(),
+                        (_, _) => clipboard.get_html(),
                     };
                     match (got.as_deref(), format) {
                         (Some(t), ClipFormat::Text) => session.answer(tag, Answer::Text(t)),
-                        (Some(h), ClipFormat::Html) => session.answer(tag, Answer::Html(h)),
+                        (Some(h), _) => session.answer(tag, Answer::Html(h)),
                         (None, _) => session.answer(tag, Answer::Refused(Refusal::Empty)),
                     }
                 }
@@ -2261,7 +2278,10 @@ mod tests {
     /// write and the text read answer `Refused(Failed)`, the platform
     /// failing, not `Unsupported`; HTML on the primary selection stays
     /// `Unsupported` (it carries text only). What reaches a real
-    /// clipboard is `just tasks-drive`'s clipboard phase.
+    /// clipboard is `just tasks-drive`'s clipboard phase. **M88/T88.5**:
+    /// an image read is `Refused(Failed)` from the closed clipboard with
+    /// `clipboard-image` and `Unsupported` without it (`just gpu` runs this
+    /// file's clippy with the feature; `just test` runs it without).
     #[test]
     fn serve_requests_answers_screenshots_and_asks_the_clipboard() {
         use lumen_static::prelude::*;
@@ -2348,6 +2368,7 @@ mod tests {
                 Request::ClipboardWrite { tag: 2, kind: ClipKind::Clipboard },
                 Request::ClipboardRead { tag: 3, kind: ClipKind::Primary, format: ClipFormat::Text },
                 Request::ClipboardRead { tag: 4, kind: ClipKind::Primary, format: ClipFormat::Html },
+                Request::ClipboardRead { tag: 5, kind: ClipKind::Clipboard, format: ClipFormat::Image },
             ] {
                 assert!(s.host.app.requests.push(r), "setup: a request was refused");
             }
@@ -2363,9 +2384,12 @@ mod tests {
         // it at all: Unsupported is then the right answer.
         let write = if Clipboard::BUILT { failed.clone() } else { unsupported.clone() };
         let primary = if Clipboard::HAS_PRIMARY { failed.clone() } else { unsupported.clone() };
+        // M88/T88.5: an image read is asked of the clipboard only with
+        // `clipboard-image`; without it the build cannot, Unsupported.
+        let image = if Clipboard::HAS_IMAGE { failed.clone() } else { unsupported.clone() };
         assert_eq!(
             got,
-            vec![(1, "image 2x2 @1 16".to_string()), (2, write), (3, primary), (4, unsupported.clone())],
+            vec![(1, "image 2x2 @1 16".to_string()), (2, write), (3, primary), (4, unsupported.clone()), (5, image)],
             "a screenshot from frame_rgba; the clipboard asked (a closed one fails the write and the \
              read), and HTML on the primary selection Unsupported"
         );

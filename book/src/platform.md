@@ -58,6 +58,14 @@ a reader pastes as text. `just tasks-drive` checks what landed with an
 independent `xclip -o -selection primary`, a tool the reference machine
 is required to have.
 
+**Images** go on the clipboard and come back the same way — a
+`Clip::Image` write and a `ClipFormat::Image` read, RGBA8 — but only in a
+window built with the windowing crate's default-off `clipboard-image`
+feature (M88/T88.5), because it brings an image-decoding stack; its crate
+count and size are in `docs/results-tasks.md` T88.5. Without it, an image
+request is answered `Refused(Unsupported)`: the build cannot, which is
+not the same answer as a clipboard holding nothing.
+
 **Native Wayland has no clipboard in this build.** arboard is built
 without its Wayland backend, so the clipboard is X11's: under XWayland
 it works, and on a Wayland-only session the window finds none and every

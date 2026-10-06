@@ -1012,3 +1012,26 @@ section replaces that design.*
   requires exit non-zero, non-77, with the install line; every software
   leg then runs it with `xclip` present. So the probe-exits-77 injection
   is observed by the drive itself, before any leg.
+- **T88.5, the image leg.** `just tasks-drive` gains a `clipboard-image`
+  leg — `tasks-demo` built with the pass-through, one strategy
+  (Boundaries), only the image phase, the shape of the GPU leg — because
+  the clipboard is not something the invalidation strategy reaches. The
+  three software legs, built without the feature, carry the accept
+  direction (`Unsupported`, not `Empty`). The image is shown to the drive
+  as a hash: `tasks-demo`'s `#clip-image` reads `sent 8x4 <fnv>` and
+  `#clip-read` the hash of what came back.
+- **T88.5, the primary selection stays text only**, as T88.4 recorded: an
+  image on `Primary` is `Unsupported` in either build.
+- **T88.5, no rustdoc line.** §3.1 asks for one where the feature adds
+  public items; `clipboard-image` adds none (`Clipboard::set_image`,
+  `get_image` and `HAS_IMAGE` exist in every build and answer
+  `false`/`None` without it), so only the clippy line, and beside it
+  `serve_requests`' unit test with the feature, join `just gpu`.
+- **T88.5, the symbol count is anchored** at the crate root: an unanchored
+  `image::` matches the 26 `lumen_static_shell::image::` symbols every
+  showcase build links.
+- **K88d** did not fire: the advisory check passes with
+  `--features lumen-static-winit/clipboard-image`, with `image` and `png`
+  in its graph. It is a one-off measurement here, not a standing gate:
+  `just deny` checks the default graph, and no advisory could be planted
+  to watch a second pass go red.

@@ -53,6 +53,11 @@ pub enum ClipKind {
 pub enum ClipFormat {
     Text,
     Html,
+    /// RGBA8 pixels (M88/T88.5), answered [`Answer::Image`] — by a window
+    /// built with `lumen-static-winit`'s default-off `clipboard-image`;
+    /// without it, [`Refusal::Unsupported`]. The variant is here either
+    /// way, so an application's request compiles against any build.
+    Image,
 }
 
 /// **One platform request** — `Copy`, 16 bytes (asserted below), and
@@ -71,8 +76,8 @@ pub enum Request {
     /// Put what [`App::clip_for`](crate::event::App::clip_for) answers
     /// for `tag` on `kind`. Answered [`Answer::Written`], or refused.
     ClipboardWrite { tag: u64, kind: ClipKind },
-    /// Read `kind` as `format`. Answered [`Answer::Text`] or
-    /// [`Answer::Html`], or refused.
+    /// Read `kind` as `format`. Answered [`Answer::Text`],
+    /// [`Answer::Html`] or [`Answer::Image`], or refused.
     ClipboardRead { tag: u64, kind: ClipKind, format: ClipFormat },
 }
 
@@ -163,14 +168,20 @@ pub enum Clip<'a> {
     /// HTML, with the plain-text alternative a reader that cannot take
     /// HTML gets.
     Html { html: &'a str, alt: &'a str },
+    /// An image: RGBA8, `width × height` pixels, row-major from the top
+    /// left, so `rgba.len()` is `4 × width × height` (M88/T88.5). Put on
+    /// the clipboard by a window built with `clipboard-image`; without
+    /// it, the write is answered [`Refusal::Unsupported`].
+    Image { width: u32, height: u32, rgba: &'a [u8] },
 }
 
 /// Why a request was not done.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     /// This window, build or platform cannot do it (a build without the
-    /// window's `clipboard` feature, the primary selection off X11 or as
-    /// HTML, a backend that cannot read back).
+    /// window's `clipboard` feature, an image without its
+    /// `clipboard-image`, the primary selection off X11 or as anything
+    /// but text, a backend that cannot read back).
     Unsupported,
     /// Nothing to do it with: `App::clip_for` answered `None`, or the
     /// clipboard held nothing in the asked format.
@@ -185,7 +196,8 @@ pub enum Refusal {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Answer<'a> {
     /// A screenshot: RGBA8, `width × height` **physical** pixels, `scale`
-    /// physical per logical.
+    /// physical per logical. Or, since M88/T88.5, a clipboard image read
+    /// as [`ClipFormat::Image`]: its own pixels, `scale` 1.
     Image { width: u32, height: u32, scale: f32, rgba: &'a [u8] },
     Text(&'a str),
     Html(&'a str),

@@ -15,6 +15,7 @@
 //! | a ninth push is refused | 8 queued, 1 refused |
 //! | a clipboard write with no `clip_for` answers itself | `Refused(Empty)`, nothing taken |
 //! | an HTML clip is handed out whole (M88/T88.4) | `Payload::Html`, both halves |
+//! | an image clip keeps its shape (M88/T88.5) | `Payload::Image`, 8×4, 128 B |
 //! | an app with no queue | `Vec::new()`, nothing counted |
 
 use lumen_static::display::Cmd;
@@ -245,6 +246,17 @@ fn an_html_clip_is_handed_out_whole() {
         "an HTML clip must reach the window as Payload::Html with both halves"
     );
     assert!(h.app.state.refusals.is_empty(), "setup: the write was refused {:?}", h.app.state.refusals);
+}
+
+/// **M88/T88.5: an image clip crosses as an owned `Payload::Image`**, its
+/// width and height in their own fields and its bytes copied whole, so
+/// the window hands arboard what the application wrote.
+#[test]
+fn an_image_clip_is_owned_with_its_shape() {
+    let rgba: Vec<u8> = (0..8 * 4 * 4).map(|i| i as u8).collect();
+    let p = Payload::from(Clip::Image { width: 8, height: 4, rgba: &rgba });
+    println!("an 8x4 image clip -> {:?}", match &p { Payload::Image { width, height, rgba } => format!("Image {width}x{height}, {} B", rgba.len()), other => format!("{other:?}") });
+    assert_eq!(p, Payload::Image { width: 8, height: 4, rgba: rgba.clone() }, "an image clip must keep its width, height and bytes");
 }
 
 #[test]

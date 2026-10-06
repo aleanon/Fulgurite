@@ -21,7 +21,10 @@
 //! `#copy-primary` and `#copy-html` push `ClipboardWrite`s whose bytes
 //! `clip_for` hands over at the drain, and `#read-text`, `#read-primary`
 //! and `#read-html` push `ClipboardRead`s whose answers the two `#clip-*`
-//! labels show. Every one is driven by a click, and
+//! labels show. Since M88/T88.5 `#copy-image` and `#read-image` do the
+//! same with an 8×4 image — answered by a window built with this demo's
+//! `clipboard-image` feature, and refused as unsupported without it.
+//! Every one is driven by a click, and
 //! every one puts its consequence on screen where
 //! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
 //!
@@ -56,6 +59,8 @@ const TAG_COPY_HTML: u64 = 5;
 const TAG_READ_TEXT: u64 = 6;
 const TAG_READ_PRIMARY: u64 = 7;
 const TAG_READ_HTML: u64 = 8;
+const TAG_COPY_IMAGE: u64 = 9;
+const TAG_READ_IMAGE: u64 = 10;
 
 /// What `#copy-html` writes, and the plain text a reader that cannot take
 /// HTML gets. Markup, an entity, and a two-byte character, so a
@@ -66,11 +71,36 @@ const COPY_HTML_ALT: &str = "caf\u{e9} & lumen";
 /// What `#copy-primary` puts on the primary selection.
 const COPY_PRIMARY: &str = "B";
 
+/// What `#copy-image` writes (M88/T88.5): 8×4 RGBA8, deliberately not
+/// square, so a width and a height swapped anywhere on the way reads back
+/// as 4×8; every pixel distinct and opaque.
+const IMAGE_W: u32 = 8;
+const IMAGE_H: u32 = 4;
+const COPY_IMAGE: [u8; (IMAGE_W * IMAGE_H * 4) as usize] = {
+    let mut px = [255u8; (IMAGE_W * IMAGE_H * 4) as usize];
+    let mut i = 0;
+    while i < (IMAGE_W * IMAGE_H) as usize {
+        px[4 * i] = (i * 8) as u8;
+        px[4 * i + 1] = 255 - (i * 5) as u8;
+        px[4 * i + 2] = ((i % 8) * 32) as u8;
+        i += 1;
+    }
+    px
+};
+
+/// FNV-1a over an image's bytes: what `#clip-image` shows for the image
+/// written and `#clip-read` for the image read, so the drive compares the
+/// two without either crossing the agent.
+fn pixel_hash(rgba: &[u8]) -> u64 {
+    rgba.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+}
+
 /// A tag's name in the `#clip-*` labels.
 fn clip_name(tag: u64) -> &'static str {
     match tag {
         TAG_COPY_TEXT | TAG_READ_TEXT => "text",
         TAG_COPY_PRIMARY | TAG_READ_PRIMARY => "primary",
+        TAG_COPY_IMAGE | TAG_READ_IMAGE => "image",
         _ => "html",
     }
 }
@@ -139,6 +169,8 @@ struct Ui {
     clip_write: Label<String>,
     #[widget_id("clip-read")]
     clip_read: Label<String>,
+    #[widget_id("clip-image")]
+    clip_image: Label<String>,
     #[widget_id("sip-value")]
     sip_value: Label<String>,
     #[widget_id("status")]
@@ -157,6 +189,8 @@ struct CopyRow {
     copy_primary: Button<Tasks>,
     #[widget_id("copy-html")]
     copy_html: Button<Tasks>,
+    #[widget_id("copy-image")]
+    copy_image: Button<Tasks>,
 }
 
 /// M88/T88.4: the clipboard reads, one row.
@@ -169,6 +203,8 @@ struct ReadRow {
     read_primary: Button<Tasks>,
     #[widget_id("read-html")]
     read_html: Button<Tasks>,
+    #[widget_id("read-image")]
+    read_image: Button<Tasks>,
 }
 
 /// The tree, and the state its handlers may touch — split in
@@ -403,10 +439,11 @@ impl App for Demo {
                 Some(Msg::Shot { w: width, h: height, rgb: [px[0], px[1], px[2]] })
             }
             (TAG_SHOT | TAG_SHOT_TIMER, Answer::Refused(_)) => Some(Msg::ShotRefused),
-            (TAG_COPY_TEXT..=TAG_READ_HTML, a) => Some(Msg::Clip {
+            (TAG_COPY_TEXT..=TAG_READ_IMAGE, a) => Some(Msg::Clip {
                 tag,
                 said: match a {
                     Answer::Text(t) | Answer::Html(t) => t.to_owned(),
+                    Answer::Image { width, height, rgba, .. } => format!("{width}x{height} {:016x}", pixel_hash(rgba)),
                     other => format!("{other:?}"),
                 },
             }),
@@ -425,6 +462,7 @@ impl App for Demo {
             TAG_COPY_TEXT => Some(Clip::Text(&self.state.copy_text)),
             TAG_COPY_PRIMARY => Some(Clip::Text(COPY_PRIMARY)),
             TAG_COPY_HTML => Some(Clip::Html { html: COPY_HTML, alt: COPY_HTML_ALT }),
+            TAG_COPY_IMAGE => Some(Clip::Image { width: IMAGE_W, height: IMAGE_H, rgba: &COPY_IMAGE }),
             _ => None,
         }
     }
@@ -519,7 +557,7 @@ impl App for Demo {
                 this.shots += 1;
                 this.shot_value = format!("shot {} refused", this.shots);
             }
-            Msg::Clip { tag, said } if tag <= TAG_COPY_HTML => {
+            Msg::Clip { tag, said } if tag <= TAG_COPY_HTML || tag == TAG_COPY_IMAGE => {
                 this.writes += 1;
                 this.clip_write = format!("write {} {} {said}", this.writes, clip_name(tag));
             }
@@ -652,6 +690,14 @@ fn on_copy_html(s: &mut Tasks, _: &lumen_static::EventCtx) {
     use lumen_static::request::{ClipKind, Request};
     s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_HTML, kind: ClipKind::Clipboard });
 }
+fn on_copy_image(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipKind, Request};
+    s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_IMAGE, kind: ClipKind::Clipboard });
+}
+fn on_read_image(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipFormat, ClipKind, Request};
+    s.requests.push(Request::ClipboardRead { tag: TAG_READ_IMAGE, kind: ClipKind::Clipboard, format: ClipFormat::Image });
+}
 fn on_read_text(s: &mut Tasks, _: &lumen_static::EventCtx) {
     use lumen_static::request::{ClipFormat, ClipKind, Request};
     s.requests.push(Request::ClipboardRead { tag: TAG_READ_TEXT, kind: ClipKind::Clipboard, format: ClipFormat::Text });
@@ -714,6 +760,11 @@ fn build() -> Demo {
     app.ui.reads.read_primary.on_click = on_read_primary;
     app.ui.reads.read_html.label = "read html";
     app.ui.reads.read_html.on_click = on_read_html;
+    app.ui.copies.copy_image.label = "copy image";
+    app.ui.copies.copy_image.on_click = on_copy_image;
+    app.ui.reads.read_image.label = "read image";
+    app.ui.reads.read_image.on_click = on_read_image;
+    app.ui.clip_image.set(format!("sent {IMAGE_W}x{IMAGE_H} {:016x}", pixel_hash(&COPY_IMAGE)));
     app
 }
 
@@ -739,7 +790,7 @@ fn stylesheet() -> Vec<Rule> {
 /// **The program, described once** — M32 (`docs/plan-program.md`). The
 /// window and `--shot` are both built from it.
 fn program() -> Program<Demo> {
-    application(build).title("tasks-demo").size(520, 760).style(|_: &Demo| stylesheet())
+    application(build).title("tasks-demo").size(520, 790).style(|_: &Demo| stylesheet())
 }
 
 fn main() {

@@ -122,6 +122,16 @@ default = ["clipboard"]
 # (M48/T48.9): without it every widget reported `GenericContainer`.
 agent = ["dep:lumen-static-agent", "dep:serde_json", "lumen-static-shell/live-agent"]
 clipboard = ["dep:arboard"]
+# **Images on the clipboard** (M88/T88.5, docs/plan-platform-requests.md):
+# `Clipboard::set_image`/`get_image`, so an application's
+# `ClipFormat::Image` read and `Clip::Image` write are answered instead
+# of `Refused(Unsupported)`. Default-OFF: arboard's `image-data` pulls the
+# `image` crate and its PNG stack -- by K2's method (above, at `clipboard`)
+# **+12 crates** (96 -> 108), and **+321,280 B** on the stripped release
+# showcase, both from docs/results-tasks.md T88.5, where the numbers live.
+# A default release window links 0 `image::` symbols and a build with it
+# 168 (`just clipboard-image-symbols`).
+clipboard-image = ["clipboard", "arboard/image-data"]
 # Platform drag and drop (T15.7). Default-OFF: it is a platform
 # capability an application opts into, and winit already carries the
 # events, so the feature costs no dependency — it gates the *surface*,

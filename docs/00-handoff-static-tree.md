@@ -718,7 +718,9 @@ from the request. A screenshot answers from `Backend::frame_rgba`.
 the primary selection, `Written` or `Refused(Failed)` for a write, and
 `Refused(Unsupported)` for what the build or platform cannot do — no
 `clipboard` feature, a primary selection off X11, HTML on primary
-(`docs/results-tasks.md` T88.4). Native Wayland has no clipboard in this
+(`docs/results-tasks.md` T88.4). **Since M88/T88.5** images too, RGBA8, in
+a window built with the default-off `clipboard-image`; without it an image
+request is `Refused(Unsupported)` (`docs/results-tasks.md` T88.5). Native Wayland has no clipboard in this
 build (no `wayland-data-control`).
 
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window

@@ -44,6 +44,12 @@
 # `xclip -o -selection primary`; a second write (`C`) must leave primary
 # at `B`. **It writes the desktop's clipboard and primary selection.**
 #
+# M88/T88.5 adds an IMAGE leg: tasks-demo built with `clipboard-image`
+# writes an 8x4 image through `Clip::Image` and reads it back as
+# `ClipFormat::Image`; it must read 8x4 with the written pixels' hash.
+# The software legs, built without the feature, must answer both
+# `Refused(Unsupported)` -- not `Refused(Empty)`.
+#
 # **Required tool: `xclip`** (owner decision D7,
 # docs/plan-iced-roadmap.md §3.4) -- install it with
 #     sudo apt install xclip
@@ -118,6 +124,13 @@ for leg in everything boundaries boundaries+oracle; do
            _ {port} "${leg%%+*}"
 done
 
+# M88/T88.5: the image round trip, on a build with `clipboard-image`.
+echo "== clipboard-image =="
+cargo build --release -q -p tasks-demo --features clipboard-image
+$LAUNCH --leg clipboard-image --exe target/release/tasks-demo \
+    --expect-strategy Boundaries --expect-features "" \
+    -- python3 scripts/tasks_drive.py {port} boundaries image
+
 # M88/T88.2: the pixel phases on wgpu. One strategy: what is checked is
 # the backend's readback, which the strategy does not reach.
 echo "== gpu =="
@@ -133,4 +146,4 @@ elif [ "$rc" != 0 ]; then
     exit "$rc"
 fi
 
-echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle; the clipboard round-tripped text, HTML and primary; the GPU answered ui.screenshot per call"
+echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle; the clipboard round-tripped text, HTML, primary and an image; the GPU answered ui.screenshot per call"

@@ -33,6 +33,13 @@
 //! finds no clipboard and every operation is a no-op. The manifest's
 //! `clipboard` comment records why it is not added.
 //!
+//! **Images** ([`Clipboard::set_image`], [`Clipboard::get_image`]) are
+//! behind the default-off `clipboard-image` (M88/T88.5), which turns on
+//! arboard's `image-data` and with it the `image` crate; without it they
+//! are `false`/`None` and [`Clipboard::HAS_IMAGE`] is `false`, so an image
+//! request is answered `Refused(Unsupported)`. On X11 an image travels as
+//! PNG, which is lossless, so RGBA8 written is RGBA8 read.
+//!
 //! Behind the default-on `clipboard` feature. Without it — and on
 //! Android, where arboard has no backend (M54/T54.8) — the type still
 //! exists and every operation is a no-op, so a host does not need a
@@ -42,6 +49,8 @@
 // traits — and so the primary selection — exist.
 #[cfg(all(feature = "clipboard", unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))))]
 use arboard::{GetExtLinux, LinuxClipboardKind, SetExtLinux};
+#[cfg(all(feature = "clipboard-image", not(target_os = "android")))]
+use arboard::ImageData;
 
 /// A handle on the system clipboard.
 ///
@@ -72,6 +81,10 @@ impl Clipboard {
     /// [`Clipboard::BUILT`] on the unixes arboard drives through X11.
     pub const HAS_PRIMARY: bool =
         cfg!(all(feature = "clipboard", unix, not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))));
+
+    /// Whether this build can put images on the clipboard and read them
+    /// back: [`Clipboard::BUILT`] with the default-off `clipboard-image`.
+    pub const HAS_IMAGE: bool = cfg!(all(feature = "clipboard-image", not(target_os = "android")));
 
     /// Open it, or degrade to a no-op.
     ///
@@ -155,6 +168,35 @@ impl Clipboard {
     /// Without the feature there is nothing to read.
     #[cfg(not(all(feature = "clipboard", not(target_os = "android"))))]
     pub fn get_html(&mut self) -> Option<String> {
+        None
+    }
+
+    /// Put an RGBA8 image, `width × height` pixels row-major from the top
+    /// left, on the clipboard. Returns whether it got there; `false` when
+    /// `rgba` is not `4 × width × height` bytes, and always `false`
+    /// without `clipboard-image` ([`Clipboard::HAS_IMAGE`]).
+    pub fn set_image(&mut self, width: u32, height: u32, rgba: &[u8]) -> bool {
+        #[cfg(all(feature = "clipboard-image", not(target_os = "android")))]
+        {
+            if rgba.len() != 4 * width as usize * height as usize {
+                return false;
+            }
+            let image = ImageData { width: width as usize, height: height as usize, bytes: rgba.into() };
+            self.inner.as_mut().is_some_and(|c| c.set_image(image).is_ok())
+        }
+        #[cfg(not(all(feature = "clipboard-image", not(target_os = "android"))))]
+        {
+            let _ = (width, height, rgba);
+            false
+        }
+    }
+
+    /// Read the clipboard as an RGBA8 image — `(width, height, rgba)` —
+    /// if it holds one; always `None` without `clipboard-image`.
+    pub fn get_image(&mut self) -> Option<(u32, u32, Vec<u8>)> {
+        #[cfg(all(feature = "clipboard-image", not(target_os = "android")))]
+        return self.inner.as_mut().and_then(|c| c.get_image().ok()).map(|i| (i.width as u32, i.height as u32, i.bytes.into_owned()));
+        #[cfg(not(all(feature = "clipboard-image", not(target_os = "android"))))]
         None
     }
 

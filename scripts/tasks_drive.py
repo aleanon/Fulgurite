@@ -29,8 +29,10 @@ port, strategy = int(sys.argv[1]), sys.argv[2]
 # M88/T88.2: `gpu` runs only the phases that read pixels, on a window
 # drawn by wgpu; every other phase is backend-independent and runs on
 # the software legs.
+# M88/T88.5: `image` runs only the clipboard-image phase, on a window
+# built with tasks-demo's `clipboard-image` feature.
 backend = sys.argv[3] if len(sys.argv) > 3 else "software"
-leg = f"{strategy}+gpu" if backend == "gpu" else strategy
+leg = f"{strategy}+{backend}" if backend in ("gpu", "image") else strategy
 
 if backend == "gpu":
     # Setup landed: the window really is on the GPU. No adapter is a
@@ -52,7 +54,7 @@ replay = [sys.executable, os.path.join(here, "browser_replay.py"), f"127.0.0.1:{
           "#counts"]
 if os.environ.get("LUMEN_TASKS_PID"):
     replay += ["--pid", os.environ["LUMEN_TASKS_PID"]]
-if backend != "gpu" and subprocess.call(replay) != 0:
+if backend == "software" and subprocess.call(replay) != 0:
     sys.exit(f"tasks-drive[{strategy}]: a browser's request reached the application")
 
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
@@ -348,6 +350,50 @@ def clipboard_phase():
           f"a write of C left primary B")
 
 
+def image_phase(built):
+    """M88/T88.5: `#copy-image` writes an 8x4 RGBA8 image (`Clip::Image`)
+    and `#read-image` reads the clipboard back as `ClipFormat::Image`.
+    With `clipboard-image` the read must be 8x4 with the written pixels'
+    hash (both printed; setup landed: the write answered `Written`).
+    Without it -- the accept direction -- both answer
+    `Refused(Unsupported)`, not `Refused(Empty)`: the build cannot, which
+    is not the same as a clipboard holding nothing."""
+    sent = text_of("clip-image")
+    m = re.match(r"sent (\d+x\d+) ([0-9a-f]{16})$", sent)
+    if not m:
+        sys.exit(f"tasks-drive[{leg}]: setup: #clip-image reads {sent!r}, not 'sent WxH <hash>'")
+    _, wrote = clip_click("copy-image", "clip-write")
+    _, read = clip_click("read-image", "clip-read")
+    if not built:
+        print(f"  ..  without clipboard-image: #copy-image answered {wrote!r}, #read-image {read!r} "
+              f"(want 'Refused(Unsupported)' both, not 'Refused(Empty)')")
+        if wrote != "Refused(Unsupported)" or read != "Refused(Unsupported)":
+            sys.exit(f"tasks-drive[{leg}]: a build without clipboard-image answered the image write "
+                     f"{wrote!r} and the read {read!r}, want Refused(Unsupported) for both")
+        print("  ok  image without the feature: Unsupported, not Empty")
+        return
+    print(f"  ..  setup: #copy-image answered {wrote!r} (want 'Written'); written {m.group(1)} {m.group(2)}")
+    if wrote != "Written":
+        sys.exit(f"tasks-drive[{leg}]: setup: #copy-image's write answered {wrote!r}, not Written")
+    got = re.match(r"(\d+x\d+) ([0-9a-f]{16})$", read)
+    print(f"  ..  #read-image: {read!r}; written {m.group(1)} hash {m.group(2)}")
+    if not got:
+        sys.exit(f"tasks-drive[{leg}]: #read-image answered {read!r}, not an image")
+    if got.group(1) != m.group(1):
+        sys.exit(f"tasks-drive[{leg}]: the image read back as {got.group(1)}, written {m.group(1)} -- "
+                 f"width and height swapped on the way")
+    if got.group(2) != m.group(2):
+        sys.exit(f"tasks-drive[{leg}]: the image's pixels changed on the way: hash {got.group(2)}, "
+                 f"written {m.group(2)}")
+    print(f"  ok  image: {got.group(1)} read back, pixel hash {got.group(2)} equals the one written")
+
+
+if backend == "image":
+    image_phase(True)
+    print(f"  ok  {leg}: an 8x4 image round-tripped through the clipboard")
+    sys.exit(0)
+
+
 if backend == "gpu":
     # The surface is still "not checkable" on the GPU (`gpu.rs`,
     # `fetch_rgba`): the target is what was rendered, not what was
@@ -389,6 +435,8 @@ shot_agent_phase()
 shot_redraw_phase()
 # ---- 0c. the clipboard: text, HTML, primary (M88/T88.4) ----------------
 clipboard_phase()
+# ---- 0d. an image, in a build without clipboard-image (M88/T88.5) -------
+image_phase(False)
 
 # ---- 1. spawn one ----------------------------------------------------
 click("spawn-one")

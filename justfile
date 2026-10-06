@@ -376,7 +376,7 @@ bench-lock +cmd:
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb stack gpu simd threads book agent-symbols release-window-shape
+check-extra: floats thumb stack gpu simd threads book agent-symbols clipboard-image-symbols release-window-shape
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -387,6 +387,12 @@ check-extra: floats thumb stack gpu simd threads book agent-symbols release-wind
 # the agent build is the positive control. Two release builds.
 agent-symbols:
     ./scripts/check_agent_symbols.sh
+
+# M88/T88.5: a window built without `clipboard-image` links no `image`
+# crate, the build with it is the positive control, and the stripped
+# showcase delta is printed beside K2's 3 MB. Two release builds.
+clipboard-image-symbols:
+    ./scripts/check_clipboard_image_symbols.sh
 
 # A release window without `reload` links no panic-recovery code, and one
 # with it does -- the `cfg` shown switching both ways (M52, F-NEW-3;
@@ -473,6 +479,12 @@ gpu:
     # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
     cargo clippy -p lumen-static-wgpu --all-targets --features lumen-static/shader -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
+    # M88/T88.5: the default-off `clipboard-image` linted (S3, §3.1), and
+    # `serve_requests`' unit test run with it -- an image read asked of
+    # the clipboard, not refused as unsupported. It adds no public item, so
+    # there is no rustdoc line.
+    cargo clippy -p lumen-static-winit --features clipboard-image --all-targets -- -D warnings
+    cargo test -q -p lumen-static-winit --features clipboard-image --lib serve_requests
     # M83/T83.7: examples/shader on the GPU, the build `just shader-drive` runs.
     cargo clippy -q -p shader --features gpu,agent --all-targets -- -D warnings
     # M83/T83.8: the build `just hot-window-drive`'s GPU legs run.

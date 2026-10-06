@@ -18,6 +18,8 @@ pub enum Payload {
     None,
     Text(String),
     Html { html: String, alt: String },
+    /// RGBA8, `width × height`, as [`Clip::Image`] gave it (M88/T88.5).
+    Image { width: u32, height: u32, rgba: Vec<u8> },
 }
 
 impl From<Clip<'_>> for Payload {
@@ -25,6 +27,7 @@ impl From<Clip<'_>> for Payload {
         match c {
             Clip::Text(t) => Payload::Text(t.to_owned()),
             Clip::Html { html, alt } => Payload::Html { html: html.to_owned(), alt: alt.to_owned() },
+            Clip::Image { width, height, rgba } => Payload::Image { width, height, rgba: rgba.to_vec() },
         }
     }
 }
