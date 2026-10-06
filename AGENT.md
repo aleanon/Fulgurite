@@ -666,7 +666,18 @@ found" section rather than silently replacing itself.
     read-only trigger, which no single-widget drive had met; fixed in
     `123e138` (a read-only field publishes `readOnly`, and the check
     runs both ways). K81a fired at T81.3 (Complex 2.17x / 3.63x Basic)
-    and its written response holds it (0.97x / 0.99x).
+    and its written response holds it (0.97x / 0.99x). **M81b DONE**,
+    `just ci-verify b873ab0` green (28 steps, 0 failed, 0 skipped).
+    **M82a, M82b and M83a DONE**, `just ci-verify a4080ea` green (28
+    steps, 0 failed, 0 skipped): one record for three closes, since
+    M82a's close (`a77cc52`) and M82b's (`5b6da2b`) are ancestors of
+    M83a's. M82a's own run failed four steps on a full disk ("No space
+    left on device"), not on code; a reboot had also left the CI
+    copies' incremental caches half-written (an incremental-compilation
+    ICE), cleared before the re-run. Rulings recorded in the plans:
+    K82c is read one-sided as a stop (a faster median is not a firing);
+    K83a is measured on the reference GPU (llvmpipe's 111 us/shader is
+    recorded, not a firing).
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
