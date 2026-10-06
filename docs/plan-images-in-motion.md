@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. Not started.** The shared byte inventory, seams (S1,
+> its own file. M84a building: T84.0 landed 2026-10-06.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -801,6 +801,36 @@ task and is recorded with its number in `docs/results-images.md`):
   presents fewer than 28 per second (T84.8). If it fires, `Video`'s
   rustdoc and the results doc state the largest size the software
   backend holds at 30/s, measured. The widget ships.
+
+**What building found (M84).**
+
+- **T84.0(a)'s pin is stronger than the plan asked.** The tick in
+  `crates/lumen-static-shell/tests/image_frame.rs` answers `true`, so
+  under the default `Boundaries<256>` the host marks the whole tree and
+  re-runs layout, and the frame still reports 0 px damaged: the gap is
+  the command fold, not invalidation. Its perturbation at T84.0 was a
+  per-call counter folded into `Recording::image`, which is T84.2's
+  mechanism in miniature: the image's box (1,600 px) was damaged and the
+  centre read blue, red by name. The test needs `truetype` (`Offscreen`
+  lives in `session`), so it is a `[[test]]` with `required-features`,
+  which the workspace build satisfies.
+- **T84.0(b)'s perturbation** re-uploaded on an atlas hit in
+  `image_slot` (the store asked again under the cached slot): the second
+  full-damage draw read blue and the pin failed by name.
+- **T84.0(c) chooses its base.** "The parent commit's count" is the work
+  tree against `HEAD` while a manifest or the lock differs from it, and
+  `HEAD` against `HEAD^` on a clean tree, so CI checks the last commit
+  rather than comparing `HEAD` with itself (`scripts/check_default_crates.sh`
+  header). When no manifest differs the two graphs are equal by
+  construction and nothing is extracted. Injection: `default = ["simd"]`
+  in the shell's manifest moved the count by 2 and failed by name.
+- **T84.0(d)'s injection trips a second gate first.** Adding an `Image`
+  to the leaf fixture's tree fails the build on `assert!(UI == 1216)`
+  (`fixtures/embedded/src/lib.rs`) before the comparator can run, so the
+  injection relaxes that assertion too. With it, the strict four-zero
+  invocation against `1024cba` printed `.text` +1,264 on `firmware`
+  (+1,472 / +1,208 / +1,240 on the other three) and failed by name. Run
+  at T84.0 rather than deferred to T84.2, since it costs one build.
 
 **What the review found (M84).**
 

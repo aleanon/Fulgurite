@@ -259,3 +259,9 @@ required-features = ["shader"]
 [[test]]
 name = "shader_table"
 required-features = ["shader", "truetype"]
+
+# M84/T84.0(a): an `Offscreen` presents the host's frames, and `session`
+# is behind `truetype`.
+[[test]]
+name = "image_frame"
+required-features = ["truetype"]

@@ -49,6 +49,7 @@ static:
     ./scripts/check_on_event_tests.sh   # M57/D2: a direct on_event test goes through the pass or says why not
     ./scripts/check_fill_paint.sh       # M82/T82.3: every border site paints the node's fill first, and declares the bit
     ./scripts/check_shell_headless.sh   # M83/T83.0: the shell names no winit, softbuffer or wgpu (D1 b's premise)
+    ./scripts/check_default_crates.sh   # M84/T84.0(c): K2 -- the default window's crate count against the parent commit's, bound 0
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
