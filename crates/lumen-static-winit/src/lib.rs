@@ -1057,7 +1057,7 @@ impl Win {
         // so nothing is drained while M36's screen is up; and before
         // `next_frame` reads `more_deferred`, which an applied answer
         // sets.
-        Self::serve_requests(&mut *self.session, &mut **backend);
+        Self::serve_requests(&mut *self.session, &mut **backend, &mut self.clipboard);
         self.place_ime(&window);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
@@ -1386,7 +1386,7 @@ impl Win {
         // **The requests the call left** — M88/T88.3, the agent site: an
         // `input.*` pumps and presents inside the request, so a handler's
         // request is answered here, from the frame that call presented.
-        Self::serve_requests(&mut *self.session, &mut *backend);
+        Self::serve_requests(&mut *self.session, &mut *backend, &mut self.clipboard);
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
@@ -1418,11 +1418,22 @@ impl Win {
     /// | request | answered from |
     /// |---|---|
     /// | `Screenshot` | `Backend::frame_rgba` — what the renderer drew, the frame on screen; `Refused(Unsupported)` from a backend that cannot read back |
-    /// | `ClipboardWrite`, `ClipboardRead` | `Refused(Unsupported)` until M88/T88.4 |
+    /// | `ClipboardWrite` | the payload `App::clip_for` gave, onto `kind` ([`Clipboard`]): `Written`, or `Refused(Failed)` when the platform did not take it (M88/T88.4) |
+    /// | `ClipboardRead` | `kind` read as `format`: `Text` or `Html`, or `Refused(Empty)` when it holds nothing in that format (M88/T88.4) |
+    ///
+    /// **`Refused(Unsupported)`** for what this build or platform cannot
+    /// do at all: any clipboard request without the `clipboard` feature
+    /// ([`Clipboard::BUILT`]), and the primary selection where there is
+    /// none ([`Clipboard::HAS_PRIMARY`]). **The primary selection carries
+    /// text only**: HTML written to or read from it is `Unsupported` —
+    /// it is the select-to-copy buffer, which a reader pastes as text.
+    /// A clipboard the build has but the machine did not give it
+    /// ([`Clipboard::is_open`] false) answers `Refused(Failed)`.
     ///
     /// The answers go to the same session that drained them.
-    fn serve_requests(session: &mut dyn Session, backend: &mut dyn Backend) {
-        use lumen_static::request::{Answer, Refusal, Request};
+    fn serve_requests(session: &mut dyn Session, backend: &mut dyn Backend, clipboard: &mut Clipboard) {
+        use lumen_static::request::{Answer, ClipFormat, ClipKind, Refusal, Request};
+        use lumen_static_shell::request::Payload;
         for out in session.take_requests() {
             match out.request {
                 Request::Screenshot { tag } => {
@@ -1432,8 +1443,45 @@ impl Win {
                         None => session.answer(tag, Answer::Refused(Refusal::Unsupported)),
                     }
                 }
-                Request::ClipboardWrite { tag, .. } | Request::ClipboardRead { tag, .. } => {
-                    session.answer(tag, Answer::Refused(Refusal::Unsupported));
+                Request::ClipboardWrite { tag, kind } => {
+                    let primary = kind == ClipKind::Primary;
+                    let landed = match (&out.payload, primary) {
+                        _ if !Clipboard::BUILT || (primary && !Clipboard::HAS_PRIMARY) => Err(Refusal::Unsupported),
+                        (Payload::Text(t), false) => Ok(clipboard.set(t)),
+                        (Payload::Text(t), true) => Ok(clipboard.set_primary(t)),
+                        (Payload::Html { html, alt }, false) => Ok(clipboard.set_html(html, alt)),
+                        (Payload::Html { .. }, true) => Err(Refusal::Unsupported),
+                        // `Host::take_requests` answers a write with no
+                        // payload itself; nothing reaches here without one.
+                        (Payload::None, _) => Err(Refusal::Empty),
+                    };
+                    let a = match landed {
+                        Ok(true) => Answer::Written,
+                        Ok(false) => Answer::Refused(Refusal::Failed),
+                        Err(why) => Answer::Refused(why),
+                    };
+                    session.answer(tag, a);
+                }
+                Request::ClipboardRead { tag, kind, format } => {
+                    let primary = kind == ClipKind::Primary;
+                    if !Clipboard::BUILT || (primary && (!Clipboard::HAS_PRIMARY || format == ClipFormat::Html)) {
+                        session.answer(tag, Answer::Refused(Refusal::Unsupported));
+                        continue;
+                    }
+                    if !clipboard.is_open() {
+                        session.answer(tag, Answer::Refused(Refusal::Failed));
+                        continue;
+                    }
+                    let got = match (format, primary) {
+                        (ClipFormat::Text, false) => clipboard.get(),
+                        (ClipFormat::Text, true) => clipboard.get_primary(),
+                        (ClipFormat::Html, _) => clipboard.get_html(),
+                    };
+                    match (got.as_deref(), format) {
+                        (Some(t), ClipFormat::Text) => session.answer(tag, Answer::Text(t)),
+                        (Some(h), ClipFormat::Html) => session.answer(tag, Answer::Html(h)),
+                        (None, _) => session.answer(tag, Answer::Refused(Refusal::Empty)),
+                    }
                 }
             }
         }
@@ -2202,11 +2250,20 @@ mod tests {
     /// **M88/T88.3: what `Win::serve_requests` answers, and to whom.**
     /// A screenshot from the backend's `frame_rgba` (its size, the
     /// session's scale), or `Refused(Unsupported)` from a backend that
-    /// cannot read back; **both clipboard requests `Refused(Unsupported)`
-    /// until T88.4** — the pin T88.4 flips; and the queue empty after one
-    /// call. Setup landed: three requests were queued.
+    /// cannot read back; and the queue empty after one call. Setup
+    /// landed: four requests were queued.
+    ///
+    /// **M88/T88.4 flipped the clipboard half** (T88.3 pinned both
+    /// clipboard requests at `Refused(Unsupported)`): the clipboard is
+    /// *asked* now. A platform clipboard cannot be exercised headless, so
+    /// this hands `serve_requests` a [`Clipboard::closed`] one — a build
+    /// that has a clipboard on a machine that gave it none — and the
+    /// write and the text read answer `Refused(Failed)`, the platform
+    /// failing, not `Unsupported`; HTML on the primary selection stays
+    /// `Unsupported` (it carries text only). What reaches a real
+    /// clipboard is `just tasks-drive`'s clipboard phase.
     #[test]
-    fn serve_requests_answers_screenshots_and_refuses_the_clipboard_until_t88_4() {
+    fn serve_requests_answers_screenshots_and_asks_the_clipboard() {
         use lumen_static::prelude::*;
         use lumen_static::request::{Answer, Clip, ClipFormat, ClipKind, Refusal, Request, Requests};
         use lumen_static_widgets::prelude::*;
@@ -2290,20 +2347,27 @@ mod tests {
                 Request::Screenshot { tag: 1 },
                 Request::ClipboardWrite { tag: 2, kind: ClipKind::Clipboard },
                 Request::ClipboardRead { tag: 3, kind: ClipKind::Primary, format: ClipFormat::Text },
+                Request::ClipboardRead { tag: 4, kind: ClipKind::Primary, format: ClipFormat::Html },
             ] {
                 assert!(s.host.app.requests.push(r), "setup: a request was refused");
             }
-            Win::serve_requests(&mut s, backend);
+            Win::serve_requests(&mut s, backend, &mut Clipboard::closed());
             let left = s.host.app.requests.len();
             (std::mem::take(&mut s.host.app.got), left)
         };
         let unsupported = format!("{:?}", Answer::Refused(Refusal::Unsupported));
+        let failed = format!("{:?}", Answer::Refused(Refusal::Failed));
         let (got, left) = ask(&mut Drawn([7; 16]));
-        println!("drawn backend: {got:?}; left on the queue {left} (want 0)");
+        println!("drawn backend, closed clipboard: {got:?}; left on the queue {left} (want 0)");
+        // Without the `clipboard` feature, or off X11, the build cannot do
+        // it at all: Unsupported is then the right answer.
+        let write = if Clipboard::BUILT { failed.clone() } else { unsupported.clone() };
+        let primary = if Clipboard::HAS_PRIMARY { failed.clone() } else { unsupported.clone() };
         assert_eq!(
             got,
-            vec![(1, "image 2x2 @1 16".to_string()), (2, unsupported.clone()), (3, unsupported.clone())],
-            "a screenshot from frame_rgba, and the clipboard Refused(Unsupported) until T88.4"
+            vec![(1, "image 2x2 @1 16".to_string()), (2, write), (3, primary), (4, unsupported.clone())],
+            "a screenshot from frame_rgba; the clipboard asked (a closed one fails the write and the \
+             read), and HTML on the primary selection Unsupported"
         );
         assert_eq!(left, 0, "serve_requests left a request on the queue");
         let shaders = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));

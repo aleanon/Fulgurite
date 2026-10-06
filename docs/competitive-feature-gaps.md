@@ -160,6 +160,14 @@ is roughly 3× lumen-static's. Present in `iced_widget` and absent here:
   window answers it with what the renderer drew, on the software canvas
   and, since M88/T88.2, the GPU (`docs/plan-platform-requests.md`,
   `docs/results-tasks.md` T88.3).
+- **Rich clipboard** (`clipboard::read`/`write` with a kind, HTML,
+  images). **Reached, images open:** since M88/T88.4 an application
+  pushes `ClipboardWrite`/`ClipboardRead` requests and the window answers
+  them from the platform clipboard — text and HTML on the clipboard,
+  text on the primary selection — with no new crate; native Wayland has
+  no clipboard in this build. Images wait for M88/T88.5's
+  `clipboard-image` (`docs/plan-platform-requests.md`,
+  `docs/results-tasks.md` T88.4).
 
 ## Xilem / masonry 0.4
 

@@ -36,6 +36,24 @@
 # >= 1 skipped). On a GPU leg whose display is asleep the presents bound
 # is printed as not checkable (the answers still are).
 #
+# M88/T88.4 adds the CLIPBOARD on the software legs: the drive puts `A`
+# on the clipboard and `B` on the primary selection through the app's
+# own `ClipboardWrite` requests (each must answer `Written`), reads both
+# back through `ClipboardRead`, round-trips an HTML clip byte for byte,
+# and checks the primary selection with an independent
+# `xclip -o -selection primary`; a second write (`C`) must leave primary
+# at `B`. **It writes the desktop's clipboard and primary selection.**
+#
+# **Required tool: `xclip`** (owner decision D7,
+# docs/plan-iced-roadmap.md §3.4) -- install it with
+#     sudo apt install xclip
+# It is a prerequisite, not a capability: the primary leg calls
+# `scripts/probe.sh xclip` first and propagates its exit 1, so a missing
+# xclip FAILS the drive with that line and never reports skipped. The
+# drive's own 77 stays for a missing display only (M43 §2). Both
+# directions run every time: the preflight is run once with xclip taken
+# off PATH, and must exit non-zero, non-77, with the install line.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`, which refuses a port that already answers and
 # checks the socket's owner and the process's own `app.diagnostics`
@@ -58,6 +76,26 @@ $LAUNCH --display-only || exit $?
 # widgets out again after each frame it judges, so it is never the
 # `Boundaries` leg itself, only a leg beside it. `scripts/live/shadow.py`
 # asks each window's oracle the leg's question after the drive.
+# M88/T88.4, D7's refuse direction: the primary leg's preflight with
+# xclip off PATH (a PATH holding only what probe.sh itself needs) must
+# FAIL -- non-zero, non-77 -- and print the install line. The accept
+# direction is every leg's clipboard phase below, with xclip present.
+shadow=$(mktemp -d)
+ln -s "$(command -v bash)" "$shadow/bash"
+ln -s "$(command -v dirname)" "$shadow/dirname"
+pre_rc=0
+pre_out=$(PATH="$shadow" "$(command -v python3)" scripts/tasks_drive.py --xclip-preflight 2>&1) || pre_rc=$?
+rm -rf "$shadow"
+echo "$pre_out" | sed 's/^/  (xclip off PATH) /'
+if [ "$pre_rc" = 0 ]; then
+    echo "tasks-drive: the primary leg's preflight passed with xclip off PATH -- it checks nothing"; exit 1
+elif [ "$pre_rc" = 77 ]; then
+    echo "tasks-drive: with xclip off PATH the primary leg exited 77, a skip -- want non-77 (D7: a missing prerequisite fails, never skips)"; exit 1
+elif ! grep -q 'sudo apt install xclip' <<<"$pre_out"; then
+    echo "tasks-drive: with xclip off PATH the primary leg failed (exit $pre_rc) without the install line"; exit 1
+fi
+echo "  ok  refuse direction: xclip off PATH -> exit $pre_rc (non-zero, non-77) with the install line"
+
 for leg in everything boundaries boundaries+oracle; do
     echo "== $leg =="
     # `Boundaries` is the default since M34/T34.2; `everything` is the
@@ -95,4 +133,4 @@ elif [ "$rc" != 0 ]; then
     exit "$rc"
 fi
 
-echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle; the GPU answered ui.screenshot per call"
+echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle; the clipboard round-tripped text, HTML and primary; the GPU answered ui.screenshot per call"

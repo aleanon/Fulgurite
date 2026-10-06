@@ -145,7 +145,7 @@ for s in "${steps[@]}"; do
     t0=$(date +%s)
     if [ "$s" = probe ]; then
         probe=./scripts/probe.sh; [ -x "$probe" ] || probe="$ROOT/scripts/probe.sh"
-        "$probe" thumb qemu miri >"$log" 2>&1 </dev/null
+        "$probe" thumb qemu miri xclip >"$log" 2>&1 </dev/null
     else
         just --no-deps "$s" >"$log" 2>&1 </dev/null
     fi

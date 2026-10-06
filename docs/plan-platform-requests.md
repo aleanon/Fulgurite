@@ -986,3 +986,29 @@ section replaces that design.*
 - **T88.3, `ClipFormat` and `Clip`** carry `Text` and `Html` only: T88.5
   appends `Image` with its feature. `Answer::Image` exists now, for
   screenshots.
+- **T88.4, the primary selection carries text only.** `ClipboardWrite`
+  with an HTML payload on `Primary`, and `ClipboardRead { Primary, Html }`,
+  answer `Refused(Unsupported)`: the primary selection is the
+  select-to-copy buffer, which a reader pastes as text, and the plan named
+  only `set_primary`/`get_primary` for it. A clipboard the build has but
+  the machine did not give it (`Clipboard::is_open` false: no display, a
+  Wayland-only session) answers `Refused(Failed)`, and `Unsupported` is
+  kept for what the build cannot do at all (`Clipboard::BUILT`,
+  `Clipboard::HAS_PRIMARY`). The winit unit test hands `serve_requests` a
+  `Clipboard::closed()` so it never touches the desktop's clipboard.
+- **T88.4, `#copy-text`.** The plan's buttons were `#copy-html`,
+  `#copy-primary` and `#read-*`, but the drive's setup puts `A` on the
+  clipboard and its accept direction writes `C`, so `tasks-demo` also has
+  `#copy-text`, writing `A` on its first click and two letters on per
+  click after (`C`), never `#copy-primary`'s `B`. The window grows to
+  520×760.
+- **T88.4, the ignore-`kind` injection** reads `#read-text` as `B`, not
+  the plan's "`#read-primary` shows `A`": in this drive's order the
+  primary write lands on the clipboard after `A` and replaces it. The
+  same assertion names it, with both reads printed.
+- **T88.4, both directions in every run.** `scripts/tasks_drive.sh` runs
+  the primary leg's preflight once with `xclip` off `PATH` (a `PATH`
+  holding only `bash` and `dirname`, which `probe.sh` itself needs) and
+  requires exit non-zero, non-77, with the install line; every software
+  leg then runs it with `xclip` present. So the probe-exits-77 injection
+  is observed by the drive itself, before any leg.

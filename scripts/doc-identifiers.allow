@@ -131,7 +131,6 @@ MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 map
 # task builds it; a built name left here is reported as stale by this script.
 GstFeed                        # deferred by M84/T84.10 (K84b fired); docs/results-images.md T84.10
 LineHeight                     # proposed by ?
-LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?
 TextSource                     # proposed by M80
 GlyphRuns                      # proposed by M81
@@ -149,10 +148,8 @@ LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/ric
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 CloseWindow                    # proposed by M88
-GetExtLinux                    # proposed by M88
 ImageData                      # proposed by M88
 OpenWindow                     # proposed by M88
-SetExtLinux                    # proposed by M88
 GpuContext                     # proposed by M89
 OpenProgram                    # proposed by M89
 WindowApp                      # proposed by M89

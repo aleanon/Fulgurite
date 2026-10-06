@@ -16,7 +16,12 @@
 //! **asks the window for a screenshot** (`lumen_static::request`): `#shot`
 //! recolours the swatch and pushes a `Screenshot` request from its
 //! handler, `#shot-timer` does it from a timer tick, and `answered`
-//! shows the pixel the answer holds at the swatch. Every one is driven by a click, and
+//! shows the pixel the answer holds at the swatch. Since M88/T88.4 it
+//! **reaches the clipboard** through the same queue: `#copy-text`,
+//! `#copy-primary` and `#copy-html` push `ClipboardWrite`s whose bytes
+//! `clip_for` hands over at the drain, and `#read-text`, `#read-primary`
+//! and `#read-html` push `ClipboardRead`s whose answers the two `#clip-*`
+//! labels show. Every one is driven by a click, and
 //! every one puts its consequence on screen where
 //! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
 //!
@@ -44,10 +49,35 @@ const KIND_SHOT: u64 = 7;
 /// The tags this application's screenshot requests carry (M88/T88.3).
 const TAG_SHOT: u64 = 1;
 const TAG_SHOT_TIMER: u64 = 2;
+/// The tags of its clipboard requests (M88/T88.4).
+const TAG_COPY_TEXT: u64 = 3;
+const TAG_COPY_PRIMARY: u64 = 4;
+const TAG_COPY_HTML: u64 = 5;
+const TAG_READ_TEXT: u64 = 6;
+const TAG_READ_PRIMARY: u64 = 7;
+const TAG_READ_HTML: u64 = 8;
+
+/// What `#copy-html` writes, and the plain text a reader that cannot take
+/// HTML gets. Markup, an entity, and a two-byte character, so a
+/// round trip that re-encoded or trimmed anything would differ
+/// (`just tasks-drive` compares it byte for byte).
+const COPY_HTML: &str = "<p>caf\u{e9} <b>&amp;</b> <i>lumen</i></p>";
+const COPY_HTML_ALT: &str = "caf\u{e9} & lumen";
+/// What `#copy-primary` puts on the primary selection.
+const COPY_PRIMARY: &str = "B";
+
+/// A tag's name in the `#clip-*` labels.
+fn clip_name(tag: u64) -> &'static str {
+    match tag {
+        TAG_COPY_TEXT | TAG_READ_TEXT => "text",
+        TAG_COPY_PRIMARY | TAG_READ_PRIMARY => "primary",
+        _ => "html",
+    }
+}
 
 /// A message is data. Nothing here is a callback, and nothing crossing
 /// the frame boundary holds a code reference.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Msg {
     One(u64),
     Batch(u64),
@@ -64,6 +94,10 @@ enum Msg {
     Shot { w: u32, h: u32, rgb: [u8; 3] },
     /// A screenshot the window refused.
     ShotRefused,
+    /// A clipboard request's answer (M88/T88.4): a write's `Written` or
+    /// refusal, or what a read found — owned, because the answer's text
+    /// is lent for the `answered` call only.
+    Clip { tag: u64, said: String },
     Failed(u64, Failure),
 }
 
@@ -99,12 +133,42 @@ struct Ui {
     shot_value: Label<String>,
     #[widget_id("shot-log")]
     shot_log: Label<String>,
+    copies: CopyRow,
+    reads: ReadRow,
+    #[widget_id("clip-write")]
+    clip_write: Label<String>,
+    #[widget_id("clip-read")]
+    clip_read: Label<String>,
     #[widget_id("sip-value")]
     sip_value: Label<String>,
     #[widget_id("status")]
     status: Label<String>,
     #[widget_id("counts")]
     counts: Label<String>,
+}
+
+/// M88/T88.4: the clipboard writes, one row.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 8.0)]
+struct CopyRow {
+    #[widget_id("copy-text")]
+    copy_text: Button<Tasks>,
+    #[widget_id("copy-primary")]
+    copy_primary: Button<Tasks>,
+    #[widget_id("copy-html")]
+    copy_html: Button<Tasks>,
+}
+
+/// M88/T88.4: the clipboard reads, one row.
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 8.0)]
+struct ReadRow {
+    #[widget_id("read-text")]
+    read_text: Button<Tasks>,
+    #[widget_id("read-primary")]
+    read_primary: Button<Tasks>,
+    #[widget_id("read-html")]
+    read_html: Button<Tasks>,
 }
 
 /// The tree, and the state its handlers may touch — split in
@@ -156,6 +220,17 @@ struct Tasks {
     /// Every answer's swatch colour, oldest first: the drive reads which
     /// frame each answer came from.
     shot_log: String,
+    /// What `#copy-text` writes: `A` on its first click, then `C`, `E`, …
+    /// — two letters on per click, so its text never meets `#copy-primary`'s
+    /// `B` (M88/T88.4).
+    copy_text: String,
+    copy_clicks: u32,
+    /// Clipboard answers applied, writes and reads, and what the last of
+    /// each said: `write N text Written`, `read N primary B`.
+    writes: u32,
+    reads: u32,
+    clip_write: String,
+    clip_read: String,
 }
 
 // ---- the swatch (M88/T88.2) ------------------------------------------
@@ -328,10 +403,32 @@ impl App for Demo {
                 Some(Msg::Shot { w: width, h: height, rgb: [px[0], px[1], px[2]] })
             }
             (TAG_SHOT | TAG_SHOT_TIMER, Answer::Refused(_)) => Some(Msg::ShotRefused),
+            (TAG_COPY_TEXT..=TAG_READ_HTML, a) => Some(Msg::Clip {
+                tag,
+                said: match a {
+                    Answer::Text(t) | Answer::Html(t) => t.to_owned(),
+                    other => format!("{other:?}"),
+                },
+            }),
             _ => None,
         }
     }
     // ANCHOR_END: shot
+
+    // ANCHOR: clip
+    /// **What a clipboard write puts there**, asked by the host while it
+    /// drains the request — synchronously, in the build loaded now — so
+    /// the bytes never live in the request (M88/T88.4).
+    fn clip_for(&mut self, tag: u64) -> Option<lumen_static::request::Clip<'_>> {
+        use lumen_static::request::Clip;
+        match tag {
+            TAG_COPY_TEXT => Some(Clip::Text(&self.state.copy_text)),
+            TAG_COPY_PRIMARY => Some(Clip::Text(COPY_PRIMARY)),
+            TAG_COPY_HTML => Some(Clip::Html { html: COPY_HTML, alt: COPY_HTML_ALT }),
+            _ => None,
+        }
+    }
+    // ANCHOR_END: clip
 
     fn job_for(d: Descriptor) -> Option<JobFn<Msg>> {
         match (d.kind, d.step) {
@@ -422,6 +519,14 @@ impl App for Demo {
                 this.shots += 1;
                 this.shot_value = format!("shot {} refused", this.shots);
             }
+            Msg::Clip { tag, said } if tag <= TAG_COPY_HTML => {
+                this.writes += 1;
+                this.clip_write = format!("write {} {} {said}", this.writes, clip_name(tag));
+            }
+            Msg::Clip { tag, said } => {
+                this.reads += 1;
+                this.clip_read = format!("read {} {} {said}", this.reads, clip_name(tag));
+            }
             Msg::Failed(kind, why) => {
                 this.failures += 1;
                 this.last = format!("failed kind={kind} why={why:?}");
@@ -467,7 +572,15 @@ impl App for Demo {
             _ => lumen_static::bind::set_if_changed(&mut self.ui.shot_value, &s.shot_value),
         };
         let f = lumen_static::bind::format_into(&mut self.ui.shot_log, format_args!("log{}", s.shot_log));
-        a | b | c | d | e | f
+        let g = match s.writes {
+            0 => lumen_static::bind::format_into(&mut self.ui.clip_write, format_args!("write -")),
+            _ => lumen_static::bind::set_if_changed(&mut self.ui.clip_write, &s.clip_write),
+        };
+        let h = match s.reads {
+            0 => lumen_static::bind::format_into(&mut self.ui.clip_read, format_args!("read -")),
+            _ => lumen_static::bind::set_if_changed(&mut self.ui.clip_read, &s.clip_read),
+        };
+        a | b | c | d | e | f | g | h
     }
 }
 
@@ -523,6 +636,35 @@ fn on_shot_timer(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.timers.every(KIND_SHOT, 1, 500.0);
 }
 
+// ---- the clipboard (M88/T88.4): each button pushes one request ------
+
+fn on_copy_text(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipKind, Request};
+    s.copy_clicks += 1;
+    s.copy_text = char::from(b'A' + ((2 * (s.copy_clicks - 1)) % 26) as u8).to_string();
+    s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_TEXT, kind: ClipKind::Clipboard });
+}
+fn on_copy_primary(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipKind, Request};
+    s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_PRIMARY, kind: ClipKind::Primary });
+}
+fn on_copy_html(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipKind, Request};
+    s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_HTML, kind: ClipKind::Clipboard });
+}
+fn on_read_text(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipFormat, ClipKind, Request};
+    s.requests.push(Request::ClipboardRead { tag: TAG_READ_TEXT, kind: ClipKind::Clipboard, format: ClipFormat::Text });
+}
+fn on_read_primary(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipFormat, ClipKind, Request};
+    s.requests.push(Request::ClipboardRead { tag: TAG_READ_PRIMARY, kind: ClipKind::Primary, format: ClipFormat::Text });
+}
+fn on_read_html(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    use lumen_static::request::{ClipFormat, ClipKind, Request};
+    s.requests.push(Request::ClipboardRead { tag: TAG_READ_HTML, kind: ClipKind::Clipboard, format: ClipFormat::Html });
+}
+
 fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.sub_on = !s.sub_on;
     s.subs.clear();
@@ -560,6 +702,18 @@ fn build() -> Demo {
     app.ui.shot.on_click = on_shot;
     app.ui.shot_timer.label = "screenshot by timer";
     app.ui.shot_timer.on_click = on_shot_timer;
+    app.ui.copies.copy_text.label = "copy text";
+    app.ui.copies.copy_text.on_click = on_copy_text;
+    app.ui.copies.copy_primary.label = "copy primary";
+    app.ui.copies.copy_primary.on_click = on_copy_primary;
+    app.ui.copies.copy_html.label = "copy html";
+    app.ui.copies.copy_html.on_click = on_copy_html;
+    app.ui.reads.read_text.label = "read text";
+    app.ui.reads.read_text.on_click = on_read_text;
+    app.ui.reads.read_primary.label = "read primary";
+    app.ui.reads.read_primary.on_click = on_read_primary;
+    app.ui.reads.read_html.label = "read html";
+    app.ui.reads.read_html.on_click = on_read_html;
     app
 }
 
@@ -585,7 +739,7 @@ fn stylesheet() -> Vec<Rule> {
 /// **The program, described once** — M32 (`docs/plan-program.md`). The
 /// window and `--shot` are both built from it.
 fn program() -> Program<Demo> {
-    application(build).title("tasks-demo").size(520, 640).style(|_: &Demo| stylesheet())
+    application(build).title("tasks-demo").size(520, 760).style(|_: &Demo| stylesheet())
 }
 
 fn main() {

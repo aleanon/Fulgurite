@@ -34,8 +34,34 @@ Copy and paste is split in half, deliberately:
 * **The platform's half** — the actual system clipboard, in the
   windowing crate.
 
-It is on by default: eleven crates, which the gating policy judged cheap
-enough for something this close to table stakes.
+It is on by default: five crates by the per-crate count the windowing
+crate's manifest records, which the gating policy judged cheap enough
+for something this close to table stakes.
+
+**An application can reach it, too** (M88/T88.4). Not by holding a
+clipboard — a handler reaches only its own state — but through the same
+queue a screenshot travels on (see *Events*): it pushes a
+`ClipboardWrite` or a `ClipboardRead` naming the clipboard or the
+**primary selection** (X11's select-to-copy buffer), and the window
+answers by tag. A write's bytes are not in the request; the window asks
+`App::clip_for` for them while it drains, in the build loaded then:
+
+```text
+{{#include ../../examples/tasks-demo/src/main.rs:clip}}
+```
+
+Text and HTML go on the clipboard and text on the primary selection,
+with **no crate beyond the five** (`docs/results-tasks.md` T88.4). A
+platform without a primary selection answers a primary request
+`Refused(Unsupported)`, and so does HTML on the primary selection, which
+a reader pastes as text. `just tasks-drive` checks what landed with an
+independent `xclip -o -selection primary`, a tool the reference machine
+is required to have.
+
+**Native Wayland has no clipboard in this build.** arboard is built
+without its Wayland backend, so the clipboard is X11's: under XWayland
+it works, and on a Wayland-only session the window finds none and every
+clipboard request fails.
 
 ## Dialogs
 

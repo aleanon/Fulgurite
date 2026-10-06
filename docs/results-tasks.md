@@ -1309,3 +1309,45 @@ this task's firmware gate and the `nm` count is printed beside it.
 binary is byte-identical before and after (`cmp`). Its application has
 no `requests()`, and `Host::answer` is never called, so the
 `answer_changed` take folds away.
+
+## M88/T88.4 — clipboard reach: text, HTML, primary
+
+`docs/plan-platform-requests.md` T88.4. `Win::serve_requests` answers
+`ClipboardWrite` and `ClipboardRead` from `lumen_static_winit::Clipboard`,
+which gains `set_html`/`get_html` (arboard's ungated HTML) and
+`set_primary`/`get_primary` (its Linux extension traits,
+`LinuxClipboardKind::Primary`). A write answers `Written` or
+`Refused(Failed)`; a read `Text`/`Html` or `Refused(Empty)`; what the build
+or platform cannot do at all — no `clipboard` feature, a primary selection
+off X11, HTML on primary — `Refused(Unsupported)`.
+
+| gate | measured | bound |
+|---|---|---|
+| K2 crate count, `cargo tree -p lumen-static-winit -e normal --prefix none \| sed 's/ (\*)$//' \| sort -u \| wc -l` | **96 → 96** (`check_default_crates`: delta 0) | 0 new |
+| `scripts/probe.sh xclip` on the reference machine | `probe: xclip present (/usr/bin/xclip, xclip version 0.13)` | present |
+| refuse direction: the primary leg's preflight with `xclip` off `PATH` | exit **1**, `sudo apt install xclip` printed | non-zero, non-77 |
+| `just tasks-drive`, every software leg (Everything, Boundaries, Boundaries + oracle): `#copy-text` / `#copy-primary` | `Written` / `Written` | `Written` |
+| `#read-text` / `#read-primary` | `A` / `B` | `A` / `B` |
+| independent `xclip -o -selection primary` | `B` | `B` |
+| `#copy-html` then `#read-html` | 38 B written, 38 B read, byte-identical | equal |
+| accept: a second `#copy-text` (`C`) | `#read-text` `C`; `#read-primary` and `xclip` still `B` | `B` |
+| `tests/requests.rs`: an HTML clip | `Payload::Html`, html 25 B and alt 7 B, both halves | both |
+| winit `serve_requests`, a closed clipboard | write `Refused(Failed)`, primary text read `Refused(Failed)`, primary HTML read `Refused(Unsupported)` | as listed |
+
+Injections, each red by name and restored green:
+
+| injection | fires as |
+|---|---|
+| T88.3's pin against the new `serve_requests` (both clipboard requests `Refused(Unsupported)`) | the winit test: `left: [.., (2, "Refused(Unsupported)"), (3, "Refused(Unsupported)"), ..]`, want `Refused(Failed)` |
+| `serve_requests` ignores `kind` | `#read-text shows 'B' (want 'A')` — the primary write landed on the clipboard — `the clipboard and the primary selection are not two places` |
+| `Host::take_requests` does not ask `clip_for` | `setup: #copy-text's write answered text 'Refused(Empty)', not Written` |
+| `scripts/probe.sh`'s `xclip` case exits 77 | `with xclip off PATH the primary leg exited 77, a skip -- want non-77` (the drive stops before any leg) |
+| `Payload::from` flattens an HTML clip to its alt text | `an HTML clip must reach the window as Payload::Html with both halves` |
+
+**The clipboard phase writes the desktop's clipboard and primary
+selection**, on whatever display the drive runs on; it runs on the three
+software legs (the GPU leg runs only the pixel phases, T88.2).
+
+**The GPU leg's presents bound was again not checkable** (the display
+asleep, the `#shot-timer` click 854 ms against 250), as at T88.3; this
+task does not touch that leg's phases.

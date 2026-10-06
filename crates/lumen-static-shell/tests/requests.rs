@@ -14,6 +14,7 @@
 //! | an unmodelled tag is counted | `unmodelled_answers` = 1 |
 //! | a ninth push is refused | 8 queued, 1 refused |
 //! | a clipboard write with no `clip_for` answers itself | `Refused(Empty)`, nothing taken |
+//! | an HTML clip is handed out whole (M88/T88.4) | `Payload::Html`, both halves |
 //! | an app with no queue | `Vec::new()`, nothing counted |
 
 use lumen_static::display::Cmd;
@@ -42,6 +43,9 @@ struct Asks {
     last: String,
     /// What `clip_for` answers; `None` exercises `Refused(Empty)`.
     clip: Option<String>,
+    /// When set, `clip_for` answers HTML (with its plain-text
+    /// alternative) instead (M88/T88.4).
+    html: Option<(String, String)>,
     refusals: Vec<Refusal>,
 }
 
@@ -76,6 +80,9 @@ impl App for Shots {
         Some(&mut self.state.requests)
     }
     fn clip_for(&mut self, _tag: u64) -> Option<Clip<'_>> {
+        if let Some((html, alt)) = &self.state.html {
+            return Some(Clip::Html { html, alt });
+        }
         self.state.clip.as_deref().map(Clip::Text)
     }
     fn answered(tag: u64, a: Answer<'_>) -> Option<Msg> {
@@ -213,6 +220,31 @@ fn a_clipboard_write_asks_clip_for_and_refuses_empty_by_itself() {
             },
         ]
     );
+}
+
+/// **M88/T88.4: an HTML clip crosses as an owned `Payload::Html`**, both
+/// halves, byte for byte — the window then puts it on the clipboard. A
+/// platform clipboard cannot be exercised headless (the reason
+/// `clipboard.rs` lives in the winit crate), so this pins only what the
+/// shell builds from `clip_for`; `just tasks-drive` round-trips it
+/// through the real one.
+#[test]
+fn an_html_clip_is_handed_out_whole() {
+    let mut h = shots_host();
+    let (html, alt) = ("<p>caf\u{e9} <b>&amp;</b></p>", "caf\u{e9} &");
+    h.app.state.html = Some((html.into(), alt.into()));
+    h.app.state.requests.push(Request::ClipboardWrite { tag: 9, kind: ClipKind::Clipboard });
+    let got = h.take_requests();
+    println!("an HTML write: {got:?} (html {} B, alt {} B)", html.len(), alt.len());
+    assert_eq!(
+        got,
+        vec![Outgoing {
+            request: Request::ClipboardWrite { tag: 9, kind: ClipKind::Clipboard },
+            payload: Payload::Html { html: html.into(), alt: alt.into() },
+        }],
+        "an HTML clip must reach the window as Payload::Html with both halves"
+    );
+    assert!(h.app.state.refusals.is_empty(), "setup: the write was refused {:?}", h.app.state.refusals);
 }
 
 #[test]

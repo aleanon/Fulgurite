@@ -1,5 +1,29 @@
 """M28/T28.12's assertions. See scripts/tasks_drive.sh."""
 import base64, hashlib, io, json, re, socket, sys, time
+import os, subprocess  # noqa: E401
+
+
+def xclip_preflight(leg):
+    """M88/T88.4 (owner decision D7): the primary leg's prerequisite.
+
+    `xclip` is the independent reader of the primary selection, and a
+    prerequisite rather than a capability (docs/plan-iced-roadmap.md
+    §3.4): `scripts/probe.sh xclip` exits 1 with the install line when it
+    is absent, and this propagates that status -- never 77, which is the
+    drive's code for a missing display only (M43 §2)."""
+    probe = os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe.sh")
+    r = subprocess.run([probe, "xclip"], capture_output=True, text=True)
+    print(f"  ..  {(r.stdout + r.stderr).strip()} (exit {r.returncode})")
+    if r.returncode != 0:
+        print(f"tasks-drive[{leg}]: the primary leg needs xclip (D7) -- failing, not skipping")
+        sys.exit(r.returncode)
+
+
+# `tasks_drive.sh` runs the preflight alone with xclip off PATH -- the
+# refuse direction, in the same session as every leg's accept direction.
+if sys.argv[1:2] == ["--xclip-preflight"]:
+    xclip_preflight("preflight")
+    sys.exit(0)
 
 port, strategy = int(sys.argv[1]), sys.argv[2]
 # M88/T88.2: `gpu` runs only the phases that read pixels, on a window
@@ -22,7 +46,6 @@ if backend == "gpu":
 # nothing -- run before this script's own connection opens, and with the
 # window's pid checked against the port. Its second JSON line is a click
 # on `#spawn-one`; step 1 below is the ordinary click that must move it.
-import os, subprocess  # noqa: E401,E402
 here = os.path.dirname(os.path.abspath(__file__))
 replay = [sys.executable, os.path.join(here, "browser_replay.py"), f"127.0.0.1:{port}",
           os.path.join(here, "..", "crates/lumen-static-agent/tests/browser/firefox156-fetch-no-cors.bin"),
@@ -242,6 +265,89 @@ def shot_redraw_phase():
     print(f"  ok  redraw path: shot {n1}, both answers tick 1's {got}; presented {presented}, skipped {skipped}")
 
 
+def clip_label(wid):
+    """`#clip-write` / `#clip-read` parsed: (count, name, what it said)."""
+    t = text_of(wid)
+    m = re.match(r"(?:write|read) (\d+) (\w+) (.*)$", t, re.S)
+    return (int(m.group(1)), m.group(2), m.group(3)) if m else (0, None, t)
+
+
+def clip_click(wid, label):
+    """Click `#wid` (handled), then wait for `#label`'s count to move; the
+    answer, printed. The request is answered after the agent call that
+    clicked, and the label is bound on the frame after."""
+    n0, _, _ = clip_label(label)
+    r = call("input.click", {"selector": f"#{wid}"})
+    if r.get("handled") is not True:
+        sys.exit(f"tasks-drive[{leg}]: setup: the click on #{wid} was not handled: {r}")
+    t0 = time.time()
+    while time.time() - t0 < 4.0:
+        n, name, said = clip_label(label)
+        if n == n0 + 1:
+            print(f"  ..  #{wid}: #{label} reads {text_of(label)!r} after {(time.time() - t0) * 1000:.0f} ms")
+            return name, said
+        time.sleep(0.02)
+    sys.exit(f"tasks-drive[{leg}]: #{wid} was never answered: #{label} still reads {text_of(label)!r}")
+
+
+def xclip_read(selection):
+    r = subprocess.run(["xclip", "-o", "-selection", selection], capture_output=True, text=True, timeout=5)
+    return r.stdout if r.returncode == 0 else f"<xclip exit {r.returncode}: {r.stderr.strip()}>"
+
+
+# What tasks-demo's `#copy-html` writes (COPY_HTML in its main.rs).
+COPY_HTML = "<p>caf\u00e9 <b>&amp;</b> <i>lumen</i></p>"
+
+
+def clipboard_phase():
+    """M88/T88.4: an application reaches the clipboard -- text, HTML and
+    the primary selection -- through `ClipboardWrite`/`ClipboardRead`
+    requests, answered by `Win::serve_requests` from the real platform
+    clipboard. **This writes the desktop's clipboard and primary
+    selection.** Setup landed: each write answered `Written`."""
+    xclip_preflight(leg)
+    for wid, want in (("copy-text", "text"), ("copy-primary", "primary")):
+        name, said = clip_click(wid, "clip-write")
+        print(f"  ..  setup: #{wid} answered {said!r} (want 'Written')")
+        if name != want or said != "Written":
+            sys.exit(f"tasks-drive[{leg}]: setup: #{wid}'s write answered {name} {said!r}, not Written -- "
+                     f"the write never reached the clipboard (was clip_for asked?)")
+    _, text = clip_click("read-text", "clip-read")
+    _, primary = clip_click("read-primary", "clip-read")
+    print(f"  ..  #read-text shows {text!r} (want 'A'); #read-primary shows {primary!r} (want 'B')")
+    if text != "A" or primary != "B":
+        sys.exit(f"tasks-drive[{leg}]: read-text {text!r} and read-primary {primary!r}, want 'A' and 'B' -- "
+                 f"the clipboard and the primary selection are not two places (does serve_requests read kind?)")
+    ind = xclip_read("primary")
+    print(f"  ..  independent `xclip -o -selection primary`: {ind!r} (want 'B')")
+    if ind != "B":
+        sys.exit(f"tasks-drive[{leg}]: xclip reads the primary selection as {ind!r}, not 'B' -- "
+                 f"what the application wrote is not what another program sees")
+    name, said = clip_click("copy-html", "clip-write")
+    if said != "Written":
+        sys.exit(f"tasks-drive[{leg}]: setup: #copy-html answered {said!r}, not Written")
+    _, html = clip_click("read-html", "clip-read")
+    print(f"  ..  #read-html: {len(html.encode())} B read back, {len(COPY_HTML.encode())} B written; "
+          f"equal: {html == COPY_HTML}")
+    if html != COPY_HTML:
+        sys.exit(f"tasks-drive[{leg}]: the HTML did not round-trip byte for byte: wrote {COPY_HTML!r}, "
+                 f"read {html!r}")
+    # Accept: a second clipboard write (`C`) leaves the primary selection alone.
+    name, said = clip_click("copy-text", "clip-write")
+    if said != "Written":
+        sys.exit(f"tasks-drive[{leg}]: setup: the second #copy-text answered {said!r}, not Written")
+    _, text = clip_click("read-text", "clip-read")
+    _, primary = clip_click("read-primary", "clip-read")
+    ind = xclip_read("primary")
+    print(f"  ..  accept: after writing 'C', #read-text {text!r} (want 'C'); #read-primary {primary!r} and "
+          f"xclip's primary {ind!r} (want 'B')")
+    if text != "C" or primary != "B" or ind != "B":
+        sys.exit(f"tasks-drive[{leg}]: a clipboard write moved the primary selection (or did not land): "
+                 f"text {text!r}, primary {primary!r}, xclip {ind!r}")
+    print(f"  ok  clipboard: text A, primary B (and xclip B), html {len(COPY_HTML.encode())} B round-trip; "
+          f"a write of C left primary B")
+
+
 if backend == "gpu":
     # The surface is still "not checkable" on the GPU (`gpu.rs`,
     # `fetch_rgba`): the target is what was rendered, not what was
@@ -281,6 +387,8 @@ swatch_phase()
 # ---- 0b. screenshot requests, both drain sites (M88/T88.3) -------------
 shot_agent_phase()
 shot_redraw_phase()
+# ---- 0c. the clipboard: text, HTML, primary (M88/T88.4) ----------------
+clipboard_phase()
 
 # ---- 1. spawn one ----------------------------------------------------
 click("spawn-one")

@@ -80,6 +80,21 @@ shader = ["lumen-static-shell/shader", "lumen-static-wgpu?/shader"]
 # field. An application that wants neither this nor `a11y` writes
 # `default-features = false`.
 #
+# Since M88/T88.4 it is also what an application's clipboard REQUESTS
+# reach (`Win::serve_requests`): text and HTML on the clipboard, text on
+# the primary selection (arboard's ungated `set_html`/`get().html()` and
+# its Linux extension traits), at **0 new crates** (96 -> 96,
+# docs/results-tasks.md T88.4). Images are not in it: they need arboard's
+# `image-data`, which pulls an image-decoding stack.
+#
+# **Native Wayland has no clipboard in this build** (M88/T88.4): arboard
+# is built with `default-features = false` and without
+# `wayland-data-control`, so it speaks X11 only. Under XWayland the
+# clipboard works; on a Wayland-only session `Clipboard::new` finds none
+# and every clipboard request answers `Refused(Failed)`. Reopen when a
+# Wayland-only session is a target, with that feature's crate count
+# measured first (it pulls `wl-clipboard-rs`).
+#
 # **`a11y`: a screen reader can see the window** (M54/T54.2,
 # docs/plan-a11y-platform.md §2.2-2.3). The platform adapter
 # (`accesskit_winit`: AT-SPI, UI Automation, NSAccessibility) built before
@@ -171,8 +186,8 @@ lumen-static-reload = { path = "../lumen-static-reload", features = ["window"], 
 notify = { version = "8", optional = true }
 
 # The system clipboard (T14.5). `image-data` is off: this framework
-# copies text, and the image feature pulls an image-decoding stack for
-# a capability nothing here has.
+# copies text and HTML (M88/T88.4), and the image feature pulls an
+# image-decoding stack for a capability the default build does not have.
 #
 # **Not on Android** (M54/T54.8, R12-F6): arboard has no Android backend,
 # so with it in the ordinary table the default features could not even

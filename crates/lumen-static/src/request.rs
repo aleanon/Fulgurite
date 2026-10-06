@@ -37,8 +37,9 @@
 //! Behind `std`, as the outbox is: the firmware links none of it
 //! (`docs/results-tasks.md`, T88.3's `nm` count).
 
-/// Which clipboard a request names. `Primary` is the X11/Wayland
-/// selection; a platform without one answers [`Refusal::Unsupported`].
+/// Which clipboard a request names. `Primary` is the X11 selection
+/// (select-to-copy), and carries text only; a platform without one
+/// answers [`Refusal::Unsupported`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ClipKind {
@@ -167,8 +168,9 @@ pub enum Clip<'a> {
 /// Why a request was not done.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// This window, build or platform cannot do it (a clipboard before
-    /// M88/T88.4, primary off Linux, a backend that cannot read back).
+    /// This window, build or platform cannot do it (a build without the
+    /// window's `clipboard` feature, the primary selection off X11 or as
+    /// HTML, a backend that cannot read back).
     Unsupported,
     /// Nothing to do it with: `App::clip_for` answered `None`, or the
     /// clipboard held nothing in the asked format.

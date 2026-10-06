@@ -9,12 +9,21 @@
 #                                 pinned toolchain (rust-toolchain.toml)
 #   scripts/probe.sh qemu         qemu-system-arm on PATH
 #   scripts/probe.sh miri         `cargo +nightly miri` (just miri-reload)
-#   scripts/probe.sh a b ...      all of them; 77 if any is absent
+#   scripts/probe.sh xclip        xclip on PATH -- REQUIRED, see below
+#   scripts/probe.sh a b ...      all of them; 1 if a required one is
+#                                 absent, else 77 if any is absent
 #
 # Prints `probe: <cap> present (<evidence>)` or `probe: <cap> absent --
 # skipped (77): <how to get it>`. What a 77 means to a caller is the
 # caller's policy: `just ci` counts it as a failure unless
 # LUMEN_ALLOW_SKIP=1, and records it as a skip either way.
+#
+# **`xclip` is a prerequisite, not a capability** (owner decision D7,
+# docs/plan-iced-roadmap.md §3.4): the plan has decided the reference
+# machine has it, for `just tasks-drive`'s independent read of the
+# primary selection (M88/T88.4). Its absence prints `probe: xclip absent
+# -- required (D7): sudo apt install xclip` and exits **1, never 77**, so
+# no caller can count it as a skip.
 #
 # **The thumb probe asks the toolchain the build will use**, not rustup's
 # default: `rustc --print sysroot` from the repository root resolves
@@ -23,10 +32,11 @@
 # --installed` answers for whichever toolchain rustup thinks is active.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-[ "$#" -gt 0 ] || { echo "usage: probe.sh thumb|qemu|miri ..." >&2; exit 2; }
+[ "$#" -gt 0 ] || { echo "usage: probe.sh thumb|qemu|miri|xclip ..." >&2; exit 2; }
 
 THUMB=thumbv7em-none-eabihf
 absent=0
+required=0
 for cap in "$@"; do
     case $cap in
         thumb)
@@ -52,7 +62,15 @@ for cap in "$@"; do
                 echo "probe: miri absent -- skipped (77): rustup +nightly component add miri"
                 absent=1
             fi ;;
+        xclip)
+            if x=$(command -v xclip); then
+                echo "probe: xclip present ($x, $(xclip -version 2>&1 | head -1))"
+            else
+                echo "probe: xclip absent -- required (D7): sudo apt install xclip"
+                required=1
+            fi ;;
         *)  echo "probe: unknown capability '$cap'" >&2; exit 2 ;;
     esac
 done
+[ "$required" -eq 0 ] || exit 1
 [ "$absent" -eq 0 ] || exit 77

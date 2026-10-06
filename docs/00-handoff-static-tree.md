@@ -712,8 +712,14 @@ converted is pending at a swap (`request_across_a_swap`,
 `answer_then_swap`); a change it reports reaches the next pump as the
 drains' own change flag and asks for the frame that shows it. A
 clipboard write's bytes come from `App::clip_for` at the drain, never
-from the request. A screenshot answers from `Backend::frame_rgba`;
-clipboard requests are refused as unsupported until M88/T88.4.
+from the request. A screenshot answers from `Backend::frame_rgba`.
+**Since M88/T88.4** a clipboard request reaches the platform clipboard
+(`lumen_static_winit::Clipboard`): text and HTML on the clipboard, text on
+the primary selection, `Written` or `Refused(Failed)` for a write, and
+`Refused(Unsupported)` for what the build or platform cannot do — no
+`clipboard` feature, a primary selection off X11, HTML on primary
+(`docs/results-tasks.md` T88.4). Native Wayland has no clipboard in this
+build (no `wayland-data-control`).
 
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
