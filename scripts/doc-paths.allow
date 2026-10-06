@@ -6,7 +6,6 @@
 
 # M80–M90 (docs/plan-iced-roadmap.md): results docs each milestone's first
 # measuring task creates. Remove each entry in the commit that writes it.
-docs/results-desktop-integration.md  # M90 (docs/plan-desktop-integration.md)
 
 # Cargo targets (`bin NAME` / `package NAME`) cited but not in either
 # workspace, each with why. Checked by the second half of check_doc_paths.sh.

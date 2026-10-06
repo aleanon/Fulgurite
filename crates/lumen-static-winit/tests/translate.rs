@@ -291,3 +291,35 @@ fn a_dropped_file_is_one_drop_carrying_its_path() {
     println!("CursorMoved -> {n} drops");
     assert_eq!(n, 0, "a pointer move translated to a drop");
 }
+
+/// **The Menu key has no name today** — M90/T90.0's pin
+/// (`docs/plan-desktop-integration.md`, "Every route to a context menu
+/// becomes one event"). A press of it is dropped at translation, so no
+/// widget can open a context menu from the keyboard's own key. T90.3
+/// adds `Key::Menu` and flips this.
+#[test]
+fn the_context_menu_key_has_no_name_today() {
+    let k = key_of(&WKey::Named(NamedKey::ContextMenu));
+    println!("key_of(NamedKey::ContextMenu) = {k:?} (pinned None)");
+    assert_eq!(k, None, "GAP pinned: the Menu key translates to nothing today -- T90.3 flips this; it answered {k:?}");
+}
+
+/// **A screen reader's "show context menu" is not routed today** — the
+/// same pin's assistive-technology half. `action_of` answers `None` for
+/// `ShowContextMenu`, so the window drops the request. T90.3 adds
+/// `Action::ContextMenu` and flips this. Built only where the window
+/// crate's `a11y` is on (the workspace's test run, through
+/// `examples/showcase`).
+#[cfg(feature = "a11y")]
+#[test]
+fn show_context_menu_is_not_routed_today() {
+    use lumen_static::observe::accesskit::{Action as Ak, ActionRequest, NodeId, TreeId};
+    use lumen_static_winit::a11y::action_of;
+    let req = |action| ActionRequest { action, target_tree: TreeId::ROOT, target_node: NodeId(3), data: None };
+    // Accept direction: the same function routes a click to node 3.
+    let click = action_of(&req(Ak::Click));
+    let menu = action_of(&req(Ak::ShowContextMenu));
+    println!("action_of(Click) = {click:?} (setup: Some((3, Default))); action_of(ShowContextMenu) = {menu:?} (pinned None)");
+    assert_eq!(click, Some((3, lumen_static::Action::Default)), "setup: action_of did not route a click");
+    assert_eq!(menu, None, "GAP pinned: ShowContextMenu is not routed today -- T90.3 flips this; it answered {menu:?}");
+}

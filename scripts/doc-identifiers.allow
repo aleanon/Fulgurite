@@ -149,7 +149,6 @@ MAX_SPANS                      # removed by M87/T87.1 (the span store grows); do
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 GpuContext                     # proposed by M89
 CommandList                    # proposed by M90
-ContextMenu                    # proposed by M90
 ContextRequest                 # proposed by M90
 MenuBar                        # proposed by M90
 MenuEntry                      # proposed by M90

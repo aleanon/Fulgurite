@@ -885,3 +885,37 @@ T90.0; everything else cites it.
   injection.
 - consistency-3 item 12 → T90.7 adds `cargo doc -p lumen-static-winit
   --features tray` beside its clippy line.
+
+## What building found (M90)
+
+- **T90.0, the `TextInput` pin starts at caret 0.** A host with no font
+  shapes no clusters, so a press anywhere in the field puts the caret at
+  the run's end (`TextInput::offset_at`'s only candidate). The pin moves
+  the caret home in the boot and reads 0 → 11, a press's effect either
+  way; the plan's "caret index" stands.
+- **T90.0, injection (2) also turns the release-acting pins red.**
+  Dropping a non-Left `PointerDown` before pass 1 leaves no press latch,
+  so the release that follows activates nothing (M44/T44.2's same-node
+  rule): all six widgets are named, not only the four press-acting ones.
+  Injection (1) names exactly `Button` and `CheckBox`. So the two pins
+  together tell the release from the press, as T90.2's injection (2)
+  needs.
+- **T90.0, injection (6) maps to `Action::Default`.** The core has no
+  `Action::Click`; `Default` is what `action_of` answers for AccessKit's
+  `Click`, so the injection is "route `ShowContextMenu` as a click".
+- **T90.0, the P16 pins have their own perturbation.** Injection (4)
+  cannot move them (they act at `Begin`), so a fifth was run:
+  `promote_touch`'s `Begin` without its press, the deferred-press design
+  P16 rejected, which reads `Collapsible` and `Tabs` 0 → 0 by name. The
+  three hold pins are collected and reported together, so one red run
+  names all three.
+- **T90.0, a size pin was added.** `the_sizes_m90_must_not_move` asserts
+  `Event` 16, `Action` 8, `Key` 8, `Style` 84 and `NodeState` 88, so
+  "unchanged from their values at landing" is an assertion each later
+  task inherits rather than a print to compare by eye. Red under a
+  temporary `Action::Wide(f64)`: `Event 24 B`, named.
+- **T90.0, the consumed-click row needs a consumer.** Nothing in `Ten10`
+  consumes a click, so `pump_with, one consumed click` is `Ten10` with a
+  `Button` at its head (903 nodes), and the row prints and asserts the
+  clicks consumed beside the samples. The press rows print three
+  decimals, since the `PointerMove` rows' two are a 10 ns step.

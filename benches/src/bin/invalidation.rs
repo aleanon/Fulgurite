@@ -23,6 +23,13 @@
 //! walking every node in the state array on every pointer event — until
 //! M44/T44.6, which writes only the nodes an event changed and added the
 //! two-node row beside it.
+//!
+//! **Three more since M90/T90.0**, for K90b
+//! (`docs/plan-desktop-integration.md`): a left and a right press and
+//! release through `pass::dispatch`, and one click a `Button` consumes
+//! through `Host::pump`. A move cannot see a filter on a press's button,
+//! and only a pump asks the consumed nodes anything after an event.
+//! `docs/results-desktop-integration.md` owns their baselines.
 
 use std::time::Instant;
 
@@ -31,6 +38,7 @@ use lumen_static::cx::{BlockMetrics, LayoutCx};
 use lumen_static::invalidate::{Boundaries, Changed, Invalidation};
 use lumen_static::widget::Node;
 use lumen_static::{pass, Constraints, NodeState, Style, Widget};
+use lumen_static_shell::Host;
 
 const VIEW: Constraints =
     Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
@@ -175,6 +183,69 @@ fn main() {
         let _ = pass::dispatch(&mut tapp, &tstyles, &mut tst, &mut tinput, &ev);
     });
     println!("{:<34}{tiny:9.2} us   over {} nodes", "dispatch, one PointerMove (tiny)", Tiny::NODE_COUNT);
+
+    // ---- press and release — M90/T90.0 ----------------------------------
+    //
+    // The two `PointerMove` rows cannot see what M90 adds: a filter that
+    // branches on `PointerDown`/`PointerUp`'s button (T90.2), and a
+    // menu query asked of the consumed nodes after an event (T90.4). So
+    // K90b (`docs/plan-desktop-integration.md`) names these three as well,
+    // and they land before either task, so every later parent has them.
+    // Same tree and entry point as the move row; one press and its release
+    // per sample, at the move row's point.
+    for (label, button) in [
+        ("dispatch, left press+release", lumen_static::PointerButton::Left),
+        ("dispatch, right press+release", lumen_static::PointerButton::Right),
+    ] {
+        let mut input = lumen_static::event::InputState::default();
+        let down = lumen_static::Event::PointerDown { x: 12.0, y: 12.0, button, clicks: 1 };
+        let up = lumen_static::Event::PointerUp { x: 12.0, y: 12.0, button };
+        let t = best(2000, || {
+            let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &down);
+            let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &up);
+        });
+        println!("{label:<34}{t:9.3} us   over {} nodes", Ten10::NODE_COUNT);
+    }
+
+    // One click a `Button` consumes, through `Host::pump` (which is
+    // `pump_with` over the block measurer) — the path whose consumed list
+    // T90.4's menu query walks. The same tree with one button at its
+    // head, since nothing in `Ten10` consumes a click; no menu hook.
+    let mut host: Host<ClickTen10App> = Host::new(ClickTen10App::default(), 800, 600);
+    host.app.ui.go.on_click = |n: &mut u64, _: &lumen_static::event::EventCtx| *n += 1;
+    host.pump();
+    let g = &host.states[1];
+    let (gx, gy) = (g.pos.x + g.size.w / 2.0, g.pos.y + g.size.h / 2.0);
+    let mut samples = 0u64;
+    let pumped = best(2000, || {
+        host.post(lumen_static::Event::down(gx, gy));
+        host.post(lumen_static::Event::up(gx, gy));
+        let _ = host.pump();
+        samples += 1;
+    });
+    println!(
+        "{:<34}{pumped:9.2} us   over {} nodes; clicks consumed {} of {samples} (setup: equal)",
+        "pump_with, one consumed click",
+        ClickTen10::NODE_COUNT,
+        host.app.clicks
+    );
+    assert_eq!(host.app.clicks, samples, "setup: the button did not consume every click");
+}
+
+/// `Ten10` with a button at its head — M90/T90.0's consumed-click row.
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ClickTen10 {
+    go: lumen_static_widgets::Button<u64>,
+    rest: Ten10,
+}
+
+#[derive(lumen_static::App, Default)]
+struct ClickTen10App {
+    #[tree]
+    ui: ClickTen10,
+    #[state]
+    clicks: u64,
 }
 
 /// Two nodes: the smallest tree a pointer can hover — M44/T44.6.
