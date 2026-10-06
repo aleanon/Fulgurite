@@ -221,7 +221,7 @@ Status letters: **F** finished, **P** in progress, **—** pending,
 | `pop` widget | F | missing | **M85** |
 | `Flexible` variant for `Length` | — | missing (`FillPortion` exists) | **M85** |
 | Primitive culling (containers) | P | renderers cull; `List` culls on `clip_bounds()` (T16.12, `docs/results-competitive.md`); derived containers and `ScrollView` do not, and `clip_bounds` is the surface, not the clip | **M85** |
-| Smart event propagation | — | bubble only, no capture phase | **M85/T85.5 survey only**: decided against under K85e, or deferred to a future plan, unnamed and unqueued, which reopens when the survey finds two real cases (§6) |
+| Smart event propagation | — | bubble only, no capture phase | **M85/T85.5 survey only**: **decided against under K85e on 2026-10-06** — one real case (`PullToRefresh`), two required (`docs/results-layout-input.md` T85.5); reopens on a second real case (§6) |
 | Widget animations | P | only `Glass`'s press | **M86** |
 | Customizable Markdown rendering and images | F | fixed subset, no images, no links | **M87** |
 | Incremental Markdown parsing | F | whole document re-parsed on `set_str` | **M87** (probe first) |
@@ -1169,7 +1169,9 @@ Milestone-specific kill rules live in their sections:
   or §5 entry (second review M27). **Revealed by** T85.5's survey.
   **Answer:** M85 records the cases and a reopen condition, and the
   plan is written and queued then; §1.2 does not count the item as
-  planned until it is.
+  planned until it is. **Outcome (2026-10-06):** the survey found one case, so K85e
+  decided the capture phase against and no plan is owed; the reopen
+  condition is recorded in `docs/results-layout-input.md` T85.5.
 - **Size L milestones (M80, M81, M82, M83, M84, M89, M90, M90a) will
   each find a defect in existing machinery** (second review M28: the
   first list omitted M80, M83 and M90, which size themselves L; M90a

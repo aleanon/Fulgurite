@@ -1555,5 +1555,23 @@ remains** — which is why §10 Step 1 is the kill criterion.
    sentinel. A `Pop` in a repeater, a list or an island is refused at
    construction (§6, Repeaters). `just widget-drive Pop` is the live gate:
    PageDown brings a placeholder below a short view's fold into view and
-   the application says loaded, at 1.00× the placeholder's box
-   (`docs/results-layout-input.md` T85.4).
+   the application says loaded; the load's own frame stays inside the
+   placeholder's box, gated headlessly because the window's journal folds
+   it into the scroll's frame (`docs/results-layout-input.md` T85.4).
+
+13. **Does input need a capture phase?** iced's roadmap lists smarter
+   event propagation; a capture phase lets a parent see a pointer event
+   before the child it is aimed at, typically to steal a drag after a
+   threshold. Building it means a required `Node::on_capture` on every
+   hand-written `Node` impl.
+   **DECIDED 2026-10-06 (M85/T85.5, K85e): decided against, on a survey.**
+   One real case was found where two were required: `PullToRefresh`
+   forgoes a drag that starts on a control (`EventCtx::target_is_control`),
+   because a parent cannot watch a gesture it has not taken. `ScrollView`
+   has no content drag to steal, and the `target == node` guards in
+   `Veil`, `SplitPane`, `Collapsible`, `PaneGrid` and the pickers are the
+   bubble phase used correctly, which a capture phase would not remove.
+   **Reopen** when a shipped widget or a `docs/widget-audit.md` row is a
+   second real case by T85.5's definition; its build is then its own
+   plan (`docs/results-layout-input.md`, "T85.5 — the capture-phase
+   survey").

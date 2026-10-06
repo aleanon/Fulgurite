@@ -173,3 +173,61 @@ with no row in the table: [\"Pop\"]") with the `Pop` row removed, and
 ALLOW line removed. K1 holds: `Event` 16 B, no `Style` or `NodeState`
 byte; a `Pop` is a `fn` pointer and a `bool` in the application's
 struct.
+
+## T85.5 — the capture-phase survey (2026-10-06)
+
+Evidence only; no code. The question (`docs/plan-layout-input.md`,
+Decisions, "The capture phase is a survey"): does any shipped widget, or
+any `docs/widget-audit.md` row, carry a workaround that exists
+**because** events only bubble — one a capture phase (a parent seeing a
+pointer event before the child it is aimed at) would remove? The bubble
+model being read: a press is offered to the node it hit and then to each
+ancestor until one consumes it; consuming a `PointerDown` captures the
+pointer, after which every move and the release go to the captor and
+**a captured release activates nothing**; a `PointerMove` reaches a
+widget only under capture (`crates/lumen-static/src/event.rs:198`, the
+`Event::Hover` rustdoc). Searched by `grep` for `target_is_control`,
+`cx.target == cx.node` / `!= cx.node`, "bubbl", "steal", "intercept" over
+`crates/*/src`, and the audit's rows.
+
+| candidate | where | what the code does | verdict |
+|---|---|---|---|
+| `PullToRefresh` takes a drag its content declined, but not a control's | `crates/lumen-static-widgets/src/nav.rs:1010`; `EventCtx::target_is_control`, `crates/lumen-static/src/event.rs:441–449`; audit row 40 (B40, "drag does nothing", `docs/widget-audit.md:131`) | a press on a label or on its own surface starts a pull; a press on a focusable node is left alone, because consuming it would capture the pointer and the control's click would never activate. So a drag that **starts on a button never pulls** | **real case (1).** The flag is the workaround, and it exists because a parent cannot watch a gesture it has not taken: with no phase before the child, the only choices are to take every press (and break controls) or to forgo drags from controls. A capture phase with a threshold would let it watch and claim late |
+| `ScrollView` steals a drag from a child after a threshold | `crates/lumen-static-widgets/src/scroll.rs:415–447` | the wheel and the keys (PageUp/PageDown/Home/End) bubble from the focused or hovered child and are declined at an end, which is scroll chaining; a press is taken only on the bar's track. **There is no content drag to pan at all** | **refused**: no shipped code steals or wants to; the missing feature is touch panning, not a workaround. It becomes a case if content panning ships and needs one |
+| a press on a tab is consumed "or a scroller above would take it as a drag" | `crates/lumen-static-widgets/src/nav.rs:400–405` | `Strip` consumes a press on the selected tab, to keep it from bubbling to an ancestor that acts on declined presses | **refused**: the bubble phase working as designed — the child decides first and says so. A capture phase would make the parent decide first, which is the opposite of what this needs |
+| containers acting only on their **own** chrome (`target == node`) | `Veil` `crates/lumen-static-widgets/src/veil.rs:363`; `SplitPane`/`PaneGrid` `split.rs:286, 1091`; `Collapsible` `split.rs:633, 636`; `Picker` `pick.rs:1036`; `Chooser` `choose.rs:911, 929, 946`; `DataGrid` `data.rs:1438`; `Video` `video.rs:600`; `RangeSlider` `field.rs:655`; `SearchField` `field.rs:983, 987`; audit X2 (`docs/widget-audit.md:54`) | a press a child declined reaches its container with `target` still naming the child, and the container ignores it (a click on a modal's panel no longer dismisses it, a click in a pane no longer moves the divider) | **refused**: these guards exist because events bubble, not because they *only* bubble. A capture phase adds a phase before the child and leaves the bubble phase, and these guards, exactly as they are |
+| `Tooltip` sees its content's presses and focus without consuming them | `crates/lumen-static-widgets/src/surface.rs:1105–1109` | hover intent, focus and presses bubble up from the content, and the tooltip reacts while declining, so the content keeps its press | **refused**: works under bubbling today, because a press its content declines still reaches it. It would need a capture phase only for content that consumes `PointerDown`, and no shipped tooltip content does |
+| a hovered row in `Tree`/`OptionList` | `crates/lumen-static/src/event.rs:195–216` (M27/T27.11) | a move reached a widget only under capture, so a row-painting widget could not learn the hovered row; fixed by synthesising `Event::Hover`, which bubbles | **refused**: closed in the bubble model by a second event, not by a phase; no workaround remains |
+
+**Count: 1 real case** (`PullToRefresh`), against K85e's threshold of
+**2**. **K85e: fewer than two — the capture phase is decided against, and
+this survey is the evidence.** Nothing is built and no plan is opened.
+So the wrapper list a build would have needed (the off-table holders
+that must forward `Node::on_capture`, `NumberInput` and `Markdown` at
+least, per `Node::probe`'s rustdoc) is not drawn up here.
+
+**Reopen condition** (`docs/plan-iced-roadmap.md` §6, second review
+M27): a later shipped widget or `docs/widget-audit.md` row that is a real
+case by this section's definition — a workaround that exists because a
+parent cannot see a pointer event before the child it is aimed at — and
+brings the count to two. The likeliest is content panning in
+`ScrollView` (touch), which would steal a drag from a child after a
+threshold, `PullToRefresh`'s shape. Even then two cases do not count as
+planned (index §1.2) until the build's plan has an M-number, a file and
+a §5 entry, and that plan makes `Node::on_capture` **required** (P8).
+
+## M85a closes (2026-10-06)
+
+T85.0–T85.5 are in. M85a's kill rules, each with its number, fired or
+not (index §3.3, M12):
+
+| rule | threshold | measured | verdict |
+|---|---|---|---|
+| K85a — one layout per child | 1 per child in every `flexible.rs` case; `ALL rows: layout` inside its parent's eight-run spread with `Flexible` unused | **1** for every child in every case; `ALL rows: layout` **1,161.30 µs** against 1,105.2–1,169.3 (T85.1) | **held** — `Flexible` shipped |
+| K85d — firmware, M85a's share | M85's cumulative `firmware_interactive` `.text` ≤ **1,024 B** against `a21135b` | T85.1 **+436**, T85.2 **+0**, T85.3 **−4**, T85.4 **+0**, T85.5 **+0** (docs only): cumulative **+432** of 1,024 (`firmware_interactive` 63,912 B of 81,920, headroom 18,008 B) | **held**; 592 B of the cap left for M85b |
+| K85e — capture | ≥ 2 real cases opens its own plan | **1** (`PullToRefresh`) | **fired as written: decided against**, the survey above is the evidence, reopen condition stated |
+| K4 (per task) | ≤ 1,000 B; T85.2 and T85.4 Δ 0 on all four | largest **+436** (T85.1); T85.2, T85.4 **0** on all four | held |
+| K1 | `Length` 8 B; `Event` 16 B; `Style`/`NodeState` unchanged | 8 / 16 / 84 / 84 B | held |
+
+The closing `just ci-verify <sha>` and its citation in AGENT.md's queue
+entry are the coordinator's (index §3.3).

@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0–T85.4 landed 2026-10-06 (`docs/results-layout-input.md`).** The shared byte inventory, seams (S1,
+> the end). T85.0–T85.5 landed 2026-10-06, and M85a closed on its kill rules: K85a and K85d held, K85e decided the capture phase against (`docs/results-layout-input.md`, "M85a closes").** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
