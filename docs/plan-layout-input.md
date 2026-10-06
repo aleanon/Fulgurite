@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file; revised 2026-10-02 after the second review (list at
-> the end). T85.0–T85.5 landed 2026-10-06, and M85a closed on its kill rules: K85a and K85d held, K85e decided the capture phase against (`docs/results-layout-input.md`, "M85a closes").** The shared byte inventory, seams (S1,
+> the end). T85.0–T85.5 landed 2026-10-06, and M85a closed on its kill rules: K85a and K85d held, K85e decided the capture phase against (`docs/results-layout-input.md`, "M85a closes"). T85.6 landed 2026-10-06.** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -619,6 +619,54 @@ that adds a `Session` method…" does not touch M85: none is added.
   is one `#[track_caller]` helper beside `table_has_flag`
   (`widget::refuse_watched_in_arena`) so the three sentences cannot
   drift; `Repeat::default` reaches it through `Repeat::new`.
+
+- **T85.6: a `ScrollView` holds at most 255 nodes, so `scroll_cull`'s
+  column is 220 rows, not 1,000.** Its content is spliced into its own
+  table of `MAX_SCROLL_NODES` (256) entries, and a derived column of a
+  thousand leaves is a const-evaluation error inside one. Twenty-two
+  derived columns of ten `Fixed` rows (243 nodes) is the largest round
+  column that fits; the window holds 34 of its rows and the viewport 17,
+  which is the shape K85b judges (`docs/results-layout-input.md` T85.6).
+- **T85.6: X1's mechanism is `Streaming`'s, not `Incremental`'s.** Since
+  M26/T26.11 `Incremental` compares two frames of different lengths by
+  their longest common prefix and suffix, not slot *n* with slot *n*, so
+  a shifted count alone charges nothing after the culled range: the
+  unchanged tail is the common suffix. The damage X1 names appears when
+  something *after* the range also changes, which makes everything
+  between the two the middle — so `cull_damage.rs` writes a readout after
+  its label every step, and the label is the quantity: **1,792 px** on
+  each step whose count changed, **0** with culling off. The outside
+  total moves too (416,640 against 407,680 px) and is asserted as the
+  plan writes it, but it is not what an injection reliably moves: under
+  a slot-from-the-end comparison it *rose* while the label went to 0.
+- **T85.6: the `None` arm is a mirror of the host's frame.** `Host::frame`
+  always sets the surface as the bound and has no switch, so after each
+  pump the gate repaints the host's laid-out tree through
+  `Scaled(Recording(list))` into its own `Incremental`, once with `None`
+  and once with the surface, and asserts the surface twin's damage and
+  count equal the host's (banked with `take_damage_for_age(1)`, since one
+  pump may paint twice) at every step. Without `Scaled` the twin differed
+  from the host by the scrollbar thumb, which `Scaled` snaps even at 1.0.
+- **T85.6: the damage outside a scroller is dominated by clipped-out
+  ink.** A command's ink is its own rect, not its rect within the clip
+  stack, so rows painted below a 200 px viewport (inside the window,
+  clipped away) are damage on every scroll, and so is the `List`'s own
+  `PushClip`, whose rect is the list's whole 5,280 px. Recorded, not
+  changed: it is the same with culling and without.
+- **T85.6: a `Popup` inside a `List` draws nothing, culled or not — a
+  defect, recorded and not fixed here.** A popup defers its own index,
+  and inside an arena that index is the item's, not the main table's;
+  the overlay pass repaints the main-table node at that index
+  (`pass::paint_overlaid`), so a `Select` in a `List` re-paints whatever
+  main-table node shares the number — here the list's parent — and its
+  menu lands inside the list's own clip, off the surface. So
+  `cull_ink.rs` has no `List` variant of the menu case: both renders
+  would agree for the wrong reason. T85.8's `INKS_OUTSIDE` on `Popup`
+  cannot be gated inside a `List` until an arena-local deferral is
+  translated to something phase 2 can repaint. Also seen while building
+  it: a `Kind` rule reaches a `Repeat` inside a `List` item but not the
+  `Repeat`'s rows, which is why the gate styles the menu panel and not
+  its rows.
 
 **What the review found (M85).**
 

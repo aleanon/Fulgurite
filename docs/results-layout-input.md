@@ -231,3 +231,19 @@ not (index §3.3, M12):
 
 The closing `just ci-verify <sha>` and its citation in AGENT.md's queue
 entry are the coordinator's (index §3.3).
+
+## T85.6 — the culling gates that compile today, at `f5fedd9` (2026-10-06)
+
+M85b's first task: gates that compile today and hold today's behaviour
+green, each watched red under a perturbation of what it pins. Where the
+plan's shape could not be built as written, the reason is in
+`docs/plan-layout-input.md`, "What building found", T85.6.
+
+| gate | prints today | injection (red) | flipped by |
+|---|---|---|---|
+| `benches --bin scroll_cull` (`just bench-lock`, quiet, load1 0.76, bound 8): a derived **220**-row column (243 nodes, `MAX_SCROLL_NODES` 256) in a 400 px `ScrollView`, 800 × 800 window, offset 2,640; 8 runs a side, each the median of 4,000 paints | rows **34** in the window, **17** in the viewport; commands Some(surface) **224**, None **224** — equal, the setup check: nothing culls; paint **1.18 µs** (1.18–1.71) and **1.18 µs** (1.18–1.18) | — (a bench; its setup asserts 220 leaves, a 400 px viewport, the offset, and more rows in the window than in the viewport) | T85.8 (K85b) |
+| `crates/lumen-static-shell/tests/cull_damage.rs`, `Everything` and `Boundaries<256>` (identical): a `List` of 220 one-row `List`s in a 240 × 200 `ScrollView`, a label and a readout beside it, 400 × 400 window, ten 7 px wheel steps, the readout written every step; the `None` arm a repaint of the host's frame whose surface twin equals the host's damage at every step | every wheel handled, offset 7 → 70; culled count **59 / 62** (changes on **5** of 9 steps), uncull **668** every step; over ten steps the label damaged **8,960 px** culled (1,792 on each step whose count changed) against **0** uncull, and the damage outside the scroller **416,640 px** culled against **407,680** uncull | `List` culls nothing: count changes on 0 of 9 steps, "the list's command count never changed"; `Incremental` comparing two frames of different lengths slot for slot from their ends: label **0 px** culled, "culling no longer charges the label (0 px) -- the gap this pins has closed" (the outside total *rose* to 447,680 under it, so the label is the assertion that sees it) | T85.7 |
+| `crates/lumen-static-shell/tests/cull_ink.rs`, a derived column, a card whose rect `[0, 300, 300, 372]` starts at the surface's edge, its shadow 8 inking `[-8, 294.8, 308, 382.8]` | uncull render: **1,215** shadow pixels on the surface; Some vs None **0** pixels differ (bound 0) | `Card::paint` returns when its rect misses `clip_bounds`: **1,171** pixels differ, fails by name | stays green (T85.8) |
+| the same file, a derived column, an open `Select` whose trigger `[0, 300, 28, 334]` is below the surface, its menu `[0, 200, 300, 300]` on it, `content_absent()` false | uncull render: **13,190** inked pixels in the menu's rect; Some vs None **0** differ (bound 0) | `Popup::paint` returns when its anchor misses `clip_bounds`: **14,270** pixels differ, fails by name | stays green (T85.8) |
+| the same file, a `List` of the two cards (the plan's pin) | uncull: **1,215** shadow pixels; Some vs None **1,171** pixels differ — `List` culls by `rect_of`, so the shadow vanishes | `List` culls nothing: **0** differ, "a List no longer culls the card below the surface … flip the gate (T85.8)" | T85.8 |
+| firmware, `just firmware-delta f5fedd9 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** on all four `.text` and `.rodata` (`firmware_interactive` 63,912 B); K85d cumulative **+432** of 1,024 against `a21135b` | — | — |

@@ -26,5 +26,4 @@ package root
 package compNNN
 package monolith
 # M80–M90: bench bins the plans add in the task that measures with them.
-bin scroll_cull  # M85 (docs/plan-layout-input.md)
 bin markdown     # M87 (docs/plan-markdown.md)
