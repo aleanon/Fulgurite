@@ -35,6 +35,8 @@ In order, for one leg:
    `reload`; the strategy is its own check since M55/T55.4). `--identity socket` skips the second, for
    binaries that predate it (T42.8's re-run of old commits).
    It prints: `drove pid P (socket owner P), strategy S, features F, exe E`.
+   A child that dies between binding and answering is reported as step 4's
+   death, with its status and log tail (M83/T83.7).
 6. **The drive**, with `{port}`, `{addr}`, `{pid}`, `{log}` substituted in
    its argv and `LUMEN_AGENT_ADDR`, `LUMEN_LIVE_PORT`, `LUMEN_LIVE_PID`,
    `LUMEN_LIVE_STRATEGY` (the process's, not the script's),
@@ -329,7 +331,22 @@ def main() -> int:
                 fail(tag, f"socket owner {', '.join(map(str, o)) or '(none visible)'} is not the "
                           f"launched pid {child.pid} (by {how})")
             if a.identity == "full":
-                p = rpc(port, "app.diagnostics").get("process") or {}
+                try:
+                    p = rpc(port, "app.diagnostics").get("process") or {}
+                except (OSError, RuntimeError) as e:
+                    # A child that dies between binding its port and
+                    # answering (M83/T83.7: a shader refusal that panicked
+                    # in wgpu's handler) is reported as a death, with its
+                    # status and log, not as a closed connection.
+                    try:
+                        child.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if child.poll() is not None:
+                        print(log_tail(log), file=sys.stderr)
+                        fail(tag, f"child exited {child.returncode} before answering app.diagnostics: "
+                                  f"{last_line(log)}")
+                    fail(tag, f"app.diagnostics was not answered: {e}")
                 if p.get("supported") is not True:
                     fail(tag, f"the process cannot say which it is: app.diagnostics.process = {p!r}")
                 if p.get("pid") != child.pid:

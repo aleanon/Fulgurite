@@ -23,6 +23,7 @@ members = [
     "examples/glasswall",
     "examples/showcase",
     "examples/glass",
+    "examples/shader",
     "fixtures/hot-app",
     "fixtures/miri-smoke",
     "fixtures/miri-reload",

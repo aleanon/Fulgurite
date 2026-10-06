@@ -147,6 +147,32 @@ showcase's `shader` feature adds a `ShaderView` demo whose fallback is the
 shader's own blend as a gradient, so the default software window shows
 what the GPU would.
 
+`examples/shader` is the whole thing in one window: an animated plasma
+behind a frosted glass card. The table is data on the program — a name,
+the WGSL and the size of its uniform block:
+
+```text
+{{#include ../../examples/shader/src/main.rs:table}}
+```
+
+The time is ordinary state that `App::tick` advances, and the value form
+of `#[bind]` writes it into the view's uniform bytes, so the binding —
+not the tick — is what marks the view:
+
+```text
+{{#include ../../examples/shader/src/main.rs:bind}}
+```
+
+Its fallback is four discs orbiting on the view's edge, half of each
+outside the box, which only the bracket's clip keeps in. `just
+shader-drive` drives it live under both strategies: the fallback on the
+software canvas, the plasma on the GPU, no pixel outside the view and the
+card changing between frames, the plasma kept across a suspend and
+resume, and a shader that fails to compile drawing its fallback with the
+window still up. A ticking shader re-lays the whole tree out every frame,
+because a tick that answers `true` marks everything; the price is in
+`docs/results-shader.md` T83.7.
+
 `set_uniforms` compares before it stores and says whether anything
 changed, as every binding target does, so `#[bind(ui.view, bytes)]` marks
 the view and nothing else; the uniforms are hashed by content, never by

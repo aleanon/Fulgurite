@@ -308,3 +308,44 @@ label's 16 B included). It is the widget's own: `Style` **84 B** and
 | showcase (`cargo test -p showcase --features shader`) | 32 passed; `every_entry_paints_a_demo` reads the demo's bracket and its gradient fallback | as before | — (the default build's tests are `just test`'s) |
 | lint (`dev-shape`): `cargo clippy -p lumen-static-widgets -p lumen-static-agent -p showcase --all-targets --features lumen-static-widgets/shader,lumen-static-agent/shader,showcase/shader -- -D warnings`, and `cargo doc -D warnings` with the widgets' `shader` | clean | -D warnings | an unused binding in `ShaderView::set_uniforms`: the new line fails `unused variable: injected`; the workspace `--features lumen-static/shader` line stays green (`shader.rs` is not compiled there) |
 | firmware (K83b, K4): `just firmware-delta 106d16e firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (the widgets' `shader` is off in every firmware build; no default-build item changed) |
+
+## T83.7 — `examples/shader`, driven live, at `a2af86b` + T83.7 (2026-10-06)
+
+`examples/shader`: an animated plasma (`SHADERS[0]`, 16 B of uniforms —
+the time) in a 400 × 240 `ShaderView` behind a frosted `Glass` card that
+covers its bottom 40 px and the page below it, 480 × 400 logical. The
+clock is `#[state]`, advanced by `App::tick`; the value form of `#[bind]`
+writes the bytes. The fallback is a dark field with four discs orbiting
+on the view's edge, half of each outside the box, so only the bracket's
+clip keeps them in. Every feature is default-off and the binary requires
+`shader` (the manifest says why; `cargo tree --workspace -e features -i
+lumen-static` counts `lumen-static feature "shader"` **0** times, and **2**
+with the widgets' `shader` named unconditionally). `just shader-drive`
+(`scripts/shader_drive.sh`/`.py`, through `scripts/live/launch.py`, in
+`scripts/live.sh`'s list) drives five legs, debug builds, at scale 1, on
+the RTX 4070 (Vulkan).
+
+| gate | measured (green) | bound | injection (red) |
+|---|---|---|---|
+| software, `Boundaries<256>` (`ui.screenshot` twice, 0.4 s apart) | view `[40, 40, 440, 280]`, card `[64, 240, 416, 360]`; centre `(26, 29, 43)` = the field, distance **0**; inside the view **32,096** px changed (setup); outside view ∪ card **0** | 4; > 0; 0 | `Canvas` ignores `Shader`/`ShaderEnd` (both arms of the raster loop empty): outside **9,429** px, red ("the fallback was not clipped to its bracket") |
+| — `ui.lastDamage` per animated frame, six frames | `[[40, 40, 440, 280]]` each: 96,000 px of view ∪ card's 124,160, ratio **0.77**, outside **0** px | 1.00; 0 | — (the journal's, unchanged by a canvas fault) |
+| software, `Everything` | centre distance **0**; inside **31,790** (setup); outside **0**; damage ratio **0.77**, outside 0 | as above | the same injection: outside **8,834** px, red |
+| GPU, `Boundaries<256>` (`LUMEN_BACKEND=gpu`, `xwd`) | centre `(28, 109, 246)` then `(233, 136, 13)`: distance from the field **203**, **207**; inside **95,271** (setup); outside **0** | > 48; > 0; 0 | `set_scissor_rect` skipped: outside **67,755** px, red ("not bounded by its scissor") |
+| — `LUMEN_TEST_RESUME=10000` round trip | round trips 1, GPU backends made **2**; centre after `(174, 1, 207)`, distance **164** | exactly (1, 2); > 48 | a once-only send in `resume_backend` (T83.4's injection shape): centre after `(26, 29, 43)`, distance **0**, red ("the second backend was not handed the shader table"); the call deleted outright: red at the first read, centre distance 0 on both |
+| GPU, `Everything` | distance **203**, **207**; inside 95,259; outside **0**; after the round trip distance **174** | as above | the scissor injection: outside **67,724** px, red |
+| GPU with `LUMEN_GPU_BAD_SHADER=1` | after 3 s `app.diagnostics` answers; centre `(26, 29, 43)`, distance **0** (the fallback); one line `lumen-static: shader "plasma" refused; its brackets draw their fallback: Validation Error / …` | 4; exactly 1 | the error scope removed (push and pop): the child exits **101**, `wgpu error: Validation Error`, and `launch.py` prints "child exited 101 before answering app.diagnostics" with the log tail |
+| `the_fallback_is_clipped_to_the_view` (`cargo test -p shader --features shader`, `dev-shape`) | centre the field; non-page pixels in the strips left of and above the view at t = 0 **0** | 0 | `Canvas` ignores the bracket: **5,436**, red |
+| lint (`dev-shape`, `just gpu`): `cargo clippy -p shader --all-targets --features shader,agent,everything`, and `--features gpu,agent` | clean | -D warnings | an unused binding in `fallback`: the featured line fails `unused variable: injected`; `cargo clippy -p shader` without features stays green (the binary is skipped) |
+| firmware (K83b, K4): `just firmware-delta a2af86b firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** `.text`, **0** `.rodata` on all four (30,606 / 63,480 / 34,014 / 32,694 B `.text`) | 0 | — (nothing the firmware links changed: an example, scripts and the launcher) |
+
+**Recorded, not gated (A12): the whole-tree mark's price.** `app.perf`
+on the software `Boundaries<256>` leg, tree **10** table nodes:
+
+| frames | `layout_ns` | n |
+|---|---:|---:|
+| animated (the tick answers `true`, the whole tree marked) | p50 **4,871 ns** | 128 (the ring) |
+| still (paused by the card's button; hover frames over it) | **not run**: layout ran in 0 of 24 frames, which `app.perf` reports as `null` (M53/T53.3) | 24 |
+
+A ticking shader re-lays the whole tree out every frame; a still window
+lays nothing out. On ten nodes that is 4.9 µs; it grows with the tree,
+which is why M84's `App::tick_marked` (K84c) is where it is reopened.

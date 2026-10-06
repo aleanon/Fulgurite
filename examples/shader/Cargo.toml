@@ -1,0 +1,49 @@
+[package]
+name = "shader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M83/T83.7 (docs/plan-gpu-extension.md): an animated WGSL plasma in a
+# `ShaderView` behind a `Glass` card. **Every feature is default-off and the
+# binary requires `shader`**, because a workspace member's normal
+# dependency features unify into every `--workspace` build: a `shader`
+# named here unconditionally would turn the core's on in `dev-shape`'s
+# "variants absent" exhaustiveness check and make it compare the "on"
+# build with itself (T83.6 found the same of a dev-dependency). So
+# `cargo check --workspace` skips this binary, and it is built
+# `--features shader` (software, the fallback) or `--features gpu` (the
+# shader). `just shader-drive` drives both.
+[[bin]]
+name = "shader"
+path = "src/main.rs"
+required-features = ["shader"]
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+# `truetype` so the card's text is real glyphs: a frosted panel over block
+# metrics blurs uniform boxes.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+
+[features]
+default = []
+# The shader table and the `ShaderView`: the widgets', the shell's and the
+# window's `shader` (docs/plan-gpu-extension.md, "Feature placement").
+# Without `gpu` the window draws the fallback on the software canvas.
+shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
+# The GPU backend, which runs the plasma (the window crate's `shader`
+# forwards to its wgpu half when `gpu` is on).
+gpu = ["shader", "lumen-static-winit/gpu"]
+# The agent endpoint (`LUMEN_AGENT_ADDR`), which `just shader-drive` drives.
+agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+# The same window under `Everything` rather than `Boundaries<256>`
+# (`Program::invalidation`, M55/T55.4), so the drive runs both strategies.
+everything = []
+
+[dev-dependencies]
+# The sheet lint is agent-gated (M26/T26.6); the tests assert that every
+# rule in the stylesheet does something, so they need it.
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }

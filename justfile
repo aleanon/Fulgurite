@@ -146,6 +146,11 @@ dev-shape:
     # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
     # backend through `Program::backend_with`), linted with the feature on.
     cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
+    # M83/T83.7: examples/shader's binary requires its own `shader` (its
+    # manifest says why: a member's features unify into every `--workspace`
+    # build), so the lines above skip it. Its tests and lint, here.
+    cargo test -q -p shader --features shader
+    cargo clippy -q -p shader --all-targets --features shader,agent,everything -- -D warnings
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An
@@ -446,6 +451,8 @@ gpu:
     # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
     cargo clippy -p lumen-static-wgpu --all-targets --features lumen-static/shader -- -D warnings
     cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
+    # M83/T83.7: examples/shader on the GPU, the build `just shader-drive` runs.
+    cargo clippy -q -p shader --features gpu,agent --all-targets -- -D warnings
     # M83/T83.4: `GpuBackend::set_shaders` keeps its owned copy under the
     # window crate's `shader`, which only a GPU build compiles.
     cargo clippy -p lumen-static-winit --features gpu,shader --all-targets -- -D warnings
@@ -754,6 +761,15 @@ idle-count seconds="60":
 # software and GPU backends, screenshot before and after. Needs a display.
 resume-drive:
     ./scripts/resume_drive.sh
+
+# M83/T83.7: examples/shader -- an animated WGSL plasma in a `ShaderView`
+# behind a `Glass` card -- live: the fallback on the software canvas and
+# the plasma on the GPU (read back with `xwd`), 0 px changed outside the
+# view and the card under both strategies, the plasma kept across a
+# LUMEN_TEST_RESUME round trip, and a refused shader drawing its fallback
+# with the window up. Needs a display, `xwd` and an adapter.
+shader-drive:
+    ./scripts/shader_drive.sh
 
 # **`--locked` on every benches-competitive build** (M43/T43.12): its
 # lock went stale at M30 and every recipe that built there rewrote the

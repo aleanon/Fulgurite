@@ -159,6 +159,17 @@ The four properties that produce the performance, in rough order of importance:
    direct dependents (`docs/plan-gpu-extension.md`, "Feature placement";
    the firmware Δ 0 and the gates are `docs/results-shader.md` T83.3).
 
+   **DECIDED 2026-10-06 (M83/T83.7): a registered shader runs in a live
+   window.** `examples/shader` — an animated plasma `ShaderView` behind a
+   `Glass` card — is driven by `just shader-drive` under both strategies:
+   the fallback on the software canvas, the plasma on the GPU, nothing
+   outside the view and the card changing between frames, the plasma kept
+   across a suspend/resume (`resume_backend` hands every backend the
+   table), and a refused shader drawing its fallback with the window up
+   (`docs/results-shader.md` T83.7). An animated shader rides `App::tick`,
+   which marks the whole tree under `Boundaries`; that price is recorded
+   there, and M84's `App::tick_marked` is the reopen.
+
 Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes

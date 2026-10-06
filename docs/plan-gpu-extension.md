@@ -3,7 +3,7 @@
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M83a built: T83.0, T83.1 and T83.2 landed 2026-10-06, K83d recorded at close
-> (`docs/results-shader.md`). M83b: T83.3, T83.4, T83.5 and T83.6 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
+> (`docs/results-shader.md`). M83b: T83.3, T83.4, T83.5, T83.6 and T83.7 landed 2026-10-06; K83a did not fire (`docs/results-shader.md` T83.5).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1310,6 +1310,46 @@ task and is recorded in `docs/results-shader.md` with the number).
   The `.lss` mirror test drops the `DShaderView` kind rule in a `shader`
   build. The showcase's `shader` also turns on the shell's and the window's,
   so `program()` registers `catalog::SHADERS` and a `gpu` build runs it.
+
+- T83.7: **the example's features are default-off and its binary requires
+  `shader`.** "Features `gpu`, `agent` and `everything`, the showcase's
+  pattern" leaves the shader itself: a member's normal-dependency features
+  unify into every `--workspace` build exactly as T83.6's dev-dependency
+  did, so a `shader` named unconditionally counts `lumen-static feature
+  "shader"` 2 times in `cargo tree --workspace -e features -i lumen-static`
+  (0 as built) and would make `dev-shape`'s "variants absent" build the
+  "on" one. So `examples/shader` has its own `shader` (`gpu` implies it),
+  `[[bin]] required-features = ["shader"]`, and `dev-shape` tests and lints
+  it with the feature named (`just gpu` with `gpu,agent`).
+- T83.7: **the plasma does not need the display scale**: it reads `local`
+  (0..1 across the rect) and the time, so `LumenFrame::scale` stays 1.0
+  (T83.5) and no seam was added. The drive sets
+  `WINIT_X11_SCALE_FACTOR=1` because it compares the agent's logical
+  coordinates with window pixels.
+- T83.7: **the bad-shader injection killed the child before the launcher's
+  identity check**, which died in a Python traceback ("the connection
+  closed without a reply") instead of the exit and log tail the plan
+  names. `scripts/live/launch.py` now waits briefly when `app.diagnostics`
+  is not answered and, if its own child has exited, fails with "child
+  exited N before answering app.diagnostics" and the log tail.
+- T83.7: **the resume injection is T83.4's once-only send**, for the
+  reason T83.4 gave: deleting the call in `resume_backend` also starves the
+  first backend, so the leg goes red at its first read (centre distance 0)
+  rather than "after the resume". Both are recorded.
+- T83.7: **the round trip fires at 10 s, not glasswall's 4 s**: a debug
+  GPU window takes long enough to answer its port that a 6 s hook landed
+  between the drive's first two reads (`xwd` found no window). The drive
+  now refuses a log that shows the round trip before those reads.
+- T83.7: **"the same window still" lays nothing out.** Paused, a hover
+  frame over the button is paint only, and `app.perf` reports its
+  `layout_ns` as `null` (0 of 24 frames ran layout), so the recorded
+  comparison is a median against "not run" (`docs/results-shader.md`
+  T83.7).
+- T83.7: **"rect ∪ glass ink" is the card's box.** The journal never
+  reports the glass (its commands do not change; its backdrop dependency
+  is retention's), so `ui.lastDamage` is the view alone, 0.77 of view ∪
+  card; the pixel comparison excludes the card's box, inside which the
+  frost legitimately follows the plasma.
 
 **What the review found (M83).**
 

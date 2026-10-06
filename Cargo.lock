@@ -2759,6 +2759,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "shader"
+version = "0.1.0"
+dependencies = [
+ "lumen-static",
+ "lumen-static-shell",
+ "lumen-static-widgets",
+ "lumen-static-winit",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
