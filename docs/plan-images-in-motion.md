@@ -2,7 +2,9 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. M84a building: T84.0, T84.1, T84.2 and T84.3 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> its own file. M84a (T84.0–T84.4) built 2026-10-06 and closes on
+> `just ci-verify` of its T84.4 commit (S5), cited in AGENT.md; M84b
+> (T84.5–T84.11) building (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -956,6 +958,12 @@ task and is recorded with its number in `docs/results-images.md`):
   reports delays as encoded (T84.1), and a zero delay played as zero would
   never leave its frame; `Playback::new` plays a delay of 10 ms or less
   at `Playback::SHORT_DELAY_MS`, as browsers do.
+- T84.4 (M84a's close): **every M84a kill rule held** — K84a,
+  K84c, K84d, and K4 on all four firmware binaries at every task; the
+  numbers are `docs/results-images.md`'s, "M84a's kill rules, at its
+  close". Nothing was built at the close:
+  `App::tick_marked` stays unbuilt (K84c), and T84.2's origin gate moves
+  with the application's store to T84.6, as T84.2's entry above says.
 
 **What the review found (M84).**
 

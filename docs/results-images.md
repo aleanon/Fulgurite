@@ -6,6 +6,39 @@ the plan and the commits. The plan-wide budgets and kill rules K1–K4 are
 `docs/plan-iced-roadmap.md` §2 and §4; the firmware's four-binary table
 is `docs/results-embedded.md`'s.
 
+## M84a's headline — decoding and animated images, closed at T84.4 (2026-10-06)
+
+**An image can now change under its id and repaint only its own rect,
+on both backends, and a GIF plays at its own rate without waking the
+window in between, for no firmware byte and no frame cost.** The figures
+are the task sections below and the kill-rule table at the end; this
+section cites them and states none of its own.
+
+- **The version is in the command, not the store.** `Cmd::Image` carries
+  `frame`, so the fold that decides damage sees a new frame, and the
+  journal signs it (T84.2). The two pins T84.0 committed, stale pixels in
+  software and on the GPU, are the gates T84.2 flipped.
+- **The GPU atlas rewrites a slot in place**, inserts again only on a size
+  change, and gives a second frame of one id in one draw a side slot;
+  K84d's 100-change loop is the row that says it does not churn (T84.2).
+- **Animation is the application's clock.** `Playback` answers a frame
+  only when it changes, and `App::wake_in_ms` is the deadline the window
+  waits on, asked through the session's guard so a panicking wake raises
+  M36's screen (T84.3, the panic drive's new site). There is no second
+  image widget.
+- **Decoding is default-off**, and the crate count is the only gate that
+  can see it: an uncalled decoder links nothing whether or not the
+  feature is on (T84.1, K2's recorded exception measured).
+- **What it cost.** The firmware did not move on any task, the frame
+  arm stayed inside its spread (T84.2's K3 table), and the whole-tree
+  mark per animated frame is priced under K84c's bound, so
+  `App::tick_marked` is not built (T84.3).
+- **What the live window found that the headless gates did not**: the
+  drive's own agent request landing a redraw inside the counted second,
+  a four-frame loop reading "held" on a one-second read, and a moving
+  frame failing M57's scale-2 comparison for no defect (T84.3;
+  `docs/plan-images-in-motion.md`, "What building found").
+
 ## Thresholds, written before anything is built (copied at T84.1, 2026-10-06)
 
 M84's kill rules, copied from the plan so each later row has its
@@ -226,3 +259,30 @@ firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** `.text`
 and **0** `.rodata` on all four (`firmware_interactive` 63,480 / 21,886 B).
 `Playback` is behind `alloc` and `App::wake_in_ms` is a provided method no
 firmware calls; `docs/results-embedded.md`'s table does not move.
+
+## M84a's kill rules, at its close (T84.4, 2026-10-06)
+
+Every rule M84a could read, with its number, fired or not (S5). The
+milestone's firmware total is T84.0's base (`1024cba`) against T84.3's
+head (`da63a7c`): the sum of the four task deltas, each printed by `just
+firmware-delta <parent>` against its own parent. T84.4 changes no linked
+code: `just firmware-delta da63a7c firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0` prints **+0** `.text` and **+0**
+`.rodata` on all four.
+
+| rule | bound | measured | verdict |
+|---|---|---|---|
+| K84a — decoder crates | `image`'s own ≤ 15 | **9** (96 → 105, T84.1) | holds; PNG and GIF both ship |
+| K84c — whole-tree mark per animated frame | median `layout_ns` ≤ 100 µs | **25.72–32.31 µs** across the six legs (T84.3) | holds; `App::tick_marked` not built |
+| K84d — the atlas under animation | `resets` 0 over 100 changes | **0** (T84.2) | holds; no dedicated texture |
+| K4 — per task | Δ 0 B `.text` on all four (strict form) | T84.0 **+0**, T84.1 **+0**, T84.2 **+0**, T84.3 **+0** | holds |
+| — M84a's total | recorded | **+0** on all four; `firmware_interactive` **63,480** B (headroom 18,440 B to 81,920) | recorded; `docs/results-embedded.md`'s table does not move |
+| K3 — the frame arm | each row inside the base's eight-run spread | all five named rows inside (T84.2) | holds |
+| K1 — the struct budget | `Cmd` 60; `Style`, `NodeState` +0 B | `Cmd` **60** (payload 28 B, T84.2); `Style` and `NodeState` untouched; embedded `Ui` 1,216 B unchanged | holds |
+| K2 — default-off | the default window's crate count Δ 0 | **96** against 96 at every task (T84.0(c), T84.1) | holds |
+| K84b, K84e | — | M84b's (T84.9, T84.8) | not yet read |
+
+**Carried to M84b, as planned**: T84.2's *origin* gate, the atlas key's
+`origin` and `Gpu::invalidate_images()` arrive with the application's
+store (T84.6); T84.0(e), the subscription-stop pin, is T84.5. The GPU
+half of the live Image drive reopens after M88/T88.2 (T84.3).
