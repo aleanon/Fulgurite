@@ -1167,3 +1167,26 @@ from a tracked job.
 not landed, so T88.1 carries that gate and makes `settled` treat a
 stopped job as settled. Today a stopped job settles the ordinary way,
 once its body returns and the drain has consumed what it sent.
+
+## M88/T88.0 — baseline: a streaming job loses what it streams
+
+`docs/plan-platform-requests.md` T88.0. Pinned green on today's code by
+`crates/lumen-static-shell/tests/sipper.rs`: one job under `Immediate`
+sends 10,000 `u64`s through `Sender::send` into a one-node host, pumped
+until the ledger is empty. T88.1 flips it.
+
+| quantity (M88 baseline) | measured | pinned |
+|---|---:|---|
+| sends refused | **9,744** of 10,000 | ≥ 9,744 (10,000 − `Inbox::CAPACITY`) |
+| largest number applied in one pump | **64** | = `Inbox::PER_FRAME` |
+| value 9,999 applied | **0** times — lost | 0 |
+| accept: 200 sends — refused / applied / final value | 0 / 200 / applied once | 0 / 200 / 1 |
+
+97% of the stream and its last value never reach the application.
+Raising `Inbox::CAPACITY` to 16,384 (the plan's injection) turns the pin
+red by name: `pinned (T88.0): the final value is lost today -- it was
+applied 1 time(s)` (refused 0, applied 10,000).
+
+The second pin is `scripts/resume_drive.py`'s GPU leg: `ui.screenshot`
+answers `this host does not render — nothing to screenshot` there,
+which is why that leg reads `xwd`. T88.2 flips it.

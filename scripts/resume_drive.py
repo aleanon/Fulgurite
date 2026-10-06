@@ -23,7 +23,8 @@ WALL_PX = (112, 105)
 PAGE = (0x08, 0x0A, 0x12)
 # `canvas` asks the agent for what the renderer drew; `xwd` reads the
 # window back off the X server, for a backend that cannot hand its
-# pixels back (the GPU one answers "does not render" to `ui.screenshot`).
+# pixels back (the GPU one answers "does not render" to `ui.screenshot`,
+# which the GPU leg pins -- M88/T88.0; T88.2 flips it).
 source = sys.argv[4] if len(sys.argv) > 4 else "canvas"
 BOUND = 0.001  # 0.1% of the window
 
@@ -70,6 +71,24 @@ def xwd_shot():
 t0 = time.time()
 time.sleep(2.0)  # the first frame, and a margin
 a = shot()
+
+if source == "xwd":
+    # M88/T88.0 pin: the GPU backend cannot answer `ui.screenshot`
+    # (`GpuBackend::frame_rgba` is `None`), which is why this leg reads
+    # `xwd`. T88.2 gives the GPU a `frame_rgba` and flips this to compare
+    # the canvas with the `xwd` readback.
+    n[0] += 1
+    f.write((json.dumps({"jsonrpc": "2.0", "id": n[0], "method": "ui.screenshot",
+                         "params": {}}) + "\n").encode())
+    f.flush()
+    r = json.loads(f.readline())
+    msg = r.get("error", {}).get("message", "") if "error" in r else ""
+    print(f"  ..  pinned (T88.0): ui.screenshot on the GPU answers "
+          f"{'error ' + repr(msg) if msg else 'an image'} (want \"this host does not render\")")
+    if "this host does not render" not in msg:
+        sys.exit(f"resume-drive[{leg}]: pinned (T88.0): ui.screenshot on the GPU backend "
+                 f"no longer answers \"this host does not render\" ({r.get('error') or 'it answered an image'})"
+                 f" -- T88.2 flips this pin")
 
 if custom:
     log = open(f"target/live/resume-drive-{leg}.log", errors="replace").read()
