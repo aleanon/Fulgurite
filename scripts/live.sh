@@ -40,6 +40,7 @@ ALL=(
     "hot-window-drive|./scripts/hot_window_drive.sh"
     "gpu-parity|./scripts/gpu_parity.sh"
     "resume-drive|./scripts/resume_drive.sh"
+    "windows-rss|./scripts/windows_rss.sh"
     "shader-drive|./scripts/shader_drive.sh"
     "idle-count|./scripts/idle_count.sh"
     "a11y-drive|./scripts/a11y_drive.sh"
