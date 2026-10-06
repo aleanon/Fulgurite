@@ -710,6 +710,15 @@ and it was in a doc comment about the same function's own behaviour.
 > **Types shipped, never assembled — 2026-09-27** (M54/T54.7, R15-F5).
 > `Pane` and `Panes` are re-exported and used by no crate, example or fixture; nothing has ever opened a second window, so the gate below was never run. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
 > what would reopen it. The rest of this entry is the record as written.
+>
+> **Reopened as M89, gate amended — 2026-10-06** (M89/T89.0,
+> `docs/plan-windows.md`). The reopen gate is now "**one agent port**,
+> windows addressed by a `window` field, and a close that leaves the
+> other answering", not the re-triage's "one agent port per window"
+> (`docs/plan-a11y-platform.md` §4, where the old text stands beside the
+> new and the departure is argued; reviews C31, G30, P24, M14).
+> `just windows-drive` phase 0 pins today's one-window behaviour, and
+> `Pane`/`Panes` are deleted by T89.1.
 
 `Host` is already one tree and one surface, which is the right unit. The
 work is in `lumen-static-winit`: a window map, per-window `Surface` and

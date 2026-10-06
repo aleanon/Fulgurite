@@ -769,6 +769,15 @@ drag and image fixes may land at any time.
   the cursor; a two-window example with one agent port per window and a
   close that leaves the other answering; a showcase button behind
   `dialogs` with a portal-less fallback.
+  **Multi-window's gate amended by M89/T89.0 (2026-10-06,
+  `docs/plan-windows.md`):** *one* agent port, windows addressed by a
+  `window` field, and a close that leaves the other answering. The
+  departure from "one port per window" is deliberate: every live script
+  dials one launcher-chosen port and the launcher checks that port's
+  owner (`scripts/live/launch.py`), so a second listener per window
+  would be a second identity to prove, and M89 gates the listener count
+  at 1 (T89.3 gate 5). The reviews that asked for it are C31, G30, P24
+  and M14 (`docs/plan-windows.md`, "What the review found").
 - **Touch input** belongs to M44 (R15-F4); **a second `resumed`
   dropping images** to M47 (R15-F6). Both are mobile lifecycle issues
   the assignment placed elsewhere.

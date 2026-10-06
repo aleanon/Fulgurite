@@ -829,3 +829,23 @@ the first review's findings of the same name.
   the 80 KB ceiling.
 - consistency-3 item 24 → T89.0 removes `docs/results-windows.md`'s
   `doc-paths.allow` entry when it creates the doc.
+
+## What building found (M89)
+
+- **T89.0, the pins' red runs.** The plan's own red run, phase 0 with
+  (a) inverted, prints `app.windows: -32601 method not found`. Inverting
+  an assertion proves the script can fail, not that it watches the
+  router, so each pin was also turned red by perturbing the mechanism it
+  pins (§3.1, "a pin is still watched red"): a temporary `app.windows`
+  answer in `Win::answer_agent` fails (a) by name, and a temporary
+  `-32602` for any `"window"` other than 1 fails (b) by name. (c) is the
+  launcher's existing `--stop quit` check.
+- **T89.0, phase 0 runs one leg.** It asks the window crate's router,
+  which the invalidation strategy does not reach, and `counter-window`
+  has no `everything` build; T89.2's phase 1 is where both strategies
+  start (§3.1 allows a stated reason).
+- **T89.0, the baselines were read on private Xephyr displays**, the
+  condition `docs/results-frame-cost.md` "Idle" requires for idle
+  counts; `tasks-drive` on one also keeps its clipboard writes off the
+  desktop's. T89.1's K89c re-reads use the same setup.
+
