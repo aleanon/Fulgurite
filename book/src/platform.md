@@ -6,23 +6,24 @@ That is not modesty, it is what keeps the `no_std` profile honest.
 
 ## Multi-window
 
-**Not reachable from an application yet.** The types below exist and
-nothing opens a second window: `run` and a `Program` open one, and no
-example uses `Panes` (`docs/plan-capabilities.md` T15.10 records it as
-shipped types, never assembled). What follows is the design they
-implement.
+**Not reachable from an application yet**: `run` and a `Program` open
+one window. M89 is building the rest (`docs/plan-windows.md`), and its
+first step is already in: the window crate holds one `WindowSlot` per
+window, with what the process has one of (the clipboard, the reload
+state, the agent's `app.quit`) beside the slots rather than inside them.
+A window event finds its slot by window id, and a worker's wake carries
+its window's key, so it asks *its own* window for a frame.
 
 `Host` is already one tree and one surface, which turns out to be the
-right unit. A second window is a **second `Host`**, not a `Host` with two
-of anything.
+right unit. A second window is a **second session** — its own tree,
+stylesheet and damage stream — not a `Host` with two of anything, and
+the core learns nothing about it. A slot holds its session behind the
+same `Session` seam a hot library uses, so the window's state is never
+loader-side code that a reload could not replace.
 
-So multi-window is bookkeeping in the windowing crate — a map from window
-id to host — and it needed **no core change at all**. It was one of the
-two M15 capabilities that came in smaller than planned.
-
-The practical consequence: two windows are two independent trees, two
-independent stylesheets and two independent damage streams. They share
-nothing except your application's state, and only if you arrange it.
+The practical consequence: two windows share nothing except what your
+application passes between them, and M89 makes that a message rather
+than shared state.
 
 ## Clipboard
 

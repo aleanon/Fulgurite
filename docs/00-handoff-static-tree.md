@@ -1138,7 +1138,8 @@ one unreproduced divergence (`OptionList`, `size`) is open in
 `docs/plan-boundaries-repair.md` §6.*
 `Boundaries<256>` is `Host`'s default and the window's. `Everything` is a
 diagnostic **the application chooses in code** —
-`Program::invalidation::<Everything>()`, or `Pane<A, Everything>` —
+`Program::invalidation::<Everything>()`, or `Local<A, P, Everything>`
+(a window's `WindowSlot` holds either, strategy-free, since M89/T89.1) —
 since M55/T55.4 (R12-F5): as the `everything` feature it changed the type
 of every public `host` field in the build graph, because cargo unifies
 features (`docs/plan-derive-dx.md` §2.1); a binding marks its own node, and a click on a

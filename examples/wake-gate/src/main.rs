@@ -29,7 +29,8 @@
 //! A worker thread sleeps past the point where the window has certainly
 //! gone idle, then sends. Nothing else touches the window: no input, no
 //! animation, no timer. If a frame runs after that, the only thing that
-//! could have caused it is [`UserEvent::Wake`].
+//! could have caused it is [`UserEvent::Wake`] — keyed since M89/T89.1,
+//! so the wake must also name the window its waker was built for.
 //!
 //! Injection — `ProxyWaker::wake` made a no-op, which is the plan's own
 //! ("drop the wake"). The fixture then reaches its deadline and exits
@@ -43,6 +44,9 @@ use std::time::{Duration, Instant};
 
 use lumen_static::inbox::{Inbox, Waker};
 use lumen_static_winit::{ProxyWaker, UserEvent};
+
+/// The one window's key, as a `Program`'s primary is (M89/T89.1).
+const KEY: u32 = 1;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -115,8 +119,17 @@ impl ApplicationHandler<UserEvent> for Fixture {
         }
     }
 
+    // Irrefutable in this build: the fixture enables none of the features
+    // that add `UserEvent`'s other variants.
+    #[allow(irrefutable_let_patterns)]
     fn user_event(&mut self, _: &ActiveEventLoop, ev: UserEvent) {
-        if matches!(ev, UserEvent::Wake) {
+        // The waker is keyed (M89/T89.1): the wake must name this
+        // fixture's one window, the key it was built with.
+        if let UserEvent::Wake(key) = ev {
+            if key != KEY {
+                eprintln!("wake-gate: FAILED — a wake named window {key}, the waker was built for {KEY}");
+                std::process::exit(1);
+            }
             // Record *when* the wake landed, then ask for a frame. The
             // frame is what the claim is about; the wake alone only
             // proves the proxy works.
@@ -166,7 +179,7 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let mut inbox: Inbox<u32> = Inbox::new();
-    let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(event_loop.create_proxy()));
+    let waker: Arc<dyn Waker> = Arc::new(ProxyWaker::new(event_loop.create_proxy(), KEY));
     inbox.set_waker(waker);
     assert!(inbox.has_waker(), "setup: the fixture installed a waker");
 

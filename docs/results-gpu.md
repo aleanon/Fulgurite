@@ -695,10 +695,11 @@ it, so the step compares against the real frame instead.
 - **The crossover** is §5b's: 3–5% of the surface. This bullet said it
   was "bounded but not located" after §5b had located it (R9-F12,
   corrected by M55/T55.8), so it now points there instead of restating.
-- **Multi-window is software-only.** `Pane` still owns a `Surface` and a
-  `Canvas` directly rather than a `Box<dyn Backend>`. Nothing prevents
-  it; it was not needed, and a second window is a second GPU context —
-  which, at 174 MB, is a decision rather than a detail.
+- **Multi-window was software-only** while `Pane` owned a `Surface` and
+  a `Canvas` directly. M89/T89.1 deleted it: each window's `WindowSlot`
+  holds a `Box<dyn Backend>`, so a second window is a second GPU context
+  — 174 MB, a decision rather than a detail, which M89b
+  (`docs/plan-windows.md`) prices against a shared device.
 - **Nothing is threaded.** Raster is still on the UI thread; `draw`
   returns once the work is queued, but nothing overlaps frame N's layout
   with frame N−1's raster.

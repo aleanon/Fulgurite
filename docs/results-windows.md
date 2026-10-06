@@ -62,3 +62,27 @@ which read 25–26 of 26 at T47.1 (`docs/plan-timers-wake.md`, C31).
 
 `want` is rounded down, so 26 against 25 is inside one period of the
 3001 ms read; the bound is what T89.1 and T89.6 are held to.
+
+## T89.1 — one window as slot 1 (2026-10-06)
+
+`Win` is shared state plus a `Vec<WindowSlot>` with one entry. K89c,
+read on the same Xephyr setup as T89.0:
+
+| quantity | T89.0 baseline | T89.1 | bound | verdict |
+|---|---:|---:|---|---|
+| idle-count still, frames in 60 s | 0, 0 | **0** | ≤ baseline | holds |
+| idle-count 120 ms timer, frames in 60 s | 1000, 1000 | **1000** | ≤ baseline | holds |
+| motion-present, presents for 200 motions (Everything / Boundaries) | 0 / 0 | **0 / 0** | ≤ 2 | holds |
+| motion-present, skipped redraws (setup floor 20) | 200 / 200 | **200 / 200** | ≥ 20 | setup landed |
+
+Not bounded by K89c and printed for the record: the timer phase's
+loop-thread wakes read 2062 and process context switches 2564, against
+2049–2050 and 2551–2552 at T89.0 (two runs) — 12 more over 60 s, about
+0.6%, with the same 1000 frames. Still: 2 wakes, 4 context switches,
+as at T89.0.
+
+**Injection** (the plan's): `own_redraw` set on a flag outside the slot
+that the slot's frame never reads or clears. `motion-present [Everything]:
+presents 200 for 200 motions (bound 2); redraws that presented nothing 0`,
+and the assertion fires by name.
+

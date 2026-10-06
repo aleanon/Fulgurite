@@ -82,11 +82,13 @@ pub enum UserEvent {
     /// Somebody off the frame thread has queued work and wants a frame —
     /// see [`ProxyWaker`].
     ///
-    /// Carries nothing. The message itself already went through the
+    /// Carries only **the key of the window whose session queued it**
+    /// (M89/T89.1, `docs/plan-windows.md`), so a worker wakes its own
+    /// window and no other. The message itself already went through the
     /// inbox's channel; duplicating it here would put a second copy in
     /// flight and reintroduce the ordering question the inbox exists to
     /// answer.
-    Wake,
+    Wake(u32),
     /// The hot-reload builder started a build (M37/T37.2).
     #[cfg(feature = "hot")]
     Building,
@@ -113,12 +115,20 @@ impl From<accesskit_winit::Event> for UserEvent {
 /// The core cannot name winit, and winit cannot name the application's
 /// message type, so the trait carries no payload: it says *wake up*, and
 /// the queue the worker already wrote to says what happened.
-pub struct ProxyWaker(winit::event_loop::EventLoopProxy<UserEvent>);
+///
+/// **Keyed** since M89/T89.1: it wakes the window with key `key`
+/// ([`UserEvent::Wake`] carries it), so a worker started by one window's
+/// session asks that window for a frame.
+pub struct ProxyWaker {
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+    key: u32,
+}
 
 impl ProxyWaker {
-    /// Wrap a proxy. `EventLoop::create_proxy` is the only source.
-    pub fn new(proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> Self {
-        ProxyWaker(proxy)
+    /// Wrap a proxy for the window with key `key` (1 is the primary;
+    /// `windows::PRIMARY`). `EventLoop::create_proxy` is the only source.
+    pub fn new(proxy: winit::event_loop::EventLoopProxy<UserEvent>, key: u32) -> Self {
+        ProxyWaker { proxy, key }
     }
 }
 
@@ -129,7 +139,7 @@ impl lumen_static::inbox::Waker for ProxyWaker {
     /// request is the correct response: there is no loop to wake and no
     /// frame anyone will see.
     fn wake(&self) {
-        let _ = self.0.send_event(UserEvent::Wake);
+        let _ = self.proxy.send_event(UserEvent::Wake(self.key));
     }
 }
 pub mod backend;
@@ -151,7 +161,7 @@ pub use clipboard::Clipboard;
 pub use dialog::Dialogs;
 #[cfg(feature = "gpu")]
 pub use gpu::GpuBackend;
-pub use windows::{Pane, Panes};
+pub use windows::WindowSlot;
 pub use surface::{canvas, sync_size, Surface};
 pub use translate::{Cursor, Translated};
 
@@ -372,9 +382,10 @@ pub struct Config {
     /// was simply no way to reach either from `run`, so every windowed
     /// application was one with no photographs in it.
     ///
-    /// **Held across suspend and resume** (M47/T47.7): handed to each
-    /// backend `resumed` makes, and taken back from it by `suspended`
-    /// (`Backend::take_images`) before it is dropped. It was "taken once",
+    /// **Held across suspend and resume** (M47/T47.7): moved into the
+    /// primary window's [`WindowSlot`] when the loop starts (M89/T89.1),
+    /// handed to each backend `resumed` makes, and taken back from it by
+    /// `suspended` (`Backend::take_images`) before it is dropped. It was "taken once",
     /// and a second `resumed` got none (R15-F6). A `None` here is not an
     /// error: `ImageSource` already says a missing asset draws nothing.
     pub images: Option<Box<dyn lumen_static::ImageSource>>,
@@ -447,11 +458,12 @@ impl Default for Config {
 /// **The strategy is a type the application chooses** — M55/T55.4
 /// (R12-F5). It was a build-time switch, this crate's `everything`
 /// feature, which cargo unified across the whole build graph: one crate
-/// turning the diagnostic on changed `Pane::host`'s type for every other,
-/// and plain `Host<A>` stopped compiling. Now a program says
-/// `.invalidation::<Everything>()` and a `Pane` names `Pane<A,
-/// Everything>`; [`DefaultInval`] (`Boundaries<256>`, since M34/T34.2)
-/// otherwise. `Everything` remains **a diagnostic**: if a stale frame goes
+/// turning the diagnostic on changed the type of every public `host`
+/// field for every other, and plain `Host<A>` stopped compiling. Now a
+/// program says `.invalidation::<Everything>()` and a `Local` names
+/// `Local<A, P, Everything>`; [`DefaultInval`] (`Boundaries<256>`, since
+/// M34/T34.2) otherwise. A [`WindowSlot`] holds its session as a
+/// strategy-free `Box<dyn Session>` (M89/T89.1, `tests/inval_param.rs`). `Everything` remains **a diagnostic**: if a stale frame goes
 /// away under it, you have found an invalidation defect.
 pub use lumen_static_shell::session::{DefaultInval, Ret};
 use lumen_static_shell::session::{Local, Session};
@@ -518,12 +530,16 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
     // M48/T48.12: no endpoint, no journal.
     win.journal = cfg!(feature = "agent") && win.config.agent.is_some();
     // **Deferred work, wired up** — M28/T28.12. The waker is the
-    // window's, because the window owns the loop; the spawner is the
-    // session's own (`Local::from_host` installs `Threads`), because a
-    // job runs the application's code, which is wherever the session is.
-    let waker: std::sync::Arc<dyn lumen_static::inbox::Waker> =
-        std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy()));
-    win.session.set_waker(waker.clone());
+    // window's, because the window owns the loop — **keyed to its slot**
+    // since M89/T89.1, so a wake reaches the window that asked; the
+    // spawner is the session's own (`Local::from_host` installs
+    // `Threads`), because a job runs the application's code, which is
+    // wherever the session is.
+    for slot in &mut win.slots {
+        let waker: std::sync::Arc<dyn lumen_static::inbox::Waker> =
+            std::sync::Arc::new(ProxyWaker::new(event_loop.create_proxy(), slot.key));
+        slot.set_waker(waker);
+    }
     #[cfg(feature = "hot")]
     if let Some(dir) = hot {
         match hot::crate_at(&dir) {
@@ -545,17 +561,15 @@ fn start(session: Box<dyn Session>, config: Config, hot: Option<std::path::PathB
                 win.hot = Some(hot::Hot {
                     reloader: lumen_static_reload::hot::Reloader::new(),
                     build,
-                    waker,
-                    metrics: win.font.clone().map(FontMetrics::new),
+                    metrics: win.slots[0].font.clone().map(FontMetrics::new),
                     _watcher: watcher,
-                    bar_shown: false,
                 });
             }
             Err(e) => eprintln!("lumen-static: no hot reload: {e}"),
         }
     }
     #[cfg(not(feature = "hot"))]
-    let _ = (hot, waker);
+    let _ = hot;
     event_loop.run_app(&mut win).expect("run");
 }
 
@@ -607,77 +621,27 @@ fn control_flow_for(from: Instant, ms: Option<f32>) -> ControlFlow {
 /// application** since M37: everything it asks of one goes through
 /// [`Session`], which is what lets the same handler drive an application
 /// linked into the binary and one living in a hot library.
+///
+/// **Shared state plus a `Vec<WindowSlot>`** since M89/T89.1
+/// (`docs/plan-windows.md`; the `windows` module doc is the rationale):
+/// what each window owns is in its [`WindowSlot`], and what the process
+/// has one of is here.
 struct Win {
-    session: Box<dyn Session>,
+    /// Every open window; `slots[0]` is the primary, key
+    /// [`windows::PRIMARY`]. Found by `WindowId` or by key with a linear
+    /// scan (the `windows` module doc).
+    slots: Vec<WindowSlot>,
+    /// The primary program's window settings. Its `images` were moved
+    /// into the primary slot by [`Win::new`].
     config: Config,
-    /// The title the window is showing, so an unchanged one is not set
-    /// again.
-    title_shown: String,
-    /// The face the renderer rasterises with. The session measures with
-    /// the same system face; the first window measured with the block
-    /// stand-in and painted with fontdue, so every box was too narrow and
-    /// "TALLY" wrapped to "TAL / LY". **In the session's mode**
-    /// (`Session::shaping`, M81/T81.4): set in `Win::new` before the first
-    /// backend, and again after a swap that changed it.
-    font: Option<FontStack>,
-    /// `None` until `resumed`; winit owns window creation.
-    window: Option<Arc<Window>>,
-    /// The renderer, chosen once the window exists — a GPU surface
-    /// cannot be made without one, and neither can a softbuffer one.
-    backend: Option<Box<dyn Backend>>,
-    cursor: Cursor,
-    /// Single/double/triple click counting (T14.3): it needs a clock,
-    /// which the core does not have.
-    clicks: translate::ClickCounter,
-    /// Modifiers as of the last `ModifiersChanged`. Kept here because
-    /// translation needs it *before* the event is queued: it decides
-    /// whether a keystroke types (T14.2).
-    mods: lumen_static::Mods,
     clipboard: Clipboard,
-    /// The cursor the window is currently showing, so an unchanged
-    /// frame does not ask the platform to set it again.
-    cursor_shown: lumen_static::style::Cursor,
-    /// When the last frame was drawn, for the animation tick (T15.4).
-    ///
-    /// **Cleared while a panic is shown** (M47/T47.1), so the first frame
-    /// after a retry — by R or by `app.retry` — ticks by 0 rather than by
-    /// the whole time the screen was up (`docs/plan-panic-recovery.md`
-    /// §2.2).
-    last_frame: Option<Instant>,
-    /// What the loop waits on, fixed after each frame by
-    /// [`control_flow_for`]: `WaitUntil` the soonest timer's instant, or
-    /// `Wait` when there is none or a panic is shown (M47/T47.1).
-    wait: ControlFlow,
     /// **A test hook, debug builds only** — M47/T47.7. With
-    /// `LUMEN_TEST_RESUME=<ms>` set, the window runs its own `suspended`
+    /// `LUMEN_TEST_RESUME=<ms>` set, the loop runs its own `suspended`
     /// and `resumed` once, `<ms>` after it starts, so a live drive can
     /// compare the window before and after a lifecycle round trip on a
     /// desktop, where the platform never sends one.
     #[cfg(debug_assertions)]
     test_resume: Option<Instant>,
-    /// Dropped presents in a row, for [`present_retry`] (M47/T47.4).
-    present_drops: u32,
-    /// The pending redraw was this window's own request — input, a wake,
-    /// a deadline, an agent answer — and not only the platform's
-    /// (M53/T53.4). See [`present_needed`].
-    own_redraw: bool,
-    /// The next frame presents whatever its damage says: a resize, or
-    /// the retry of a dropped present, whose damage was banked by the
-    /// present that did not land.
-    must_present: bool,
-    /// Whether the last frame ended on M36's screen, so the first frame
-    /// after a retry — by R or by `app.retry`, which the window does not
-    /// see — tells the backend to forget its cached image pixels
-    /// (M84/T84.6, `Backend::invalidate_images`).
-    was_failed: bool,
-    /// Frames presented, and redraws that presented nothing because
-    /// nothing changed — `app.presents` (M53/T53.4).
-    presents: (u64, u64),
-    /// The IME cursor area last passed to `set_ime_cursor_area`, in
-    /// physical pixels — M80/T80.5. Kept so an unchanged caret is not
-    /// passed again, and answered as `app.imeArea`; `None` before any
-    /// caret, and while a panic is shown.
-    ime_area: Option<[f32; 4]>,
     /// The reload state, when the window rebuilds its application (M37).
     #[cfg(feature = "hot")]
     hot: Option<hot::Hot>,
@@ -691,18 +655,7 @@ struct Win {
     quit: bool,
     /// Frames drawn and frames journaled, for `LUMEN_FRAME_REPORT`.
     frames: (u64, u64),
-    /// When the oldest input not yet on screen arrived — M60/T60.3. Set
-    /// by the first input after a presented frame (a window event that
-    /// translates to input, a key, an `input.*` agent request), taken by
-    /// the next journal frame: [`journal_times`]'s `input_latency_ns`,
-    /// which `app.perf` reports and `ui_check.py latency` bounds. Until
-    /// M60 only `examples/counter-window`'s own loop measured it, and
-    /// every `Program` window reported `null`.
-    input_at: Option<Instant>,
-    /// The platform accessibility adapter, once the window exists
-    /// (M54/T54.2), and the proxy it reports through.
-    #[cfg(feature = "a11y")]
-    a11y: Option<a11y::Accessible>,
+    /// The proxy the accessibility adapters report through (M54/T54.2).
     #[cfg(feature = "a11y")]
     proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
     /// `LUMEN_FRAME_REPORT=N`: after N frames, print how many were
@@ -712,59 +665,44 @@ struct Win {
 }
 
 impl Win {
-    fn new(session: Box<dyn Session>, config: Config) -> Self {
-        // **The session's mode, before any backend exists** — M81/T81.4
-        // (`docs/plan-shaped-paint.md`, second review T24). The first
-        // backend is built from this stack in `resumed`; built `Basic`
-        // here, a program with `.shaping(Complex)` would be measured
-        // shaped by its `Local` and drawn unshaped by the window.
-        let font = FontStack::system().map(|f| f.with_shaping(session.shaping()));
-        if font.is_none() {
-            // A machine with no font we recognise still gets a window;
-            // it just gets the block stand-in in it, which is honest
-            // about what happened.
-            eprintln!("no system font found — falling back to block glyphs");
-        }
+    fn new(session: Box<dyn Session>, mut config: Config) -> Self {
+        // The primary's images are its slot's (M89/T89.1): each backend
+        // that slot's `resumed` makes is handed them, and its `suspended`
+        // takes them back.
+        let images = config.images.take();
         Win {
-            session,
+            slots: vec![WindowSlot::new(windows::PRIMARY, session, images)],
             config,
-            title_shown: String::new(),
-            font,
-            window: None,
-            backend: None,
-            cursor: Cursor::default(),
-            clicks: Default::default(),
-            mods: lumen_static::Mods::NONE,
             clipboard: Clipboard::new(),
-            cursor_shown: lumen_static::style::Cursor::Default,
-            last_frame: None,
-            wait: ControlFlow::Wait,
             #[cfg(debug_assertions)]
             test_resume: std::env::var("LUMEN_TEST_RESUME")
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
                 .map(|ms| Instant::now() + std::time::Duration::from_millis(ms)),
-            present_drops: 0,
-            own_redraw: false,
-            must_present: false,
-            was_failed: false,
-            presents: (0, 0),
-            ime_area: None,
             #[cfg(feature = "hot")]
             hot: None,
             journal: false,
             quit: false,
             frames: (0, 0),
-            input_at: None,
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
-            #[cfg(feature = "a11y")]
-            a11y: None,
             #[cfg(feature = "a11y")]
             proxy: None,
         }
     }
 
-    /// Ctrl+C, Ctrl+X and Ctrl+V (Cmd on macOS) — T14.5.
+    /// The slot whose winit window is `id` — a linear scan (the `windows`
+    /// module doc). `None` for a window already closed.
+    fn slot_of(&self, id: WindowId) -> Option<usize> {
+        self.slots.iter().position(|s| s.window.as_ref().is_some_and(|w| w.id() == id))
+    }
+
+    /// The slot with key `key`. `None` for a closed window's key, and for
+    /// key 0 while there is no windowless session (T89.6).
+    fn slot_keyed(&self, key: u32) -> Option<usize> {
+        self.slots.iter().position(|s| s.key == key)
+    }
+
+    /// Ctrl+C, Ctrl+X and Ctrl+V (Cmd on macOS) — T14.5 — in slot `i`.
     ///
     /// Handled here rather than in a widget because the *clipboard* is
     /// the platform's; what the widget owns is the selection and the
@@ -772,17 +710,18 @@ impl Win {
     /// keystroke was acted on as a clipboard shortcut, so the caller
     /// knows not to route it on — and it is not, since M45/T45.9, when
     /// there is nothing to act on: `keys::clipboard_decision` decides.
-    fn clipboard_shortcut(&mut self, event: &WindowEvent) -> bool {
+    fn clipboard_shortcut(&mut self, i: usize, event: &WindowEvent) -> bool {
         let WindowEvent::KeyboardInput { event, .. } = event else { return false };
         if event.state != winit::event::ElementState::Pressed {
             return false;
         }
+        let slot = &mut self.slots[i];
         // The decision is `keys::clipboard_decision`, a function a test
         // can call (M45/T45.0 item 11). Only what it needs is read: the
         // selection for c/x, the clipboard for v.
         let key = translate::key_of(&event.logical_key);
         let copied = match key {
-            Some(lumen_static::Key::Char('c' | 'x')) => self.session.copy(),
+            Some(lumen_static::Key::Char('c' | 'x')) => slot.session.copy(),
             _ => None,
         };
         let pasted = match key {
@@ -790,9 +729,9 @@ impl Win {
             _ => None,
         };
         let decision = keys::clipboard_decision(keys::Shortcut {
-            mods: self.mods,
+            mods: slot.mods,
             key,
-            focused: self.session.has_focus(),
+            focused: slot.session.has_focus(),
             selection: copied.is_some(),
             clipboard: pasted.is_some(),
             os: keys::Os::CURRENT,
@@ -808,7 +747,7 @@ impl Win {
                     // Cut is copy plus the delete the field already
                     // does: one edit path, so the caret and the shaped
                     // cache cannot disagree with a bespoke one.
-                    self.session.post(lumen_static::Event::Key {
+                    slot.session.post(lumen_static::Event::Key {
                         key: lumen_static::Key::Backspace,
                         down: true,
                     });
@@ -817,72 +756,40 @@ impl Win {
             }
             Some(keys::Clip::Paste) => {
                 if let Some(text) = pasted {
-                    self.session.paste(&text);
+                    slot.session.paste(&text);
                 }
                 true
             }
         }
     }
 
-    /// Ask for a frame of the window's own — M53/T53.4. The frame it
-    /// gets presents only if it changed something ([`present_needed`]).
-    fn ask_redraw(&mut self) {
-        if let Some(w) = &self.window {
-            self.own_redraw = true;
-            w.request_redraw();
-        }
-    }
-
-    /// **The candidate window goes beside the caret** — M80/T80.5
-    /// (`docs/plan-text-fit.md`). After each frame, the focused node's
-    /// caret in physical pixels (`Session::caret_rect`, guarded) is passed
-    /// to `set_ime_cursor_area` if it changed, and kept for
-    /// `app.imeArea`. Called after the window's own frames and after an
-    /// agent request, which pumps a frame of its own, so a drive that
-    /// focuses a field over the agent reads the area that frame placed.
-    ///
-    /// Nothing focused, or a node with no caret, passes nothing: winit has
-    /// no call that clears an area, and the platform keeps the last one
-    /// until a field takes focus again. A caret that panicked raised M36's
-    /// screen inside the session; this asks for the frame that draws it.
-    fn place_ime(&mut self, window: &Window) {
-        let area = self.session.caret_rect();
-        if self.session.failed() {
-            self.ime_area = None;
-            self.ask_redraw();
-            return;
-        }
-        if area != self.ime_area {
-            if let Some(r) = area {
-                window.set_ime_cursor_area(
-                    winit::dpi::PhysicalPosition::new(r[0] as f64, r[1] as f64),
-                    winit::dpi::PhysicalSize::new((r[2] - r[0]).max(1.0) as f64, (r[3] - r[1]).max(1.0) as f64),
-                );
-            }
-            self.ime_area = area;
-        }
-    }
-
-    fn redraw(&mut self) {
-        let (Some(window), Some(backend)) = (self.window.clone(), self.backend.as_mut()) else {
+    /// One frame of slot `i`'s window.
+    fn redraw(&mut self, i: usize) {
+        let slot = &mut self.slots[i];
+        let (Some(window), Some(backend)) = (slot.window.clone(), slot.backend.as_mut()) else {
             return;
         };
         // Whose frame this is, taken now: a request made during the
-        // frame is for the next one.
-        let own = core::mem::take(&mut self.own_redraw) && !core::mem::take(&mut self.must_present);
+        // frame is for the next one. **The slot's own flag, cleared on
+        // the slot's frame** (M89/T89.1).
+        let own = core::mem::take(&mut slot.own_redraw) && !core::mem::take(&mut slot.must_present);
         let size = window.inner_size();
         let (w, h) = (size.width.max(1), size.height.max(1));
         if backend.resize(w, h) {
-            self.session.resize(w, h);
+            slot.session.resize(w, h);
         }
         // **The swap, between frames** (M37 rule 3): a library that
         // landed since the last frame takes over now, with the running
-        // session's kept state, the window's waker, scale and size.
+        // session's kept state, **this slot's** keyed waker, scale and
+        // size (M89/T89.1; T89.7 moves the swap to a step over every
+        // slot).
         #[cfg(feature = "hot")]
         if let Some(hot) = self.hot.as_mut() {
-            let (waker, scale) = (hot.waker.clone(), window.scale_factor() as f32);
-            if hot.reloader.swap(&mut self.session, |s| {
-                s.set_waker(waker);
+            let (waker, scale) = (slot.waker.clone(), window.scale_factor() as f32);
+            if hot.reloader.swap(&mut slot.session, |s| {
+                if let Some(waker) = waker {
+                    s.set_waker(waker);
+                }
                 s.set_scale(scale);
                 s.resize(w, h);
             }) {
@@ -896,7 +803,7 @@ impl Win {
                         r.spawned, r.unknown
                     );
                 }
-                self.last_frame = None;
+                slot.last_frame = None;
                 // **The new build's shaders** — M83/T83.4: its program's
                 // table, re-asked from the new session and re-sent, so an
                 // edited WGSL reaches the backend with the swap. Every swap,
@@ -904,7 +811,7 @@ impl Win {
                 // compiles by content (T83.5), so an unchanged table costs a
                 // lookup. From M89 this is the multi-window swap's per-slot adopt step
                 // (`docs/plan-windows.md`).
-                let _refused = backend.set_shaders(self.session.shaders());
+                let _refused = backend.set_shaders(slot.session.shaders());
                 // **The new build's images** — M84/T84.6 (second review
                 // A14): its application store is re-asked each present
                 // (`FrameSource::images`), but a backend that caches by
@@ -916,13 +823,13 @@ impl Win {
                 // The new session measures with its own program's mode; the
                 // backend follows it, and everything is repainted, because
                 // every run on the surface was drawn with the old stack.
-                let wanted = self.session.shaping();
-                if let Some(font) = self.font.as_ref().filter(|f| f.shaping() != wanted) {
+                let wanted = slot.session.shaping();
+                if let Some(font) = slot.font.as_ref().filter(|f| f.shaping() != wanted) {
                     let font = font.clone().with_shaping(wanted);
                     backend.set_font(font.clone());
                     hot.metrics = Some(FontMetrics::new(font.clone()));
-                    self.font = Some(font);
-                    self.session.repaint_all();
+                    slot.font = Some(font);
+                    slot.session.repaint_all();
                     eprintln!("lumen-static: the new build lays text out {wanted:?}");
                 }
             }
@@ -932,42 +839,42 @@ impl Win {
         // the store the screen did not draw may have been left mid-write,
         // and a backend that cached its pixels by `(id, frame)` must ask
         // again (M84/T84.6, second review A14).
-        let failed = self.session.failed();
-        if core::mem::replace(&mut self.was_failed, failed) && !failed {
+        let failed = slot.session.failed();
+        if core::mem::replace(&mut slot.was_failed, failed) && !failed {
             backend.invalidate_images();
         }
 
         let start = Instant::now();
         // A panic being shown runs no application code (M36), so it does
         // not advance the animation clock either.
-        let dt = if self.session.failed() {
+        let dt = if slot.session.failed() {
             0.0
         } else {
-            self.last_frame.replace(start).map_or(0.0, |t| start.duration_since(t).as_secs_f32() * 1000.0)
+            slot.last_frame.replace(start).map_or(0.0, |t| start.duration_since(t).as_secs_f32() * 1000.0)
         };
         // **One guarded entry for the frame's application code** (M36),
         // inside the session: both ticks and the pump, or the panic
         // screen.
-        let animating = self.session.frame(dt, w, h);
+        let animating = slot.session.frame(dt, w, h);
         // **The deadline, fixed at this frame** (M47/T47.1). While a panic
         // is shown, none: the timers do not run (their clock is frozen
         // above), so a deadline would only redraw the screen at the
         // timer's rate. And the clock is dropped, so the retry's first
         // frame starts from `dt` 0 whichever way the retry came.
-        self.wait = if self.session.failed() {
-            self.last_frame = None;
+        slot.wait = if slot.session.failed() {
+            slot.last_frame = None;
             ControlFlow::Wait
         } else {
-            let wait = control_flow_for(start, self.session.next_deadline_ms());
+            let wait = control_flow_for(start, slot.session.next_deadline_ms());
             // **The deadline asks the application** (M84/T84.3): its
             // `App::wake_in_ms`, guarded inside the session. A panic there
             // raised M36's screen after this frame ran, so nothing here
             // drew it: wait for nothing, drop the clock, and ask for the
             // frame that draws the screen, as `place_ime` does for a caret
             // that panicked.
-            if self.session.failed() {
-                self.last_frame = None;
-                self.own_redraw = true;
+            if slot.session.failed() {
+                slot.last_frame = None;
+                slot.own_redraw = true;
                 window.request_redraw();
                 ControlFlow::Wait
             } else {
@@ -990,13 +897,14 @@ impl Win {
         // **The bar is the window's pixels, not the session's**: on the
         // frame it goes away the session must repaint everything, in every
         // buffer, or the bar outlives its fix wherever the session's own
-        // damage does not reach (found by `just hot-window-drive`).
+        // damage does not reach (found by `just hot-window-drive`). Per
+        // slot since M89/T89.1: each window drew it or did not.
         #[cfg(feature = "hot")]
-        if let Some(hot) = self.hot.as_mut() {
-            if bar.is_none() && hot.bar_shown {
-                self.session.repaint_all();
+        {
+            if bar.is_none() && slot.bar_shown {
+                slot.session.repaint_all();
             }
-            hot.bar_shown = bar.is_some();
+            slot.bar_shown = bar.is_some();
         }
         // **What the frame cost is kept** (M48/T48.3): `present` fills it
         // in, and it was dropped here, so `app.perf` read 0 for every
@@ -1012,40 +920,40 @@ impl Win {
         let overlay = bar.is_some();
         #[cfg(not(feature = "hot"))]
         let overlay = false;
-        let skipped = !present_needed(own, self.session.failed() || overlay, self.session.damage());
+        let skipped = !present_needed(own, slot.session.failed() || overlay, slot.session.damage());
         let presented = if skipped {
-            self.presents.1 += 1;
+            slot.presents.1 += 1;
             // The pump's own figures still stand (under `Everything` it
             // laid out and painted); nothing was rendered or presented.
-            let (layout_ns, paint_ns) = self.session.timings();
+            let (layout_ns, paint_ns) = slot.session.timings();
             Frame { layout_ns, paint_ns, frame_ns: start.elapsed().as_nanos() as u64, ..Default::default() }
         } else {
-            self.presents.0 += 1;
+            slot.presents.0 += 1;
             #[cfg(feature = "hot")]
             let presented = match (bar, self.hot.as_mut()) {
                 (Some((head, body)), Some(hot)) => {
-                    let mut b = hot::Barred::new(&mut *self.session, head, &body, w, h, &mut hot.metrics);
+                    let mut b = hot::Barred::new(&mut *slot.session, head, &body, w, h, &mut hot.metrics);
                     backend.present(&mut b, self.config.page, start)
                 }
-                _ => backend.present(&mut *self.session, self.config.page, start),
+                _ => backend.present(&mut *slot.session, self.config.page, start),
             };
             #[cfg(not(feature = "hot"))]
-            let presented = backend.present(&mut *self.session, self.config.page, start);
+            let presented = backend.present(&mut *slot.session, self.config.page, start);
             presented
         };
         // **A dropped present asks again** (M47/T47.4): the frame was
         // rendered and did not reach the screen, and nothing else will ask
         // on an idle window. Before the failure check, so a panic screen
         // whose present was dropped is shown too.
-        if present_retry(presented.dropped, &mut self.present_drops) {
+        if present_retry(presented.dropped, &mut slot.present_drops) {
             // The pending damage went with the dropped present, so the
             // retry's own damage says nothing: it must present
             // (M53/T53.4).
-            self.must_present = true;
+            slot.must_present = true;
             window.request_redraw();
         }
-        if self.session.failed() {
-            self.ime_area = None;
+        if slot.session.failed() {
+            slot.ime_area = None;
             return;
         }
         // **The application's platform requests** — M88/T88.3, the
@@ -1057,20 +965,21 @@ impl Win {
         // so nothing is drained while M36's screen is up; and before
         // `next_frame` reads `more_deferred`, which an applied answer
         // sets.
-        Self::serve_requests(&mut *self.session, &mut **backend, &mut self.clipboard);
-        self.place_ime(&window);
+        Self::serve_requests(&mut *slot.session, &mut **backend, &mut self.clipboard);
+        slot.place_ime(&window);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
         // §2.1). A constant one compares equal every time.
-        let title = self.title_now();
-        if title != self.title_shown {
+        let title = self.title_now(i);
+        let slot = &mut self.slots[i];
+        if title != slot.title_shown {
             window.set_title(&title);
-            self.title_shown = title;
+            slot.title_shown = title;
         }
         // After the frame: the hover bit is set by dispatch and the
         // shape is read from the resolved style, both of which the pump
         // above has just brought up to date (T14.6).
-        cursor::apply(&window, self.session.cursor(), &mut self.cursor_shown);
+        cursor::apply(&window, slot.session.cursor(), &mut slot.cursor_shown);
 
         // The journal, fed beside the frame it describes — this is what
         // `ui.lastChange`, `ui.lastDamage` and `ui.waitSettled` read, and
@@ -1083,13 +992,13 @@ impl Win {
         // the pixels describe one frame. Built only while an assistive
         // technology is attached.
         #[cfg(feature = "a11y")]
-        if let Some(a) = self.a11y.as_mut() {
-            let session = &self.session;
+        if let Some(a) = slot.a11y.as_mut() {
+            let session = &slot.session;
             a.update(|| a11y::tree_of(&**session));
         }
         self.frames.0 += 1;
         if self.journal {
-            self.session.agent_frame_done(journal_times(&presented, &mut self.input_at));
+            slot.session.agent_frame_done(journal_times(&presented, &mut slot.input_at));
             self.frames.1 += 1;
         }
         if self.report_after.is_some_and(|n| self.frames.0 >= n) {
@@ -1121,10 +1030,54 @@ impl Win {
             .map_or(std::time::Duration::from_micros(16_667), |mhz| {
                 std::time::Duration::from_micros(1_000_000_000 / mhz as u64)
             });
-        let (wait, now) = next_frame(animating, self.session.more_deferred(), !skipped, start, interval, self.wait);
-        self.wait = wait;
+        let (wait, now) = next_frame(animating, slot.session.more_deferred(), !skipped, start, interval, slot.wait);
+        slot.wait = wait;
         if now {
+            slot.ask_redraw();
+        }
+    }
+
+    /// The soonest of every slot's deadlines (M47/T47.1, per slot since
+    /// M89/T89.1): `WaitUntil` the earliest instant, or `Wait` when no
+    /// slot has one.
+    fn soonest_wait(&self) -> ControlFlow {
+        self.slots.iter().fold(ControlFlow::Wait, |acc, s| match (acc, s.wait) {
+            (ControlFlow::WaitUntil(a), ControlFlow::WaitUntil(b)) => ControlFlow::WaitUntil(a.min(b)),
+            (ControlFlow::WaitUntil(a), _) => ControlFlow::WaitUntil(a),
+            (_, ControlFlow::WaitUntil(b)) => ControlFlow::WaitUntil(b),
+            _ => ControlFlow::Wait,
+        })
+    }
+}
+
+impl WindowSlot {
+    /// **The candidate window goes beside the caret** — M80/T80.5
+    /// (`docs/plan-text-fit.md`). After each frame, the focused node's
+    /// caret in physical pixels (`Session::caret_rect`, guarded) is passed
+    /// to this window's `set_ime_cursor_area` if it changed, and kept for
+    /// `app.imeArea`. Called after the window's own frames and after an
+    /// agent request, which pumps a frame of its own, so a drive that
+    /// focuses a field over the agent reads the area that frame placed.
+    ///
+    /// Nothing focused, or a node with no caret, passes nothing: winit has
+    /// no call that clears an area, and the platform keeps the last one
+    /// until a field takes focus again. A caret that panicked raised M36's
+    /// screen inside the session; this asks for the frame that draws it.
+    fn place_ime(&mut self, window: &Window) {
+        let area = self.session.caret_rect();
+        if self.session.failed() {
+            self.ime_area = None;
             self.ask_redraw();
+            return;
+        }
+        if area != self.ime_area {
+            if let Some(r) = area {
+                window.set_ime_cursor_area(
+                    winit::dpi::PhysicalPosition::new(r[0] as f64, r[1] as f64),
+                    winit::dpi::PhysicalSize::new((r[2] - r[0]).max(1.0) as f64, (r[3] - r[1]).max(1.0) as f64),
+                );
+            }
+            self.ime_area = area;
         }
     }
 }
@@ -1137,18 +1090,21 @@ impl ApplicationHandler<UserEvent> for Win {
     /// **The images come back before the backend goes** — M47/T47.7.
     ///
     /// `resumed` makes a new window and backend on every call, so a
-    /// suspend must drop both — and take the image source back into
-    /// `Config` first, or the next backend is handed none and every image
-    /// vanishes (R15-F6). This is the desktop half of a lifecycle; surface
-    /// recreation on Android stays with `docs/mobile-decision.md`.
+    /// suspend must drop both — and take the image source back into the
+    /// slot first, or the next backend is handed none and every image
+    /// vanishes (R15-F6). Every slot, since M89/T89.1. This is the desktop
+    /// half of a lifecycle; surface recreation on Android stays with
+    /// `docs/mobile-decision.md`.
     fn suspended(&mut self, _e: &ActiveEventLoop) {
-        if let Some(backend) = self.backend.take() {
-            suspend_backend(&mut self.config.images, backend);
-        }
-        self.window = None;
-        #[cfg(feature = "a11y")]
-        {
-            self.a11y = None;
+        for slot in &mut self.slots {
+            if let Some(backend) = slot.backend.take() {
+                suspend_backend(&mut slot.images, backend);
+            }
+            slot.window = None;
+            #[cfg(feature = "a11y")]
+            {
+                slot.a11y = None;
+            }
         }
     }
     fn window_event(&mut self, e: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -1165,7 +1121,8 @@ impl ApplicationHandler<UserEvent> for Win {
     /// once in three seconds (R7-F1, `docs/results-tasks.md` T28.12).
     /// [`new_events`](Self::new_events) is what turns the wake into a
     /// frame, and the instant is fixed after each frame rather than
-    /// re-armed from now on every wake.
+    /// re-armed from now on every wake. With several windows the loop
+    /// waits on the soonest slot's instant.
     ///
     /// Nothing pending falls back to `Wait`, which is today's behaviour
     /// and what keeps the idle frame numbers in
@@ -1175,11 +1132,14 @@ impl ApplicationHandler<UserEvent> for Win {
         // `app.quit`, or the application's key hook answering `Quit`
         // (M60/T60.1) — asked of the session after every batch of
         // events, so a key the window posted and one the agent's
-        // `input.key` pumped both close the window the same way.
-        if self.quit || self.session.wants_quit() {
+        // `input.key` pumped both close the window the same way. (Which
+        // window `wants_quit` closes is T89.3's; with one window it is the
+        // process.)
+        if self.quit || self.slots.iter().any(|s| s.session.wants_quit()) {
             event_loop.exit();
             return;
         }
+        let wait = self.soonest_wait();
         #[cfg(debug_assertions)]
         if let Some(at) = self.test_resume {
             if Instant::now() >= at {
@@ -1189,7 +1149,7 @@ impl ApplicationHandler<UserEvent> for Win {
                 self.resumed_impl(event_loop);
             } else {
                 // Wake for the hook as well as for the timers.
-                let flow = match self.wait {
+                let flow = match wait {
                     ControlFlow::WaitUntil(t) if t < at => ControlFlow::WaitUntil(t),
                     _ => ControlFlow::WaitUntil(at),
                 };
@@ -1197,28 +1157,37 @@ impl ApplicationHandler<UserEvent> for Win {
                 return;
             }
         }
-        event_loop.set_control_flow(self.wait);
+        event_loop.set_control_flow(wait);
     }
 
     /// **A deadline that has passed asks for a frame** — M47/T47.1.
     ///
     /// On `ResumeTimeReached`, and on any wake at or after the instant
     /// (an event that arrived just as the timer came due), request a
-    /// redraw: the frame is where the timers are ticked, so this is the
-    /// only thing between a deadline and the timer it belongs to.
+    /// redraw of **that slot's** window: the frame is where the timers
+    /// are ticked, so this is the only thing between a deadline and the
+    /// timer it belongs to.
     fn new_events(&mut self, _e: &ActiveEventLoop, cause: winit::event::StartCause) {
-        let due = match self.wait {
-            ControlFlow::WaitUntil(t) => {
-                matches!(cause, winit::event::StartCause::ResumeTimeReached { .. }) || Instant::now() >= t
-            }
-            ControlFlow::Wait | ControlFlow::Poll => false,
+        let now = Instant::now();
+        let resumed = matches!(cause, winit::event::StartCause::ResumeTimeReached { .. });
+        let soonest = match self.soonest_wait() {
+            ControlFlow::WaitUntil(t) => Some(t),
+            _ => None,
         };
-        if due {
-            // Consumed: the frame this asks for fixes the next instant. A
-            // past `WaitUntil` left armed would spin the loop wherever the
-            // platform holds the redraw back (a hidden window).
-            self.wait = ControlFlow::Wait;
-            self.ask_redraw();
+        for slot in &mut self.slots {
+            let due = match slot.wait {
+                // `ResumeTimeReached` is the soonest slot's instant; any
+                // other slot is due only once its own instant has passed.
+                ControlFlow::WaitUntil(t) => (resumed && Some(t) == soonest) || now >= t,
+                ControlFlow::Wait | ControlFlow::Poll => false,
+            };
+            if due {
+                // Consumed: the frame this asks for fixes the next instant.
+                // A past `WaitUntil` left armed would spin the loop wherever
+                // the platform holds the redraw back (a hidden window).
+                slot.wait = ControlFlow::Wait;
+                slot.ask_redraw();
+            }
         }
     }
 
@@ -1229,13 +1198,17 @@ impl ApplicationHandler<UserEvent> for Win {
     /// default `()` without it.
     fn user_event(&mut self, _e: &ActiveEventLoop, ev: UserEvent) {
         match ev {
-            // A worker queued something. Ask for a frame and let the
-            // ordinary redraw path handle it — this arm deliberately
-            // does **not** pump, because `about_to_wait` and the redraw
-            // handler already own that sequence, and a second entry
-            // point into it is how two frame loops come to disagree.
-            UserEvent::Wake => {
-                self.ask_redraw();
+            // A worker queued something. Ask **its own window** for a
+            // frame (M89/T89.1: the key is the waker's) and let the
+            // ordinary redraw path handle it — this arm deliberately does
+            // **not** pump, because `about_to_wait` and the redraw handler
+            // already own that sequence, and a second entry point into it
+            // is how two frame loops come to disagree. A closed window's
+            // key finds no slot and the wake is dropped.
+            UserEvent::Wake(key) => {
+                if let Some(i) = self.slot_keyed(key) {
+                    self.slots[i].ask_redraw();
+                }
             }
             #[cfg(feature = "agent")]
             UserEvent::Agent(rpc) => self.answer_agent(rpc),
@@ -1244,18 +1217,22 @@ impl ApplicationHandler<UserEvent> for Win {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.building = true;
                 }
-                self.ask_redraw();
+                for slot in &mut self.slots {
+                    slot.ask_redraw();
+                }
             }
             #[cfg(feature = "a11y")]
             UserEvent::A11y(e) => {
-                let Some(a) = self.a11y.as_mut() else { return };
-                let session = &self.session;
+                let Some(i) = self.slot_of(e.window_id) else { return };
+                let slot = &mut self.slots[i];
+                let Some(a) = slot.a11y.as_mut() else { return };
+                let session = &slot.session;
                 let req = a.event(e, || a11y::tree_of(&**session));
                 // A screen reader's action, as the framework's own event
                 // (M54/T54.4): dispatched from its target like a key.
                 if let Some((target, action)) = req.as_ref().and_then(a11y::action_of) {
-                    if self.session.a11y_action(target, action) {
-                        if let Some(w) = &self.window {
+                    if slot.session.a11y_action(target, action) {
+                        if let Some(w) = &slot.window {
                             w.request_redraw();
                         }
                     }
@@ -1266,7 +1243,9 @@ impl ApplicationHandler<UserEvent> for Win {
                 if let Some(h) = self.hot.as_mut() {
                     h.reloader.outcome(outcome);
                 }
-                self.ask_redraw();
+                for slot in &mut self.slots {
+                    slot.ask_redraw();
+                }
             }
         }
     }
@@ -1281,8 +1260,12 @@ impl Win {
     /// JSON text, so no `serde_json::Value` crosses into a hot library
     /// (M37). The backend goes with it as the [`backend::AsScreen`] the
     /// agent presents to and takes screenshots from.
+    ///
+    /// **The primary window answers** (M89/T89.1): until T89.2 resolves a
+    /// request's `window` member, every request is the primary slot's.
     fn answer_agent(&mut self, rpc: agent::Rpc) {
-        let Some(backend) = self.backend.as_deref_mut() else {
+        let slot = &mut self.slots[0];
+        let Some(backend) = slot.backend.as_deref_mut() else {
             let _ = rpc.reply.send(serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "error": {"code": -32603, "message": "no window yet"}
@@ -1301,7 +1284,7 @@ impl Win {
                 "result": { "ok": true }
             }));
             self.quit = true;
-            self.ask_redraw();
+            slot.ask_redraw();
             return;
         }
         // `app.reloads` is the window's, not the session's: the count
@@ -1334,7 +1317,7 @@ impl Win {
         if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.presents") {
             let _ = rpc.reply.send(serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {"presents": self.presents.0, "skipped": self.presents.1},
+                "result": {"presents": slot.presents.0, "skipped": slot.presents.1},
             }));
             return;
         }
@@ -1346,7 +1329,7 @@ impl Win {
         if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.imeArea") {
             let _ = rpc.reply.send(serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "result": {"area": self.ime_area},
+                "result": {"area": slot.ime_area},
             }));
             return;
         }
@@ -1360,7 +1343,7 @@ impl Win {
         // clipboard is then left alone); `error` names a clipboard that
         // did not read back what was set.
         if rpc.req.get("method").and_then(|m| m.as_str()) == Some("app.copy") {
-            let copied = self.session.copy();
+            let copied = slot.session.copy();
             let set = copied.as_deref().is_some_and(|t| self.clipboard.set(t));
             let clipboard = self.clipboard.get();
             let error = match &copied {
@@ -1380,13 +1363,13 @@ impl Win {
         // shows it (M60/T60.3): the present inside this request, and the
         // redraw asked for below, which journals it.
         if rpc.req.get("method").and_then(|m| m.as_str()).is_some_and(|m| m.starts_with("input.")) {
-            self.input_at.get_or_insert_with(Instant::now);
+            slot.input_at.get_or_insert_with(Instant::now);
         }
-        let text = self.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
+        let text = slot.session.agent(&rpc.req.to_string(), &mut backend::AsScreen(backend));
         // **The requests the call left** — M88/T88.3, the agent site: an
         // `input.*` pumps and presents inside the request, so a handler's
         // request is answered here, from the frame that call presented.
-        Self::serve_requests(&mut *self.session, &mut *backend, &mut self.clipboard);
+        Self::serve_requests(&mut *slot.session, &mut *backend, &mut self.clipboard);
         let resp = serde_json::from_str(&text).unwrap_or_else(|e| {
             serde_json::json!({
                 "jsonrpc": "2.0", "id": rpc.req.get("id").cloned().unwrap_or(serde_json::Value::Null),
@@ -1396,15 +1379,15 @@ impl Win {
         // The request may have pumped a frame (an input does): place the
         // IME area it left before the reply goes, so the drive's next
         // `app.imeArea` reads it (M80/T80.5).
-        if let Some(window) = self.window.clone() {
-            if self.session.failed() {
-                self.ime_area = None;
+        if let Some(window) = slot.window.clone() {
+            if slot.session.failed() {
+                slot.ime_area = None;
             } else {
-                self.place_ime(&window);
+                slot.place_ime(&window);
             }
         }
         let _ = rpc.reply.send(resp);
-        self.ask_redraw();
+        slot.ask_redraw();
     }
 }
 
@@ -1504,8 +1487,8 @@ impl Win {
         }
     }
 
-    fn title_now(&self) -> String {
-        let t = self.session.title();
+    fn title_now(&self, i: usize) -> String {
+        let t = self.slots[i].session.title();
         let t = if t.is_empty() { self.config.title.to_string() } else { t };
         // hot_ice's convention: the title says a build is running.
         #[cfg(feature = "hot")]
@@ -1515,9 +1498,21 @@ impl Win {
         t
     }
 
+    /// Open every slot's window that is not open — the first `resumed`,
+    /// and every one after a `suspended` (M47/T47.7).
     fn resumed_impl(&mut self, event_loop: &ActiveEventLoop) {
+        for i in 0..self.slots.len() {
+            if self.slots[i].window.is_none() {
+                self.open_window(event_loop, i);
+            }
+        }
+    }
+
+    /// Create slot `i`'s window and its backend. The primary's size and
+    /// backend preference are the program's `Config`.
+    fn open_window(&mut self, event_loop: &ActiveEventLoop, i: usize) {
         let mut attrs = Window::default_attributes()
-            .with_title(self.title_now())
+            .with_title(self.title_now(i))
             .with_inner_size(winit::dpi::LogicalSize::new(
                 self.config.width as f64,
                 self.config.height as f64,
@@ -1542,54 +1537,62 @@ impl Win {
         #[cfg(feature = "a11y")]
         let attrs = a11y::attributes(attrs, self.proxy.is_some());
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
+        let slot = &mut self.slots[i];
         #[cfg(feature = "a11y")]
         if let Some(proxy) = self.proxy.clone() {
-            self.a11y = Some(a11y::Accessible::attach(event_loop, &window, proxy));
+            slot.a11y = Some(a11y::Accessible::attach(event_loop, &window, proxy));
         }
 
         // Before the first frame: layout is logical, the surface is
         // physical, and this is the only thing that relates them (M10b).
-        self.session.set_scale(window.scale_factor() as f32);
+        slot.session.set_scale(window.scale_factor() as f32);
 
         let prefer = Prefer::from_env(self.config.backend);
         // **The target, built once from the window** (M83/T83.1): its raw
-        // handles, its physical size and the session's face. Every
+        // handles, its physical size and the slot's face. Every
         // constructor reads it and nothing else of the window.
         let size = window.inner_size();
         let target = BackendTarget {
             window: window.clone(),
             width: size.width,
             height: size.height,
-            font: self.font.clone(),
+            font: slot.font.clone(),
             accept_cpu: prefer == Prefer::Gpu,
         };
         let custom = self.config.backend_with.as_mut();
-        let backend = resume_backend(&mut self.config.images, self.session.shaders(), || pick_backend(&target, prefer, custom));
+        let backend = resume_backend(&mut slot.images, slot.session.shaders(), || pick_backend(&target, prefer, custom));
         eprintln!("lumen-static: {}", backend.name());
-        self.backend = Some(backend);
+        slot.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an
         // IME never starts and CJK entry is impossible rather than
         // merely awkward (T14.8).
         window.set_ime_allowed(true);
         // Ask for the first frame explicitly: nothing else will.
         window.request_redraw();
-        self.window = Some(window);
+        slot.window = Some(window);
     }
 
-    fn window_event_impl(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    /// One window event, **routed to its slot by `WindowId`** (M89/T89.1;
+    /// a linear scan, the `windows` module doc). An id no slot owns — a
+    /// window already closed — is dropped.
+    fn window_event_impl(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        let Some(i) = self.slot_of(id) else { return };
         // The adapter sees every event first: it tracks focus and
         // geometry, and consumes nothing (M54/T54.2).
         #[cfg(feature = "a11y")]
-        if let (Some(a), Some(w)) = (self.a11y.as_mut(), self.window.as_ref()) {
-            a.process_event(w, &event);
+        {
+            let slot = &mut self.slots[i];
+            if let (Some(a), Some(w)) = (slot.a11y.as_mut(), slot.window.as_ref()) {
+                a.process_event(w, &event);
+            }
         }
         // **While a panic is shown** (M36 §2.2): close, resize and redraw
         // as ever; **R retries**; everything else is swallowed, so nothing
         // piles up in the queue to replay into the application on retry.
-        if self.session.failed() {
+        if self.slots[i].session.failed() {
             match event {
                 WindowEvent::CloseRequested => event_loop.exit(),
-                WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(),
+                WindowEvent::Resized(_) | WindowEvent::RedrawRequested => self.redraw(i),
                 WindowEvent::KeyboardInput { event, .. }
                     if event.state == winit::event::ElementState::Pressed
                         && matches!(
@@ -1597,8 +1600,9 @@ impl Win {
                             Some(lumen_static::Key::Char('r' | 'R'))
                         ) =>
                 {
-                    self.session.retry();
-                    self.ask_redraw();
+                    let slot = &mut self.slots[i];
+                    slot.session.retry();
+                    slot.ask_redraw();
                 }
                 _ => {}
             }
@@ -1609,8 +1613,9 @@ impl Win {
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 // A window can be dragged between monitors.
-                self.session.set_scale(scale_factor as f32);
-                self.ask_redraw();
+                let slot = &mut self.slots[i];
+                slot.session.set_scale(scale_factor as f32);
+                slot.ask_redraw();
             }
 
             // Input-method composition (T14.8). Not routed through
@@ -1620,41 +1625,44 @@ impl Win {
             WindowEvent::Ime(ref ime) => {
                 use lumen_static::event::Composition;
                 use winit::event::Ime;
+                let slot = &mut self.slots[i];
                 let changed = match ime {
-                    Ime::Preedit(text, _) => self.session.compose(Composition::Preedit(text)),
-                    Ime::Commit(text) => self.session.compose(Composition::Commit(text)),
-                    Ime::Disabled => self.session.compose(Composition::Cancel),
+                    Ime::Preedit(text, _) => slot.session.compose(Composition::Preedit(text)),
+                    Ime::Commit(text) => slot.session.compose(Composition::Commit(text)),
+                    Ime::Disabled => slot.session.compose(Composition::Cancel),
                     Ime::Enabled => false,
                 };
                 if changed {
-                    self.input_at.get_or_insert_with(Instant::now);
-                    self.ask_redraw();
+                    slot.input_at.get_or_insert_with(Instant::now);
+                    slot.ask_redraw();
                 }
             }
 
             // A resize is the platform's: the surface was reallocated and
             // must be presented whatever the damage says (M53/T53.4).
             WindowEvent::Resized(_) => {
-                self.must_present = true;
-                self.redraw()
+                self.slots[i].must_present = true;
+                self.redraw(i)
             }
-            WindowEvent::RedrawRequested => self.redraw(),
+            WindowEvent::RedrawRequested => self.redraw(i),
 
-            ref event if self.clipboard_shortcut(event) => {
-                self.ask_redraw();
+            ref event if self.clipboard_shortcut(i, event) => {
+                self.slots[i].ask_redraw();
             }
 
             // A key press, through the same function a test drives
             // (`keys::deliver_key`, M45/T45.0 item 10).
             WindowEvent::KeyboardInput { event: ref k, .. } => {
+                let slot = &mut self.slots[i];
                 let down = k.state == winit::event::ElementState::Pressed;
-                if keys::deliver_key(&mut *self.session, &k.logical_key, k.text.as_deref(), down, self.mods) {
-                    self.input_at.get_or_insert_with(Instant::now);
-                    self.ask_redraw();
+                if keys::deliver_key(&mut *slot.session, &k.logical_key, k.text.as_deref(), down, slot.mods) {
+                    slot.input_at.get_or_insert_with(Instant::now);
+                    slot.ask_redraw();
                 }
             }
 
             ref event => {
+                let slot = &mut self.slots[i];
                 // **An event that goes with a change of stacking presents**
                 // (M53/T53.4). A window uncovered under the pointer gets
                 // its EnterNotify and its Expose together, and winit
@@ -1671,27 +1679,27 @@ impl Win {
                         | WindowEvent::Occluded(_)
                         | WindowEvent::Moved(_)
                 ) {
-                    self.must_present = true;
-                    if let Some(w) = &self.window {
+                    slot.must_present = true;
+                    if let Some(w) = &slot.window {
                         w.request_redraw();
                     }
                 }
-                let session = &self.session;
-                let t = translate::window_event(event, &mut self.cursor, &mut self.clicks, self.mods, |x, y| {
+                let session = &slot.session;
+                let t = translate::window_event(event, &mut slot.cursor, &mut slot.clicks, slot.mods, |x, y| {
                     session.to_logical(x, y)
                 });
                 if let winit::event::WindowEvent::ModifiersChanged(m) = event {
-                    self.mods = translate::mods(m.state());
+                    slot.mods = translate::mods(m.state());
                 }
                 let any = t.events[0].is_some();
                 if t.is_input {
-                    self.input_at.get_or_insert_with(Instant::now);
+                    slot.input_at.get_or_insert_with(Instant::now);
                 }
                 for ev in t.iter() {
-                    self.session.post(ev);
+                    slot.session.post(ev);
                 }
                 if any {
-                    self.ask_redraw();
+                    slot.ask_redraw();
                 }
             }
         }
@@ -1997,11 +2005,8 @@ pub mod hot {
     pub struct Hot {
         pub reloader: Reloader,
         pub build: mpsc::Sender<()>,
-        pub waker: std::sync::Arc<dyn lumen_static::inbox::Waker>,
         pub metrics: Option<FontMetrics>,
         pub _watcher: Option<notify::RecommendedWatcher>,
-        /// Whether the last frame drew the bar.
-        pub bar_shown: bool,
     }
 
     /// The session's frame with the error bar drawn over its foot — the

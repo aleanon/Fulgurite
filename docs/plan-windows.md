@@ -848,4 +848,26 @@ the first review's findings of the same name.
   condition `docs/results-frame-cost.md` "Idle" requires for idle
   counts; `tasks-drive` on one also keeps its clipboard writes off the
   desktop's. T89.1's K89c re-reads use the same setup.
+- **T89.1, `WindowSlot` is public, its fields are not.** The rewritten
+  `tests/inval_param.rs` names a slot, so `WindowSlot` is re-exported
+  with two accessors, `key()` and `session()` (the strategy-free
+  `&mut dyn Session`); everything else is `pub(crate)`. The slot does not
+  yet carry the program index or the opener's `(key, tag)`: nothing reads
+  them before T89.3, which adds them with their first reader.
+- **T89.1, the swap already uses the slot's waker.** `hot::Hot`'s single
+  `waker` was the only copy of the primary's waker; with keyed wakers the
+  swap's adopt closure takes the slot's own, so the field went here
+  rather than in T89.7. The swap itself stays in the slot's `redraw` until
+  T89.7 makes it a step over every slot.
+- **T89.1, `new_events` with several deadlines.** A `ResumeTimeReached`
+  is the soonest slot's instant; any other slot is due only once its own
+  has passed, so one window's timer does not redraw another.
+- **T89.1, `just live` was run without the all-widget drive** (the
+  implementation brief forbids it on the shared desktop); `widget-drive`
+  ran one widget (`Button`, both strategies, 0 failed) instead, and the
+  rest ran on a private Xephyr display: 12 of 12 passed there.
+  `resume-drive` failed there only on setup — glasswall's 997 px window
+  does not fit Xephyr's 900 px screen, so the canvas and the window
+  differ in height — and passed on the desktop (0 differing pixels on
+  every leg).
 

@@ -153,7 +153,6 @@ GpuContext                     # proposed by M89
 OpenProgram                    # proposed by M89
 WindowApp                      # proposed by M89
 WindowClosed                   # proposed by M89
-WindowSlot                     # proposed by M89
 WindowSpec                     # proposed by M89
 WindowTable                    # proposed by M89
 CommandList                    # proposed by M90
@@ -169,3 +168,4 @@ NoSuchProgram        # proposed by M89: Answer variant for an unknown program in
 WindowOpened         # proposed by M89: Answer variant carrying the new window's key
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
+Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it
