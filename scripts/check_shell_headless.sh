@@ -14,7 +14,11 @@
 # docs/plan-iced-roadmap.md K2). A crate of the winit, softbuffer or wgpu
 # families in either build fails by name. A `cargo tree` that itself
 # fails -- a stale lock under `--locked`, a crate not in the offline
-# cache -- is reported as that, never as a pass.
+# cache -- is reported as that, never as a pass, with cargo's stderr.
+# Only cargo's STDOUT is counted: "Blocking waiting for file lock on
+# package cache" arrives on stderr whenever another cargo process holds
+# the lock, and counted as a crate it made 17 read 18 with nothing
+# changed.
 #
 # No compile: `cargo tree` reads the lock and the manifests only, so this
 # runs in `just static` before anything builds.
@@ -24,13 +28,19 @@ export LC_ALL=C
 
 FORBIDDEN='^(winit|softbuffer|wgpu)(-[a-z0-9-]+)? v'
 fail=0
+err=$(mktemp) || exit 1
+trap 'rm -f "$err"' EXIT
 
 for build in default truetype; do
     args=(-p lumen-static-shell -e normal --locked --offline --prefix none)
     [ "$build" = truetype ] && args+=(--features truetype)
-    if ! out=$(cargo tree "${args[@]}" 2>&1); then
+    if ! out=$(cargo tree "${args[@]}" 2>"$err"); then
         echo "check_shell_headless: cargo tree failed for the $build build -- not a pass:" >&2
-        printf '%s\n' "$out" | tail -5 >&2
+        tail -5 "$err" >&2
+        exit 1
+    fi
+    if [ -z "$out" ]; then
+        echo "check_shell_headless: cargo tree printed no crates for the $build build -- not a pass" >&2
         exit 1
     fi
     crates=$(printf '%s\n' "$out" | sed 's/ (\*)$//' | sort -u)

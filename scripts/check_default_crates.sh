@@ -30,7 +30,8 @@
 #
 # No compile: `cargo tree --locked --offline` only, so this runs in
 # `just static`. A `cargo tree` that itself fails is reported as that,
-# never as a pass.
+# never as a pass. Only cargo's stdout is counted (see `count`): a
+# lock-wait line on stderr is not a crate.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
@@ -48,11 +49,23 @@ SHA=$(git rev-parse --verify -q "$BASE^{commit}") || {
     echo "check_default_crates: '$BASE' is not a commit" >&2; exit 2; }
 
 # count DIR -- K2's count for lumen-static-winit's default build in DIR.
+# Only cargo's STDOUT is counted: stderr carries cargo's progress lines,
+# and "Blocking waiting for file lock on package cache" appears there
+# whenever another cargo process holds the lock (a CI run beside this
+# one) -- counted, it made 96 crates read 97 with nothing changed. stderr
+# is kept for the error message when cargo fails.
 count() {
-    local out
-    if ! out=$(cd "$1" && cargo tree -p lumen-static-winit -e normal --prefix none --locked --offline 2>&1); then
+    local out err
+    err=$(mktemp) || return 1
+    if ! out=$(cd "$1" && cargo tree -p lumen-static-winit -e normal --prefix none --locked --offline 2>"$err"); then
         echo "check_default_crates: cargo tree failed in $2 -- not a pass:" >&2
-        printf '%s\n' "$out" | tail -5 >&2
+        tail -5 "$err" >&2
+        rm -f "$err"
+        return 1
+    fi
+    rm -f "$err"
+    if [ -z "$out" ]; then
+        echo "check_default_crates: cargo tree printed no crates in $2 -- not a pass" >&2
         return 1
     fi
     printf '%s\n' "$out" | sed 's/ (\*)$//' | sort -u | wc -l
