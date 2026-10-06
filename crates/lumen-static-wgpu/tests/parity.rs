@@ -217,7 +217,7 @@ fn frame() -> DisplayList {
     // image until M51, and deleting the GPU's image arm left the
     // workspace green. `images_agree_across_the_backends` has the other
     // placements.
-    l.image([90.0, 140.0, 122.0, 172.0], CARD_ID, Color(255, 255, 255, 255));
+    l.image([90.0, 140.0, 122.0, 172.0], CARD_ID, Color(255, 255, 255, 255), 0);
     // A border (M27/T27.1). The two backends compute the ring from the
     // *same* expression -- `sd_round_box` in `shader.wgsl`, transcribed
     // into `software::rr_cov` -- and the border region's own bound is what
@@ -369,7 +369,7 @@ fn the_frame_uses_every_command() {
         Cmd::Text { rect: r, text: (0, 0), size: 1.0, weight: 400.0, line_height: 0, color: PAGE },
         Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 1.0, y: 1.0 }, width: 1.0, color: PAGE },
         Cmd::Gradient { rect: r, stops: Stops::two(PAGE, PAGE), kind: GradKind::Linear, geom: [0.0; 3], corner: 0.0 },
-        Cmd::Image { rect: r, id: CARD_ID, tint: PAGE },
+        Cmd::Image { rect: r, id: CARD_ID, tint: PAGE, frame: 0 },
         Cmd::Glass { rect: r, radius: 0.0, material: lumen_static::display::Material::LIQUID },
         Cmd::PushClip { rect: r },
         Cmd::PopClip,
@@ -981,7 +981,7 @@ impl Card {
 }
 
 impl lumen_static::display::ImageSource for Card {
-    fn image(&self, _: lumen_static::display::ImageId) -> Option<(u32, u32, &[u8])> {
+    fn image(&self, _: lumen_static::display::ImageId, _: u32) -> Option<(u32, u32, &[u8])> {
         Some((CARD, CARD, &self.0))
     }
 }
@@ -1004,7 +1004,7 @@ fn image_frame() -> DisplayList {
     // over something that is not the page.
     l.rect([130.0, 20.0, 190.0, 32.0], Color(30, 30, 30, 255));
     for (_, r, tint) in image_cases() {
-        l.image(r, lumen_static::display::ImageId(1), tint);
+        l.image(r, lumen_static::display::ImageId(1), tint, 0);
     }
     l
 }

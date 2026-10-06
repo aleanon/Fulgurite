@@ -29,10 +29,13 @@
 //! list (`session::abi_fields`): nothing here crosses the seam except as
 //! `&dyn ImageSource`, a core trait the source hash already covers.
 //!
-//! **Which frame a store answers.** Until M84/T84.2 puts the frame in
-//! the command, [`ImageSource::image`] carries only the id, so a store
-//! answers an id's first frame; an animated image's later frames are held
-//! and reachable through [`ImageStore::frames`].
+//! **Which frame a store answers.** The frame is in the command since
+//! M84/T84.2 (`lumen_static::Cmd::Image`), and [`ImageSource::image`]
+//! takes it: a store answers `frames[frame % len]`, so an animated
+//! image's tick writes the widget's `frame` and the next present draws
+//! that frame, and a stream (one frame, overwritten by
+//! [`ImageStore::replace`]) answers its latest pixels whatever counter
+//! the command carries.
 
 use std::collections::HashMap;
 
@@ -127,10 +130,12 @@ impl ImageStore {
 }
 
 impl ImageSource for ImageStore {
-    /// The id's **first** frame (the module rustdoc says why), or `None`
-    /// for an id the store does not hold.
-    fn image(&self, id: ImageId) -> Option<(u32, u32, &[u8])> {
-        self.map.get(&id).map(|e| (e.w, e.h, &e.frames[0][..]))
+    /// The id's frame `frame % len` (the module rustdoc says why), or
+    /// `None` for an id the store does not hold. Never out of range: an
+    /// entry holds at least one frame ([`ImageStore::insert`] refuses
+    /// none).
+    fn image(&self, id: ImageId, frame: u32) -> Option<(u32, u32, &[u8])> {
+        self.map.get(&id).map(|e| (e.w, e.h, &e.frames[frame as usize % e.frames.len()][..]))
     }
 }
 

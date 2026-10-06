@@ -265,15 +265,16 @@ impl Renderer for Svg {
                         rect[3] - rect[1]
                     );
                 }
-                Cmd::Image { rect, id, tint } => {
-                    // A placeholder with the id, not the pixels: this
-                    // renderer has no `ImageSource` and inventing one
-                    // would embed a base64 payload nobody asked for. An
-                    // exporter that wants images resolves them itself.
+                Cmd::Image { rect, id, tint, frame } => {
+                    // A placeholder with the id and the frame, not the
+                    // pixels: this renderer has no `ImageSource` and
+                    // inventing one would embed a base64 payload nobody
+                    // asked for. An exporter that wants images resolves
+                    // them itself, at `data-frame` (M84/T84.2).
                     let ImageId(n) = id;
                     let _ = write!(
                         body,
-                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" data-image="{n}"/>"#,
+                        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" data-image="{n}" data-frame="{frame}"/>"#,
                         rect[0],
                         rect[1],
                         rect[2] - rect[0],

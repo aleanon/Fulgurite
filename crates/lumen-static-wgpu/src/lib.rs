@@ -61,6 +61,8 @@ pub use custom::ShaderStats;
 /// without a second, possibly different, `wgpu` in its manifest.
 pub use wgpu;
 
+use std::collections::HashMap;
+
 use lumen_static::display::{Cmd, Color, DisplayList, ImageId, ImageSource, Renderer, Stops};
 use lumen_static_shell::text::{FontStack, GlyphId};
 
@@ -315,7 +317,22 @@ pub struct Gpu {
     /// Glyphs and, since M82/T82.6, path masks ([`MaskKey`]).
     glyph_atlas: Atlas<MaskKey>,
     image_tex: wgpu::Texture,
-    image_atlas: Atlas<ImageId>,
+    /// Images by [`ImageSlot`]: an id's own slot, and side slots for a
+    /// second frame of one id within one draw.
+    image_atlas: Atlas<ImageSlot>,
+    /// **The frame each id's own slot holds** — M84/T84.2. A command at
+    /// another frame of the same size is written into that slot in place
+    /// rather than inserted again, so an animating image costs one upload
+    /// per change and never fills the atlas (K84d); a size change inserts
+    /// again, and the orphaned space goes with the next reset.
+    image_frames: HashMap<ImageId, u32>,
+    /// The frame each id's own slot was **written or confirmed at during
+    /// this draw** (P1). Every `write_texture` lands before the frame's
+    /// one `submit`, so rewriting a slot a quad of this draw already
+    /// samples would leave both quads showing the last upload; a second
+    /// command at another frame takes [`ImageSlot::Alt`] instead. Cleared
+    /// at the head of every build of the frame.
+    image_drawn: HashMap<ImageId, u32>,
     /// Rebuild [`Gpu::bind`] before the next draw — a texture or the
     /// gradient buffer was reallocated and the old group names a
     /// resource that no longer exists.
@@ -399,6 +416,26 @@ pub struct AtlasStats {
     /// as a share of the atlas's starting edge, [`GLYPH_ATLAS`] squared
     /// (`docs/plan-paint-vocabulary.md`).
     pub path_texels: u64,
+    /// Image uploads since this renderer was made — M84/T84.2. One per
+    /// `write_texture` into the image atlas: a first sight of an id, a
+    /// new frame of it (written **in place** when the size is unchanged),
+    /// or a re-insert after a reset. An idle frame adds 0, and an image
+    /// animating through N frame changes adds N, not N plus a reset's
+    /// worth (`docs/results-images.md` T84.2, K84d).
+    pub image_uploads: u64,
+    /// Bytes those uploads carried, `w × h × 4` each.
+    pub image_upload_bytes: u64,
+}
+
+/// Where an image sits in the image atlas — M84/T84.2.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ImageSlot {
+    /// The id's own slot, holding the frame `image_frames` records and
+    /// rewritten in place when a command asks for another of that size.
+    Current(ImageId),
+    /// A side slot for frame `.1` of an id this draw has already sampled
+    /// at another frame (P1): one list may paint one id twice.
+    Alt(ImageId, u32),
 }
 
 /// Which texture group 1 names for a pass — M22/T22.6.
@@ -801,6 +838,8 @@ impl Gpu {
             glyph_atlas: Atlas::new(glyph_start),
             image_tex,
             image_atlas: Atlas::new(1),
+            image_frames: HashMap::new(),
+            image_drawn: HashMap::new(),
             bind_dirty: false,
             font: None,
             images: None,
@@ -858,14 +897,22 @@ impl Gpu {
     /// Where `Cmd::Image` is resolved to pixels.
     pub fn set_images(&mut self, images: Box<dyn ImageSource>) {
         self.images = Some(images);
-        self.image_atlas.reset();
+        self.reset_images();
     }
 
     /// Give the image source back, so a window that drops this renderer
     /// on suspend can hand it to the next one (M47/T47.7).
     pub fn take_images(&mut self) -> Option<Box<dyn ImageSource>> {
-        self.image_atlas.reset();
+        self.reset_images();
         self.images.take()
+    }
+
+    /// Empty the image atlas and forget which frame any slot held: a slot
+    /// that no longer exists cannot be rewritten in place.
+    fn reset_images(&mut self) {
+        self.image_atlas.reset();
+        self.image_frames.clear();
+        self.image_drawn.clear();
     }
 
     /// Match the target and the swapchain to a new window size.
@@ -1034,6 +1081,8 @@ impl Gpu {
             fr.splits.clear();
             #[cfg(feature = "shader")]
             fr.slots.clear();
+            // Nothing of this build samples an image slot yet (P1).
+            self.image_drawn.clear();
             // **Once per region.** A quad carries its own clip, so a
             // region is expressed by building the frame's quads again
             // with that region's clip — no scissor, and no second pass.
@@ -1077,7 +1126,7 @@ impl Gpu {
                 // needed: empty it before concluding anything.
                 self.atlas_stats.resets += 1;
                 self.glyph_atlas.reset();
-                self.image_atlas.reset();
+                self.reset_images();
                 continue;
             }
             if overflow == Overflow::Glyph && self.grow_glyph_atlas() {
@@ -1395,10 +1444,10 @@ impl Gpu {
                         None => blocks(rect, s, *size, *color, clip, out),
                     }
                 }
-                Cmd::Image { rect, id, tint } => {
+                Cmd::Image { rect, id, tint, frame } => {
                     let Some(r) = clipped(*rect, clip) else { continue };
                     let Some(src) = images.as_ref() else { continue };
-                    match self.image_slot(src.as_ref(), *id) {
+                    match self.image_slot(src.as_ref(), *id, *frame) {
                         Ok(Some(uv)) => out.push(Quad {
                             rect: *rect,
                             clip: r,
@@ -1602,16 +1651,39 @@ impl Gpu {
         Ok(())
     }
 
-    /// The atlas uv for an image, uploading it on a miss.
+    /// The atlas uv for frame `frame` of an image, uploading it on a miss
+    /// — M84/T84.2.
+    ///
+    /// An id's own slot ([`ImageSlot::Current`]) holds one frame
+    /// (`image_frames`). A command at that frame samples it; at another
+    /// frame of the same size the new pixels are written **into the same
+    /// slot**, and at another size the image is inserted again. A second
+    /// frame of an id this draw has already sampled at a different frame
+    /// takes a side slot ([`ImageSlot::Alt`]) instead, so both quads show
+    /// their own frame (P1). Side slots, and the space a size change
+    /// orphans, go with the next `Overflow::Image` reset; the atlas has no
+    /// per-key eviction.
     fn image_slot(
         &mut self,
         src: &dyn ImageSource,
         id: ImageId,
+        frame: u32,
     ) -> Result<Option<[f32; 4]>, Overflow> {
-        if let Some(slot) = self.image_atlas.get(&id) {
+        let key = match self.image_drawn.get(&id) {
+            Some(&f) if f != frame => ImageSlot::Alt(id, frame),
+            _ => ImageSlot::Current(id),
+        };
+        let held = self.image_atlas.get(&key);
+        // A side slot is keyed on its frame, so holding it is holding that
+        // frame; an own slot holds whichever frame was last written to it.
+        let current = matches!(key, ImageSlot::Alt(..)) || self.image_frames.get(&id) == Some(&frame);
+        if let (Some(slot), true) = (held, current) {
+            if key == ImageSlot::Current(id) {
+                self.image_drawn.insert(id, frame);
+            }
             return Ok(Some(slot.uv(self.image_atlas.size())));
         }
-        let Some((iw, ih, px)) = src.image(id) else { return Ok(None) };
+        let Some((iw, ih, px)) = src.image(id, frame) else { return Ok(None) };
         if iw == 0 || ih == 0 || px.len() < iw as usize * ih as usize * 4 {
             return Ok(None);
         }
@@ -1623,18 +1695,31 @@ impl Gpu {
             self.image_atlas = Atlas::new(IMAGE_ATLAS);
             self.bind_dirty = true;
         }
-        let Some(slot) = self.image_atlas.insert(id, iw, ih) else {
-            // An image too large for the atlas is refused, not scaled:
-            // silently resampling someone's asset is a worse surprise
-            // than a missing one, and `ImageSource` already says a
-            // missing image draws nothing.
-            return if iw > self.image_atlas.size() || ih > self.image_atlas.size() {
-                Ok(None)
-            } else {
-                Err(Overflow::Image)
-            };
+        let slot = match held {
+            // A new frame of the same size: in place (K84d).
+            Some(s) if s.w == iw && s.h == ih => s,
+            _ => match self.image_atlas.insert(key, iw, ih) {
+                Some(s) => s,
+                // An image too large for the atlas is refused, not scaled:
+                // silently resampling someone's asset is a worse surprise
+                // than a missing one, and `ImageSource` already says a
+                // missing image draws nothing.
+                None => {
+                    return if iw > self.image_atlas.size() || ih > self.image_atlas.size() {
+                        Ok(None)
+                    } else {
+                        Err(Overflow::Image)
+                    };
+                }
+            },
         };
         write_texture(&self.queue, &self.image_tex, slot, px, 4);
+        self.atlas_stats.image_uploads += 1;
+        self.atlas_stats.image_upload_bytes += iw as u64 * ih as u64 * 4;
+        if key == ImageSlot::Current(id) {
+            self.image_frames.insert(id, frame);
+            self.image_drawn.insert(id, frame);
+        }
         Ok(Some(slot.uv(self.image_atlas.size())))
     }
 

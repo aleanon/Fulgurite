@@ -97,7 +97,7 @@ fn samples() -> Vec<fn(&mut DisplayList)> {
             let c = Color(10, 120, 10, 255);
             l.gradient(AREA, Stops::two(c, c), GradShape::Linear { angle: 0.0 }, 0.0)
         },
-        |l| l.image(AREA, ImageId(0), Color(255, 255, 255, 255)),
+        |l| l.image(AREA, ImageId(0), Color(255, 255, 255, 255), 0),
         |l| l.glass(AREA, 12.0, Material::default()),
         |l| l.push_clip(AREA),
         |l| {

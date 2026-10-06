@@ -89,7 +89,7 @@ fn no_two_command_kinds_fold_alike() {
         Cmd::Rect { rect: r, color: c },
         Cmd::RoundedRect { rect: r, color: c, radius: 0.0 },
         Cmd::Shadow { rect: r, color: c, radius: 0.0, spread: 0.0 },
-        Cmd::Image { rect: r, id: lumen_static::display::ImageId(0), tint: c },
+        Cmd::Image { rect: r, id: lumen_static::display::ImageId(0), tint: c, frame: 0 },
         Cmd::Glass { rect: r, radius: 0.0, material: Material { tint: c, ..Material::FROSTED } },
         Cmd::PushClip { rect: r },
         Cmd::PopClip,

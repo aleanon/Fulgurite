@@ -199,7 +199,7 @@ static CHECKER: [u8; 64] = {
     px
 };
 impl lumen_static::ImageSource for Checker {
-    fn image(&self, _: lumen_static::display::ImageId) -> Option<(u32, u32, &[u8])> {
+    fn image(&self, _: lumen_static::display::ImageId, _: u32) -> Option<(u32, u32, &[u8])> {
         Some((4, 4, &CHECKER))
     }
 }
@@ -299,7 +299,7 @@ fn every_command() -> Vec<(&'static str, lumen_static::Cmd, f32, bool)> {
             area([10.0, 50.0, 190.0, 70.0]),
             false,
         ),
-        ("Image", Cmd::Image { rect: big, id: ImageId(1), tint: Color(255, 255, 255, 255) }, area(big), false),
+        ("Image", Cmd::Image { rect: big, id: ImageId(1), tint: Color(255, 255, 255, 255), frame: 0 }, area(big), false),
         ("Glass FROSTED", Cmd::Glass { rect: big, radius: 12.0, material: Material::FROSTED }, area(big), true),
         ("Glass LIQUID", Cmd::Glass { rect: big, radius: 12.0, material: Material::LIQUID }, area(big), true),
         (

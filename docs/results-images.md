@@ -94,3 +94,64 @@ an error".
 **Firmware.** `just firmware-delta 55f3962 firmware=0
 firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** on
 all four — the task touches only the shell, which no firmware links.
+
+## T84.2 — the frame in the command, and the atlas in place (2026-10-06)
+
+`Cmd::Image { rect, id, tint, frame: u32 }`, `Painter::image(rect, id,
+tint, frame)`, `ImageSource::image(id, frame)`. `Recording::image` and
+`Cmd::hash_into` fold the frame; `Scaled`, `Deferring` and `Recording`
+forward it; `Image` gains `frame` (+4 B in the tree struct, not per node);
+`ImageStore` answers `frames[frame % len]`; the software canvas resolves
+each command at its own frame; the SVG writer emits `data-frame`;
+`wire::VERSION` 4 → **5**. On the GPU an id's slot is rewritten **in
+place** for a same-size frame, inserted again on a size change, and a
+second frame of one id in one draw takes a side slot.
+`AtlasStats::image_uploads` and `image_upload_bytes` count every write.
+
+**Gates** (software: `crates/lumen-static-shell/tests/image_frame.rs`;
+GPU: `crates/lumen-static-wgpu/tests/image_frames.rs` under `just gpu`,
+RTX 4070, Vulkan):
+
+| gate | green | injection → red |
+|---|---|---|
+| T84.0(a) flipped: a tick writes `img.frame += 1`, pump, present | tick `true`, `img.frame` 1; centre **blue**; `damaged_px` **1,600** against the image's box of 1,600 px: **1.00×** (bound 1.00×); accept: the next frame damages 0 | `Recording::image` stops folding `frame`: centre red, **0** px damaged, "frame 1 of img (id 7) did not reach the canvas" |
+| the unchanged neighbour: two `Image`s of id 7, only the first advances | ratio **1.00** against the first's box; the second's centre red; its journal signature unchanged (**absent** from the changed list) | `Image` paints a store-wide shared frame (`fetch_max`, the S2 shape): **3,200** px, **2.00×**, both centres blue, the second's signature moved (listed) |
+| journal: the advanced node's signature (`DisplayList::hash_from` over its own paint, as `sign_leaves` and the agent's journal sign it) | `…16c5` → `…16c6`, moved | `Cmd::hash_into` omits `frame`: `53ab…ebf1` → `53ab…ebf1`, "node 1 (img): its journal signature did not move with its frame" |
+| T84.0(b) flipped: frame 0 then frame 1, both full damage | second centre **blue**; `image_uploads` **2**, 512 B | `image_slot` ignores the frame (the id-only key, T84.0's behaviour): red, `image_uploads` 1 |
+| one id at two frames in one list (P1): frame 1 at A, frame 2 at B | GPU A, B = red, blue = software's; a redraw adds **0** uploads | the per-draw record dropped (the second command rewrites the first's slot): GPU A **blue**, software red, "A (id 7, frame 1): the GPU differs from software" |
+| no atlas churn (K84d): 300 × 300, four frames, 100 changes after a first draw | `resets` **0** (bound 0); `image_uploads` **101** (bound 1 + changes = 101); bytes per upload **360,000** (bound 300·300·4); draws not showing their frame **0** of 100; accept: 100 draws at an unchanged frame leave `image_uploads` at **1** | insert again instead of rewriting: `resets` **11** (the plan predicted ≥ 10: nine such slots fit 1024²) |
+| size change: 300 × 300 → 200 × 200 → 300 × 300, quadrants rotated per frame | all four quadrant centres right at each size; `resets` **0** (bound ≤ 1); 3 uploads | write in place whatever the size: `write_texture` slices the 300-square slot's bytes from a 200-square frame and panics ("range end index 360000 out of range for slice of length 160000") — red, but by a panic, not an assertion: a wrong-size write has no frame that draws to compare |
+| `ImageStore` answers `frames[frame % len]` (`image_decode.rs`, `--features image`) | frame 2 answers frame 2, frame 5 answers frame 1; a stream answers its latest at frame 9 | answer `frames[0]`: "frame 2 did not answer the id's third frame" |
+| `deferring_forwards_every_command` (`tests/overlay.rs`) paints its image at frame 3 | 7 commands in, 7 out, equal | `Deferring::image` forwards `frame: 0`: "first difference at Some(3): Image { … frame: 3 } became Image { … frame: 0 }" |
+| wire: an image at frame 7 round-trips; a version-4 literal is refused | 39 B at version 5, frame 7 back; `a version-4 buffer decodes: false`; `wire::VERSION = 5 (want 5)` | the encoder skips `frame`: both round trips fail to decode (`expect("decodes")`, the trailing-length check) |
+| K1 | `size_of::<Cmd>()` **60** B (bound 60; `tests/glass_cmd.rs`); the image payload is 28 B under the 56 B gradient | — |
+
+**K84d — does not fire**: 0 resets over the 100-change loop.
+
+**Firmware (K4).** `just firmware-delta 9f48fd6 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0**
+`.text` and **0** `.rodata` on all four — `firmware` 30,606 / 13,344 B,
+`firmware_interactive` **63,480** / 21,886 B (headroom 18,440 B to the
+81,920 B ceiling), `firmware_bind` 34,014 / 13,948 B, `firmware_cascade`
+32,694 / 14,132 B. No firmware paints an image, so the new parameter and
+the fold link nowhere; `docs/results-embedded.md`'s table does not move.
+
+**K3 — the frame arm, eight interleaved invocations a side** (`R=1
+benches-competitive/run.sh -p lumen-static-frame` under `just
+bench-lock`, base `9f48fd6` from its firmware-delta worktree, every run
+quiet at load1 1.00 against the lock's bound of 8). Medians and spreads
+in µs:
+
+| row | base median | base spread | T84.2 median | inside |
+|---|---:|---:|---:|---|
+| `idle (floor)` | 58.05 | 56.0–62.7 | 59.10 | yes |
+| `ALL rows: +paint` | 1,280.90 | 1,217.9–1,286.2 | 1,281.85 | yes |
+| `+render (damage)` | 73.65 | 72.9–81.9 | 73.25 | yes |
+| `layout` | 19.25 | 19.1–21.0 | 19.20 | yes |
+| `+paint` | 38.95 | 38.7–43.4 | 38.70 | yes |
+
+Not named by K3, printed: `ALL rows: layout` 1,159.15 → 1,160.20 (inside
+1,100.2–1,166.1), `+paint (culled)` 21.45 → 21.25 (inside), `+render
+(full)` 132.20 → 131.30, 0.1 µs *under* the base's minimum of 131.4 — a
+faster median on a row K3 does not name, read one-sided as M82's K82c
+ruling reads it.

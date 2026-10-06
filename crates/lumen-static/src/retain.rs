@@ -1038,12 +1038,19 @@ impl<R: Retention> Painter for Recording<'_, R> {
         self.inner.gradient(rect, stops, shape, corner);
     }
 
-    fn image(&mut self, rect: Rect, id: crate::display::ImageId, tint: Color) {
+    /// **The frame is folded** (M84/T84.2): this hash is what decides
+    /// staleness, so a new frame of one id must change it, or the image's
+    /// rect is never damaged and the canvas keeps the old picture
+    /// (`lumen-static-shell/tests/image_frame.rs`).
+    fn image(&mut self, rect: Rect, id: crate::display::ImageId, tint: Color, frame: u32) {
+        // ANCHOR: recording_image
         let mut h = h_rect(fold(0, 7), rect);
         h = fold(h, id.0 as u64);
         h = h_color(h, tint);
+        h = fold(h, frame as u64);
         self.ret.observe(h, rect);
-        self.inner.image(rect, id, tint);
+        self.inner.image(rect, id, tint, frame);
+        // ANCHOR_END: recording_image
     }
 
     /// A backdrop filter inks exactly its own rect and **reads** a wider

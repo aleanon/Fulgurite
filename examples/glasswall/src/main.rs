@@ -199,7 +199,7 @@ struct Wallpaper {
 }
 
 impl lumen_static::ImageSource for Wallpaper {
-    fn image(&self, id: lumen_static::display::ImageId) -> Option<(u32, u32, &[u8])> {
+    fn image(&self, id: lumen_static::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
         (id == WALL_ID).then_some((WALL_W, WALL_H, &self.px))
     }
 }

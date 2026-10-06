@@ -1371,6 +1371,20 @@ remains** — which is why §10 Step 1 is the kill criterion.
    (`scripts/check_default_crates.sh`), and it is not in the ABI stamp.
    JPEG and WebP are not decoded. Numbers in `docs/results-images.md`
    T84.1.
+
+   **An image's version is in the command — DECIDED, M84/T84.2,
+   2026-10-06** (`docs/plan-images-in-motion.md`). `Cmd::Image` carries
+   `frame: u32` (a sequence's index, a stream's counter, 0 for a still)
+   and `ImageSource::image` takes it, because damage is decided from the
+   command stream: `Recording::image` and `Cmd::hash_into` fold the frame,
+   so writing `Image::frame` repaints exactly that image's rect, where a
+   source that changed pixels behind an unchanged command was never asked
+   again. `ImageStore` answers `frames[frame % len]`. The GPU atlas keys
+   an id's slot on its frame and rewrites a same-size frame **in place**,
+   inserting again only on a size change; a second frame of one id in one
+   draw takes a side slot. `wire::VERSION` is 5. Numbers, including the
+   100-change loop's zero resets (K84d), in `docs/results-images.md`
+   T84.2.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

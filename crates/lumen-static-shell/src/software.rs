@@ -1427,7 +1427,7 @@ impl Surface<'_> {
                         self.fill_gradient(*rect, r, *stops, *kind, *geom, *corner);
                     }
                 }
-                Cmd::Image { rect, id, tint } => {
+                Cmd::Image { rect, id, tint, frame } => {
                     // Culled before anything is fetched, like every
                     // other command and like text since the 46x fix
                     // (`docs/results-competitive.md` §6.1).
@@ -1435,8 +1435,10 @@ impl Surface<'_> {
                     let Some(src) = images else { continue };
                     // A missing asset draws nothing rather than taking
                     // the frame down: `ImageSource` returns `Option` for
-                    // exactly that.
-                    let Some((iw, ih, px)) = src.image(*id) else { continue };
+                    // exactly that. Each command is resolved at its own
+                    // frame (M84/T84.2), so one id at two frames in one
+                    // list draws both.
+                    let Some((iw, ih, px)) = src.image(*id, *frame) else { continue };
                     if iw == 0 || ih == 0 || px.len() < (iw as usize * ih as usize * 4) {
                         continue;
                     }

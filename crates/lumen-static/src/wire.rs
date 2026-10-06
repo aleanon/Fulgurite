@@ -59,7 +59,12 @@ use crate::desc::Point;
 /// any** (the element section is then written even when empty, so the two
 /// trailing sections stay in order). A decoder built without `shader`
 /// meets tag 12 as unknown and refuses the buffer by its tag.
-pub const VERSION: u8 = 4;
+///
+/// 5 since M84/T84.2: tag 7 (`Cmd::Image`) carries a `u32` frame after
+/// its tint ([`Cmd::Image`]'s `frame`, which version of the surface it
+/// draws). A version-4 image is 4 B shorter, and a version-4 buffer with
+/// no image has the same layout, so only this byte refuses it.
+pub const VERSION: u8 = 5;
 
 /// Append `list`'s encoding to `out`.
 pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
@@ -133,11 +138,12 @@ pub fn encode(list: &DisplayList, out: &mut Vec<u8>) {
                 }
                 w.f32(corner);
             }
-            Cmd::Image { rect, id, tint } => {
+            Cmd::Image { rect, id, tint, frame } => {
                 w.u8(7);
                 w.rect(rect);
                 w.u32(id.0);
                 w.color(tint);
+                w.u32(frame);
             }
             Cmd::Glass { rect, radius, material: m } => {
                 w.u8(8);
@@ -283,7 +289,7 @@ pub fn decode_into(bytes: &[u8], list: &mut DisplayList) -> Option<()> {
                 let geom = [r.f32()?, r.f32()?, r.f32()?];
                 Cmd::Gradient { rect, stops, kind, geom, corner: r.f32()? }
             }
-            7 => Cmd::Image { rect: r.rect()?, id: ImageId(r.u32()?), tint: r.color()? },
+            7 => Cmd::Image { rect: r.rect()?, id: ImageId(r.u32()?), tint: r.color()?, frame: r.u32()? },
             8 => Cmd::Glass {
                 rect: r.rect()?,
                 radius: r.f32()?,
@@ -471,7 +477,7 @@ mod tests {
         let mut stops = Stops { at: [0, 128, 255, 0], color: [Color(1, 1, 1, 1); MAX_STOPS], len: 3 };
         stops.color[2] = Color(200, 100, 50, 255);
         l.cmds.push(Cmd::Gradient { rect: [3.0; 4], stops, kind: GradKind::Radial, geom: [0.25, 0.75, 0.5], corner: 6.0 });
-        l.cmds.push(Cmd::Image { rect: [4.0; 4], id: ImageId(77), tint: Color::BLACK });
+        l.cmds.push(Cmd::Image { rect: [4.0; 4], id: ImageId(77), tint: Color::BLACK, frame: 7 });
         let mut m = Material::FROSTED;
         m.morph_x = -300;
         m.dispersion = 9;
@@ -549,7 +555,7 @@ mod tests {
         // An appended tag: a list with no path is the version-4 layout.
         let mut empty = Vec::new();
         encode(&DisplayList::new(), &mut empty);
-        assert_eq!(empty, [VERSION, 0, 0, 0, 0, 0, 0, 0, 0, 0], "a list with no path must encode as version 4 did");
+        assert_eq!(empty, [VERSION, 0, 0, 0, 0, 0, 0, 0, 0, 0], "a list with no path must encode as a list with no path always did");
     }
 
     /// M80/T80.1: the line pitch survives the trip, and a buffer of the
@@ -662,9 +668,51 @@ mod tests {
         assert!(decode(&same).is_some(), "setup: the fixture's body must decode under this layout");
         let old = decode(&V3_RECT);
         println!("a version-{} buffer decodes: {}", V3_RECT[0], old.is_some());
-        println!("wire::VERSION = {VERSION} (want 4)");
-        assert_eq!(VERSION, 4, "tag 6's fields changed meaning (M82/T82.2); VERSION must be 4");
+        println!("wire::VERSION = {VERSION} (want > 3)");
+        // `> 3`, not `== 4`, since M84/T84.2 bumped it again; the literal
+        // pin moved to the test below.
+        const { assert!(VERSION > 3, "tag 6's fields changed meaning (M82/T82.2); VERSION must be past 3") };
         assert!(old.is_none(), "a version-3 buffer decoded under version {VERSION}");
+    }
+
+    /// M84/T84.2: an image's frame round-trips, and a buffer from the
+    /// version-4 encoder is refused.
+    ///
+    /// The refusal fixture is a **literal**, as T82.1's and T82.2's are:
+    /// a rect and no image, so its layout is the same under version 5 and
+    /// only the version byte can refuse it.
+    #[test]
+    fn an_image_frame_round_trips_and_a_version_4_buffer_is_refused() {
+        let mut l = DisplayList::new();
+        l.image([2.0, 3.0, 40.0, 30.0], ImageId(9), Color(10, 20, 30, 255), 7);
+        assert!(
+            matches!(l.cmds[..], [Cmd::Image { frame: 7, .. }]),
+            "setup: the fixture must hold exactly one image at frame 7"
+        );
+        let mut b = Vec::new();
+        encode(&l, &mut b);
+        let d = decode(&b).expect("decodes");
+        let got = match d.cmds[..] {
+            [Cmd::Image { frame, .. }] => frame,
+            ref c => panic!("decoded {c:?}, not one image"),
+        };
+        println!("image: {} B encoded at version {VERSION}; frame encoded 7, decoded {got}", b.len());
+        assert_eq!(got, 7, "the image's frame did not survive the trip");
+        assert_eq!(d.cmds, l.cmds);
+
+        // `encode` at 9f48fd6 (version 4) of one rect [1, 2, 30, 40] in
+        // Color(10, 20, 30, 255), no bounds.
+        const V4_RECT: [u8; 31] = [
+            4, 0, 1, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 240, 65, 0, 0, 32, 66, 10, 20, 30, 255, 0, 0, 0, 0,
+        ];
+        let mut same = V4_RECT;
+        same[0] = VERSION;
+        assert!(decode(&same).is_some(), "setup: the fixture's body must decode under this layout");
+        let old = decode(&V4_RECT);
+        println!("a version-{} buffer decodes: {}", V4_RECT[0], old.is_some());
+        println!("wire::VERSION = {VERSION} (want 5)");
+        assert_eq!(VERSION, 5, "tag 7 gained a frame (M84/T84.2); VERSION must be 5");
+        assert!(old.is_none(), "a version-4 buffer decoded under version {VERSION}");
     }
 
     #[test]

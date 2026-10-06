@@ -486,7 +486,9 @@ fn deferring_forwards_every_command() {
             lumen_static::display::GradShape::Radial { center: [0.25, 0.75], radius: 0.5 },
             3.0,
         );
-        p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255));
+        // M84/T84.2: a frame that is not 0, so a forward that dropped it
+        // (`frame: 0`, a still) changes the stream.
+        p.image([0.0, 0.0, 10.0, 10.0], ImageId(1), Color(255, 255, 255, 255), 3);
         p.glass(
             [0.0, 0.0, 10.0, 10.0],
             4.0,

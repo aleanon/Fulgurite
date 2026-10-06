@@ -268,8 +268,9 @@ impl<O: OverlaySink> crate::display::Painter for Deferring<'_, O> {
         rect: crate::display::Rect,
         id: crate::display::ImageId,
         tint: crate::display::Color,
+        frame: u32,
     ) {
-        self.inner.image(rect, id, tint);
+        self.inner.image(rect, id, tint, frame);
     }
     /// Culling must survive an overlay pass. The default is `None`,
     /// which means "cull nothing" -- correct for a painter with no

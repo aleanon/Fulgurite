@@ -182,24 +182,35 @@ fn every_truncation_is_an_error_and_never_a_panic() {
 }
 
 #[test]
-fn a_store_holds_what_it_was_given_and_answers_the_first_frame() {
+fn a_store_holds_what_it_was_given_and_answers_the_frame_asked_for() {
     let d = decode_gif(&four_frame_gif()).unwrap();
     let mut s = ImageStore::new();
     assert!(s.insert_decoded(ImageId(3), d.clone()), "a decoded GIF is refused");
-    let (w, h, first) = s.image(ImageId(3)).expect("the id is held");
+    let (w, h, first) = s.image(ImageId(3), 0).expect("the id is held");
     let held = s.frames(ImageId(3)).map_or(0, |(_, _, f)| f.len());
     println!("store: {w}x{h}, answers {} bytes, holds {held} frames", first.len());
     assert_eq!((w, h, first, held), (8, 8, &d.frames[0][..], 4));
-    assert!(s.image(ImageId(4)).is_none(), "an id the store does not hold answered");
+    // M84/T84.2: `frames[frame % len]`. Frame 2 is its own picture (the
+    // compositing test above keeps frames 1 and 2 distinct), and frame 5
+    // wraps to 1.
+    assert_ne!(d.frames[2], d.frames[0], "setup: frames 0 and 2 must differ for this to see anything");
+    let at = |f: u32| s.image(ImageId(3), f).map(|(_, _, p)| p.to_vec());
+    let which = |f: u32| (0..4).find(|&k| at(f).as_deref() == Some(&d.frames[k][..]));
+    println!("store: frame 2 answers frame {:?}, frame 5 answers frame {:?} (want 2 and 1)", which(2), which(5));
+    assert_eq!(at(2).as_deref(), Some(&d.frames[2][..]), "frame 2 did not answer the id's third frame");
+    assert_eq!(at(5).as_deref(), Some(&d.frames[1][..]), "frame 5 did not wrap to frame 1 (5 % 4)");
+    assert!(s.image(ImageId(4), 0).is_none(), "an id the store does not hold answered");
     // Refusals: a short frame, a zero side, no frames.
     assert!(!s.insert(ImageId(5), 2, 2, vec![vec![0; 15]]), "a short frame was stored");
     assert!(!s.insert(ImageId(5), 0, 2, vec![vec![]]), "a zero-width image was stored");
     assert!(!s.insert(ImageId(5), 2, 2, vec![]), "an image with no frames was stored");
-    assert!(s.image(ImageId(5)).is_none(), "a refused insert left something behind");
+    assert!(s.image(ImageId(5), 0).is_none(), "a refused insert left something behind");
     // A stream's next picture replaces in place.
     assert!(s.replace(ImageId(6), 1, 1, &[1, 2, 3, 4]));
     assert!(s.replace(ImageId(6), 1, 1, &[5, 6, 7, 8]));
     assert!(!s.replace(ImageId(6), 1, 1, &[9, 9]), "a short stream frame was taken");
-    assert_eq!(s.image(ImageId(6)), Some((1, 1, &[5u8, 6, 7, 8][..])));
+    assert_eq!(s.image(ImageId(6), 0), Some((1, 1, &[5u8, 6, 7, 8][..])));
+    // A stream's counter is not an index: one frame answers at any count.
+    assert_eq!(s.image(ImageId(6), 9), Some((1, 1, &[5u8, 6, 7, 8][..])), "a stream did not answer its latest at frame 9");
     assert_eq!(s.len(), 2);
 }

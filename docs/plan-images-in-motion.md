@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. M84a building: T84.0 and T84.1 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> its own file. M84a building: T84.0, T84.1 and T84.2 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -860,6 +860,35 @@ task and is recorded with its number in `docs/results-images.md`):
   `pub mod image` carries a `//` comment, not `///`: an outer doc joins
   the module's inner one, whose intra-doc links then failed to resolve
   under `cargo doc -D warnings`.
+- **T84.2: the side slot is a key, not a map.** The plan's `image_alt`
+  would need its own space in the one image texture the shader binds, so
+  the atlas key is an `ImageSlot` with two kinds: `Current(id)`, the
+  id's own slot whose frame `image_frames` records, and `Alt(id, frame)`,
+  the side slot. `image_drawn` is the per-draw record (cleared at the
+  head of every build of the frame, retries included), and
+  `reset_images` clears all three wherever the atlas resets. The key is
+  `ImageId`, not `ImageKey { origin, id }`: the origin and
+  `Gpu::invalidate_images()` arrive with the application's store in T84.6,
+  as its own Changes list says.
+- **T84.2: the sources answer by frame, not by a switch.** T84.0's
+  pins switched a `Cell` behind an unchanged id. `ImageSource::image`'s
+  rustdoc now says the answer for one `(id, frame)` must not change while
+  a renderer may hold it (the GPU caches by that pair), so the flipped
+  gates use sources that answer by frame: the software one red at even
+  frames and blue at odd, the GPU ones a colour per frame.
+- **T84.2: the neighbour and journal gates are one test.** Both read the
+  same two-image frame: the neighbour's damage ratio and pixels, and each
+  leaf's signature as `DisplayList::hash_from` over its own paint (what
+  `sign_leaves` and the agent's journal compute). Each still has its own
+  injection and its own named assertion.
+- **T84.2: the size-change injection panics.** Writing in place whatever
+  the size makes `write_texture` slice a 300-square slot's bytes from a
+  200-square frame, which panics before any frame draws. That is red, by
+  a panic rather than a named assertion; a write of the wrong size has no
+  drawn frame to compare.
+- **T84.2: no `Markdown` call site.** M87/T87.4 owns it (Decisions), and
+  `lumen-static-widgets` has no other `Painter::image` caller than
+  `Image`.
 
 **What the review found (M84).**
 

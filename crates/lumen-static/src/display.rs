@@ -228,7 +228,18 @@ pub enum Cmd {
     /// vocabulary is the same. `tint` multiplies the source, so a
     /// monochrome icon can be recoloured without a second asset;
     /// `Color::WHITE` is untinted.
-    Image { rect: Rect, id: ImageId, tint: Color },
+    ///
+    /// **`frame` is which version of the surface this command draws**
+    /// (M84/T84.2, `docs/results-images.md`). A sequence (a GIF) reads it
+    /// as an index, a stream (video) as a counter, and a still paints 0;
+    /// the source answers for it ([`ImageSource::image`]). It is in the
+    /// command, not in the source, because damage is decided from the
+    /// command stream: `Recording::image` and [`Cmd::hash_into`] both fold
+    /// it, so a new frame of one id is a changed command and repaints its
+    /// rect, where a source that changed pixels behind an unchanged
+    /// command was never asked again. 4 B: the payload is 28 B and `Cmd`
+    /// stays 60 B (`tests/glass_cmd.rs`).
+    Image { rect: Rect, id: ImageId, tint: Color, frame: u32 },
     /// A backdrop filter: the pixels already beneath `rect`, blurred and
     /// tinted — M19/T19.0.
     ///
@@ -981,10 +992,20 @@ pub struct ImageId(pub u32);
 /// a borrowed slice, so an embedded host hands back a `&'static [u8]`
 /// in flash and nothing is allocated or copied.
 pub trait ImageSource {
-    /// RGBA8 pixels and dimensions for `id`, or `None` if the host has
-    /// no such surface — which a renderer must treat as "draw nothing",
-    /// not as an error. A missing asset should not take a frame down.
-    fn image(&self, id: ImageId) -> Option<(u32, u32, &[u8])>;
+    /// RGBA8 pixels and dimensions for `id` at `frame`, or `None` if the
+    /// host has no such surface — which a renderer must treat as "draw
+    /// nothing", not as an error. A missing asset should not take a frame
+    /// down.
+    ///
+    /// `frame` is [`Cmd::Image`]'s (M84/T84.2): which version of `id` the
+    /// command draws. A sequence answers its frame `frame % len`, a stream
+    /// its latest pixels whatever the counter says, and a still ignores
+    /// it. **The answer for one `(id, frame)` must not change** while a
+    /// renderer may hold it: the GPU atlas caches by that pair and asks
+    /// again only when the command's frame moves, so pixels that change
+    /// under an unchanged frame stay stale there, as they would in
+    /// retention.
+    fn image(&self, id: ImageId, frame: u32) -> Option<(u32, u32, &[u8])>;
 }
 
 impl Cmd {
@@ -1094,7 +1115,7 @@ impl Cmd {
                     f(h, u32::from_be_bytes([c.0, c.1, c.2, c.3]) as u64);
                 }
             }
-            Cmd::Image { rect, id, tint } => {
+            Cmd::Image { rect, id, tint, frame } => {
                 // **7, not 6.** `Shadow` also hashed as 6 until
                 // 2026-09-10, so a shadow and an image with the same
                 // rect and colour folded to the same value and retention
@@ -1108,6 +1129,9 @@ impl Cmd {
                 }
                 f(h, id.0 as u64);
                 f(h, u32::from_be_bytes([tint.0, tint.1, tint.2, tint.3]) as u64);
+                // M84/T84.2: the version, so the journal's signature moves
+                // with a new frame of one id, as `Recording::image`'s does.
+                f(h, *frame as u64);
             }
             Cmd::Glass { rect, radius, material: m } => {
                 f(h, 10);
@@ -1272,13 +1296,17 @@ pub trait Painter {
         self.rounded_rect(rect, stops.sample(0.0), corner);
     }
 
-    /// Draw a host-owned image into `rect`, multiplied by `tint`.
+    /// Draw frame `frame` of a host-owned image into `rect`, multiplied by
+    /// `tint` ([`Cmd::Image`]; `frame` since M84/T84.2, 0 for a still).
     ///
     /// Provided as a no-op, so every existing painter keeps compiling
     /// and a renderer that has no image support draws nothing rather
-    /// than failing to build.
-    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
-        let _ = (rect, id, tint);
+    /// than failing to build. **Wrappers must override it and forward
+    /// `frame`** — [`Scaled`], `Deferring` and `Recording` do, and
+    /// `deferring_forwards_every_command` (`tests/overlay.rs`) paints with
+    /// a non-zero frame so a wrapper that drops it fails by name.
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color, frame: u32) {
+        let _ = (rect, id, tint, frame);
     }
     /// A backdrop filter — M19/T19.0.
     ///
@@ -1638,9 +1666,9 @@ impl DisplayList {
 
     /// An image, dropped when it has no area — the same rule the other
     /// commands follow.
-    pub fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+    pub fn image(&mut self, rect: Rect, id: ImageId, tint: Color, frame: u32) {
         if has_area(rect) {
-            self.cmds.push(Cmd::Image { rect, id, tint });
+            self.cmds.push(Cmd::Image { rect, id, tint, frame });
         }
     }
 
@@ -1914,9 +1942,9 @@ impl Painter for Scaled<'_> {
         // or fractions of it). Only the corner is a length (M82/T82.2).
         self.inner.gradient(r, stops, shape, corner * self.scale);
     }
-    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color, frame: u32) {
         let r = self.r(rect);
-        self.inner.image(r, id, tint);
+        self.inner.image(r, id, tint, frame);
     }
     /// `rect`, `radius` and `blur` are lengths and scale; `tint` is a
     /// colour and does not.
@@ -2026,8 +2054,8 @@ impl Painter for DisplayList {
     fn gradient(&mut self, rect: Rect, stops: Stops, shape: GradShape, corner: f32) {
         DisplayList::gradient(self, rect, stops, shape, corner)
     }
-    fn image(&mut self, rect: Rect, id: ImageId, tint: Color) {
-        DisplayList::image(self, rect, id, tint)
+    fn image(&mut self, rect: Rect, id: ImageId, tint: Color, frame: u32) {
+        DisplayList::image(self, rect, id, tint, frame)
     }
     fn glass(&mut self, rect: Rect, radius: f32, material: Material) {
         DisplayList::glass(self, rect, radius, material)

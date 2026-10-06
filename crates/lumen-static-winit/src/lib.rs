@@ -2037,7 +2037,7 @@ mod tests {
     /// can be seen to receive *something*.
     struct OnePixel;
     impl lumen_static::ImageSource for OnePixel {
-        fn image(&self, _id: lumen_static::ImageId) -> Option<(u32, u32, &[u8])> {
+        fn image(&self, _id: lumen_static::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
             Some((1, 1, &[255, 0, 0, 255]))
         }
     }
@@ -2060,7 +2060,7 @@ mod tests {
         }
         fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
             // Only a source that answers counts as images.
-            if images.image(lumen_static::ImageId(0)).is_some() {
+            if images.image(lumen_static::ImageId(0), 0).is_some() {
                 self.log.borrow_mut().push(self.id);
             }
             self.images = Some(images);

@@ -50,6 +50,15 @@ pub struct Image {
     /// Multiplied into the source. Opaque white is untinted, which is
     /// what lets one monochrome icon serve several colours.
     pub tint: Color,
+    /// **Which version of the surface to draw** (M84/T84.2,
+    /// `docs/results-images.md`): an animated image's frame index, a
+    /// stream's counter, 0 for a still. It goes into
+    /// [`Cmd::Image`](lumen_static::Cmd::Image), so writing it is what
+    /// makes the next frame repaint this image's rect; the source answers
+    /// for it ([`lumen_static::ImageSource::image`]). An animated image
+    /// is this widget with a `frame` that moves, written by the
+    /// application's tick — there is no second widget type for it.
+    pub frame: u32,
     /// What the picture shows, for a screen reader — M54/T54.3. Empty is
     /// decoration and publishes no name. Only with `a11y` (a build nobody
     /// reads aloud does not carry it); write it through `set_alt`.
@@ -64,6 +73,7 @@ impl Image {
             source,
             fit: Fit::default(),
             tint: Color(255, 255, 255, 255),
+            frame: 0,
             #[cfg(feature = "a11y")]
             alt: "",
         }
@@ -147,7 +157,7 @@ impl Node for Image {
             out.rounded_rect(r, st[i].bg, st[i].radius);
             lumen_static::ops::border(st, i, out);
         }
-        out.image(self.placed(r), self.id, self.tint);
+        out.image(self.placed(r), self.id, self.tint, self.frame);
     }
 
     fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<Hit> {

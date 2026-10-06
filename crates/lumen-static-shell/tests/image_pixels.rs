@@ -36,7 +36,7 @@ fn texel(x: u32, y: u32) -> [u8; 4] {
 struct Card(Vec<u8>);
 
 impl ImageSource for Card {
-    fn image(&self, _: ImageId) -> Option<(u32, u32, &[u8])> {
+    fn image(&self, _: ImageId, _: u32) -> Option<(u32, u32, &[u8])> {
         Some((CARD, CARD, &self.0))
     }
 }
@@ -64,7 +64,7 @@ fn every_interior_pixel_of_an_image_is_the_texel_it_names() {
     let mut l = DisplayList::new();
     for (_, (x0, y0), k, tint) in CASES {
         let s = (CARD * k) as f32;
-        l.image([x0 as f32, y0 as f32, x0 as f32 + s, y0 as f32 + s], ImageId(1), tint);
+        l.image([x0 as f32, y0 as f32, x0 as f32 + s, y0 as f32 + s], ImageId(1), tint, 0);
     }
     let mut c = Canvas::new(W, H);
     c.images = Some(Box::new(card()));

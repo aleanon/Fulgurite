@@ -85,6 +85,28 @@ left and the node it reached. Until M25/T25.0 nothing marked it at all,
 and a host skipping clean subtrees painted a hovered button in its
 resting shade (`docs/plan-appearance.md` T25.0).
 
+## A picture that changes is a command that changes
+
+Retention decides what is stale from the command stream alone: it hashes
+each command as it is painted and compares. So anything that changes the
+pixels has to change the command. An animated image is the case that
+proved it — until M84, `Cmd::Image` carried an id, a rect and a tint,
+and a source that started answering new pixels under the same id produced
+an identical list, no damage, and the old picture on screen, even after a
+tick that marked the whole tree. The version is in the command now: an
+`Image` widget's `frame` goes into `Cmd::Image`, and the source answers
+for it. `Recording` folds it with everything else:
+
+```text
+{{#include ../../crates/lumen-static/src/retain.rs:recording_image}}
+```
+
+Writing `frame` therefore damages exactly that image's rect — 1.00× its
+box, and a neighbour showing the same id at an unchanged frame is not
+touched (`docs/results-images.md` T84.2). The GPU atlas follows the same
+key, rewriting an id's slot in place when its frame moves, so an
+animation costs one upload per frame change and never fills the atlas.
+
 ## Testing damage without testing nothing
 
 Two shapes to avoid, both of which have already happened here:

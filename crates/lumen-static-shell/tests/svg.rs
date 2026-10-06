@@ -92,7 +92,7 @@ fn one_of_each() -> Vec<(Vec<Cmd>, usize, &'static str)> {
         (vec![Cmd::Text { rect: [0.0, 0.0, 50.0, 16.0], text: (0, 2), size: 12.0, weight: 400.0, line_height: 0, color: RED }], 0, ">hi</text>"),
         (vec![Cmd::Line { a: Point { x: 0.0, y: 0.0 }, b: Point { x: 9.0, y: 9.0 }, width: 2.0, color: RED }], 0, "<line"),
         (vec![Cmd::Gradient { rect: r, stops: Stops::two(RED, Color(0, 0, 255, 255)), kind: GradKind::Linear, geom: [0.0; 3], corner: 0.0 }], 0, "<linearGradient"),
-        (vec![Cmd::Image { rect: r, id: ImageId(3), tint: RED }], 0, r#"data-image="3""#),
+        (vec![Cmd::Image { rect: r, id: ImageId(3), tint: RED, frame: 2 }], 0, r#"data-image="3" data-frame="2""#),
         (vec![Cmd::Glass { rect: r, radius: 4.0, material: Material::FROSTED }], 0, r#"data-blur="12.00""#),
         (vec![clip], 0, r#"<g clip-path="url(#c0)">"#),
         (vec![clip, Cmd::PopClip, Cmd::Rect { rect: r, color: RED }], 1, r#"</g><rect"#),
