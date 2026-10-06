@@ -455,6 +455,24 @@ Appendix rows for the assembler:
   re-measuring K3's arms. `just firmware-size` prints only the
   paint-only `firmware`, so it cannot bound the other three.
 
+**What building found (M87).**
+
+- **T87.0 — gate 5's injection could not fire on `DOC`.** The showcase's
+  `DOC` (`catalog.rs:131`) has one `# ` heading and no `## ` or `### `,
+  so the plan's injection (`## ` scale 1.25 → 1.3) left a `DOC`-only fold
+  green: the gate pinned two of the three heading levels `MarkdownTheme`
+  will own by name and could not see the third change. The gate now
+  folds `DOC` **and** `EVERY` (`# `, `## `, `### `, body, `**bold**`,
+  `` `code` ``, a bullet: every element the theme names that today's
+  parser has), each pinned; the same injection turns `EVERY`'s fold red
+  and leaves `DOC`'s where it was. Rule 2 of AGENT.md's "Tests must be
+  shown to fail": the injection was right, the fixture could not exhibit
+  it.
+- **T87.0 — gate 2 measured 33–51 under a debug `cargo test` and 51 in
+  release** (pinned "> 25"); the carried offset takes it to 6.9 in
+  debug, so it is pinned above the bound and T87.1's second change does
+  carry a gate claim.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =
