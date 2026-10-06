@@ -22,6 +22,10 @@ const W: u32 = 240;
 const H: u32 = 120;
 /// The button fills the window's width and the top 60 px.
 const AT: (f32, f32) = (120.0, 30.0);
+/// `chain-app`'s two buttons share the top 60 px since M88/T88.1:
+/// `#start` on the left half, `#sip` on the right.
+const CHAIN_AT: (f32, f32) = (60.0, 30.0);
+const SIP_AT: (f32, f32) = (180.0, 30.0);
 
 fn text(s: &Hot) -> String {
     let l = s.list();
@@ -257,6 +261,7 @@ fn main() {
     println!("  ok: the swap reported the shape change; #value moved {before} -> {after_i}");
 
     chain_across_a_swap(&args[6], &args[7]);
+    sipper_across_a_swap(&args[6], &args[7]);
 
     println!("\nWINDOW RELOAD (headless): PASS");
 }
@@ -318,8 +323,8 @@ fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
     let v2 = open(v2_path);
     let mut d: Box<dyn Session> = Box::new(v2.boot(None).expect("chain v2 boots"));
     d.frame(0.0, W, H);
-    d.post(Event::down(AT.0, AT.1));
-    d.post(Event::up(AT.0, AT.1));
+    d.post(Event::down(CHAIN_AT.0, CHAIN_AT.1));
+    d.post(Event::up(CHAIN_AT.0, CHAIN_AT.1));
     let direct = drain_chain(&mut *d, 5000);
     let direct_left = in_flight_of(&*d);
     println!("chain, v2 with no swap: `{direct}`, in flight after {}", direct_left.len());
@@ -331,8 +336,8 @@ fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
     let mut r = Reloader::new();
     let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
     cur.frame(0.0, W, H);
-    cur.post(Event::down(AT.0, AT.1));
-    cur.post(Event::up(AT.0, AT.1));
+    cur.post(Event::down(CHAIN_AT.0, CHAIN_AT.1));
+    cur.post(Event::up(CHAIN_AT.0, CHAIN_AT.1));
     cur.frame(16.0, W, H);
     std::thread::sleep(std::time::Duration::from_millis(20));
     cur.frame(16.0, W, H);
@@ -362,4 +367,82 @@ fn chain_across_a_swap(v1_path: &str, v2_path: &str) {
     assert!(left.is_empty(), "the completed chain left work listed after the swap: {left:?}");
     assert_eq!(after, direct, "the swapped chain's frame differs from v2 run with no swap");
     println!("  ok: a chain in flight at the swap completed under v2's step function");
+}
+
+/// Frame until `pred` holds for the window's text, or `ms` pass.
+fn frame_until(s: &mut dyn Session, ms: u64, pred: impl Fn(&str) -> bool) -> String {
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    loop {
+        s.frame(16.0, W, H);
+        let t = text_of(s);
+        if pred(&t) || std::time::Instant::now() >= until {
+            return t;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+/// **M88/T88.1: a sipper in flight at a swap finishes under the new
+/// build.**
+///
+/// `chain-app`'s `#sip` streams `0..10000` through `Sender::progress`;
+/// v1 reports `p` and blocks after reporting 5, v2 reports `p + 100`. A
+/// click on v1 leaves the sipper listed with `sip 5` shown. The swap
+/// carries its descriptor, v2 re-issues it through its own `job_for`
+/// (M49/T49.10), and the label must end at v2's `sip 10099` — not v1's
+/// `sip 9999`, which only a slot read across the swap could show, and
+/// not `sip -`, which is what a dropped re-issue leaves (`Work` is
+/// `#[reload(fresh)]`, so v2 starts with no value, and v1's worker
+/// streams on into a slot nobody reads).
+fn sipper_across_a_swap(v1_path: &str, v2_path: &str) {
+    const V2: &str = "sip 10099";
+    const V1: &str = "sip 9999";
+
+    // Accept: v2 with no swap reaches its final value.
+    let v2 = open(v2_path);
+    let mut d: Box<dyn Session> = Box::new(v2.boot(None).expect("chain v2 boots"));
+    d.frame(0.0, W, H);
+    d.post(Event::down(SIP_AT.0, SIP_AT.1));
+    d.post(Event::up(SIP_AT.0, SIP_AT.1));
+    let direct = frame_until(&mut *d, 5000, |t| t.contains(V2));
+    let direct_left = in_flight_of(&*d);
+    println!("sipper, v2 with no swap: `{direct}` (want `{V2}`), in flight after {}", direct_left.len());
+    assert!(direct.contains(V2), "accept: v2's sipper with no swap did not reach `{V2}`: `{direct}`");
+    assert!(direct_left.is_empty(), "a finished sipper left work listed: {direct_left:?}");
+
+    // v1: click, and the sipper blocks after reporting 5.
+    let v1 = open(v1_path);
+    let mut r = Reloader::new();
+    let mut cur: Box<dyn Session> = Box::new(v1.boot(None).expect("chain v1 boots"));
+    cur.frame(0.0, W, H);
+    cur.post(Event::down(SIP_AT.0, SIP_AT.1));
+    cur.post(Event::up(SIP_AT.0, SIP_AT.1));
+    let shown = frame_until(&mut *cur, 5000, |t| t.contains("sip 5"));
+    let before = in_flight_of(&*cur);
+    println!("sipper, v1 clicked: `{shown}`, in flight before the swap {before:?}");
+    assert_eq!(before, vec![[10, 0, 10_000]], "setup: v1's sipper is not listed at the swap");
+    assert!(shown.contains("sip 5"), "setup: v1's sipper does not show `sip 5` in flight: `{shown}`");
+
+    r.outcome(Outcome::Built(std::path::PathBuf::from(v2_path)));
+    assert!(r.swap(&mut cur, |s: &mut dyn Session| { s.frame(0.0, W, H); }), "chain v2 must swap");
+    println!("sipper, swapped: reissued {:?}", r.reissued);
+    // v1's worker reports the rest of its stream now, into a slot nobody
+    // reads.
+    call(v1_path, b"chain_app_release_sip");
+
+    let after = frame_until(&mut *cur, 5000, |t| t.contains(V2) || t.contains(V1));
+    // A few more frames, so a late v1 value would have time to show.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let after = if after.contains(V2) { frame_until(&mut *cur, 0, |_| true) } else { after };
+    let left = in_flight_of(&*cur);
+    println!("sipper, after the swap and the release: `{after}` (want `{V2}`, never `{V1}`), in flight after {}", left.len());
+    assert!(!after.contains(V1), "the label shows v1's final value `{V1}` after the swap: `{after}`");
+    assert!(
+        after.contains(V2),
+        "the sipper did not finish under v2 after the swap -- `sip -` is a dropped re-issue (the state is fresh, \
+         and v1's worker streams on into a slot nobody reads): `{after}`, reissued {:?}",
+        r.reissued
+    );
+    assert!(left.is_empty(), "the finished sipper left work listed after the swap: {left:?}");
+    println!("  ok: a sipper in flight at the swap finished under v2");
 }

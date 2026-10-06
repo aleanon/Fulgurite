@@ -270,6 +270,37 @@ if not fp50 or not lp50:
              f"{lp50} ns over n={fn} -- a stage nobody measured")
 print(f"  ok  app.perf measured: frame p50 {fp50 / 1e3:.0f} us over {fn} frames")
 
+# ---- 9. a sipper: 10,000 progress values, the last one shown ---------
+# M88/T88.1: one job reports 0..9999 through `Sender::progress`, a
+# one-value slot the window reads at most once a frame. Through `send`
+# the same stream lost 9,744 values and its last one (T88.0's pin). Each
+# distinct label read must have been a presented frame's, so the reads
+# cannot outnumber the presents counted across the run.
+if text_of("sip-value") != "sip -":
+    sys.exit(f"tasks-drive[{strategy}]: setup: the sipper's label should read 'sip -' "
+             f"before the click, got {text_of('sip-value')!r}")
+p0 = call("app.presents")
+click("sip")
+seen, t0, last = set(), time.time(), ""
+while time.time() - t0 < 10.0:
+    last = text_of("sip-value")
+    if last != "sip -":
+        seen.add(last)
+    if last == "sip 9999":
+        break
+    time.sleep(0.005)
+p1 = call("app.presents")
+presents = p1["presents"] - p0["presents"]
+print(f"  ..  sipper: label {last!r} after {(time.time() - t0) * 1000:.0f} ms (want 'sip 9999'); "
+      f"distinct labels seen {len(seen)}, presents during the run {presents} "
+      f"(skipped {p1['skipped'] - p0['skipped']}; seen must be <= presents)")
+if last != "sip 9999":
+    sys.exit(f"tasks-drive[{strategy}]: the sipper's last value never reached the window: {last!r}")
+if len(seen) > presents:
+    sys.exit(f"tasks-drive[{strategy}]: {len(seen)} distinct sipper labels were read across "
+             f"{presents} presented frames -- a value was shown that no frame presented")
+print(f"  ok  sipper: reached 'sip 9999'; {len(seen)} distinct labels <= {presents} presents")
+
 final = counts()
 if final["failed"] != 0:
     sys.exit(f"tasks-drive[{strategy}]: {final['failed']} job(s) failed: {status()!r}")

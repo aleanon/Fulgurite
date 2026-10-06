@@ -169,6 +169,16 @@ fn the_new_build_reissues_through_its_own_table_once() {
 /// `Host::reissuable` — and a swap restarted a stream the application had
 /// stopped. `Ledger::unsettled` now leaves a stopped job out. The ordinary
 /// job beside it is the accept direction: it is still carried.
+///
+/// **Since M88/T88.1 a stopped job counts as finished** once what it sent
+/// and its progress slot are drained, so the pump that stops it — whose
+/// drain runs after the diff — also takes it off the ledger, though its
+/// body has not run. Until T88.1 this test asserted the opposite as its
+/// setup (the stopped job still listed, waiting for its body) and relied
+/// on `Ledger::unsettled`'s stop filter alone. That filter now guards
+/// only a result sent between a pump's drain and its prune, which no
+/// deterministic host can stage; `crates/lumen-static/tests/ledger_stop.rs`
+/// gates it on a ledger directly.
 #[test]
 fn a_stopped_subscription_is_not_carried_across_a_swap() {
     let mut h = host();
@@ -180,12 +190,13 @@ fn a_stopped_subscription_is_not_carried_across_a_swap() {
     assert_eq!(h.subscription_counts(), (1, 1), "setup: the subscription was not stopped");
     let listed: Vec<u64> = h.ledger().descriptors().map(|d| d.payload).collect();
     let carried: Vec<u64> = h.reissuable().iter().map(|d| d.payload).collect();
-    println!("listed {listed:?}; re-issued at the save {carried:?} (want [14])");
-    assert!(listed.contains(&8), "setup: the stopped subscription's job is not listed, so this cannot test it");
+    println!("listed {listed:?} (want [14]: the stopped job settled); re-issued at the save {carried:?} (want [14])");
+    assert!(!listed.contains(&8), "a stopped job with nothing undrained is still listed (in flight)");
     assert!(!carried.contains(&8), "a stopped subscription's job was re-issued: {carried:?}");
     assert_eq!(carried, vec![14], "the ordinary job in flight is still carried");
 
-    // Its body runs late and sends; the drain drops it, counted.
+    // Its body runs late and sends; the drain drops it, counted — the
+    // result carries its job's stop flag whether or not it is listed.
     h.run_pending_jobs();
     h.pump();
     println!("landed {:?}; dropped as stopped {}", h.app.landed, h.stopped_dropped());

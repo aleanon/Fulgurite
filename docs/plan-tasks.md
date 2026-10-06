@@ -511,9 +511,14 @@ running job (§2.3).
   subscription under a new key (§2.3; `docs/results-tasks.md` T84.7).
   A one-shot task still cannot be stopped, only cancelled by epoch.
 - **Structured concurrency**: a batch cancelled as a unit.
-- **Streaming results** — a task that yields many values. A subscription
+- ~~**Streaming results** — a task that yields many values. A subscription
   is the shape for that today; a streaming task needs back-pressure this
-  plan does not design.
+  plan does not design.~~ **DECIDED, M88/T88.1**
+  (`docs/plan-platform-requests.md`): `Sender::progress`, a one-value
+  slot per job outside the channel. The slot *is* the back-pressure: a
+  value no pump has read is replaced and counted (`Inbox::coalesced`),
+  never queued, so nothing blocks and nothing is refused, and the last
+  value is always applied (`docs/results-tasks.md` T88.1).
 - **Replaying task results in a session trace.** Sessions record inputs,
   deliberately (`docs/events-decision.md`). A recorded result is a
   different kind of input and needs its own decision — naming it here so

@@ -14,7 +14,10 @@
 # idle, and they stayed green with the waker uninstalled and with the
 # deadline ignored. A check of a wake or a deadline must not poll.
 # M47/T47.3 (R7-F5) adds a seventh: a tick must land while a 400 ms job
-# occupies one of the pool's workers.
+# occupies one of the pool's workers. M88/T88.1 adds a sipper: a click on
+# `#sip` streams 10,000 values through `Sender::progress`, the label
+# must reach `sip 9999`, and the distinct labels read must not outnumber
+# the frames `app.presents` counted across the run.
 #
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`, which refuses a port that already answers and

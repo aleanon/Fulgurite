@@ -871,3 +871,63 @@ section replaces that design.*
 - consistency-3 item 9 → the swap paragraph states M89's decision (no
   `OpenWindow` pending; `Win` answers inside the drain, T89.3 gate 2)
   instead of leaving it open.
+
+**What building found (M88).**
+
+- **T88.0.** The pin's bound is `10_000usize.saturating_sub(CAPACITY)`:
+  the plain subtraction overflowed at compile time under the plan's own
+  injection (`CAPACITY` = 16,384), so the first red attempt did not
+  build, which is not a red run. The GPU screenshot pin's red run
+  perturbed `GpuBackend::frame_rgba` to answer a 1×1 image.
+- **T88.1, `settled` and `stop`.** M84/T84.7 landed first, so T88.1
+  extends it as the mechanism says: the slot drain drops a stopped job's
+  value into `Host::stopped_dropped`, and `settled` treats a stopped job
+  as finished — **once its slot and its channel messages are drained**,
+  not at the stop. Settling at the stop would let a prune between the
+  stop and the drain drop the entry with its slot full, and the dropped
+  value would go uncounted. The pump that stops a job therefore also
+  takes it off the ledger (its drain follows the diff), which inverted
+  the setup of `tests/reissue.rs`'s T84.7 test (a stopped job still
+  listed while its body waited): that test now asserts the job leaves,
+  and `Ledger::unsettled`'s stop filter — which guards only a result
+  sent between a drain and the prune after it — is gated on a ledger
+  directly, `crates/lumen-static/tests/ledger_stop.rs`.
+- **T88.1, the sipper gate's setup.** "In flight = 1 before the first
+  pump" is asserted *after* the claims, not before: under the plan's
+  injection (drop `!fresh` from `settled`) the `Immediate` job is pruned
+  before the first pump, so a setup assertion first would have fired in
+  place of the claim the plan names ("9,999 applied exactly once"
+  reads 0), which it now does. Each loop pumps at least once.
+- **T88.1, the blocking injection** is "`progress` waits while its slot
+  is full", a bounded queue of one rather than a channel of eight. The
+  mechanism is the same — any `progress` that blocks blocks when nothing
+  drains — and it fires as the plan says (`Immediate` and `Queued` hang
+  into the watchdog; the no-drain arm's bodies never return).
+- **T88.1, `chain-app`.** The two buttons share the top 60 px (`#start`
+  left, `#sip` right), so `reload-host` clicks the chain at (60, 30).
+  v1's sipper blocks **after reporting `p = 5`**, which is what shows the
+  plan's `sip 5`. It waits on its **own** release,
+  `chain_app_release_sip`, not `chain_app_release`: the chain gate
+  releases v1's step 0 first and the library stays loaded, so a shared
+  flag would already be set and v1 would never be in flight.
+- **T88.1, a dropped re-issue reads `sip -`, not `sip 5`.** `Work` is
+  `#[reload(fresh)]`, so v2 starts with no value; v1's worker streams on
+  into a slot nobody reads. The gate names that.
+- **T88.1, a loader defect the second gate found, fixed in
+  `lumen-static-reload`.** `Reloader` numbered its copies per instance,
+  so the second `Reloader` in one process (the sipper gate's, after the
+  chain gate's) wrote `chain-v2-hot-1.so` again — truncating the image
+  the loader still had mapped — and the next `dlsym` died with `SIGSEGV`
+  in `check_match` (gdb: the link map of `chain-v2-hot-1.so`, its string
+  table unreadable). It reproduced at the parent commit with no sipper
+  at all (chain gate, then any second swap of the same library: exit
+  139). The copy number is process-wide now, and the copy is written
+  beside its name and renamed over it, so no mapped image is ever
+  rewritten. Red: the per-`Reloader` count, exit 139; green: the demo
+  passes.
+- **T88.1, `tasks-demo`** grows to 520×420 for its `#sip` button and
+  label.
+- **K88b at T88.1** is not engaged: the frame arm's binary is
+  byte-identical before and after (`cmp`), because its `Msg` is
+  uninhabited and the compiler removes the slot drain
+  (`docs/results-tasks.md` T88.1).

@@ -1139,7 +1139,7 @@ messages applied and **20** job iterations in the 200 ms after the stop.
 | the same: waiting at the stop / dropped at the drain | 3 / 3 | dropped ≥ waiting |
 | `a_declared_subscription_keeps_delivering` (accept) | **50 of 50** applied, 0 dropped | 50 |
 | `a_rekeyed_subscription_delivers_only_the_new_key`: old key / new key after the change | **0** / 21 | 0 / > 0 |
-| `reissue.rs` `a_stopped_subscription_is_not_carried_across_a_swap` | re-issued `[14]`, not the stopped `8` | — |
+| `reissue.rs` `a_stopped_subscription_is_not_carried_across_a_swap` | re-issued `[14]`, not the stopped `8` (since M88/T88.1 the stopped job also leaves the ledger at its stop's pump; the filter is gated in `crates/lumen-static/tests/ledger_stop.rs`) | — |
 
 Injections, each red by name and restored green:
 
@@ -1147,7 +1147,7 @@ Injections, each red by name and restored green:
 |---|---|
 | the drain ignores `stop` | `messages must not be applied after the stop -- 3 were`; re-key: `old key's messages were applied` (3) |
 | the host never sets `stop` | `job must return within one iteration -- it ran 20` (23 messages applied) |
-| `Ledger::unsettled` keeps stopped jobs | `a stopped subscription's job was re-issued: [8, 14]` |
+| `Ledger::unsettled` keeps stopped jobs | `a stopped subscription's job was re-issued: [8, 14]` (since M88/T88.1 it fires in `ledger_stop.rs`: `a stopped job was offered for re-issue: [8, 14]`) |
 | T84.5's pinned test against the new code | `pinned (T84.5): ... 0 were` — its job never asks, so it still iterated 20 times: the drain's half alone holds for a body that does not cooperate |
 
 **Waiting before the stop is what lets the drain's injection fire.** The
@@ -1190,3 +1190,66 @@ applied 1 time(s)` (refused 0, applied 10,000).
 The second pin is `scripts/resume_drive.py`'s GPU leg: `ui.screenshot`
 answers `this host does not render — nothing to screenshot` there,
 which is why that leg reads `xwd`. T88.2 flips it.
+
+## M88/T88.1 — `Sender::progress`: the sipper
+
+`docs/plan-platform-requests.md` T88.1. A job reports a stream through
+`Sender::progress`, which replaces the value in a one-value slot on its
+`JobTrack`; the pump takes each fresh slot before it drains the channel.
+`crates/lumen-static-shell/tests/sipper.rs` is T88.0's pin, flipped.
+
+| gate | Immediate | Queued | `Threads::with_cap(2)` | bound |
+|---|---:|---:|---:|---|
+| values applied in one pump (max) | **1** | **1** | **1** | ≤ 1 |
+| value 9,999 applied | **1** | **1** | **1** | exactly 1 |
+| refused | **0** | **0** | **0** | 0 |
+| applied + `Inbox::coalesced` | 1 + 9,999 | 1 + 9,999 | 3 + 9,997 (one run) | 10,000 |
+
+Against the M88 baseline above: refused 9,744 → **0**, per-pump maximum
+64 → **1**, the final value lost → applied once.
+
+| other arm | measured | bound |
+|---|---:|---|
+| unsplit `Boundaries<256>` app, a sipper of 3: the frame's label | `"0"` → **`"3"`** (1 applied + 2 coalesced) | `"3"` |
+| no pump for 1 s, two sippers of 10,000 on two workers: each body returns in | **~2–4 ms** | ≤ 50 ms |
+| the same run's 120 ms timer: ticks beside the sippers / control without | **24 / 24** | ±1; control ≥ 20 |
+| progress after stop: the stopped job's final value applied / `stopped_dropped` | **0** / +1 | 0 / 1 |
+| accept: a job that `send`s 3 values | 3 applied, 0 refused | 3 |
+| `size_of::<JobTrack<u64>>()` | **56 B** (24 before: the slot's `Mutex<Option<u64>>` is 24 B, plus `fresh` and the 8 B epoch), inline in the `Arc` `tracked_sender` already allocates | — |
+| `just window-reload-demo` `sipper_across_a_swap`: v1 shows `sip 5`, swap, release | **`sip 10099`** (v2's), never `sip 9999` (v1's) | `sip 10099` |
+| the same, accept: v2 with no swap | `sip 10099` | `sip 10099` |
+
+Injections, each red by name and restored green:
+
+| injection | fires as |
+|---|---|
+| T88.0's pinned assertions against the flipped body | `pinned (T88.0): the final value is lost today -- it was applied 1 time(s)` (refused 0, per-pump max 1) |
+| `progress` is a `send` (no slot) | per-pump max **64**, value 9,999 applied **0**, refused **9,744** (Queued) / 9,680 (Threads); the unsplit and stop arms fire too |
+| `progress` blocks while its slot is full (a bounded queue of one) | `Immediate` and `Queued`: `did not finish within 30 s -- a job body blocked` (the watchdog); no-drain arm: `sipper 0's body returned in never (still blocked at 3 s)`, ticks 0 beside the sippers against 24 |
+| `settled` ignores `fresh` | `Immediate`: in flight before the first pump 0, `value 9999 must be applied exactly once -- it was applied 0 time(s)` |
+| the slot drain does not OR into `applied_changed` | the unsplit arm only: label `"0" -> "0"`, `the slot's change never reached mark_all (the idle skip)`; every split arm stays green, which is why the unsplit arm exists |
+| the slot drain ignores `stop` | `a stopped job's final progress value was applied` (stopped_dropped +0) |
+| `hot::boot` skips `Host::reissue` | `sipper_across_a_swap`: reissued `spawned: 0`, label `sip -` (`Work` is fresh, v1's worker streams into a slot nobody reads) |
+| `settled` without its stop term | `reissue.rs`: `a stopped job with nothing undrained is still listed (in flight)` (listed `[8, 14]`) |
+
+**A stopped job counts as finished** once its results and slot are
+drained (the M84/T84.7 half of the mechanism). So the pump that stops a
+subscription also takes its job off the ledger, though its body has not
+run; `reissue.rs`'s T84.7 test asserted the opposite as its setup and
+now asserts this. `Ledger::unsettled`'s stop filter guards only a result
+sent between a pump's drain and its prune, which no deterministic host
+can stage, so `crates/lumen-static/tests/ledger_stop.rs` builds that
+state on a ledger directly (listed `[8, 14]`, unsettled `[14]`; red under
+T84.7's injection).
+
+**K88a, `benches --bin spawn -- pool`, eight runs a side under
+`just bench-lock`, alternated, all quiet:** parent 1,786.43–2,871.95 ns
+(median 2,379.56), T88.1 median **2,370.17** ns (1,739.01–2,486.27).
+Inside the parent's spread; not fired.
+
+**K88b, the idle floor:** the `benches-competitive` frame arm's release
+binary is **byte-identical** before and after T88.1 (`cmp`). Its
+application defers nothing (`Msg` uninhabited), so the slot drain's
+`Some(m)` is unreachable and the compiler removes it with the
+`ledger.is_empty()` guard; no timing can separate identical code, so K88b
+is not engaged at T88.1.

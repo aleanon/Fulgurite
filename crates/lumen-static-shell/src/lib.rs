@@ -239,7 +239,7 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     timer_coalesced: u64,
     /// Every job spawned and not yet landed — M47/T47.3. Its length is
     /// the in-flight count ([`Host::in_flight`]).
-    ledger: lumen_static::spawn::Ledger,
+    ledger: lumen_static::spawn::Ledger<A::Msg>,
     /// Spawns refused for want of a spawner. Counted for the same reason
     /// the inbox counts refusals: a silent drop is the failure a gate
     /// exists to make visible.
@@ -1636,7 +1636,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
 
     /// The ledger itself: what [`Host::in_flight`] counts. As of the last
     /// prune; [`Host::reissuable`] is what a reload re-issues.
-    pub fn ledger(&self) -> &lumen_static::spawn::Ledger {
+    pub fn ledger(&self) -> &lumen_static::spawn::Ledger<A::Msg> {
         &self.ledger
     }
 
@@ -2042,6 +2042,26 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // application that defers nothing has `Msg = Never`, and this is
         // a `try_recv` on a queue nothing can write to.
         let mut applied_changed = false;
+        // **Progress slots first** — M88/T88.1. One value per job in
+        // flight, the newest each job reported; a job's last value is
+        // never lost, because it stays in the ledger until this takes
+        // it. A change ORs into the same `applied_changed` as the
+        // channel's drain, which is what reaches `mark_all` for an
+        // unsplit application and the idle skip below — without it a
+        // frame whose only news is a progress value would skip and show
+        // the stale one. Behind the ledger's length, so an application
+        // that spawns nothing pays one comparison (K88b).
+        if !self.ledger.is_empty() {
+            self.inbox.drain_progress(
+                &self.ledger,
+                &mut (&mut self.app, &mut applied_changed),
+                |(app, changed), m| {
+                    if A::apply(app.state_mut(), m) {
+                        **changed = true;
+                    }
+                },
+            );
+        }
         let applied = self.inbox.drain_at_most(
             lumen_static::inbox::Inbox::<A::Msg>::PER_FRAME,
             &mut (&mut self.app, &mut applied_changed),

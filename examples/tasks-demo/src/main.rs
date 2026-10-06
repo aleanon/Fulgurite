@@ -7,7 +7,9 @@
 //! window.
 //!
 //! This application does all five: **spawn**, **batch**, **chain**,
-//! **cancel** and **subscribe**. Every one is driven by a click, and
+//! **cancel** and **subscribe** — and, since M88/T88.1, a sixth: a
+//! **sipper**, one job streaming 10,000 values through
+//! `Sender::progress`. Every one is driven by a click, and
 //! every one puts its consequence on screen where
 //! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
 //!
@@ -29,6 +31,7 @@ const KIND_BATCH: u64 = 2;
 const KIND_CHAIN: u64 = 3;
 const KIND_SLOW: u64 = 4;
 const KIND_SUB: u64 = 5;
+const KIND_SIP: u64 = 6;
 
 /// A message is data. Nothing here is a callback, and nothing crossing
 /// the frame boundary holds a code reference.
@@ -39,6 +42,9 @@ enum Msg {
     Chain { step: u64, value: u64 },
     Slow(u64),
     Tick(u64),
+    /// One value of the sipper's stream (M88/T88.1), reported through
+    /// `Sender::progress`.
+    Sip(u64),
     Failed(u64, Failure),
 }
 
@@ -59,6 +65,10 @@ struct Ui {
     cancel: Button<Tasks>,
     #[widget_id("toggle-sub")]
     toggle_sub: Button<Tasks>,
+    #[widget_id("sip")]
+    sip: Button<Tasks>,
+    #[widget_id("sip-value")]
+    sip_value: Label<String>,
     #[widget_id("status")]
     status: Label<String>,
     #[widget_id("counts")]
@@ -97,6 +107,8 @@ struct Tasks {
     ticks: u32,
     failures: u32,
     sub_on: bool,
+    /// The sipper's latest value shown, `None` before the first.
+    sip: Option<u64>,
 }
 
 // ---- job bodies. Non-capturing `fn` items, by type ------------------
@@ -119,6 +131,20 @@ fn slow(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::Tick(d.payload));
 }
+
+// ANCHOR: sip
+/// **A sipper** — M88/T88.1. Ten thousand values, each reported with
+/// `progress`, which replaces the job's one-value slot instead of
+/// queueing: it never blocks and is never refused, the window applies
+/// the newest value at most once a frame, and the last one is always
+/// applied. Through `send` this stream lost 9,744 values to the bounded
+/// inbox, its last one among them (`docs/results-tasks.md`).
+fn sip(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+    for i in 0..d.payload {
+        tx.progress(Msg::Sip(i));
+    }
+}
+// ANCHOR_END: sip
 
 impl App for Demo {
     type State = Tasks;
@@ -155,6 +181,7 @@ impl App for Demo {
             (KIND_CHAIN, 0..=2) => Some(chain),
             (KIND_SLOW, 0) => Some(slow),
             (KIND_SUB, 0) => Some(tick),
+            (KIND_SIP, 0) => Some(sip),
             _ => None,
         }
     }
@@ -202,6 +229,7 @@ impl App for Demo {
                 this.ticks += 1;
                 this.last = format!("tick={k}");
             }
+            Msg::Sip(v) => this.sip = Some(v),
             Msg::Failed(kind, why) => {
                 this.failures += 1;
                 this.last = format!("failed kind={kind} why={why:?}");
@@ -235,7 +263,11 @@ impl App for Demo {
                 if s.sub_on { "on" } else { "off" },
             ),
         );
-        a | b
+        let c = match s.sip {
+            Some(v) => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
+            None => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
+        };
+        a | b | c
     }
 }
 
@@ -264,6 +296,10 @@ fn on_slow(s: &mut Tasks, _: &lumen_static::EventCtx) {
 fn on_cancel(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.cancel_requested = true;
     s.last = "cancel requested".into();
+}
+
+fn on_sip(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    s.outbox.push(Descriptor::new(KIND_SIP, 10_000));
 }
 
 fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
@@ -295,6 +331,8 @@ fn build() -> Demo {
     app.ui.cancel.on_click = on_cancel;
     app.ui.toggle_sub.label = "toggle subscription";
     app.ui.toggle_sub.on_click = on_toggle_sub;
+    app.ui.sip.label = "start sipper";
+    app.ui.sip.on_click = on_sip;
     app
 }
 
@@ -320,7 +358,7 @@ fn stylesheet() -> Vec<Rule> {
 /// **The program, described once** — M32 (`docs/plan-program.md`). The
 /// window and `--shot` are both built from it.
 fn program() -> Program<Demo> {
-    application(build).title("tasks-demo").size(520, 360).style(|_: &Demo| stylesheet())
+    application(build).title("tasks-demo").size(520, 420).style(|_: &Demo| stylesheet())
 }
 
 fn main() {

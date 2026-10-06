@@ -24,10 +24,31 @@
 //! trait rather than a winit proxy: the core cannot name winit, a
 //! headless `Host` has no loop to wake, and a test needs to assert that
 //! the wake was *asked for* without opening a window.
+//!
+//! # Two routes back: the channel, and the progress slot — M88/T88.1
+//!
+//! [`Sender::send`] queues a message on the bounded channel, and every
+//! message sent is applied once, in order — or refused, counted, when
+//! the channel is full. That is right for a result and wrong for a
+//! stream: a job that reports 10,000 values loses 97% of them and its
+//! last one (`docs/results-tasks.md`, M88 baseline).
+//!
+//! [`Sender::progress`] is the other route, iced's `Sipper` in this
+//! architecture's terms (`docs/plan-platform-requests.md`): it replaces
+//! the value in a **one-value slot on the job's own [`JobTrack`]** and
+//! never touches the channel, so it never blocks and is never refused.
+//! The host's pump takes each fresh slot's value before it drains the
+//! channel — at most one value per job per pump — and the last value
+//! stored is always applied, because a job does not leave the ledger
+//! while its slot holds one. What a newer value replaced unread is
+//! counted ([`Inbox::coalesced`]): the slot is the back-pressure, and
+//! the count is what it cost. `progress` and `send` are not ordered
+//! relative to each other; a body that needs an ordered final message
+//! sends it with `progress`.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Something that can rouse a sleeping frame loop — M28/T28.1.
 ///
@@ -52,6 +73,10 @@ pub struct Inbox<M> {
     tx: mpsc::SyncSender<Item<M>>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    /// Progress values replaced in their slot before any pump read them
+    /// — M88/T88.1. Shared with every [`Sender`] for the reason `refused`
+    /// is: the replacing happens on a worker.
+    coalesced: Arc<AtomicUsize>,
     /// Failures no application message reported — M47/T47.0, R7-F9.
     /// Shared with every [`Sender`] for the reason `refused` is: the
     /// failure happens on a worker and the question is asked on the frame.
@@ -102,6 +127,7 @@ pub struct Sender<M> {
     tx: mpsc::SyncSender<Item<M>>,
     waker: Option<Arc<dyn Waker>>,
     refused: Arc<AtomicUsize>,
+    coalesced: Arc<AtomicUsize>,
     unmodelled: Arc<AtomicUsize>,
     /// The epoch this sender was minted at — M28/T28.8. Fixed at mint
     /// time, so a worker cannot un-cancel itself.
@@ -109,7 +135,7 @@ pub struct Sender<M> {
     /// The job this sender reports for, when a host spawned one with it —
     /// M47/T47.3. Every message it sends carries this, so the drain can
     /// say which job's result it applied.
-    track: Option<Arc<JobTrack>>,
+    track: Option<Arc<JobTrack<M>>>,
     /// Whether dropping this sender ends the job: true only for the one
     /// [`Inbox::tracked_sender`] minted, which the spawner owns and
     /// drops when the job body has returned. A clone the body makes
@@ -119,7 +145,7 @@ pub struct Sender<M> {
 
 /// What travels through the channel: the epoch, the job it came from (if
 /// any), and the message.
-type Item<M> = (u64, Option<Arc<JobTrack>>, M);
+type Item<M> = (u64, Option<Arc<JobTrack<M>>>, M);
 
 /// One spawned job's progress, shared by its sender and the host's
 /// ledger — M47/T47.3.
@@ -145,15 +171,60 @@ type Item<M> = (u64, Option<Arc<JobTrack>>, M);
 /// on, and only the drain's half holds for it — its results are never
 /// applied, but its work is not saved. One byte, in the padding after
 /// `finished`.
-#[derive(Debug, Default)]
-pub struct JobTrack {
+///
+/// **And the progress slot, since M88/T88.1** ([`Sender::progress`]):
+/// `latest` holds the newest value the job reported and no pump has
+/// taken, `fresh` says whether it holds one (so a pump asks without
+/// locking), and `epoch` is the inbox epoch the job's sender was minted
+/// at, so a cancelled job's slot is dropped like its channel messages
+/// ([`Inbox::stale`]). It is inline in the `Arc` that
+/// [`Inbox::tracked_sender`] already allocates — no allocation per spawn
+/// and none per value; `docs/results-tasks.md` T88.1 has the size for
+/// `M = u64`.
+pub struct JobTrack<M> {
     sent: AtomicUsize,
     consumed: AtomicUsize,
-    finished: core::sync::atomic::AtomicBool,
-    stop: core::sync::atomic::AtomicBool,
+    finished: AtomicBool,
+    stop: AtomicBool,
+    /// Whether `latest` holds a value no pump has taken. Written only
+    /// with `latest`'s lock held, so the two never disagree under it.
+    fresh: AtomicBool,
+    /// The inbox epoch this job was spawned at (M28/T28.8).
+    epoch: u64,
+    /// The newest progress value, not yet applied.
+    latest: Mutex<Option<M>>,
 }
 
-impl JobTrack {
+impl<M> JobTrack<M> {
+    fn new(epoch: u64) -> JobTrack<M> {
+        JobTrack {
+            sent: AtomicUsize::new(0),
+            consumed: AtomicUsize::new(0),
+            finished: AtomicBool::new(false),
+            stop: AtomicBool::new(false),
+            fresh: AtomicBool::new(false),
+            epoch,
+            latest: Mutex::new(None),
+        }
+    }
+
+    /// Whether the slot holds a progress value no pump has taken —
+    /// M88/T88.1.
+    pub fn is_fresh(&self) -> bool {
+        self.fresh.load(Ordering::Acquire)
+    }
+
+    /// Take the slot's value, if it holds one. The lock is held only for
+    /// the swap; a poisoned lock (a body that panicked while storing) is
+    /// read through, since the value inside is a whole `Option`.
+    fn take_latest(&self) -> Option<M> {
+        if !self.fresh.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut slot = self.latest.lock().unwrap_or_else(|e| e.into_inner());
+        self.fresh.store(false, Ordering::Release);
+        slot.take()
+    }
     /// Tell the job to stop — M84/T84.7. Called by the host on the
     /// frame's thread; idempotent.
     ///
@@ -177,9 +248,37 @@ impl JobTrack {
     /// true, `sent` is final — unless a clone outlives the body, whose
     /// later sends are then applied untracked, which is the documented
     /// limit.
+    ///
+    /// **Not while its progress slot is fresh** (M88/T88.1): a job whose
+    /// last [`Sender::progress`] value no pump has taken is not settled,
+    /// so the ledger cannot drop it with its final value undelivered.
+    /// The body stores the value before its sender's drop stores
+    /// `finished`, so once `finished` reads true `fresh` is current.
+    ///
+    /// **A stopped job counts as finished** (M84/T84.7 meeting M88): the
+    /// application asked for it to end, so its body running on is not
+    /// work in flight — but it still waits for the drain to drop what it
+    /// sent and what its slot holds, which is where `Host::stopped_dropped`
+    /// counts it.
     pub fn settled(&self) -> bool {
-        self.finished.load(Ordering::Acquire)
+        (self.finished.load(Ordering::Acquire) || self.is_stopped())
+            && !self.fresh.load(Ordering::Acquire)
             && self.sent.load(Ordering::Acquire) == self.consumed.load(Ordering::Relaxed)
+    }
+}
+
+impl<M> core::fmt::Debug for JobTrack<M> {
+    /// Hand-written: a derive would demand `M: Debug` and print the
+    /// slot's value, which is the application's business.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("JobTrack")
+            .field("sent", &self.sent)
+            .field("consumed", &self.consumed)
+            .field("finished", &self.finished)
+            .field("stop", &self.stop)
+            .field("fresh", &self.fresh)
+            .field("epoch", &self.epoch)
+            .finish_non_exhaustive()
     }
 }
 
@@ -191,6 +290,7 @@ impl<M> Clone for Sender<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            coalesced: self.coalesced.clone(),
             unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
             track: self.track.clone(),
@@ -231,6 +331,12 @@ impl<M> Sender<M> {
     /// A disconnected host — a worker outliving its window — is the
     /// other error, and is ordinary rather than exceptional. The wake is
     /// skipped in both cases: there is nothing to look at.
+    ///
+    /// **For a stream, use [`Sender::progress`]** (M88/T88.1). Refusing
+    /// is right for a result — nothing is lost that the caller is not
+    /// told about — and wrong for a job that reports thousands of values,
+    /// whose later values and last one would be refused. The decision
+    /// here stands: this never blocks.
     pub fn send(&self, m: M) -> Result<(), SendError<M>> {
         // Counted **before** the message is visible, so the drain can
         // never see more consumed than sent; taken back if it is refused.
@@ -257,6 +363,51 @@ impl<M> Sender<M> {
             Err(mpsc::TrySendError::Disconnected((_, _, m))) => {
                 unsend();
                 Err(SendError::Disconnected(m))
+            }
+        }
+    }
+
+    /// Report the job's latest value — M88/T88.1, the sipper.
+    ///
+    /// Replaces the value in the job's one-value slot ([`JobTrack`]);
+    /// the host's next pump applies it, **at most one value per job per
+    /// pump**, and **the last value stored is always applied**: the job
+    /// stays in the ledger until its slot has been taken. A value that a
+    /// newer one replaced before any pump read it is counted in
+    /// [`Inbox::coalesced`], never applied. Never blocks, never refused,
+    /// and never touches the channel, so a full inbox cannot cost a
+    /// progress value and a stream cannot crowd out a result.
+    ///
+    /// Wakes the loop only when the slot goes from empty to full, so a
+    /// tight loop of 10,000 calls asks for one frame per value a pump
+    /// actually takes, not 10,000.
+    ///
+    /// **Not ordered against [`Sender::send`].** A body that needs its
+    /// final message ordered after its stream sends that message with
+    /// `progress`, because the last `progress` value cannot be coalesced
+    /// away.
+    ///
+    /// **A sender with no job** ([`Inbox::sender`], used in tests) has no
+    /// slot, so this is a plain [`Sender::send`], refusal included.
+    ///
+    /// Rule 3 holds: the value is converted to `M` by the job body, on
+    /// the worker, in the build that spawned it; the slot holds data.
+    pub fn progress(&self, m: M) {
+        let Some(t) = &self.track else {
+            let _ = self.send(m);
+            return;
+        };
+        let (replaced, was_fresh) = {
+            let mut slot = t.latest.lock().unwrap_or_else(|e| e.into_inner());
+            let replaced = slot.replace(m).is_some();
+            (replaced, t.fresh.swap(true, Ordering::AcqRel))
+        };
+        if replaced {
+            self.coalesced.fetch_add(1, Ordering::Relaxed);
+        }
+        if !was_fresh {
+            if let Some(w) = &self.waker {
+                w.wake();
             }
         }
     }
@@ -301,6 +452,7 @@ impl<M> Inbox<M> {
             tx,
             waker: None,
             refused: Arc::new(AtomicUsize::new(0)),
+            coalesced: Arc::new(AtomicUsize::new(0)),
             unmodelled: Arc::new(AtomicUsize::new(0)),
             epoch: 0,
             stale: core::cell::Cell::new(0),
@@ -360,6 +512,16 @@ impl<M> Inbox<M> {
         self.refused.load(Ordering::Relaxed)
     }
 
+    /// How many [`Sender::progress`] values were replaced in their slot
+    /// before a pump took them — M88/T88.1. Monotonic.
+    ///
+    /// The cost of a slot instead of a queue, counted where a test can
+    /// read it: every value reported is either applied, coalesced here,
+    /// or dropped as stale or stopped.
+    pub fn coalesced(&self) -> usize {
+        self.coalesced.load(Ordering::Relaxed)
+    }
+
     /// How many job failures reached no application message — M47/T47.0,
     /// R7-F9: an application that leaves `App::failed` at its default, or
     /// whose handler answers `None` for this failure. Monotonic.
@@ -397,6 +559,7 @@ impl<M> Inbox<M> {
             tx: self.tx.clone(),
             waker: self.waker.clone(),
             refused: self.refused.clone(),
+            coalesced: self.coalesced.clone(),
             unmodelled: self.unmodelled.clone(),
             epoch: self.epoch,
             track: None,
@@ -412,8 +575,8 @@ impl<M> Inbox<M> {
     /// Dropping *this* sender, not a clone, says the body has returned.
     /// [`JobTrack::settled`] is the conjunction, and a host drops the
     /// entry from its ledger when it holds.
-    pub fn tracked_sender(&self) -> (Sender<M>, Arc<JobTrack>) {
-        let track = Arc::new(JobTrack::default());
+    pub fn tracked_sender(&self) -> (Sender<M>, Arc<JobTrack<M>>) {
+        let track = Arc::new(JobTrack::new(self.epoch));
         let mut tx = self.sender();
         tx.track = Some(track.clone());
         tx.owns = true;
@@ -466,6 +629,40 @@ impl<M> Inbox<M> {
                     }
                 }
                 Err(_) => break,
+            }
+        }
+        n
+    }
+
+    /// Apply every fresh progress slot among `ledger`'s jobs — M88/T88.1.
+    ///
+    /// **One value per job per call**: the slot holds one, and taking it
+    /// empties it. A slot whose job was spawned at another epoch is
+    /// dropped and counted in [`Inbox::stale`]; one whose job was told to
+    /// stop is dropped and counted in [`Inbox::stopped_dropped`] — the
+    /// same two rules, in the same order, as the channel's drain. Returns
+    /// how many were applied.
+    ///
+    /// The host calls this **before** [`Inbox::drain`], and only when its
+    /// ledger is not empty, so an application that spawns nothing pays a
+    /// length check. It walks what is in flight, which is zero on an idle
+    /// frame.
+    pub fn drain_progress<S>(
+        &self,
+        ledger: &crate::spawn::Ledger<M>,
+        state: &mut S,
+        apply: fn(&mut S, M),
+    ) -> usize {
+        let mut n = 0;
+        for t in ledger.tracks() {
+            let Some(m) = t.take_latest() else { continue };
+            if t.epoch != self.epoch {
+                self.stale.set(self.stale.get() + 1);
+            } else if t.is_stopped() {
+                self.stopped_dropped.set(self.stopped_dropped.get() + 1);
+            } else {
+                apply(state, m);
+                n += 1;
             }
         }
         n

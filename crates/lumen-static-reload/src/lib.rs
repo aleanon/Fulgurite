@@ -674,7 +674,6 @@ pub mod hot {
         /// queueing one: a library that was refused or panicked while
         /// booting is retried when it is built again.
         hash: Option<u64>,
-        copies: u32,
         pending: Option<(PathBuf, u64)>,
         /// Why the last build or swap did not take: the compiler's log, a
         /// stamp refusal, a boot's panic. Cleared by a successful swap.
@@ -701,6 +700,16 @@ pub mod hot {
         /// A build is running.
         pub building: bool,
     }
+
+    /// The copy number, **process-wide** — M88/T88.1. It was a field of
+    /// each `Reloader`, so a second `Reloader` in one process numbered its
+    /// first copy `-hot-1` again and `std::fs::write` truncated a library
+    /// the loader still had mapped: the next symbol lookup through that
+    /// image read a rewritten page and the process died with `SIGSEGV`
+    /// inside `dlsym`. `fixtures/reload-host` found it, the first loader
+    /// to swap the same library with two `Reloader`s
+    /// (`docs/plan-platform-requests.md`, What building found).
+    static COPIES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
     fn hash(bytes: &[u8]) -> u64 {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -745,11 +754,17 @@ pub mod hot {
                         self.pending = None;
                         return;
                     }
-                    self.copies += 1;
+                    let n = COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("lib");
                     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("so");
-                    let copy = path.with_file_name(format!("{stem}-hot-{}.{ext}", self.copies));
-                    if let Err(e) = std::fs::write(&copy, &bytes) {
+                    let copy = path.with_file_name(format!("{stem}-hot-{n}.{ext}"));
+                    // **Written beside it and renamed over it**, never
+                    // written in place: a rename replaces the name and
+                    // leaves an image another process still has mapped
+                    // intact, where a truncating write rewrites its pages
+                    // under it (the defect `COPIES` records).
+                    let tmp = path.with_file_name(format!("{stem}-hot-{n}.{ext}.tmp"));
+                    if let Err(e) = std::fs::write(&tmp, &bytes).and_then(|()| std::fs::rename(&tmp, &copy)) {
                         self.error = Some(format!("{}: {e}", copy.display()));
                         return;
                     }

@@ -234,6 +234,32 @@ never asks runs on, but its results are still never applied. A re-keyed
 subscription is a stop and a start, so a seek's old stream ends rather
 than interleaving with the new one (`docs/results-tasks.md` T84.7).
 
+### A stream is a slot, not a queue
+
+A job that reports many values — a download's progress, a search's
+partial results — is iced's `Sipper`. Here it is a job body that calls
+`Sender::progress` instead of `Sender::send`. A sent message goes
+through the bounded channel and is refused when the channel is full; a
+progress value **replaces** the value in a one-value slot on the job's
+own ledger entry and never touches the channel (M88/T88.1). The host's
+pump takes each fresh slot before it drains the channel, so a stream
+shows at most one value per frame, the newest, and **the last value is
+always shown**: the job stays in flight until its slot has been taken.
+A value that a newer one replaced before any frame read it is counted
+as `Inbox::coalesced`, never queued, so nothing blocks and nothing is
+refused. Through `send`, the stream below lost 9,744 of its 10,000
+values and its last one (`docs/results-tasks.md`, M88 baseline and
+T88.1):
+
+```text
+{{#include ../../examples/tasks-demo/src/main.rs:sip}}
+```
+
+There is no closure to hold across a swap: the body converts each
+value on the worker, in the build that spawned it, and a sipper in
+flight at a hot swap is re-issued like any other job, so it finishes
+with the new build's values.
+
 A timer is a **deadline**, not a thread that sleeps. The host publishes
 its earliest pending deadline and the window's loop waits until that
 instant — without which a timer on an idle window would never be

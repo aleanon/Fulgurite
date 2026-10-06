@@ -676,6 +676,24 @@ that never asks runs on with its results discarded. A stopped job is
 not re-issued across a swap. Until T84.7 the host only forgot the
 entry, and the worker's messages kept being applied.
 
+**DECIDED 2026-10-06 (M88/T88.1, `docs/plan-platform-requests.md`,
+`docs/results-tasks.md` T88.1):** a **third route back into the frame**,
+beside the inbox's channel and the outbox's way out: the **progress
+slot**. `Sender::progress` replaces the value in a one-value slot on the
+job's own `JobTrack` and never touches the channel, so it never blocks
+and is never refused. The host's pump takes each fresh slot before it
+drains the channel — at most one value per job per pump — and ORs a
+change into the same flag the channel's drain sets, so an unsplit
+application under `Boundaries` is marked. A job does not leave the
+ledger while its slot is fresh, so its last value is always applied;
+a replaced value is counted (`Inbox::coalesced`), a stale or stopped
+one is dropped and counted as the channel's are, and a stopped job
+counts as finished once its slot and messages are drained. This is
+iced's `Sipper` without a closure: the body converts each value on the
+worker, in the build that spawned it. Until T88.1 a job streaming
+10,000 values through `send` lost 9,744 of them and its last
+(`docs/results-tasks.md`, M88 baseline).
+
 **DECIDED 2026-09-26 (M47/T47.7, `docs/mobile-decision.md`):** a window
 keeps its images across suspend and resume — `Backend::take_images` is
 required, and `suspended` takes the source back before the backend is

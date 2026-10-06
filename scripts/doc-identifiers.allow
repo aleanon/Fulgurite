@@ -4,6 +4,8 @@
 
 # --- not ours: C library / toolchain / upstream crate surface ---
 dlclose              # libdl; docs/step4-hot-reload.md §7 says we never call it
+dlsym                # libdl; where M88/T88.1's loader defect died (lumen-static-reload's COPIES)
+SIGSEGV              # the signal that defect died with
 nm                   # binutils, cited in the binsize fixture's notes
 generic_const_exprs  # unstable rustc feature, cited as a road not taken
 size_of_set          # AccessKit's field name, mirrored by desc.rs
@@ -18,6 +20,8 @@ Task                 # iced's type. M28 takes its *shape* and deliberately does 
                      # a chain here is a step index, not a closure across an await
                      # (docs/plan-tasks.md §2.1). The name must stay in the prose that
                      # records what was ported and what was not.
+Sipper               # iced's type, likewise: M88/T88.1 takes its shape as `Sender::progress`
+                     # (a slot, no closure) and does not have the type.
 gtk3                 # rfd backend feature name, cited with its measured crate cost
 xdg_portal           # the rfd backend M15/T15.11 declined; dialog.rs has the number
 flt2dec              # core's float formatter, named where num::clamp says why it avoids it

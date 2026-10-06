@@ -354,23 +354,47 @@ impl<M: Send + 'static> Spawner<M> for Threads {
 /// body. Its later results are still applied, untracked — the entry ends
 /// with the body, which is the only end a spawner can observe. And a
 /// subscription whose job never returns stays listed for as long as it
-/// runs, which is the truth about it.
+/// runs, which is the truth about it — until it is **stopped**: since
+/// M88/T88.1 a stopped job counts as finished once what it sent and its
+/// progress slot are drained ([`JobTrack::settled`](crate::inbox::JobTrack::settled)),
+/// so a body that never asks `Sender::is_stopped` is not in flight for
+/// ever.
+///
+/// **And a job whose progress slot is fresh stays listed** (M88/T88.1):
+/// its last `Sender::progress` value has not been applied yet.
 ///
 /// Costs one `Arc` and one `Vec` slot per spawn, both off the frame
 /// path; pruning is a walk of what is listed, which is what is in flight.
-#[derive(Default)]
-pub struct Ledger {
-    entries: Vec<(Descriptor, std::sync::Arc<crate::inbox::JobTrack>)>,
+///
+/// **Generic over the message since M88/T88.1**, because each entry's
+/// [`JobTrack`](crate::inbox::JobTrack) holds the job's progress slot —
+/// a value of the application's `Msg` — and the host's pump reads the
+/// slots through this list ([`Inbox::drain_progress`](crate::inbox::Inbox::drain_progress)).
+pub struct Ledger<M> {
+    entries: Vec<(Descriptor, std::sync::Arc<crate::inbox::JobTrack<M>>)>,
 }
 
-impl Ledger {
-    pub const fn new() -> Ledger {
+impl<M> Default for Ledger<M> {
+    /// Hand-written: a derive would demand `M: Default`.
+    fn default() -> Self {
+        Ledger::new()
+    }
+}
+
+impl<M> Ledger<M> {
+    pub const fn new() -> Ledger<M> {
         Ledger { entries: Vec::new() }
     }
 
     /// List a job the host has just handed to a spawner.
-    pub fn record(&mut self, desc: Descriptor, track: std::sync::Arc<crate::inbox::JobTrack>) {
+    pub fn record(&mut self, desc: Descriptor, track: std::sync::Arc<crate::inbox::JobTrack<M>>) {
         self.entries.push((desc, track));
+    }
+
+    /// Every listed job's track, oldest first — the progress slots the
+    /// pump reads (M88/T88.1).
+    pub(crate) fn tracks(&self) -> impl Iterator<Item = &crate::inbox::JobTrack<M>> + '_ {
+        self.entries.iter().map(|(_, t)| &**t)
     }
 
     /// Drop every entry that has settled, oldest order kept. Returns how
