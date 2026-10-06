@@ -41,9 +41,11 @@ error that says so (`docs/plan-lss.md` §4).
 
 **Italic, and rich text beyond weight and colour.** `RichText` and
 `Markdown` (M27/T27.12) put a bold word inside a sentence, and since M87
-a `Markdown` has a per-element theme, blockquotes, and links — drawn in
+a `Markdown` has a per-element theme, blockquotes, links — drawn in
 their own colour and underlined, and in a `LinkedMarkdown` running the
-application's handler with the link's index (`docs/plan-markdown.md`).
+application's handler with the link's index — and images, `![alt](name)`
+naming an `ImageRef` the application binds, drawn as a block
+(`docs/plan-markdown.md`).
 But a span's only typographic axis is weight, so Markdown has no italic
 and says why. A span is a word: it never wraps inside itself.
 

@@ -413,3 +413,57 @@ fn a_linked_markdown_publishes_its_links() {
     assert!(b.x1 > b.x0 && b.x0 >= pb.x0 && b.x1 <= pb.x1 && b.y0 >= pb.y0 && b.y1 <= pb.y1, "the link's bounds are not inside its paragraph");
     assert_eq!(plain_links, 0, "a plain Markdown published link children");
 }
+
+#[derive(lumen_static::StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Illustrated {
+    #[widget_id("doc")]
+    doc: lumen_static_widgets::Markdown,
+}
+
+/// **A `Markdown` image is an `Image` child** — M87/T87.4: its alt text the
+/// label, its placed box the bounds, the instance id `instance_id(id, n,
+/// 1)` (row `n`, template node 1, so it never collides with link `n`'s
+/// `instance_id(id, n, 0)`). The paragraph's value leaves the image span
+/// out, so the alt is said once; an unresolved image publishes no child,
+/// because its alt is drawn as words and the value holds them. Injection
+/// (recorded in the commit): no image children pushed — 0 images.
+#[test]
+fn a_markdown_publishes_its_images() {
+    use lumen_static_widgets::ImageRef;
+    let mut ui = Illustrated {
+        doc: lumen_static_widgets::Markdown::new("A chart:\n\n![sales by month](chart)\n\n![missing picture](nowhere)"),
+    };
+    ui.doc.set_images(&[ImageRef {
+        name: "chart",
+        id: lumen_static::display::ImageId(3),
+        size: lumen_static::Size { w: 120.0, h: 80.0 },
+    }]);
+    let styles = pass::default_styles(&ui);
+    let mut st = vec![lumen_static::NodeState::default(); <Illustrated as Widget>::NODE_COUNT];
+    pass::layout(&mut ui, &styles, &mut st, Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 2000.0 });
+    let table = <Illustrated as Widget>::SUB_TABLE;
+    let mut out: Vec<(NodeId, AkNode)> = Vec::new();
+    emit_root(table, &ui, &st, &|i: usize| (i + 1) as u64, &mut out);
+    let by_id: BTreeMap<u64, AkNode> = out.into_iter().map(|(i, n)| (i.0, n)).collect();
+    let i = lumen_static::style::index_of_wid(table, "doc").expect("#doc");
+    let para = &by_id[&(i as u64 + 1)];
+    let kids: Vec<u64> = para.children().iter().map(|c| c.0).collect();
+    let images: Vec<&AkNode> = kids.iter().filter_map(|k| by_id.get(k)).filter(|n| n.role() == Role::Image).collect();
+    let value = para.value().unwrap_or("");
+    println!(
+        "Markdown: {} Image child(ren) (bound 1), label {:?} (bound \"sales by month\"), ids {kids:?} (bound [{}]); value {value:?}",
+        images.len(),
+        images.first().and_then(|n| n.label()),
+        lumen_static::observe::instance_id(i as u64 + 1, 0, 1)
+    );
+    assert_eq!(images.len(), 1, "the resolved image was not published as one Image child");
+    assert_eq!(images[0].label(), Some("sales by month"), "the image's label is not its alt text");
+    assert_eq!(kids, [lumen_static::observe::instance_id(i as u64 + 1, 0, 1)], "the image's id is not instance_id(id, 0, 1)");
+    let b = images[0].bounds().expect("bounds");
+    let s = st[i];
+    let r = ui.doc.image_rect(0).expect("image rect");
+    println!("image bounds {b:?}, placed {:?}", [s.pos.x + r[0], s.pos.y + r[1], s.pos.x + r[2], s.pos.y + r[3]]);
+    assert!(((b.x1 - b.x0) - 120.0).abs() < 0.01 && ((b.y1 - b.y0) - 80.0).abs() < 0.01, "the bounds are not the image's box");
+    assert!(!value.contains("sales") && value.contains("missing picture"), "the value says the drawn image's alt, or drops the unresolved one's words: {value:?}");
+}

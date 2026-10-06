@@ -39,15 +39,15 @@
 //! `FontStack`, next to the weight axis it would join.
 //!
 //! Headings, `**bold**`, `` `code` ``, bullets, paragraphs, and since
-//! M87 blockquotes and `[links](target)`, are the subset, which is what a
-//! UI actually renders: labels, emphasis, an identifier, a list, an aside,
-//! a reference.
+//! M87 blockquotes, `[links](target)` and `![images](name)`, are the
+//! subset, which is what a UI actually renders: labels, emphasis, an
+//! identifier, a list, an aside, a reference, an illustration.
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
-use lumen_static::display::{Color, Painter};
+use lumen_static::display::{Color, ImageId, Painter};
 use lumen_static::style::{Fields, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Edges, LayoutCx};
@@ -71,11 +71,11 @@ pub struct Span {
     /// A gap after this word. False at the end of a line's last word,
     /// so a trailing space cannot push a line over its width.
     pub space: bool,
-    /// What the word is part of: [`Span::TEXT`] or [`Span::QUOTE`] —
-    /// M87/T87.2. A quote's words are drawn in the quote colour, which a
-    /// `Markdown` reads from its `markdown-quote` part, and a quote line's
-    /// first word sets `bullet` for its indent and draws a bar instead of
-    /// a dot.
+    /// What the word is part of: [`Span::TEXT`], [`Span::QUOTE`] —
+    /// M87/T87.2 — or, since M87/T87.4, [`Span::IMAGE`] and [`Span::ALT`].
+    /// A quote's words are drawn in the quote colour (`MarkdownTheme`'s,
+    /// derived from the node's own), and a quote line's first word sets
+    /// `bullet` for its indent and draws a bar instead of a dot.
     pub kind: u8,
     /// Which link this word is part of, or [`Span::NO_LINK`] — M87/T87.3.
     /// The index is the link's order of appearance in the source, the
@@ -89,6 +89,16 @@ impl Span {
     pub const TEXT: u8 = 0;
     /// A word of a blockquote (`> ` at a line's start) — M87/T87.2.
     pub const QUOTE: u8 = 1;
+    /// A resolved image — M87/T87.4: one span for the whole
+    /// `![alt](name)`, laid out as a **block** (on a line of its own, at
+    /// its size scaled down to the width with its aspect kept) and painted
+    /// with `Painter::image`. Its `range` is the alt text. The `n`th image
+    /// span draws the owner's `n`th image (`RichText::image_rect`).
+    pub const IMAGE: u8 = 2;
+    /// A word of an **unresolved** image's alt text — M87/T87.4: the name
+    /// matched no `ImageRef`, so the alt is drawn in its place, inline, in
+    /// the quote colour.
+    pub const ALT: u8 = 3;
     /// `link` for a word that is in no link.
     pub const NO_LINK: u16 = u16::MAX;
 
@@ -127,6 +137,11 @@ pub struct RichText {
     pad: (f32, f32),
     font_size: f32,
     ratio: f32,
+    /// Each [`Span::IMAGE`]'s picture and its natural size, in span order —
+    /// M87/T87.4. Pushed by `Markdown`'s parser beside the span, so it is
+    /// sized at parse time like the other stores; `RichText::new` pushes
+    /// none.
+    images: Vec<(ImageId, Size)>,
 }
 
 impl RichText {
@@ -153,7 +168,7 @@ impl RichText {
             eat(&s.range.1.to_le_bytes());
             eat(&s.scale.to_bits().to_le_bytes());
             eat(&s.weight.to_bits().to_le_bytes());
-            eat(&[s.space as u8]);
+            eat(&[s.space as u8, s.kind]);
         }
         // Never 0, which is "never measured".
         h | 1
@@ -222,9 +237,23 @@ impl RichText {
         self.spans.push(s);
     }
 
-    /// Forget every span, keeping the stores' capacity for the next parse.
+    /// Forget every span (and every image), keeping the stores' capacity
+    /// for the next parse.
     pub fn clear(&mut self) {
         self.spans.clear();
+        self.images.clear();
+    }
+
+    /// Image `n`'s box from the node's origin, as the last layout placed
+    /// it — M87/T87.4: the `n`th [`Span::IMAGE`], at its natural size
+    /// scaled down to the content width with its aspect kept. `None` past
+    /// the last image, or before a layout.
+    pub fn image_rect(&self, n: usize) -> Option<[f32; 4]> {
+        let k = self.spans.iter().enumerate().filter(|(_, s)| s.kind == Span::IMAGE).nth(n)?.0;
+        let (x, y, w) = *self.placed.get(k)?;
+        let h = image_h(self.images.get(n)?.1, w);
+        let (x0, y0) = (self.pad.0 + x, self.pad.1 + y);
+        Some([x0, y0, x0 + w, y0 + h])
     }
 
     /// Size `placed` and `widths` to `spans` — called once a parse is
@@ -289,6 +318,21 @@ const BULLET_X: f32 = 14.0;
 const BULLET_DROP: f32 = 0.17;
 /// Padding around a `code` chip.
 const CHIP: f32 = 3.0;
+
+/// An image's height at width `w`, its aspect kept — M87/T87.4. One
+/// function for the layout, the paint and [`RichText::image_rect`], so
+/// the three cannot disagree about a block's box.
+fn image_h(natural: Size, w: f32) -> f32 {
+    if natural.w > 0.0 {
+        natural.h * w / natural.w
+    } else {
+        0.0
+    }
+}
+
+/// What an image is multiplied by: opaque white is untinted, as
+/// `Image`'s default.
+const UNTINTED: Color = Color(255, 255, 255, 255);
 
 impl Widget for RichText {
     const NODE_COUNT: usize = 1;
@@ -363,6 +407,11 @@ impl RichText {
         if key != self.measured_under {
             for k in 0..count {
                 let s = self.spans[k];
+                if s.kind == Span::IMAGE {
+                    // A block's width is the box's, decided below.
+                    self.widths[k] = (0.0, 0.0);
+                    continue;
+                }
                 let size = me.font_size * s.scale;
                 let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
                 let gap = if s.space { cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w } else { 0.0 };
@@ -383,27 +432,40 @@ impl RichText {
         }
         let mut line_h = me.font_size * ratio;
         self.lines = if count == 0 { 0 } else { 1 };
+        // **An image is a block** (M87/T87.4): it starts a line, its line
+        // is exactly its height, and the span after it starts the next.
+        let mut img = 0usize;
+        let mut after_block = false;
         for k in 0..count {
             let s = self.spans[k];
+            let block = s.kind == Span::IMAGE;
             let size = me.font_size * s.scale;
             let (w, gap) = self.widths[k];
-            let w = w + if s.code { CHIP * 2.0 } else { 0.0 };
+            let (w, h) = if block {
+                let natural = self.images.get(img).map_or(Size::default(), |m| m.1);
+                img += 1;
+                let w = natural.w.min(inner).max(0.0);
+                (w, image_h(natural, w))
+            } else {
+                (w + if s.code { CHIP * 2.0 } else { 0.0 }, size * ratio)
+            };
             let lead = if s.bullet { BULLET_X } else { 0.0 };
-            if s.br && k > 0 {
+            if (s.br || block || after_block) && k > 0 {
                 x = 0.0;
                 hang = 0.0;
                 y += line_h;
-                line_h = size * ratio;
+                line_h = h;
                 self.lines += 1;
             } else if x > hang && x + w > inner {
                 // Wraps *between* spans: a span is a word and never
                 // breaks inside itself.
                 x = hang;
                 y += line_h;
-                line_h = size * ratio;
+                line_h = h;
                 self.lines += 1;
             }
-            line_h = line_h.max(size * ratio);
+            line_h = if block { h } else { line_h.max(h) };
+            after_block = block;
             if keep {
                 self.placed[k] = (x + lead, y, w);
             }
@@ -456,12 +518,25 @@ impl RichText {
         lumen_static::ops::border(st, i, out);
         out.push_clip(r);
         let (x0, y0) = (r[0] + s.pad.0, r[1] + s.pad.1);
+        let mut img = 0usize;
         for (k, (&sp, &(x, y, w))) in self.spans.iter().zip(&self.placed).enumerate() {
+            if sp.kind == Span::IMAGE {
+                // **A still: frame 0** (M84/T84.2's argument). A Markdown
+                // image changes by id, never in place, so the command
+                // changes when the binding names new pixels, and the
+                // damage is this rect (`docs/plan-markdown.md`).
+                if let Some(&(id, natural)) = self.images.get(img) {
+                    let rect = [x0 + x, y0 + y, x0 + x + w, y0 + y + image_h(natural, w)];
+                    out.image(rect, id, UNTINTED, 0);
+                }
+                img += 1;
+                continue;
+            }
             let size = s.font_size * sp.scale;
             let h = size * line_ratio(s.line_height);
             let ink = if sp.link != Span::NO_LINK {
                 link
-            } else if sp.kind == Span::QUOTE {
+            } else if sp.kind == Span::QUOTE || sp.kind == Span::ALT {
                 quote
             } else {
                 s.fg
@@ -572,9 +647,15 @@ impl Node for RichText {
         // join put a space between every pair, so "`code`." was read as
         // "code ." — the separator the layout honours (`Span::space`) and
         // the one it published disagreed.
+        //
+        // An image's alt is not in the paragraph: it is the label of the
+        // image's own `Image` child (`Markdown`'s `observe`, M87/T87.4).
         let mut v = String::new();
         for k in 0..self.spans.len() {
-            if k > 0 {
+            if self.spans[k].kind == Span::IMAGE {
+                continue;
+            }
+            if k > 0 && !v.is_empty() {
                 if self.spans[k].br {
                     v.push('\n');
                 } else if self.spans[k - 1].space {
@@ -701,8 +782,8 @@ impl Default for MarkdownTheme {
 /// `RichText` with a parser in front of it.
 ///
 /// The subset is what a UI renders: `# heading` (three levels),
-/// `**bold**`, `` `code` ``, `- bullet`, `> quote`, and blank-line-
-/// separated paragraphs. **Not italic** — see this module's header: the
+/// `**bold**`, `` `code` ``, `- bullet`, `> quote`, `[link](target)`,
+/// `![image](name)`, and blank-line-separated paragraphs. **Not italic** — see this module's header: the
 /// painter has a weight axis and no slant, and markup that renders
 /// identically to plain text claims to have done something it did not.
 ///
@@ -726,6 +807,19 @@ impl Default for MarkdownTheme {
 /// [`link_target`] over the application's own source, because a handler
 /// receives the application's state and, under a `#[state]` split, the
 /// tree is not reachable from it at all.
+///
+/// # Images — M87/T87.4
+///
+/// `![alt](name)` names an [`ImageRef`] the application hands to
+/// [`Markdown::set_images`] (from a `#[bind(.., with = ..)]`, typically).
+/// A name that resolves is a **block**: a line of its own at the picture's
+/// size, scaled down to the content width with its aspect kept, painted
+/// with `Painter::image` at frame 0 — a still, since an image here changes
+/// by id. Its alt text is the label of an `Image` child (`observe`). A
+/// name that does not resolve draws its alt words in the quote colour,
+/// inline. Loading an image is rebinding its name to the id its pixels are
+/// registered under, and damages exactly the image's rect
+/// (`docs/results-markdown.md`, T87.4).
 pub struct Markdown<S: 'static = (), const LINKS: bool = false> {
     inner: RichText,
     theme: MarkdownTheme,
@@ -736,6 +830,46 @@ pub struct Markdown<S: 'static = (), const LINKS: bool = false> {
     /// and what `paint` underlines at 2 px.
     active: Option<u16>,
     on_link: fn(&mut S, &lumen_static::event::EventCtx),
+    /// What `![alt](name)` can name — M87/T87.4, set by
+    /// [`Markdown::set_images`]. Copied, so a binding's slice need not
+    /// outlive the call.
+    refs: Vec<ImageRef>,
+    /// Each image's markup in source order, as the last parse found it.
+    images: Vec<Img>,
+}
+
+/// One entry a `Markdown` image can name — M87/T87.4: `![alt](name)`
+/// draws the picture registered under `id` (an `ImageSource`'s, such as a
+/// program's `ImageStore`) at `size`, scaled down to the content width
+/// with its aspect kept. **Data the application binds**: handed to
+/// [`Markdown::set_images`], typically from a `#[bind(.., with = ..)]`.
+///
+/// An image loads by **changing id**, never by replacing pixels under one
+/// already painted: `Cmd::Image` folds its rect, id, tint and frame, so
+/// new pixels under an old id are no command change, no damage and no
+/// frame, while a binding that names the id the pixels were registered
+/// under changes the command and damages exactly the image's rect
+/// (`docs/plan-markdown.md`, Decisions; `docs/results-markdown.md`, T87.4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageRef {
+    /// What the markup's parentheses hold: `![alt](name)`.
+    pub name: &'static str,
+    pub id: ImageId,
+    /// The picture's natural size, in logical px.
+    pub size: Size,
+}
+
+/// One image's markup — M87/T87.4. Byte offsets into the source: `!` at
+/// `open`, `]` at `close`, one past `)` at `end`; `name` is what is
+/// between the parentheses, and `alt` what is between the brackets.
+/// `resolved` is the `ImageRef` it named, if any.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Img {
+    open: u32,
+    close: u32,
+    end: u32,
+    alt: (u32, u32),
+    resolved: Option<u16>,
 }
 
 /// A `Markdown` whose links activate: `on_link` runs with the link's
@@ -769,6 +903,8 @@ impl<S: 'static, const LINKS: bool> Default for Markdown<S, LINKS> {
             links: Vec::new(),
             active: None,
             on_link: no_link::<S>,
+            refs: Vec::new(),
+            images: Vec::new(),
         }
     }
 }
@@ -811,6 +947,25 @@ fn scan_links(line: &str, mut f: impl FnMut(usize, usize, usize, usize)) {
     while i < b.len() {
         if b[i] == b'[' && (i == 0 || b[i - 1] != b'!') {
             if let Some((close, t, end)) = link_from(b, i) {
+                f(i, close, t, end);
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
+
+/// Each image in `line`, in order: where `!` is, where `](` is, where the
+/// name starts, and one past `)` — M87/T87.4. The same shape as a link
+/// after its `!`, found by the same [`link_from`]; [`scan_links`] skips a
+/// `[` straight after `!`, so the two never claim one bracket.
+fn scan_images(line: &str, mut f: impl FnMut(usize, usize, usize, usize)) {
+    let b = line.as_bytes();
+    let mut i = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'!' && b[i + 1] == b'[' {
+            if let Some((close, t, end)) = link_from(b, i + 1) {
                 f(i, close, t, end);
                 i = end;
                 continue;
@@ -905,6 +1060,52 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
         out
     }
 
+    /// How many images the source holds, resolved or not.
+    pub fn image_count(&self) -> usize {
+        self.images.len()
+    }
+
+    /// Image `n`'s alt text, as the source wrote it.
+    pub fn image_alt(&self, n: usize) -> Option<&str> {
+        let m = self.images.get(n)?;
+        self.inner.text.get(m.alt.0 as usize..m.alt.1 as usize)
+    }
+
+    /// Whether image `n` named an [`ImageRef`] and is drawn as a picture
+    /// (otherwise its alt is drawn as words).
+    pub fn image_resolved(&self, n: usize) -> bool {
+        self.images.get(n).is_some_and(|m| m.resolved.is_some())
+    }
+
+    /// Image `n`'s box from the node's origin, as the last layout placed
+    /// it ([`RichText::image_rect`]). `None` for an unresolved image, whose
+    /// alt is drawn as words and has no box of its own.
+    pub fn image_rect(&self, n: usize) -> Option<[f32; 4]> {
+        if !self.image_resolved(n) {
+            return None;
+        }
+        let drawn = self.images[..n].iter().filter(|m| m.resolved.is_some()).count();
+        self.inner.image_rect(drawn)
+    }
+
+    /// Replace what `![alt](name)` can name, and re-parse if it changed —
+    /// M87/T87.4. **Resolution happens here as well as in `set_str`**: a
+    /// binding that names a new id for an image already parsed must change
+    /// the span store, or the command is the old one and loading the image
+    /// is no frame (`tests/markdown_images.rs` in the shell). The same refs
+    /// again are free, so a binding that runs on every update costs a
+    /// comparison; the store keeps its capacity, so a change of id
+    /// allocates nothing after the first.
+    pub fn set_images(&mut self, refs: &[ImageRef]) {
+        if self.refs[..] == *refs {
+            return;
+        }
+        self.refs.clear();
+        self.refs.extend_from_slice(refs);
+        let src = core::mem::take(&mut self.inner.text);
+        self.set_str(&src);
+    }
+
     /// The theme in force.
     pub fn theme(&self) -> MarkdownTheme {
         self.theme
@@ -934,6 +1135,7 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
         self.inner.text.push_str(src);
         self.inner.clear();
         self.links.clear();
+        self.images.clear();
         let text = core::mem::take(&mut self.inner.text);
         let theme = self.theme;
         let mut blank_pending = false;
@@ -989,6 +1191,26 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
                     });
                 }
             });
+            // And its images (M87/T87.4): each resolved against the refs
+            // now, so a `set_images` that re-parses re-resolves.
+            let mut next_image = self.images.len();
+            let (images, refs, txt) = (&mut self.images, &self.refs, text.as_str());
+            scan_images(trimmed, |o, c, t, e| {
+                let name = &txt[line_at + t..line_at + e - 1];
+                images.push(Img {
+                    open: (line_at + o) as u32,
+                    close: (line_at + c) as u32,
+                    end: (line_at + e) as u32,
+                    alt: ((line_at + o + 2) as u32, (line_at + c) as u32),
+                    resolved: refs.iter().position(|r| r.name == name).map(|n| n as u16),
+                });
+            });
+            let mut in_image: Option<usize> = None;
+            // Bytes inside a resolved image's markup, which became one
+            // span and draw nothing else; and whether the next span must
+            // start a line because a block came before it.
+            let mut skip_until = 0usize;
+            let mut after_block = false;
             let mut in_link: Option<usize> = None;
             // **Carried across words, because a span is a word.**
             // `**two whole words**` opens on the first and closes on
@@ -1025,15 +1247,37 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
                 let mut k = 0usize;
                 let mut first_seg = true;
                 loop {
+                    let p = (body_at + at + k) as u32;
+                    if (p as usize) < skip_until {
+                        if k >= word.len() {
+                            break;
+                        }
+                        k += word[k..].chars().next().map(char::len_utf8).unwrap_or(1);
+                        seg = k;
+                        continue;
+                    }
+                    // An image's `![` opens it; an unresolved one's
+                    // `](name)` closes it. A resolved one is a single span
+                    // pushed at its `![`, and the rest of its markup is
+                    // skipped (M87/T87.4).
+                    let img_mark = match in_image {
+                        Some(n) if self.images[n].close == p => Some((self.images[n].end - p) as usize),
+                        None if in_link.is_none()
+                            && next_image < self.images.len()
+                            && self.images[next_image].open == p => Some(2),
+                        _ => None,
+                    };
                     // A link's `[` opens it and its `](target)` closes it:
                     // both are markers, never drawn.
-                    let p = (body_at + at + k) as u32;
                     let link_mark = match in_link {
+                        _ if img_mark.is_some() => None,
                         Some(n) if self.links[n].close == p => Some((self.links[n].end - p) as usize),
                         None if next_link < self.links.len() && self.links[next_link].open == p => Some(1),
                         _ => None,
                     };
-                    let marker = if link_mark.is_some() {
+                    let marker = if img_mark.is_some() {
+                        img_mark
+                    } else if link_mark.is_some() {
                         link_mark
                     } else if word[k..].starts_with("**") {
                         Some(2usize)
@@ -1066,9 +1310,10 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
                             }
                             sp.weight = w;
                             sp.code = code;
-                            sp.kind = kind;
-                            sp.br = first_seg && first_in_line && !self.inner.spans.is_empty();
-                            sp.bullet = lead && first_seg && first_in_line;
+                            sp.kind = if in_image.is_some() { Span::ALT } else { kind };
+                            sp.br = (first_seg && first_in_line || after_block) && !self.inner.spans.is_empty();
+                            sp.bullet = lead && first_seg && first_in_line && !after_block;
+                            after_block = false;
                             // Only the word's last segment takes the
                             // gap: `**bold**,` is one word and must not
                             // render as `bold ,`.
@@ -1076,8 +1321,33 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
                             self.inner.push(sp);
                             first_seg = false;
                         }
-                        match (link_mark, marker) {
-                            (Some(_), _) => match in_link {
+                        match (img_mark, link_mark, marker) {
+                            (Some(_), _, _) => match in_image {
+                                Some(_) => in_image = None,
+                                None => {
+                                    let m = self.images[next_image];
+                                    next_image += 1;
+                                    match m.resolved {
+                                        Some(r) => {
+                                            // One block span for the
+                                            // whole markup; its range is
+                                            // the alt text.
+                                            let mut sp = Span::plain((m.alt.0, m.alt.1));
+                                            sp.kind = Span::IMAGE;
+                                            sp.space = false;
+                                            sp.br = !self.inner.spans.is_empty();
+                                            self.inner.push(sp);
+                                            let r = self.refs[r as usize];
+                                            self.inner.images.push((r.id, r.size));
+                                            skip_until = m.end as usize;
+                                            after_block = true;
+                                            first_seg = false;
+                                        }
+                                        None => in_image = Some(next_image - 1),
+                                    }
+                                }
+                            },
+                            (None, Some(_), _) => match in_link {
                                 Some(n) => {
                                     self.links[n].spans.1 = self.inner.spans.len() as u32;
                                     in_link = None;
@@ -1088,9 +1358,9 @@ impl<S: 'static, const LINKS: bool> Markdown<S, LINKS> {
                                     next_link += 1;
                                 }
                             },
-                            (None, Some(2)) => bold = !bold,
-                            (None, Some(_)) => code = !code,
-                            (None, None) => break,
+                            (None, None, Some(2)) => bold = !bold,
+                            (None, None, Some(_)) => code = !code,
+                            (None, None, None) => break,
                         }
                         k += marker.unwrap_or(0);
                         seg = k;
@@ -1285,7 +1555,9 @@ impl<S: 'static, const LINKS: bool> Node for Markdown<S, LINKS> {
         self
     }
 
-    /// The rendered text as one `Paragraph` value, and for a
+    /// The rendered text as one `Paragraph` value; one `Image` child per
+    /// drawn image (M87/T87.4: its alt as the label, its box as the
+    /// bounds, id `instance_id(id, n, 1)`); and for a
     /// `LinkedMarkdown` one `Link` child per link: its text as the label,
     /// the bounds of its first word, a `Click` action, and the id
     /// `instance_id(id, n, 0)` — so the agent's `~=` finds a link by its
@@ -1301,7 +1573,29 @@ impl<S: 'static, const LINKS: bool> Node for Markdown<S, LINKS> {
     ) {
         self.inner.observe(st, i, id, node, extra);
         let s = &st[i];
-        if !LINKS || s.size.w <= 0.0 || s.size.h <= 0.0 {
+        if s.size.w <= 0.0 || s.size.h <= 0.0 {
+            return;
+        }
+        // M87/T87.4: each drawn image is an `Image` child, for either form
+        // — its alt text the label, its placed box the bounds — so a reader
+        // meets the picture where it is, and the paragraph's value (which
+        // leaves image spans out) does not say the alt twice. An
+        // unresolved image draws its alt as words, which the value holds.
+        for n in 0..self.images.len() {
+            let Some(r) = self.image_rect(n) else { continue };
+            let mut c = accesskit::Node::new(accesskit::Role::Image);
+            c.set_label(self.image_alt(n).unwrap_or(""));
+            c.set_bounds(accesskit::Rect {
+                x0: (s.pos.x + r[0]) as f64,
+                y0: (s.pos.y + r[1]) as f64,
+                x1: (s.pos.x + r[2]) as f64,
+                y1: (s.pos.y + r[3]) as f64,
+            });
+            let cid = accesskit::NodeId(lumen_static::observe::instance_id(id, n as u64, 1));
+            extra.push((cid, c));
+            node.push_child(cid);
+        }
+        if !LINKS {
             return;
         }
         for (n, l) in self.links.iter().enumerate() {

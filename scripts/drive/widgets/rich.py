@@ -424,6 +424,63 @@ LINKED_MARKDOWN = ("LinkedMarkdown", "#d_mdlinks_a", [
         injection="push no link children in Markdown::observe (`~=changelog` then "
                   "names no node), or hit answering inner: None",
     ),
+    # M87/T87.4: the demo's last line is `![..](spin)`, which names the id
+    # the Image demo registers (`catalog::SPIN`). The picture is a block
+    # below the paragraph's words, published as an `Image` child whose
+    # label is the alt text and whose bounds are where it is drawn.
+    Action(
+        name="the image is drawn where its markup is",
+        needs="a document whose last line is an image naming the showcase's registered id",
+        do=lambda c: c.hover(),
+        expect=lambda c: _image_drawn(c),
+        static=True,
+        injection="skip the Painter::image call in RichText::draw (the image's box "
+                  "is the page fill)",
+    ),
 ])
+
+ALT = "The showcase's spinning ring"
+
+
+def _image_drawn(c):
+    """The demo's `Image` child: its label is the alt text, its box is
+    inside the paragraph below the words, and **ink is in that box** — the
+    pixels differ from the page fill, read from the screenshot 16 px right
+    of the image at its middle, inside the paragraph, where a block leaves
+    nothing drawn. **Read, not assumed**: the fill is the palette's, and
+    it is (255, 255, 255) when this entry runs first but (226, 232, 240)
+    after `Markdown`'s quote action has put the window on `light` -- a
+    fixed ground would count a blank box as all ink in one of the two. The count of off-fill
+    pixels is the assertion rather than a `ui.regionHash` inequality,
+    because two hashes differing says nothing about *which* one is the
+    fill; the box's hash is printed for the record."""
+    para = c.box()
+    kids = [n for n in c.c.tree()["nodes"] if n.get("role") == "Image"
+            and n.get("bounds") and n["bounds"][0] >= para[0] - 1 and n["bounds"][2] <= para[2] + 1
+            and n["bounds"][1] >= para[1] - 1 and n["bounds"][3] <= para[3] + 1]
+    if len(kids) != 1:
+        return False, f"{len(kids)} Image node(s) inside the paragraph {para} (bound 1)"
+    b, label = kids[0]["bounds"], kids[0].get("label")
+    shot = c.c.rpc("ui.screenshot")
+    w, h, px = _decode(base64_decode(shot["image_base64"]))
+    sc = shot.get("scale", 1.0)
+    gx, gy = int((b[2] + 16) * sc), int((b[1] + b[3]) / 2 * sc)
+    if b[2] + 16 >= para[2]:
+        return False, f"no room right of the image {b} inside the paragraph {para} to read the fill"
+    ground = px[(gy * w + gx) * 4:(gy * w + gx) * 4 + 3]
+    ink = total = 0
+    for y in range(int(b[1] * sc) + 1, int(b[3] * sc) - 1):
+        for x in range(int(b[0] * sc) + 1, int(b[2] * sc) - 1):
+            total += 1
+            p = px[(y * w + x) * 4:(y * w + x) * 4 + 3]
+            if max(abs(p[k] - ground[k]) for k in range(3)) > 24:
+                ink += 1
+    bw, bh = b[2] - b[0], b[3] - b[1]
+    hb = c.c.rpc("ui.regionHash", rect=b).get("hash")
+    frac = ink / total if total else 0.0
+    ok = label == ALT and bw > 8 and bh > 8 and b[1] > para[1] + 10 and frac >= 0.05
+    return ok, ("Image child {!r} (bound {!r}) at {} ({:.0f}x{:.0f} px); {} of {} px off the fill {} "
+                "({:.1%}, bound >= 5%); regionHash {}").format(
+        label, ALT, [round(v, 1) for v in b], bw, bh, ink, total, tuple(ground), frac, hb)
 
 ALL = [RICHTEXT, MARKDOWN, LINKED_MARKDOWN, EDITOR, PAINTBOX, VECTORTEXT]

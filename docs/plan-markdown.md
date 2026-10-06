@@ -564,6 +564,37 @@ Appendix rows for the assembler:
   consequence is the readout, whose chip is empty — no area to hash —
   before the first click.
 
+- **T87.4 — the damage gate reads the renderer's damage, not
+  `ui.lastDamage`.** The journal signs a leaf by painting it whole, so its
+  damage for a changed `Markdown` is the node's box, never a rect inside
+  it; the frame's own damage (`Host::damage`, taken from the command
+  stream) is what a frame redraws, and that is the image's rect, 1.00x
+  (`docs/results-markdown.md` T87.4). And a `with =` bind marks
+  everything (it cannot say whether it wrote), so the `Boundaries<256>`
+  host's frame is not narrowed; the damage is still the rect, because
+  damage does not come from the marks.
+- **T87.4 — the accept case damages the node's rect**, not "from the
+  image's top": the node's own clip is one of its commands and its rect
+  grew, so the prefix/suffix diff reaches the clip. The plan's bound, the
+  node's rect, holds.
+- **T87.4 — an unresolved image is `Span::ALT`, inline.** Its alt words
+  are drawn in the quote colour with no bar (`Span::QUOTE` would draw
+  one) and do not break the line; only a resolved image is a block.
+  `Span` stays 24 B: the `n`th `Span::IMAGE` draws `RichText`'s `n`th
+  stored image, so no field was added.
+- **T87.4 — `set_images` re-parses**, as `set_theme` does: resolution
+  happens in the parser, so rebinding a name to a new id must re-parse to
+  reach the span store. The same refs again return at once.
+- **T87.4 — every `Markdown` publishes its images**, not only a
+  `LinkedMarkdown`: an `Image` child needs no activation, so a plain one
+  publishing it is not the finished-but-unreachable shape a `Click` would
+  be. Id `instance_id(id, n, 1)`, so it never meets link `n`'s.
+- **T87.4 — the live check counts off-fill pixels**, rather than
+  comparing `ui.regionHash` with the page fill: two hashes differing does
+  not say which one is the fill. The fill is read beside the image, not
+  assumed — it is white when the entry runs first and `(226, 232, 240)`
+  after `Markdown`'s quote action leaves the window on `light`.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =

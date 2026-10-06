@@ -136,9 +136,30 @@ colour.";
 
 /// M87/T87.3's linked markdown: two links among plain words. Each link's
 /// text is one word, so the drive can name it with `~=`, which takes no
-/// spaces.
+/// spaces. And M87/T87.4's image: `spin` names [`SPIN`], the id the Image
+/// demo registers, through [`md_images`].
 const MDLINKS: &str = "Read the [guide](https://lumen.example/guide) or the \
-[changelog](https://lumen.example/changes) before you file an issue.";
+[changelog](https://lumen.example/changes) before you file an issue.\n\n\
+![The showcase's spinning ring](spin)";
+
+/// What the linked markdown's `![..](spin)` names — M87/T87.4: the Image
+/// demo's GIF, at its own size. A Markdown passes frame 0, so it is the
+/// GIF's first frame, still.
+fn md_images() -> [lumen_static_widgets::ImageRef; 1] {
+    let g = spin();
+    [lumen_static_widgets::ImageRef {
+        name: "spin",
+        id: SPIN,
+        size: lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 },
+    }]
+}
+
+/// The linked markdown demo's widget, its image resolved.
+fn md_links() -> LinkedMarkdown<Store> {
+    let mut m = LinkedMarkdown::linked(MDLINKS, follow_link);
+    m.set_images(&md_images());
+    m
+}
 
 /// The link demo's handler: which link, from `ctx.row` — the readout looks
 /// its target up in [`MDLINKS`] with `link_target`, since a handler is
@@ -537,9 +558,9 @@ pub static CATALOG: &[Entry] = &[
         false,
         |s| on(s, Demo::Markdown(DMarkdown { a: Markdown::new(DOC) })),
         none),
-    entry!("Text", "LinkedMarkdown", "Links that run the application's handler.",
+    entry!("Text", "LinkedMarkdown", "Links that run the application's handler, and an image.",
         false,
-        |s| on(s, Demo::MdLinks(DMdLinks { a: LinkedMarkdown::linked(MDLINKS, follow_link) })),
+        |s| on(s, Demo::MdLinks(DMdLinks { a: md_links() })),
         |s| s.store.link.and_then(|n| lumen_static_widgets::link_target(MDLINKS, n)).map(|t| format!("link: {t}")).unwrap_or_default()),
     entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
         false,

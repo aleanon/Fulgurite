@@ -190,3 +190,35 @@ reaches `#d_mdlinks_a` in one press, and Down, Enter moves the readout to
 `link: https://lumen.example/guide`. The a11y sweep finds no silent leaf
 (each link is a `Link` with its text). With no link children pushed, every
 leg fails on `` `~=changelog` matched nothing ``.
+
+## T87.4 — images
+
+`![alt](name)` names an `ImageRef { name, id, size }` the application
+hands to `Markdown::set_images` (a `#[bind(.., with = ..)]`, typically).
+A name that resolves is one `Span::IMAGE`, laid out as a block at its
+size scaled down to the content width with its aspect kept, and painted
+with `Painter::image(rect, id, white, 0)` — a still; one that does not
+draws its alt words as `Span::ALT`, inline, in the quote colour.
+`set_images` re-parses when the refs changed, so a rebinding re-resolves.
+Each drawn image is an `Image` child with its alt as the label.
+
+| gate | measured | injection (red) |
+|---|---|---|
+| gate 4 `image_markup_is_not_drawn`, flipped | unresolved `a\|chart` (both `ALT`); resolved `a chart` (one `IMAGE`); alt `a chart` | `scan_images` finds nothing: `![a\|chart](chart)` both ways |
+| `an_image_is_a_block_at_its_size`, 120 × 80 in 320 px | rect `[2.0, 22.3, 122.0, 102.3]` (**120.00 × 80.00**, bound ± 0.5); `before` at y 2.0, `after` at y **102.30** beside the bottom 102.30 (bound ≥); painted once, `ImageId(3)`, frame 0 | inline layout (no break around it, the font's line): image at `[51, 2, 171, 82]`, `after` at y 2.0 |
+| `an_image_scales_down_with_its_aspect`, 60 px box | inner 56.00; **56.00 × 37.33** (bound 56.00 × 37.33 ± 0.5) | width clamped only: 56.00 × 80.00 |
+| `markdown_images.rs` `loading_an_image_damages_its_rect` (`Host`, `Boundaries<256>`, a `with =` bind 99 → 7) | frame 1 holds `ImageId(99)`, centre the page; frame 2 one `ImageId(7)`, centre the picture's red; damage `[[2.0, 42.6, 122.0, 122.6]]` = the image rect, **1.00x** of 9,600 px, presented 9,600 px | refs resolved in `set_str` only, never by `set_images`: frame 2 still `ImageId(99)`, damage **`None`** |
+| `resolving_at_a_new_size_damages_from_the_image_down` (accept) | unresolved → 120 × 120: damage `[0, 0, 400, 205.2]`, the node's rect (bound: covers the image to the node's bottom, inside the node) | — |
+| `a_markdown_publishes_its_images` | 1 `Image` child, label `sales by month`, id `instance_id(id, 0, 1)`, bounds the 120 × 80 box; value leaves the drawn alt out and keeps the unresolved one's words | no image children pushed: 0 |
+
+Sizes: `RichText` 136 → **160 B** (the `images` store), `Markdown` 240 →
+**312 B** (the refs and the parsed images); `Span` stays **24 B** (an
+image's picture is in `RichText`'s store, in span order, not a field).
+
+**Live** (`scripts/widget_drive.sh LinkedMarkdown,Markdown,RichTextEditor`,
+all six legs green): `#d_mdlinks_a`'s `![The showcase's spinning
+ring](spin)` names `catalog::SPIN`; its `Image` child, labelled with that
+alt, is 96 × 96 at `[476.5, 401.3, 572.5, 497.3]`, and **2,530 of 8,836 px
+(28.6%)** of it are off the page fill read beside it (bound ≥ 5%; 28.0% at
+scale 2). With the `Painter::image` call skipped: **0 px (0.0%)** on every
+leg. The link action, the keyboard pass and the a11y sweep are unchanged.

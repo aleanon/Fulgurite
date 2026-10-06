@@ -6,7 +6,7 @@
 //! §3.1): gates 1–4 pinned T87.0's gap — they asserted the value then and
 //! printed it — and the task that closes each one flips its assertion to
 //! the bound written beside it. Gates 1 and 2 are flipped (T87.1), gate 3
-//! by T87.3. Gate 5 pins the default display list
+//! by T87.3, gate 4 by T87.4. Gate 5 pins the default display list
 //! before `MarkdownTheme` (T87.2) moves anything.
 //!
 //! | gate | pinned today | flipped by | bound |
@@ -14,18 +14,21 @@
 //! | 1 `every_word_is_kept` | 192 spans of 1,000 words | T87.1 (flipped) | spans = words |
 //! | 2 `set_str_is_linear` | ratio > 25 | T87.1 (flipped) | ratio ≤ 25 |
 //! | 3 `link_markup_is_not_drawn` | `](` drawn | T87.3 (flipped) | no `[`, `](` or target |
-//! | 4 `image_markup_is_not_drawn` | `](` drawn | T87.4 | no `![`, `](` or name |
+//! | 4 `image_markup_is_not_drawn` | `](` drawn | T87.4 (flipped) | no `![`, `](` or name |
 //! | 5 `default_theme_is_todays` | the two folds below | — | unchanged |
 //!
 //! And T87.2's own: `a_theme_scales_its_heading` (a theme's `h1` reaches
-//! the layout) and `a_quote_is_indented_and_barred_on_every_line`.
+//! the layout) and `a_quote_is_indented_and_barred_on_every_line`; and
+//! T87.4's: `an_image_is_a_block_at_its_size` and
+//! `an_image_scales_down_with_its_aspect`. Loading an image (its damage)
+//! is the shell's `tests/markdown_images.rs`, which needs a `Host`.
 
 use std::time::{Duration, Instant};
 
-use lumen_static::display::{Cmd, DisplayList};
+use lumen_static::display::{Cmd, DisplayList, ImageId};
 use lumen_static::widget::{Node, Widget};
-use lumen_static::{Constraints, NodeState, Point};
-use lumen_static_widgets::{Markdown, MarkdownTheme};
+use lumen_static::{Constraints, NodeState, Point, Size};
+use lumen_static_widgets::{ImageRef, Markdown, MarkdownTheme, Span};
 
 fn lay<W: Widget + Node>(w: &mut W, max_w: f32) -> Vec<NodeState> {
     let styles = lumen_static::pass::default_styles(w);
@@ -130,13 +133,89 @@ fn link_markup_is_not_drawn() {
     assert_eq!(m.link(0), Some("https://a.example"), "the link's target was not kept");
 }
 
-/// Gate 4. The same for an image. T87.4 flips it.
+/// Gate 4. **Image markup is not drawn** — flipped by T87.4. T87.0
+/// pinned it drawn (`![a` and `chart](chart)` were words). Now an image
+/// whose name no `ImageRef` holds draws its alt words, `a` and `chart`, as
+/// [`Span::ALT`]; and one whose name resolves is a single [`Span::IMAGE`]
+/// whose text is the alt. Neither draws `![`, `](` or `(chart)`.
 #[test]
 fn image_markup_is_not_drawn() {
-    let m = Markdown::new("![a chart](chart)");
+    let mut m = Markdown::new("![a chart](chart)");
     let d = drawn(&m);
-    println!("image_markup_is_not_drawn: drawn {d:?} (pinned today: contains \"](\")");
-    assert!(d.contains("]("), "pinned: image markup is drawn today, and {d:?} has none");
+    let kinds: Vec<u8> = m.rich().spans().iter().map(|s| s.kind).collect();
+    m.set_images(&[ImageRef { name: "chart", id: ImageId(3), size: Size { w: 120.0, h: 80.0 } }]);
+    let r = drawn(&m);
+    let rkinds: Vec<u8> = m.rich().spans().iter().map(|s| s.kind).collect();
+    println!(
+        "image_markup_is_not_drawn: unresolved drawn {d:?} kinds {kinds:?}; resolved drawn {r:?} kinds {rkinds:?}, \
+         alt {:?} (bound: no `!`, `[`, `](` or `(chart)`)",
+        m.image_alt(0)
+    );
+    for t in [&d, &r] {
+        assert!(!t.contains('!') && !t.contains('[') && !t.contains("](") && !t.contains("(chart"), "image markup is drawn: {t:?}");
+    }
+    assert_eq!((d.as_str(), kinds.as_slice()), ("a|chart", &[Span::ALT, Span::ALT][..]), "the unresolved image is not its alt words");
+    assert_eq!((r.as_str(), rkinds.as_slice()), ("a chart", &[Span::IMAGE][..]), "the resolved image is not one image span");
+    assert_eq!(m.image_alt(0), Some("a chart"), "the alt text was not kept");
+}
+
+/// One 120 × 80 image, `chart`, as an application would bind it.
+const CHART: [ImageRef; 1] = [ImageRef { name: "chart", id: ImageId(3), size: Size { w: 120.0, h: 80.0 } }];
+
+/// **An image is a block at its size** — M87/T87.4. In a 320 px box a
+/// 120 × 80 image keeps its size, starts a line of its own below the word
+/// before it, and the word after it starts below its bottom. Injection
+/// (recorded in the commit): lay the image out as an inline word — no
+/// break around it, its line the font's — and the next word sits beside
+/// it, above its bottom.
+#[test]
+fn an_image_is_a_block_at_its_size() {
+    let mut m = Markdown::new("before ![a chart](chart) after");
+    m.set_images(&CHART);
+    let st = lay(&mut m, 320.0);
+    let r = m.rich();
+    let words: Vec<&str> = (0..r.spans().len()).map(|k| r.span_str(k)).collect();
+    assert_eq!(words, ["before", "a chart", "after"], "setup: the document parsed as {words:?}");
+    assert!(m.image_resolved(0), "setup: `chart` did not resolve");
+    let img = m.image_rect(0).expect("a laid-out image has a rect");
+    let (before, after) = (r.placed()[0], r.placed()[2]);
+    let pad = st[0].pad;
+    let line = 14.0 * 1.45;
+    println!(
+        "an_image_is_a_block_at_its_size: image rect {img:?} ({:.2} x {:.2}; bound 120 x 80 ± 0.5), \
+         'before' at y {:.2} (line {line:.2}), 'after' at y {:.2} beside the image's bottom {:.2} (bound >=)",
+        img[2] - img[0], img[3] - img[1], pad.1 + before.1, pad.1 + after.1, img[3]
+    );
+    assert!(((img[2] - img[0]) - 120.0).abs() <= 0.5 && ((img[3] - img[1]) - 80.0).abs() <= 0.5, "the image is not at its size: {img:?}");
+    assert!(img[1] >= pad.1 + before.1 + line - 0.5, "the image does not start below the line before it");
+    assert!(pad.1 + after.1 >= img[3] - 0.01, "the word after the image is above its bottom: y {} < {}", pad.1 + after.1, img[3]);
+    // And it is painted there, once, with the id and frame 0.
+    let mut list = DisplayList::new();
+    Node::paint(&m, &st, 0, &mut list);
+    let imgs: Vec<_> = list.cmds.iter().filter_map(|c| match c { Cmd::Image { rect, id, frame, .. } => Some((*rect, *id, *frame)), _ => None }).collect();
+    println!("painted images: {imgs:?}");
+    assert_eq!(imgs, [(img, ImageId(3), 0)], "the image is not painted at its rect with its id and frame 0");
+}
+
+/// **And scaled down to the width with its aspect kept.** In a 60 px box
+/// (56 px inside the 2 px padding) the 120 × 80 image is 56 wide and
+/// 56 × 80 / 120 tall. Injection (recorded in the commit): clamp the
+/// width only — the height stays 80.
+#[test]
+fn an_image_scales_down_with_its_aspect() {
+    let mut m = Markdown::new("![a chart](chart)");
+    m.set_images(&CHART);
+    let st = lay(&mut m, 60.0);
+    let img = m.image_rect(0).expect("a laid-out image has a rect");
+    let inner = st[0].size.w - 4.0;
+    let want = (inner, 80.0 * inner / 120.0);
+    let got = (img[2] - img[0], img[3] - img[1]);
+    println!(
+        "an_image_scales_down_with_its_aspect: box {:.1} px, inner {inner:.2}; image {:.2} x {:.2} (bound {:.2} x {:.2} ± 0.5)",
+        st[0].size.w, got.0, got.1, want.0, want.1
+    );
+    assert!((st[0].size.w - 60.0).abs() < 0.01, "setup: the box is {} px, not 60", st[0].size.w);
+    assert!((got.0 - want.0).abs() <= 0.5 && (got.1 - want.1).abs() <= 0.5, "the image lost its aspect: {got:?}, want {want:?}");
 }
 
 /// The showcase's Markdown demo, `DOC` in `examples/showcase/src/catalog.rs`

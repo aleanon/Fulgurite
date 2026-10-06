@@ -140,7 +140,6 @@ RunId                          # proposed by M83
 AnimatedImage                  # decided against by M84 (an animated image is an `Image` whose frame moves; M84/T84.3 built none), and the plan says so by name
 CullTo                         # proposed by M85
 INKS_OUTSIDE                   # proposed by M85
-ImageRef                       # proposed by M87
 KEYS                           # built by M87/T87.3 in scripts/drive/keys.py, a Python name this scan does not read (as VECTORTEXT)
 LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/rich.py, a Python name this scan does not read (as VECTORTEXT)
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically

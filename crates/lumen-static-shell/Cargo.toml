@@ -293,6 +293,11 @@ required-features = ["shader", "truetype"]
 name = "image_frame"
 required-features = ["truetype"]
 
+# M87/T87.4: loading a Markdown image damages its rect; `session` for the canvas.
+[[test]]
+name = "markdown_images"
+required-features = ["truetype"]
+
 # M84/T84.3: an animated image's deadline through `Local`, and `session`
 # is behind `truetype`.
 [[test]]
