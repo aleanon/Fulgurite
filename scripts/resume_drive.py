@@ -22,10 +22,15 @@ custom = leg.startswith("custom")
 WALL_PX = (112, 105)
 PAGE = (0x08, 0x0A, 0x12)
 # `canvas` asks the agent for what the renderer drew; `xwd` reads the
-# window back off the X server, for a backend that cannot hand its
-# pixels back (the GPU one answers "does not render" to `ui.screenshot`,
-# which the GPU leg pins -- M88/T88.0; T88.2 flips it).
+# window back off the X server, which the GPU leg keeps for its own
+# before/after diff -- so that diff never trusts the readback it checks.
 source = sys.argv[4] if len(sys.argv) > 4 else "canvas"
+# M88/T88.2: the GPU answers `ui.screenshot` by reading its target back
+# (it answered "does not render" until then -- T88.0's pin, flipped
+# here). On the GPU leg the canvas is compared with the `xwd` readback of
+# the same still frame, worst channel delta against `just gpu-parity`'s
+# bound of 1; on the software still leg the same comparison must read 0.
+COMPARE = {"gpu-resume": 1, "software-still": 0}
 BOUND = 0.001  # 0.1% of the window
 
 s = socket.create_connection(("127.0.0.1", port), timeout=60)
@@ -72,23 +77,33 @@ t0 = time.time()
 time.sleep(2.0)  # the first frame, and a margin
 a = shot()
 
-if source == "xwd":
-    # M88/T88.0 pin: the GPU backend cannot answer `ui.screenshot`
-    # (`GpuBackend::frame_rgba` is `None`), which is why this leg reads
-    # `xwd`. T88.2 gives the GPU a `frame_rgba` and flips this to compare
-    # the canvas with the `xwd` readback.
-    n[0] += 1
-    f.write((json.dumps({"jsonrpc": "2.0", "id": n[0], "method": "ui.screenshot",
-                         "params": {}}) + "\n").encode())
-    f.flush()
-    r = json.loads(f.readline())
-    msg = r.get("error", {}).get("message", "") if "error" in r else ""
-    print(f"  ..  pinned (T88.0): ui.screenshot on the GPU answers "
-          f"{'error ' + repr(msg) if msg else 'an image'} (want \"this host does not render\")")
-    if "this host does not render" not in msg:
-        sys.exit(f"resume-drive[{leg}]: pinned (T88.0): ui.screenshot on the GPU backend "
-                 f"no longer answers \"this host does not render\" ({r.get('error') or 'it answered an image'})"
-                 f" -- T88.2 flips this pin")
+if leg in COMPARE:
+    # Setup landed: the backend the leg names is the one the window made.
+    started = [l for l in open(f"target/live/resume-drive-{leg}.log", errors="replace").read().splitlines()
+               if l.startswith("lumen-static: ") and "(" in l and "LUMEN_TEST_RESUME" not in l]
+    want = "lumen-static: gpu (" if source == "xwd" else "lumen-static: software"
+    print(f"  ..  setup: startup line {started[:1]} (want {want!r})")
+    if not started or not started[0].startswith(want):
+        sys.exit(f"resume-drive[{leg}]: setup: the window did not start on {want!r}: {started[:1]}")
+    # Two reads of one still frame, back to back: the agent's canvas and
+    # the X server's copy of the window.
+    r = call("ui.screenshot")
+    canvas = Image.open(io.BytesIO(base64.b64decode(r["image_base64"]))).convert("RGB")
+    shown = xwd_shot()
+    print(f"  ..  setup: ui.screenshot answered {canvas.size} (source {r.get('source')}), "
+          f"xwd {shown.size}")
+    if canvas.size != shown.size:
+        sys.exit(f"resume-drive[{leg}]: the canvas is {canvas.size} and the window {shown.size}")
+    pc, ps = canvas.tobytes(), shown.tobytes()
+    worst = max(abs(x - y) for x, y in zip(pc, ps))
+    over = sum(1 for i in range(0, len(pc), 3)
+               if max(abs(pc[i + k] - ps[i + k]) for k in range(3)) > COMPARE[leg])
+    print(f"  ..  canvas vs xwd: worst channel delta {worst} (bound {COMPARE[leg]}), "
+          f"{over} px over it")
+    if worst > COMPARE[leg]:
+        sys.exit(f"resume-drive[{leg}]: ui.screenshot differs from the window by {worst} on a "
+                 f"channel (bound {COMPARE[leg]}, {over} px over): the canvas is not what was drawn")
+    print(f"  ok  canvas = window within {COMPARE[leg]} ({leg})")
 
 if custom:
     log = open(f"target/live/resume-drive-{leg}.log", errors="replace").read()

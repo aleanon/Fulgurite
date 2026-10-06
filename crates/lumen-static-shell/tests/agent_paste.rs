@@ -32,7 +32,7 @@ impl Screen for Blind {
     fn present(&mut self, _src: &mut dyn FrameSource, _page: Color) -> lumen_static_shell::session::FrameTimes {
         Default::default()
     }
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
         None
     }
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {

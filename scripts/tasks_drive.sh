@@ -19,6 +19,14 @@
 # must reach `sip 9999`, and the distinct labels read must not outnumber
 # the frames `app.presents` counted across the run.
 #
+# M88/T88.2 adds a 16x16 swatch at the window's origin and a GPU leg:
+# `ui.screenshot`, a click on `#swatch`, a second `ui.screenshot`, and
+# the swatch's `ui.regionHash` must differ between them -- the readback
+# is per call. The software legs run the same phase (their hashes must
+# differ too), and the GPU leg also asks `source: "surface"`, which must
+# stay "not checkable" there. The GPU leg exits 77 with no adapter, as
+# `just gpu-parity` does.
+#
 # **Each leg names the process it drove** (M42/T42.2): through
 # `scripts/live/launch.py`, which refuses a port that already answers and
 # checks the socket's owner and the process's own `app.diagnostics`
@@ -63,4 +71,19 @@ for leg in everything boundaries boundaries+oracle; do
            _ {port} "${leg%%+*}"
 done
 
-echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle"
+# M88/T88.2: the pixel phases on wgpu. One strategy: what is checked is
+# the backend's readback, which the strategy does not reach.
+echo "== gpu =="
+cargo build --release -q -p tasks-demo --features gpu
+rc=0
+$LAUNCH --leg gpu --exe target/release/tasks-demo --env LUMEN_BACKEND=gpu \
+    --expect-strategy Boundaries --expect-features "" \
+    -- python3 scripts/tasks_drive.py {port} boundaries gpu || rc=$?
+if [ "$rc" = 77 ]; then
+    echo "tasks-drive: no adapter -- the GPU leg skipped (77)"
+    exit 77
+elif [ "$rc" != 0 ]; then
+    exit "$rc"
+fi
+
+echo "tasks-drive: all five capabilities landed under both strategies, and under the shadow oracle; the GPU answered ui.screenshot per call"

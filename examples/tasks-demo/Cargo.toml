@@ -22,3 +22,6 @@ lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["ag
 [features]
 default = []
 everything = []
+# M88/T88.2: the GPU backend, for `just tasks-drive`'s GPU leg -- a
+# pass-through, so this demo's window can be asked to draw on wgpu.
+gpu = ["lumen-static-winit/gpu"]

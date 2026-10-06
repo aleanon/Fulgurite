@@ -28,6 +28,10 @@ pub struct GpuBackend {
     /// masks take (M82/T82.6, `docs/plan-paint-vocabulary.md`), once per
     /// window; `just gpu-parity`'s PaintBox leg reads it.
     masks_logged: bool,
+    /// The target read back by the last [`Backend::frame_rgba`] call —
+    /// M88/T88.2. Owned here so the call can lend it out; **re-read on
+    /// every call**, never on a frame nobody asked about.
+    shot: Vec<u8>,
 }
 
 impl GpuBackend {
@@ -50,6 +54,7 @@ impl GpuBackend {
             gpu,
             name,
             masks_logged: false,
+            shot: Vec::new(),
         })
     }
 
@@ -191,17 +196,26 @@ impl Backend for GpuBackend {
     /// the present. Answering with the pre-present texture would make
     /// `ui.screenshot { source: "surface" }` report "the frame reached
     /// the screen" on a frame that did not. `None` is the honest answer:
-    /// not checkable.
+    /// not checkable. **What was rendered is [`Backend::frame_rgba`]'s**,
+    /// below (M88/T88.2): the readback lives there, under the name that
+    /// claims only "drawn".
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
         None
     }
 
-    /// **`None`: this backend does not hand its pixels back** — written
-    /// out since M83/T83.1, as today's inherited default. `ui.screenshot`
-    /// reports "does not render", and `just resume-drive`'s GPU leg reads
-    /// the window off the X server instead.
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
-        None
+    /// **The target, read back on this call** — M88/T88.2
+    /// (`docs/plan-platform-requests.md`). What the renderer drew, the
+    /// same RGBA8 layout as the software canvas, into the owned `shot`
+    /// and lent out. Blocking, and never on a frame: a call costs a
+    /// copy, a map and a wait (`docs/results-gpu.md`, "Readback"), paid
+    /// only by whoever asked. Until T88.2 this answered `None`, and
+    /// `ui.screenshot` reported "does not render" on every GPU window.
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
+        let (w, h) = self.gpu.size();
+        self.shot = self.gpu.read_rgba();
+        // A failed map hands back nothing: "not checkable", never a
+        // short buffer a reader would index past.
+        (self.shot.len() == w as usize * h as usize * 4).then_some((w, h, &self.shot[..]))
     }
 
     fn name(&self) -> &str {

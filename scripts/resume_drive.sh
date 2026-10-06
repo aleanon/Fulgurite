@@ -13,8 +13,11 @@
 # comparison must read 0 there, or it is sensitive to something else);
 # a program's own backend from `Program::backend_with` (M83/T83.2), which
 # must be made twice, keep the wallpaper and answer `ui.screenshot`;
-# and the GPU backend with the round trip, read back with `xwd` because
-# the GPU backend cannot answer `ui.screenshot`.
+# and the GPU backend with the round trip, its before/after diff read
+# back with `xwd`, which is independent of the readback being checked.
+# M88/T88.2: the GPU answers `ui.screenshot` now, and its canvas must
+# match the `xwd` readback of the same still frame within 1 per channel
+# (the software still leg's must match exactly).
 #
 # Each leg names the process it drove (M42/T42.2, scripts/live/launch.py).
 # Needs a display; skips with exit 77 without one (M43 §2).

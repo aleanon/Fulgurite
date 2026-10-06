@@ -246,7 +246,14 @@ pub trait Backend {
     /// an error rather than as a blank image. **Required since
     /// M83/T83.1**; it was provided as `None`, so a wrapper inheriting it
     /// made every screenshot of a working window an error.
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])>;
+    ///
+    /// **A call may read the GPU back** — M88/T88.2, which made the
+    /// receiver `&mut self`: the GPU backend has no CPU copy of its
+    /// frame, so it copies its target into a buffer it owns on each call
+    /// and lends that out (blocking; `docs/results-gpu.md`, "Readback").
+    /// Nothing is read back on a frame nobody asked about, so a caller
+    /// should ask once and keep the borrow, not ask per pixel.
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])>;
 
     /// What to print in a startup line. A user reporting "it is slow"
     /// should not have to guess which renderer they got.

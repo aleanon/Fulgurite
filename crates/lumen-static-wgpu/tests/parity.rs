@@ -1278,3 +1278,46 @@ fn a_wide_path_is_drawn_in_tiles_without_a_reset() {
     assert!(at(30, 60) == blue && at(2010, 60) == blue, "setup: the path must be drawn end to end");
     assert_eq!((s.resets, s.growths), (0, 0), "the wide path did not fit the atlas in tiles");
 }
+
+/// **What one `ui.screenshot` costs on the GPU** — M88/T88.2, K88c
+/// (`docs/plan-platform-requests.md`).
+///
+/// `GpuBackend::frame_rgba` answers by reading the target back on each
+/// call (the copy, the map and the blocking wait in `Gpu::read_rgba`),
+/// so its price is paid per screenshot, never per frame. Median of 8 at
+/// 1920×1080, printed beside K88c's 100 ms: above it, a GPU window would
+/// refuse screenshot requests as unsupported and `ui.screenshot`
+/// would keep its "does not render" answer. The figure lives in
+/// `docs/results-gpu.md`, "Readback".
+///
+/// Setup landed: the readback is the whole frame (its length) and holds
+/// the frame's red rect, so the timing is of a read that read something.
+/// Injection (T88.2's commit): read back a 1×1 target; the length check
+/// fires.
+#[test]
+fn readback_cost() {
+    const RW: u32 = 1920;
+    const RH: u32 = 1080;
+    let Some(mut g) = gpu_sized(RW, RH) else { return };
+    g.clear(PAGE);
+    g.render(&frame(), RW, RH);
+    let mut ms = Vec::new();
+    let mut px = Vec::new();
+    for _ in 0..8 {
+        let t = std::time::Instant::now();
+        px = g.read_rgba();
+        ms.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    assert_eq!(px.len(), (RW * RH * 4) as usize, "setup: the readback is not the whole target");
+    let i = ((25 * RW + 40) * 4) as usize;
+    assert_eq!(&px[i..i + 4], &[200, 60, 60, 255], "setup: the readback does not hold the frame");
+    ms.sort_by(f64::total_cmp);
+    let median = (ms[3] + ms[4]) / 2.0;
+    println!(
+        "readback_cost: {RW}x{RH} median {median:.2} ms of 8 (min {:.2}, max {:.2}); K88c bound 100 ms; adapter {}",
+        ms[0],
+        ms[7],
+        g.adapter()
+    );
+    assert!(median <= 100.0, "K88c fired: a {RW}x{RH} readback costs {median:.2} ms (bound 100)");
+}

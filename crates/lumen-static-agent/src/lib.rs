@@ -1041,12 +1041,14 @@ impl Agent {
                     Value::Null,
                 ))?;
                 let v = |k: usize| rect.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                // The scale first: `frame` borrows the host mutably
+                // (M88/T88.2) for as long as `rgba` lives.
+                let sc = host.scale();
                 let (w, h, rgba) = host.frame().ok_or((
                     INVALID_PARAMS,
                     "this host does not render — nothing to hash".into(),
                     Value::Null,
                 ))?;
-                let sc = host.scale();
                 let clampx = |x: f32| ((x * sc).round().max(0.0) as u32).min(w);
                 let clampy = |y: f32| ((y * sc).round().max(0.0) as u32).min(h);
                 let (x0, x1, y0, y1) = (clampx(v(0)), clampx(v(2)), clampy(v(1)), clampy(v(3)));
@@ -2009,8 +2011,10 @@ pub trait AgentHost {
     }
     /// The last rendered frame as RGBA8, if this host renders. `None`
     /// for a host that only lays out — which is what `ui.screenshot`
-    /// reports as an error rather than a blank image.
-    fn frame(&self) -> Option<(u32, u32, &[u8])> {
+    /// reports as an error rather than a blank image. `&mut self` since
+    /// M88/T88.2: a window on the GPU backend reads its target back on
+    /// each call, so ask once per answer.
+    fn frame(&mut self) -> Option<(u32, u32, &[u8])> {
         None
     }
 

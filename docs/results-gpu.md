@@ -622,6 +622,30 @@ Answering with the pre-present texture would make
 `ui.screenshot { source: "surface" }` report that a frame reached the
 screen when it did not. `None` means "not checkable", which is true.
 
+### Readback — `ui.screenshot` on the GPU, M88/T88.2, 2026-10-06
+
+What was rendered is `Backend::frame_rgba`'s to answer, and until
+M88/T88.2 the GPU answered `None` there too, so `ui.screenshot` said
+"does not render" on every GPU window. `GpuBackend::frame_rgba` now
+reads the target back **on each call** (`Gpu::read_rgba`: a copy, a
+map, a blocking wait) into a buffer it owns and lends out; the receiver
+became `&mut self` on `Backend`, `Screen` and `AgentHost::frame`.
+Nothing is read back on a frame nobody asked about. `fetch_rgba` stays
+`None`, for the reason above.
+
+| quantity | measured | bound | verdict |
+|---|---|---|---|
+| `readback_cost` (`tests/parity.rs`), 1920×1080, median of 8, release | **1.66 ms** (min 0.82, max 6.70) | K88c: 100 ms | not fired |
+| the same, debug (`just gpu`'s build) | 1.89 ms (min 0.96, max 6.31) | 100 ms | not fired |
+| `just resume-drive` GPU leg: canvas vs `xwd`, 460×997 | worst channel delta **0**, 0 px over | 1 (`just gpu-parity`'s) | |
+| the software still leg, the same comparison | 0 | 0 | the accept direction |
+
+RTX 4070, Vulkan. Injections (T88.2's commit): the readback copying rows
+at the unpadded stride reads delta 255 on 457,176 px; a `frame_rgba`
+that returns its cached `shot` leaves `just tasks-drive`'s GPU swatch
+hash unchanged across a click; a `fetch_rgba` that answers the readback
+makes `source: "surface"` answer an image there.
+
 ### A dropped present is asked for again — M47/T47.4, 2026-09-26
 
 `Gpu::present` returned `()` and swallowed Outdated, Lost and Timeout,

@@ -2134,7 +2134,7 @@ mod tests {
         fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
             None
         }
-        fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
             None
         }
         fn name(&self) -> &str {

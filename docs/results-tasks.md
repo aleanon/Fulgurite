@@ -1189,7 +1189,8 @@ applied 1 time(s)` (refused 0, applied 10,000).
 
 The second pin is `scripts/resume_drive.py`'s GPU leg: `ui.screenshot`
 answers `this host does not render — nothing to screenshot` there,
-which is why that leg reads `xwd`. T88.2 flips it.
+which is why that leg reads `xwd`. T88.2 flips it (the leg now compares
+`ui.screenshot` with `xwd`; `docs/results-gpu.md`, "Readback").
 
 ## M88/T88.1 — `Sender::progress`: the sipper
 

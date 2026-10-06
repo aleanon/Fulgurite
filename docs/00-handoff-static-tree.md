@@ -138,6 +138,10 @@ The four properties that produce the performance, in rough order of importance:
    `frame_rgba` are required. The shell still names no window or GPU
    crate (`scripts/check_shell_headless.sh`); the window's graph is
    unchanged at 96 crates (`docs/results-shader.md` T83.1).
+   **Since M88/T88.2 `frame_rgba` takes `&mut self`** (on `Backend`,
+   `Screen` and `AgentHost::frame`): the GPU backend answers it by reading
+   its target back on each call, so `ui.screenshot` works on a GPU window;
+   `fetch_rgba` stays `None` there (`docs/results-gpu.md`, "Readback").
 
    **DECIDED 2026-10-06 (M83/T83.3, owner decision D3): a custom shader
    is a bracket in the one display list, behind the core's `shader`.**

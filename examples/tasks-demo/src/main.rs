@@ -9,7 +9,10 @@
 //! This application does all five: **spawn**, **batch**, **chain**,
 //! **cancel** and **subscribe** — and, since M88/T88.1, a sixth: a
 //! **sipper**, one job streaming 10,000 values through
-//! `Sender::progress`. Every one is driven by a click, and
+//! `Sender::progress`. Since M88/T88.2 a 16×16 **swatch** sits at the
+//! origin, and `#swatch` recolours it: the one control whose click
+//! changes pixels, so `just tasks-drive`'s GPU leg can prove that
+//! `ui.screenshot` reads the GPU back per call. Every one is driven by a click, and
 //! every one puts its consequence on screen where
 //! `scripts/tasks_drive.sh` can read it back over the agent endpoint.
 //!
@@ -51,6 +54,9 @@ enum Msg {
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 8.0)]
 struct Ui {
+    /// At the origin: physical (0, 0)..(16, 16) at scale 1.
+    #[widget_id("swatch-box")]
+    swatch_box: Swatch,
     #[widget_id("title")]
     title: Label<String>,
     #[widget_id("spawn-one")]
@@ -67,6 +73,8 @@ struct Ui {
     toggle_sub: Button<Tasks>,
     #[widget_id("sip")]
     sip: Button<Tasks>,
+    #[widget_id("swatch")]
+    swatch: Button<Tasks>,
     #[widget_id("sip-value")]
     sip_value: Label<String>,
     #[widget_id("status")]
@@ -109,6 +117,97 @@ struct Tasks {
     sub_on: bool,
     /// The sipper's latest value shown, `None` before the first.
     sip: Option<u64>,
+    /// How many times `#swatch` was clicked; the swatch's colour is
+    /// derived from it ([`swatch_color`]).
+    swatch_clicks: u32,
+}
+
+// ---- the swatch (M88/T88.2) ------------------------------------------
+
+/// A distinct opaque colour per count, so consecutive clicks never
+/// repaint the same pixels.
+fn swatch_color(n: u32) -> Color {
+    Color(
+        (40 + n.wrapping_mul(67)) as u8,
+        (90 + n.wrapping_mul(131)) as u8,
+        (160 + n.wrapping_mul(29)) as u8,
+        255,
+    )
+}
+
+/// **A 16×16 square of one colour**, written by [`Demo::update`] from the
+/// click count. No widget in the set paints a colour its application
+/// chooses at run time (`Fixed` paints its style's), so the demo owns
+/// this one: a rigid leaf, never a click target.
+struct Swatch {
+    color: Color,
+}
+
+impl Default for Swatch {
+    fn default() -> Self {
+        Swatch { color: swatch_color(0) }
+    }
+}
+
+impl lumen_static::widget::Widget for Swatch {
+    const NODE_COUNT: usize = 1;
+    const DEPTH: usize = 1;
+    const IS_RIGID: bool = true;
+    const SUB_TABLE: &'static [lumen_static::desc::NodeDesc] = &[lumen_static::desc::NodeDesc::new(
+        0,
+        lumen_static::desc::NO_PARENT,
+        0,
+        0,
+        lumen_static::desc::NodeDesc::RIGID,
+    )];
+    const KIND: &'static str = "swatch";
+    const SEEDS: &'static [lumen_static::style::Seed] = &[lumen_static::style::Seed::new(
+        Self::KIND,
+        Self::type_defaults,
+        lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]),
+    )];
+}
+
+impl lumen_static::widget::Node for Swatch {
+    fn layout(
+        &mut self,
+        _cx: &mut lumen_static::cx::LayoutCx,
+        limits: lumen_static::desc::Constraints,
+        style: &[lumen_static::Style],
+        st: &mut [lumen_static::NodeState],
+        i: usize,
+    ) -> lumen_static::desc::Size {
+        let content = lumen_static::desc::Size { w: 16.0, h: 16.0 };
+        lumen_static::ops::record_painted(
+            st,
+            i,
+            limits,
+            lumen_static::ops::resolve_self(limits, &style[i], content),
+            &style[i],
+        )
+    }
+    fn paint(&self, st: &[lumen_static::NodeState], i: usize, out: &mut dyn lumen_static::display::Painter) {
+        out.rect(lumen_static::ops::rect_of(&st[i]), self.color);
+    }
+    lumen_static::leaf_common!(Swatch, lumen_static::desc::NodeDesc::RIGID, nohit);
+
+    fn observe(
+        &self,
+        _st: &[lumen_static::NodeState],
+        _i: usize,
+        _id: u64,
+        node: &mut lumen_static::observe::accesskit::Node,
+        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+    ) {
+        node.set_role(lumen_static::observe::accesskit::Role::Image);
+        node.set_label("swatch");
+    }
+}
+
+impl<S> lumen_static::event::Handlers<S> for Swatch {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
+        None
+    }
 }
 
 // ---- job bodies. Non-capturing `fn` items, by type ------------------
@@ -267,7 +366,10 @@ impl App for Demo {
             Some(v) => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
             None => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
         };
-        a | b | c
+        let want = swatch_color(s.swatch_clicks);
+        let d = self.ui.swatch_box.color != want;
+        self.ui.swatch_box.color = want;
+        a | b | c | d
     }
 }
 
@@ -302,6 +404,11 @@ fn on_sip(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_SIP, 10_000));
 }
 
+/// M88/T88.2: recolour the swatch. The binding step paints it.
+fn on_swatch(s: &mut Tasks, _: &lumen_static::EventCtx) {
+    s.swatch_clicks += 1;
+}
+
 fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
     s.sub_on = !s.sub_on;
     s.subs.clear();
@@ -333,6 +440,8 @@ fn build() -> Demo {
     app.ui.toggle_sub.on_click = on_toggle_sub;
     app.ui.sip.label = "start sipper";
     app.ui.sip.on_click = on_sip;
+    app.ui.swatch.label = "recolour swatch";
+    app.ui.swatch.on_click = on_swatch;
     app
 }
 
@@ -358,7 +467,7 @@ fn stylesheet() -> Vec<Rule> {
 /// **The program, described once** — M32 (`docs/plan-program.md`). The
 /// window and `--shot` are both built from it.
 fn program() -> Program<Demo> {
-    application(build).title("tasks-demo").size(520, 420).style(|_: &Demo| stylesheet())
+    application(build).title("tasks-demo").size(520, 500).style(|_: &Demo| stylesheet())
 }
 
 fn main() {

@@ -931,3 +931,21 @@ section replaces that design.*
   byte-identical before and after (`cmp`), because its `Msg` is
   uninhabited and the compiler removes the slot drain
   (`docs/results-tasks.md` T88.1).
+- **T88.2, where the receiver changed.** M83 had moved `Backend` into
+  `lumen_static_shell::backend`, so the edit is there. The test `Screen`s
+  are in **eight** files, not seven: `contrast_scale.rs` has one too. Two
+  more `Backend`s follow by compile error: winit's test `Fake` and
+  `examples/glasswall`'s `Counting` (the book's `factory` anchor).
+- **T88.2, the swatch is the demo's own leaf.** No widget in the set
+  paints a colour its application picks at run time (`Fixed` paints its
+  style's), so `tasks-demo` defines a 16×16 rigid `Swatch` that its
+  `update` recolours; the window grows to 520×500.
+- **T88.2, the "existing surface leg" did not exist.** No drive asked a
+  GPU window for `source: "surface"`, so the second injection had nothing
+  to fire. `just tasks-drive`'s GPU leg asks it first and pins "cannot
+  read its window back"; the injection (`fetch_rgba` answering the
+  readback) turns that red. The GPU leg runs only the phases that read
+  pixels: the others are backend-independent and run on three legs.
+- **T88.2, the resume gate's own injection.** The plan named none for
+  the canvas-against-`xwd` comparison. A readback that copies rows at the
+  unpadded stride (`Gpu::read_rgba`) reads delta 255 on 457,176 px.

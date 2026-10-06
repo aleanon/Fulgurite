@@ -87,7 +87,7 @@ impl Backend for Software {
         0
     }
 
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
 
@@ -112,7 +112,7 @@ impl Screen for AsScreen<'_> {
     fn present(&mut self, src: &mut dyn FrameSource, page: Color) -> FrameTimes {
         crate::frame_times(&self.0.present(src, page, Instant::now()))
     }
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
         self.0.frame_rgba()
     }
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {

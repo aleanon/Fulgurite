@@ -641,6 +641,10 @@ the `Backend` trait's rustdoc; `docs/mobile-decision.md`, lifecycle;
 - **`ui.screenshot` cannot see the GPU backend**: it answers "this host
   does not render", because `GpuBackend` has no `frame_rgba`. The GPU
   leg reads the window back with `xwd`, as `just gpu-parity` does.
+  *Corrected by M88/T88.2* (`docs/plan-platform-requests.md`):
+  `GpuBackend::frame_rgba` reads its target back per call, and the GPU
+  leg compares that canvas with its `xwd` readback
+  (`docs/results-gpu.md`, "Readback").
 - **The unit test cannot see `suspended` itself.** It needs an
   `ActiveEventLoop`, so the test drives the extracted `suspend_backend`.
   The plan's injection — `suspended` not taking the images back — leaves

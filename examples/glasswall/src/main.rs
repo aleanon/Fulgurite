@@ -799,7 +799,7 @@ mod counting {
         fn set_shaders(&mut self, table: ShaderTable<'_>) -> usize {
             self.inner.set_shaders(table)
         }
-        fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+        fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
             self.inner.frame_rgba()
         }
         fn name(&self) -> &str {

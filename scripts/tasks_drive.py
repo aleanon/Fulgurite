@@ -1,7 +1,22 @@
 """M28/T28.12's assertions. See scripts/tasks_drive.sh."""
-import base64, hashlib, json, socket, sys, time
+import base64, hashlib, io, json, socket, sys, time
 
 port, strategy = int(sys.argv[1]), sys.argv[2]
+# M88/T88.2: `gpu` runs only the phases that read pixels, on a window
+# drawn by wgpu; every other phase is backend-independent and runs on
+# the software legs.
+backend = sys.argv[3] if len(sys.argv) > 3 else "software"
+leg = f"{strategy}+gpu" if backend == "gpu" else strategy
+
+if backend == "gpu":
+    # Setup landed: the window really is on the GPU. No adapter is a
+    # supported configuration and a skip, as `just gpu-parity` has it.
+    gpu_log = open("target/live/tasks-drive-gpu.log", errors="replace").read()
+    started = [l for l in gpu_log.splitlines() if l.startswith("lumen-static: ") and "(" in l]
+    print(f"  ..  startup line {started[:1]} (must name 'gpu (')")
+    if not any(l.startswith("lumen-static: gpu (") for l in started):
+        print("tasks-drive[gpu]: no adapter on this machine -- skipped (77)")
+        sys.exit(77)
 
 # M39/T39.1 (R14-F1): a browser's no-cors POST, byte for byte, spawns
 # nothing -- run before this script's own connection opens, and with the
@@ -14,7 +29,7 @@ replay = [sys.executable, os.path.join(here, "browser_replay.py"), f"127.0.0.1:{
           "#counts"]
 if os.environ.get("LUMEN_TASKS_PID"):
     replay += ["--pid", os.environ["LUMEN_TASKS_PID"]]
-if subprocess.call(replay) != 0:
+if backend != "gpu" and subprocess.call(replay) != 0:
     sys.exit(f"tasks-drive[{strategy}]: a browser's request reached the application")
 
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
@@ -29,8 +44,17 @@ def call(method, params=None):
     f.flush()
     r = json.loads(f.readline())
     if "error" in r:
-        sys.exit(f"tasks-drive[{strategy}]: {method} failed: {r['error']}")
+        sys.exit(f"tasks-drive[{leg}]: {method} failed: {r['error']}")
     return r["result"]
+
+
+def call_raw(method, params=None):
+    """The whole reply, error included -- for a method whose refusal is the claim."""
+    n[0] += 1
+    f.write((json.dumps({"jsonrpc": "2.0", "id": n[0],
+                         "method": method, "params": params or {}}) + "\n").encode())
+    f.flush()
+    return json.loads(f.readline())
 
 
 def text_of(wid):
@@ -85,6 +109,64 @@ def click(wid):
         sys.exit(f"tasks-drive[{strategy}]: the click on #{wid} was not handled")
 
 
+def screenshot_px(x, y):
+    """`ui.screenshot` (canvas), decoded, and the pixel at physical (x, y)."""
+    from PIL import Image
+    r = call("ui.screenshot")
+    im = Image.open(io.BytesIO(base64.b64decode(r["image_base64"]))).convert("RGB")
+    return im.size, im.getpixel((x, y))
+
+
+def swatch_phase():
+    """M88/T88.2: `ui.screenshot` reads the renderer back PER CALL.
+
+    A screenshot, a click on `#swatch` (which recolours the 16x16 swatch
+    at the origin), a second screenshot; the swatch's `ui.regionHash`
+    must differ between them. On the GPU the canvas is a readback of the
+    target, so a backend that answered a cached read would hand the
+    first frame back twice -- the injection this is for.
+    """
+    rect = call("ui.resolve", {"selector": "#swatch-box"}).get("bounds")
+    print(f"  ..  swatch at {rect} (want [0, 0, 16, 16])")
+    if rect != [0, 0, 16, 16]:
+        sys.exit(f"tasks-drive[{leg}]: setup: the swatch is not the 16x16 box at the origin: {rect}")
+    size1, px1 = screenshot_px(4, 4)
+    h1 = call("ui.regionHash", {"rect": rect})
+    r = call("input.click", {"selector": "#swatch"})
+    print(f"  ..  click on #swatch: handled={r.get('handled')}")
+    if r.get("handled") is not True:
+        sys.exit(f"tasks-drive[{leg}]: setup: the click on #swatch was not handled: {r}")
+    size2, px2 = screenshot_px(4, 4)
+    h2 = call("ui.regionHash", {"rect": rect})
+    print(f"  ..  swatch hash before {h1['hash']} ({h1['pixels']} px), after {h2['hash']} "
+          f"({h2['pixels']} px); screenshot pixel (4, 4) {px1} -> {px2}; size {size1}")
+    if h1["pixels"] != 256:
+        sys.exit(f"tasks-drive[{leg}]: setup: the swatch's rect hashed {h1['pixels']} px, not 256")
+    if h1["hash"] == h2["hash"] or px1 == px2:
+        sys.exit(f"tasks-drive[{leg}]: the second screenshot shows the first one's swatch "
+                 f"(hash {h1['hash']} == {h2['hash']}, pixel {px1} -> {px2}): "
+                 f"the canvas was not read back on this call")
+    print(f"  ok  swatch: a click changed the screenshot ({h1['hash']} -> {h2['hash']})")
+
+
+if backend == "gpu":
+    # The surface is still "not checkable" on the GPU (`gpu.rs`,
+    # `fetch_rgba`): the target is what was rendered, not what was
+    # presented, and only `frame_rgba` may answer from it.
+    r = call_raw("ui.screenshot", {"source": "surface"})
+    msg = r.get("error", {}).get("message", "") if "error" in r else ""
+    print(f"  ..  ui.screenshot source=surface on the GPU: "
+          f"{'error ' + repr(msg[:60]) if msg else 'an image'} (want 'cannot read its window back')")
+    if "cannot read its window back" not in msg:
+        sys.exit(f"tasks-drive[{leg}]: source=surface answered "
+                 f"{'an image' if not msg else repr(msg)} on the GPU -- the pre-present target "
+                 f"is not the present (gpu.rs, fetch_rgba)")
+    print("  ok  surface: not checkable on the GPU, as recorded")
+    swatch_phase()
+    print(f"  ok  {leg}: the GPU answers ui.screenshot per call")
+    sys.exit(0)
+
+
 # M48/T48.9 (R12-F3): the widgets' `observe` is on in this build, or a
 # Label reads as GenericContainer -- which the widgets crate now refuses
 # to compile. The accept direction of scripts/check_feature_seam.sh.
@@ -98,6 +180,9 @@ if base != {"one": 0, "batch": 0, "chain": 0, "slow": 0, "ticks": 0,
             "failed": 0, "sub": "off"}:
     sys.exit(f"tasks-drive[{strategy}]: setup: expected a clean start, got {base}")
 print(f"  ok  clean start {base}")
+
+# ---- 0. the swatch: a screenshot per call (M88/T88.2) -----------------
+swatch_phase()
 
 # ---- 1. spawn one ----------------------------------------------------
 click("spawn-one")

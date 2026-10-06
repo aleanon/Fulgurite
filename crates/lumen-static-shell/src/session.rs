@@ -107,8 +107,11 @@ pub trait Screen {
     /// left to draw (M48/T48.4). `FrameTimes::default()` from a screen
     /// that measures nothing.
     fn present(&mut self, src: &mut dyn FrameSource, page: Color) -> FrameTimes;
-    /// What the renderer drew, as RGBA8.
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])>;
+    /// What the renderer drew, as RGBA8. **`&mut self` because a call
+    /// may read the GPU back** (M88/T88.2, `Backend::frame_rgba`): the
+    /// window's screen forwards to its backend, which copies its target
+    /// on each call.
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])>;
     /// What the display server shows, when that is checkable.
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)>;
 }
@@ -176,7 +179,7 @@ impl Screen for Offscreen {
             atlas_give_ups: None,
         }
     }
-    fn frame_rgba(&self) -> Option<(u32, u32, &[u8])> {
+    fn frame_rgba(&mut self) -> Option<(u32, u32, &[u8])> {
         Some((self.canvas.width, self.canvas.height, &self.canvas.pixels))
     }
     fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
@@ -1227,7 +1230,7 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
         false
     }
 
-    fn frame(&self) -> Option<(u32, u32, &[u8])> {
+    fn frame(&mut self) -> Option<(u32, u32, &[u8])> {
         self.screen.frame_rgba()
     }
 
