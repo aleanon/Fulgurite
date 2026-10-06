@@ -60,6 +60,10 @@ pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]
 pub mod text;
+// M84/T84.8: a video's producer -- `VideoFeed`, the subscription job that
+// paces it, and behind `image` the reference `GifFeed`. A line comment,
+// as `image`'s is: an outer doc joins the module's own and breaks its links.
+pub mod video;
 
 /// What the shadow oracle has compared, and the first place a bounded
 /// frame disagreed with the whole-tree one — M34/T34.1.

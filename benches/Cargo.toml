@@ -27,6 +27,9 @@ shaping = ["lumen-static-shell/shaping"]
 # outlines, which the shell's measurer answers only under its default-off
 # `vector-text`. Off by default, so K3's arms build as before.
 vector-text = ["lumen-static-shell/vector-text"]
+# M84/T84.8: K84e's `--bin video_rate` plays a `GifFeed`, which is behind
+# the shell's default-off `image`.
+image = ["lumen-static-shell/image"]
 # **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
 # It was unconditional, so no bench here could be built without the
 # widgets' observability compiled in — and `--bin grid` could not say what
@@ -88,6 +91,11 @@ path = "src/bin/spawn.rs"
 
 # M50/T50.4: the persistent-pool probe's kill rule, against the scoped
 # banded frame (`docs/plan-raster-allocation.md` §2.2, §5).
+[[bin]]
+name = "video_rate"
+path = "src/bin/video_rate.rs"
+required-features = ["image"]
+
 [[bin]]
 name = "banded_pool"
 path = "src/bin/banded_pool.rs"

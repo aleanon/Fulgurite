@@ -2139,6 +2139,9 @@ impl syn::parse::Parse for BindSpec {
 /// // #[app(tick = advance)]             // optional, fn(&mut Self, f32) -> bool
 /// // #[app(wake = next_frame)]          // optional, fn(&Self) -> Option<f32>
 /// // #[app(images = store)]             // optional, fn(&Self) -> Option<&dyn ImageSource>
+/// // #[app(msg = Msg, apply = take)]     // optional together, fn(&mut Self::State, Msg) -> bool
+/// // #[app(subscriptions = subs)]        // optional, fn(&mut Self) -> Option<&mut Subs>
+/// // #[app(jobs = job_for)]              // optional, needs msg, fn(Descriptor) -> Option<JobFn<Msg>>
 /// struct Counter {
 ///     #[tree]
 ///     ui: Ui,
@@ -2186,12 +2189,22 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
     };
 
     // Struct-level `#[app(after_update = path)]`, `#[app(tick = path)]`,
-    // `#[app(wake = path)]` (M84/T84.3) and `#[app(images = path)]`
-    // (M84/T84.6).
+    // `#[app(wake = path)]` (M84/T84.3), `#[app(images = path)]`
+    // (M84/T84.6), and `msg`, `apply`, `subscriptions` and `jobs`
+    // (M84/T84.8).
     let mut after_update: Option<syn::Path> = None;
     let mut tick: Option<syn::Path> = None;
     let mut wake: Option<syn::Path> = None;
     let mut images: Option<syn::Path> = None;
+    // M84/T84.8: deferred work for a derived application -- its message
+    // type, the `apply` that interprets one, its subscriptions and the
+    // jobs they run. A derived app deferred nothing until then (`Msg =
+    // Never`), so a video fed by a subscription could not be derived.
+    let mut msg: Option<syn::Type> = None;
+    let mut apply: Option<syn::Path> = None;
+    let mut subscriptions: Option<syn::Path> = None;
+    let mut jobs: Option<syn::Path> = None;
+    let mut msg_span: Option<proc_macro2::Span> = None;
     for attr in &input.attrs {
         if !attr.path().is_ident("app") {
             continue;
@@ -2199,34 +2212,60 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         // Each key once (M55/T55.2, R16-F4): `tick = t1, tick = t2` used
         // to run `t2`, silently.
         attr.parse_nested_meta(|meta| {
-            let slot = if meta.path.is_ident("after_update") {
-                &mut after_update
+            let twice = |key: &str| meta.error(format!("`#[app({key} = ..)]` given twice"));
+            if meta.path.is_ident("msg") {
+                if msg.is_some() {
+                    return Err(twice("msg"));
+                }
+                msg_span = Some(meta.path.span());
+                msg = Some(meta.value()?.parse()?);
+                return Ok(());
+            }
+            let (slot, key) = if meta.path.is_ident("after_update") {
+                (&mut after_update, "after_update")
             } else if meta.path.is_ident("tick") {
-                &mut tick
+                (&mut tick, "tick")
             } else if meta.path.is_ident("wake") {
-                &mut wake
+                (&mut wake, "wake")
             } else if meta.path.is_ident("images") {
-                &mut images
+                (&mut images, "images")
+            } else if meta.path.is_ident("apply") {
+                (&mut apply, "apply")
+            } else if meta.path.is_ident("subscriptions") {
+                (&mut subscriptions, "subscriptions")
+            } else if meta.path.is_ident("jobs") {
+                (&mut jobs, "jobs")
             } else {
                 return Err(meta.error(
-                    "expected `after_update = path`, `tick = path`, `wake = path` or `images = path`",
+                    "expected `after_update = path`, `tick = path`, `wake = path`, `images = path`, \
+                     `msg = Type`, `apply = path`, `subscriptions = path` or `jobs = path`",
                 ));
             };
             if slot.is_some() {
-                let key = if meta.path.is_ident("tick") {
-                    "tick"
-                } else if meta.path.is_ident("wake") {
-                    "wake"
-                } else if meta.path.is_ident("images") {
-                    "images"
-                } else {
-                    "after_update"
-                };
-                return Err(meta.error(format!("`#[app({key} = ..)]` given twice")));
+                return Err(twice(key));
             }
             *slot = Some(meta.value()?.parse()?);
             Ok(())
         })?;
+    }
+    // `msg` and `apply` come together: a message type nothing interprets
+    // is the "deferred work that silently never lands" `App::apply`'s
+    // rustdoc refuses a default for, and an `apply` with no type has
+    // nothing to take. `jobs` names job bodies for that type.
+    match (&msg, &apply) {
+        (Some(_), None) => {
+            return Err(syn::Error::new(
+                msg_span.unwrap_or_else(proc_macro2::Span::call_site),
+                "`#[app(msg = ..)]` needs `apply = path` to interpret it",
+            ))
+        }
+        (None, Some(p)) => {
+            return Err(syn::Error::new_spanned(p, "`#[app(apply = ..)]` needs `msg = Type`"))
+        }
+        _ => {}
+    }
+    if let (None, Some(p)) = (&msg, &jobs) {
+        return Err(syn::Error::new_spanned(p, "`#[app(jobs = ..)]` needs `msg = Type`"));
     }
 
     let mut tree_field: Option<&syn::Field> = None;
@@ -2437,6 +2476,51 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
         }
     });
 
+    // **M84/T84.8.** Deferred work: `msg` with `apply`, and the
+    // subscriptions and jobs that produce messages. Absent, a derived app
+    // defers nothing (M28/T28.2): `Never` is uninhabited, so nothing can
+    // be sent and the field costs the application nothing.
+    let msg_items = match (&msg, &apply) {
+        (Some(ty), Some(p)) => quote! {
+            type Msg = #ty;
+
+            fn apply(state: &mut Self::State, m: Self::Msg) -> bool {
+                // Typed through a binding so a wrong signature is
+                // reported at the hook, not at the call.
+                let #hook: fn(&mut Self::State, Self::Msg) -> bool = #p;
+                #hook(state, m)
+            }
+        },
+        _ => quote! {
+            type Msg = ::lumen_static::event::Never;
+
+            /// Unreachable by construction: `Never` has no values.
+            fn apply(_: &mut Self::State, m: Self::Msg) -> bool {
+                match m {}
+            }
+        },
+    };
+    let subs_fn = subscriptions.map(|p| {
+        quote! {
+            fn subscriptions(&mut self) -> ::core::option::Option<&mut ::lumen_static::spawn::Subs> {
+                let #hook: fn(&mut Self) -> ::core::option::Option<&mut ::lumen_static::spawn::Subs> = #p;
+                #hook(self)
+            }
+        }
+    });
+    let jobs_fn = jobs.map(|p| {
+        quote! {
+            fn job_for(
+                d: ::lumen_static::spawn::Descriptor,
+            ) -> ::core::option::Option<::lumen_static::spawn::JobFn<Self::Msg>> {
+                let #hook: fn(
+                    ::lumen_static::spawn::Descriptor,
+                ) -> ::core::option::Option<::lumen_static::spawn::JobFn<Self::Msg>> = #p;
+                #hook(d)
+            }
+        }
+    });
+
     // **`#[state]` names what a handler may touch** — M33
     // (`docs/plan-state-split.md`).
     //
@@ -2504,15 +2588,7 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
 
             const STATE_IS_SPLIT: bool = #split;
 
-            /// M28/T28.2: a derived app defers nothing until it says so,
-            /// and `Never` is uninhabited — so nothing can be sent and
-            /// the field costs the application nothing.
-            type Msg = ::lumen_static::event::Never;
-
-            /// Unreachable by construction: `Never` has no values.
-            fn apply(_: &mut Self::State, m: Self::Msg) -> bool {
-                match m {}
-            }
+            #msg_items
 
             #[inline]
             fn tree(&self) -> &Self::Tree {
@@ -2546,6 +2622,10 @@ fn expand_app(input: DeriveInput) -> syn::Result<Ts2> {
             #wake_fn
 
             #images_fn
+
+            #subs_fn
+
+            #jobs_fn
         }
     })
 }

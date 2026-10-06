@@ -93,4 +93,10 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "ScrollView": ("#d_scroll_first", [KeyAction("PageDown scrolls the view", ["PageDown"])]),
     # M84/T84.3: the Image demo's pause button; the readout says playing or paused.
     "Image": ("#d_image_pause", [KeyAction("Enter pauses or resumes it", ["Enter"])]),
+    # M84/T84.8: the Video demo's play button; Enter plays, Enter again
+    # pauses, so the keyboard pass ends paused as the pointer drive does.
+    "Video": ("#d_video > #video-play", [
+        KeyAction("Enter plays it", ["Enter"]),
+        KeyAction("Enter again pauses it", ["Enter"]),
+    ]),
 }

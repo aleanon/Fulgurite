@@ -145,6 +145,10 @@ pub mod vector;
 pub mod shader;
 mod trim;
 mod veil;
+// M84/T84.8: a picture a feed keeps replacing, with transport controls --
+// controlled, decoding nothing (`docs/plan-images-in-motion.md`).
+#[cfg(feature = "std")]
+pub mod video;
 
 pub use glass::Glass;
 pub use image::{Fit, Image};
@@ -191,6 +195,8 @@ pub use vector::VectorText;
 pub use shader::ShaderView;
 pub use veil::{Drawer, Edge, Modal, Sheet, Veil, DRAWER, MODAL, SHEET};
 pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
+#[cfg(feature = "std")]
+pub use video::{seek_fraction, SeekTrack, Video};
 
 /// Everything in this crate, for a `use` that keeps up.
 pub mod prelude {
@@ -219,4 +225,6 @@ pub mod prelude {
     };
     #[cfg(feature = "shader")]
     pub use crate::ShaderView;
+    #[cfg(feature = "std")]
+    pub use crate::Video;
 }

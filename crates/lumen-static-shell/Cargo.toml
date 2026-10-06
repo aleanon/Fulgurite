@@ -304,3 +304,9 @@ required-features = ["truetype"]
 [[test]]
 name = "image_decode"
 required-features = ["image"]
+
+# M84/T84.8: the video's headless gates feed it from a `GifFeed`, which is
+# behind `image`; `just test` runs it with the feature named.
+[[test]]
+name = "video"
+required-features = ["image"]

@@ -63,6 +63,9 @@
 //! | `#[app(tick = f)]` | an `App` struct | `fn(&mut Self, f32) -> bool`, called each frame with the elapsed ms; the `bool` says whether anything is still moving (M22/T22.4) |
 //! | `#[app(wake = f)]` | an `App` struct | `fn(&Self) -> Option<f32>`, `App::wake_in_ms`: the ms until this application next needs a frame, which the window waits on; `None` waits for input (M84/T84.3) |
 //! | `#[app(images = f)]` | an `App` struct | `fn(&Self) -> Option<&dyn ImageSource>`, `App::images`: the store the renderer reads through the frame, before the window's own; asked every present (M84/T84.6) |
+//! | `#[app(msg = T, apply = f)]` | an `App` struct | `type Msg = T` and `fn(&mut Self::State, T) -> bool`, `App::apply`: the message deferred work sends and what interprets it; either without the other is an error (M84/T84.8) |
+//! | `#[app(subscriptions = f)]` | an `App` struct | `fn(&mut Self) -> Option<&mut Subs>`, `App::subscriptions`: what should be running, which the host diffs each frame (M84/T84.8) |
+//! | `#[app(jobs = f)]` | an `App` struct | `fn(Descriptor) -> Option<JobFn<Msg>>`, `App::job_for`: the job body for a descriptor, from the build that is loaded; needs `msg` (M84/T84.8) |
 //!
 //! **Each key once, and nothing ignored** (M55/T55.2). A repeated key —
 //! two container modes, `spacing` twice, a second `#[widget_id]` on a

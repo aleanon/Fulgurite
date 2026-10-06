@@ -65,6 +65,8 @@ ROLES = {
     "Radio": "RadioButton",
     # M84/T84.3: an animated image is an `Image` whose frame moves.
     "Image": "Image",
+    # M84/T84.8: a video, which a reader can toggle and seek.
+    "Video": "Video",
     "Modal": "Dialog",
     "Sheet": "Dialog",
     "Drawer": "Dialog",

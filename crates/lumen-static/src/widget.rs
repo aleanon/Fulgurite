@@ -281,6 +281,34 @@ pub trait Node {
         None
     }
 
+    /// **A handler to run for an event this node just consumed** —
+    /// M84/T84.8 (`docs/plan-images-in-motion.md`, "What building found"),
+    /// as `(k, action)`: node `i + k` of this node's own subtree, and the
+    /// [`Action`](crate::event::Action) its handler is handed.
+    ///
+    /// A handler runs only on activation — a click's release, Enter,
+    /// Space, a reader's default action — and a captured release activates
+    /// nothing, so a controlled widget whose *gesture* produces a value the
+    /// application owns had no way to hand it over: a video's seek track
+    /// computes a fraction on a press and through a drag, and only the
+    /// widget knows its track's width. After `on_event` answers `true`, in
+    /// the ordinary walk and under pointer capture, the pass takes this
+    /// once; `Some` runs that node's handler with
+    /// `ctx.event = Event::Action { node, action }` and `ctx.node` set to
+    /// it, and the handler reads the value from `ctx.event`. Taking clears
+    /// it. `None` by default, which costs every other node one call per
+    /// consumed event.
+    ///
+    /// **Behind `std`**, with the other routes deferred work takes
+    /// (`App::outbox`, `App::subscriptions`): the one widget that needs it,
+    /// `Video`, is a `std` widget, and the firmware — which dispatches
+    /// presses and takes no `std` — links none of it (Δ 0 B on all four
+    /// binaries, `docs/results-images.md` T84.8).
+    #[cfg(feature = "std")]
+    fn take_action(&mut self) -> Option<(u32, crate::event::Action)> {
+        None
+    }
+
     /// How far this node's content is scrolled from its top, for a node
     /// that scrolls; `None` for one that does not — M57/B40.
     ///

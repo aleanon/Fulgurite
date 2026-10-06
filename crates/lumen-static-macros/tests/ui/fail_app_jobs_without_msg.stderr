@@ -1,0 +1,5 @@
+error: `#[app(jobs = ..)]` needs `msg = Type`
+  --> tests/ui/fail_app_jobs_without_msg.rs:18:14
+   |
+18 | #[app(jobs = jobs)]
+   |              ^^^^

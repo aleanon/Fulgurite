@@ -1433,6 +1433,26 @@ remains** — which is why §10 Step 1 is the kill criterion.
    | `ImageSource::image(id, frame)` | either | per command at render |
 
    Numbers in `docs/results-images.md` T84.6.
+
+   **Video is DECIDED — a controlled widget and a feed, not a codec,
+   M84/T84.8, 2026-10-06** (`docs/plan-images-in-motion.md`). `Video<S>`
+   (`lumen-static-widgets`, `std`) shows an id at a frame with a
+   play/pause button, a seek track and the time; `playing`,
+   `position_ms`, `duration_ms` and `frame` are the application's, and
+   `on_toggle` and `on_seek` report intent. The widget computes a seek's
+   fraction against the track it laid out and hands it over through
+   `Node::take_action` — the pass's route for a value a consumed gesture
+   produced, behind `std`, so the firmware links none of it — and the
+   handler reads it with `seek_fraction`. The producer is a `VideoFeed`
+   (shell), opened from a subscription key alone (`VideoKey`: source,
+   seek counter, start) and run by `video_job`, which paces frames to
+   their `pts_ms`; `apply` copies each into the application's
+   `ImageStore` (`replace`), whose answer is the frame painted. A pause
+   un-declares the feed and a seek re-declares it, so M84/T84.7's stop
+   keeps every frame from before a seek out. `GifFeed`, behind `image`, is
+   the feed that ships. A derived application declares the work with
+   `#[app(msg, apply, subscriptions, jobs)]`. Numbers, including K84e, in
+   `docs/results-images.md` T84.8.
 9. **Appearance per kind** — should appearance leave the per-node `Style`
    for a look on each widget, a function of a palette that is data?
    **OPEN 2026-09-15**, planned as M25 in `docs/plan-appearance.md`. It is

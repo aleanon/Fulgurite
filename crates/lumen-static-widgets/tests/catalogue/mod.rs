@@ -55,6 +55,9 @@ pub struct Ui {
     pub area: TextArea<String>,
     #[widget_id("Image")]
     pub image: Image,
+    // M84/T84.8: a video, and its seek track (`#video-track`) as a part.
+    #[widget_id("Video")]
+    pub video: Video<S>,
     #[widget_id("ScrollView")]
     pub scroll: ScrollView<Label<String>>,
     #[widget_id("Select")]
@@ -208,6 +211,10 @@ pub fn build() -> Ui {
     ui.area = TextArea::new("two\nlines");
     ui.image = Image::new(lumen_static::ImageId(1), lumen_static::Size { w: 16.0, h: 16.0 });
     ui.image.set_alt("A red square");
+    ui.video = Video::new(lumen_static::ImageId(1), lumen_static::Size { w: 16.0, h: 16.0 });
+    ui.video.duration_ms = 65_000;
+    ui.video.position_ms = 5_000;
+    ui.video.set_label("A clip");
     ui.scroll.content = Label::new("scrolled".into());
     ui.select = Select::new(3, 20.0, bind_select);
     ui.select.trigger.label = "option 0".into();

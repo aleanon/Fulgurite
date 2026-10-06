@@ -769,7 +769,180 @@ pub static CATALOG: &[Entry] = &[
         true,
         |s| on(s, Demo::Image(DImage { a: spin_image(s.store.spin.frame()), pause: pause_button() })),
         |s| (if s.store.spin.playing { "playing" } else { "paused" }).into()),
+    // M84/T84.8: a video. `true` for "animates", as the Image entry: its
+    // picture is the feed's, so M57's D5 parity skips it; `advance` takes it
+    // before the per-frame path, since its frames arrive as messages.
+    entry!("Media", "Video", "The same GIF as a stream: play it, pause it, seek on the track.",
+        true,
+        |s| {
+            show_clip_at(&mut s.store);
+            on(s, Demo::Video(DVideo { a: clip_video(&s.store.clip) }))
+        },
+        |s| clip_status(&s.store.clip)),
 ];
+
+/// **The Video demo's image id** — M84/T84.8. In the application's own store
+/// (`Store::clip_images`, through `App::images`), not the program's: a feed
+/// replaces its pixels per frame, which the window-side store, read once,
+/// cannot take.
+pub const CLIP: lumen_static::display::ImageId = lumen_static::display::ImageId(2);
+
+/// The Video demo's subscription kind: `jobs` answers `video_job` for it.
+pub const CLIP_KIND: u64 = 84;
+
+/// **The Video demo's sources** — one, the committed GIF, as a stream. A
+/// `GifFeed` opens it by index from its subscription key, on the worker.
+pub struct Clips;
+
+impl lumen_static_shell::video::GifLibrary for Clips {
+    fn gif(index: u16) -> Option<&'static lumen_static_shell::image::DecodedImage> {
+        (index == 0).then(spin)
+    }
+}
+
+/// The Video demo's feed: the GIF as a stream.
+pub type ClipFeed = lumen_static_shell::video::GifFeed<Clips>;
+
+/// What the Video demo shows — every field of it the application's, written
+/// by its handlers and its `apply`, and copied onto the widget by `refresh`.
+#[derive(Default)]
+pub struct Clip {
+    pub playing: bool,
+    pub position_ms: u32,
+    pub duration_ms: u32,
+    /// What `ImageStore::replace` answered for the frame on show.
+    pub frame: u32,
+    /// The source picture on show (the GIF's frame index).
+    pub index: u32,
+    /// Bumped per seek, so each seek is a new subscription key.
+    pub seek: u16,
+    /// The key the running feed was declared under.
+    pub key: u64,
+    /// The last fraction `on_seek` was handed.
+    pub last_seek: Option<f32>,
+    /// Frames applied from a key that is not the one declared: a feed the
+    /// host stopped whose frames still landed. T84.7's stop keeps it 0, and
+    /// the drive's scrub reads it.
+    pub stale: u32,
+}
+
+impl Clip {
+    fn key(&self) -> u64 {
+        lumen_static_shell::video::VideoKey { source: 0, seek: self.seek, start_ms: self.position_ms }.pack()
+    }
+}
+
+fn clip_status(c: &Clip) -> String {
+    let seek = match c.last_seek {
+        Some(f) => format!("{f:.3}"),
+        None => "-".into(),
+    };
+    format!(
+        "{}, {} / {} ms, frame {}, seek {seek}, stale {}",
+        if c.playing { "playing" } else { "paused" },
+        c.position_ms,
+        c.duration_ms,
+        c.index,
+        c.stale
+    )
+}
+
+/// The Video demo's widget, wired to the store.
+fn clip_video(c: &Clip) -> Video<Store> {
+    let g = spin();
+    let mut v = Video::<Store>::new(CLIP, lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 });
+    v.on_toggle = toggle_clip;
+    v.on_seek = seek_clip;
+    v.set_label("A ring of four segments, one lit, turning");
+    v.picture.set_alt("A ring of four segments, one lit, turning");
+    v.playing = c.playing;
+    v.position_ms = c.position_ms;
+    v.duration_ms = c.duration_ms;
+    v.frame = c.frame;
+    v
+}
+
+/// Show the picture at the store's position now, from the feed's first
+/// frame there — a paused seek must show where it went, and no
+/// subscription runs while paused. On the frame thread, but only on a seek
+/// or a seed, never per video frame.
+pub fn show_clip_at(s: &mut Store) {
+    use lumen_static_shell::video::VideoFeed;
+    let Some(mut feed) = ClipFeed::open(s.clip.key()) else { return };
+    s.clip.duration_ms = feed.duration_ms();
+    if let Some(f) = feed.next_frame() {
+        if let Some(n) = s.clip_images.replace(CLIP, f.w, f.h, &f.rgba) {
+            s.clip.frame = n;
+            s.clip.index = f.index;
+            s.clip.position_ms = f.position_ms;
+        }
+    }
+}
+
+/// Run the feed from the store's position, under a new key: declaring it
+/// is all a handler can do (the host starts it), and a key the host is
+/// already running would start nothing.
+fn declare_clip(s: &mut Store) {
+    s.subs.clear();
+    s.clip.key = s.clip.key();
+    s.subs.declare(CLIP_KIND, s.clip.key);
+}
+
+/// The play button. **Flips** `playing`: a play declares the feed, a pause
+/// un-declares it, and the host stops the job (M84/T84.7).
+fn toggle_clip(s: &mut Store, _: &EventCtx) {
+    s.clip.playing = !s.clip.playing;
+    if s.clip.playing {
+        s.clip.seek = s.clip.seek.wrapping_add(1);
+        declare_clip(s);
+    } else {
+        s.subs.clear();
+    }
+}
+
+/// A seek: the fraction the widget computed, times the store's own
+/// duration. Shows the frame there at once, and re-keys a running feed.
+fn seek_clip(s: &mut Store, cx: &EventCtx) {
+    let Some(f) = lumen_static_widgets::seek_fraction(cx) else { return };
+    s.clip.last_seek = Some(f);
+    let d = s.clip.duration_ms;
+    s.clip.position_ms = ((f * d as f32).round() as u32).min(d.saturating_sub(1));
+    s.clip.seek = s.clip.seek.wrapping_add(1);
+    show_clip_at(s);
+    if s.clip.playing {
+        declare_clip(s);
+    }
+}
+
+/// **A frame the feed sent**, applied — the application's `apply`
+/// (`#[app(msg = VideoFrame, apply = ..)]`). The pixels go into the store's
+/// reused buffer (`ImageStore::replace`), and its answer is the frame the
+/// widget paints next.
+pub fn apply_clip(s: &mut Store, f: lumen_static_shell::video::VideoFrame) -> bool {
+    if f.key != s.clip.key {
+        s.clip.stale += 1;
+    }
+    match s.clip_images.replace(CLIP, f.w, f.h, &f.rgba) {
+        Some(n) => {
+            s.clip.frame = n;
+            s.clip.index = f.index;
+            s.clip.position_ms = f.position_ms;
+            s.clip.duration_ms = f.duration_ms;
+            true
+        }
+        None => false,
+    }
+}
+
+/// The jobs this application's subscriptions run (`#[app(jobs = ..)]`).
+pub fn clip_jobs(
+    d: lumen_static::spawn::Descriptor,
+) -> Option<lumen_static::spawn::JobFn<lumen_static_shell::video::VideoFrame>> {
+    match d.kind {
+        CLIP_KIND => Some(lumen_static_shell::video::video_job::<ClipFeed, lumen_static_shell::video::VideoFrame>),
+        _ => None,
+    }
+}
 
 /// **The showcase's image id** — M84/T84.3: the committed GIF
 /// (`examples/showcase/assets/spin.gif`, four 96 px frames at 100 ms),

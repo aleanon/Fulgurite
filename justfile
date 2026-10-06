@@ -161,6 +161,10 @@ dev-shape:
     # shell without it. Here rather than beside `just simd`'s clippy line,
     # which `just test` does not run.
     cargo test -q -p lumen-static-shell --features image --test image_decode
+    # M84/T84.8: the video's headless gates feed it from a `GifFeed`.
+    cargo test -q -p lumen-static-shell --features image --test video
+    # M84/T84.8: K84e's arm builds (it runs by hand; docs/results-images.md).
+    cargo build -q -p benches --features image --bin video_rate
     cargo clippy -q -p lumen-static-shell --features image --all-targets -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features image
     # A fresh doc dir: rustdoc 1.94 panics in its search index

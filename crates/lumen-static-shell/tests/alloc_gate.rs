@@ -529,6 +529,125 @@ fn an_animated_image_allocates_nothing() {
     assert_eq!((n, f), (0, 0), "an animated image's frames: {n} allocs, {f} frees over 100 frame changes");
 }
 
+/// A video the application's feed fills — M84/T84.8.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct ClipUi {
+    v: Video<ClipState>,
+}
+
+#[derive(Default)]
+struct ClipState {
+    store: lumen_static_shell::image::ImageStore,
+    frame: u32,
+    position_ms: u32,
+}
+
+#[derive(DeriveApp, Default)]
+#[app(msg = lumen_static_shell::video::VideoFrame, apply = clip_apply, images = clip_images)]
+#[app(after_update = clip_refresh)]
+struct ClipApp {
+    #[tree]
+    ui: ClipUi,
+    #[state]
+    st: ClipState,
+}
+
+fn clip_apply(s: &mut ClipState, f: lumen_static_shell::video::VideoFrame) -> bool {
+    match s.store.replace(lumen_static::display::ImageId(9), f.w, f.h, &f.rgba) {
+        Some(n) => {
+            s.frame = n;
+            s.position_ms = f.position_ms;
+            true
+        }
+        None => false,
+    }
+}
+
+fn clip_images(a: &ClipApp) -> Option<&dyn lumen_static::ImageSource> {
+    Some(&a.st.store)
+}
+
+fn clip_refresh(a: &mut ClipApp) -> bool {
+    let v = &mut a.ui.v;
+    let changed = v.frame != a.st.frame || v.position_ms != a.st.position_ms;
+    v.frame = a.st.frame;
+    v.position_ms = a.st.position_ms;
+    changed
+}
+
+/// **A video frame allocates nothing on the frame thread** — M84/T84.8
+/// (`docs/plan-images-in-motion.md`, `docs/results-images.md`).
+///
+/// The feed allocates each frame's buffer on its worker; here the frames
+/// are built before the count opens, which stands in for that. Each one is
+/// sent, applied (`ImageStore::replace` copies into the id's reused
+/// buffer), written onto the `Video` by `after_update`, laid out (its time
+/// text formats into a fixed buffer), and rendered with the application's
+/// store first. **Frees are printed and bounded at one per frame**, not
+/// zero: the message's own buffer is dropped on the frame thread once it
+/// is copied, and handing buffers back to the worker would take a return
+/// channel (`docs/plan-images-in-motion.md`, "What building found", T84.8).
+/// *Injection:* `replace` copies into a new `Vec` -- one allocation per
+/// frame, printed.
+#[test]
+fn a_video_frame_allocates_nothing() {
+    use lumen_static::display::ImageId;
+    use lumen_static_shell::software::Canvas;
+    use lumen_static_shell::video::VideoFrame;
+
+    const S: u32 = 32;
+    let frame = |k: u32| VideoFrame {
+        key: 1,
+        index: k % 4,
+        pts_ms: k as u64 * 100,
+        position_ms: (k % 4) * 100,
+        duration_ms: 400,
+        w: S,
+        h: S,
+        rgba: [(k * 40) as u8, 90, 200, 255].repeat((S * S) as usize),
+    };
+    let mut app = ClipApp::default();
+    app.ui.v = Video::new(ImageId(9), lumen_static::desc::Size { w: S as f32, h: S as f32 });
+    app.ui.v.duration_ms = 400;
+    let mut host: Host<_, Incremental> = Host::new(app, 400, 400);
+    let tx = host.sender();
+    let mut canvas = Canvas::new(400, 400);
+    let draw = |host: &Host<ClipApp, Incremental>, canvas: &mut Canvas| {
+        canvas.render_within_from(&host.list, [0.0, 0.0, 400.0, 400.0], lumen_static::event::App::images(&host.app));
+    };
+    // Warm: the store's buffer, the list's, the canvas's.
+    for k in 0..8 {
+        tx.send(frame(k)).expect("capacity");
+        host.pump();
+        draw(&host, &mut canvas);
+    }
+    // Iterated by reference and dropped after the count, so the queue of
+    // prepared frames frees its own buffer outside the window.
+    let mut pending = (8..58).map(frame).collect::<Vec<VideoFrame>>().into_iter();
+    let f0 = host.app.st.frame;
+    let before = counters();
+    for f in pending.by_ref() {
+        tx.send(f).expect("capacity");
+        host.pump();
+        draw(&host, &mut canvas);
+    }
+    let (n, fr) = (allocs() - before.0, frees() - before.1);
+    drop(pending);
+    let applied = host.app.st.frame - f0;
+    let painted = host.list.cmds.iter().any(|c| matches!(c, lumen_static::Cmd::Image { frame, .. } if *frame == host.app.st.frame));
+    println!(
+        "a video, 50 frames applied (setup: want 50): {applied}; the list paints the last: {painted}; \
+         {n} allocs ({:.2}/frame, bound 0), {fr} frees ({:.2}/frame, bound 1: the message's buffer)",
+        n as f64 / 50.0,
+        fr as f64 / 50.0
+    );
+    assert_eq!(applied, 50, "setup: the frames did not all land");
+    assert!(painted, "setup: the list does not paint the newest frame");
+    assert_eq!(n, 0, "a video frame allocated {n} times over 50 frames on the frame thread");
+    assert!(fr <= 50, "a video frame freed {fr} times over 50 frames, more than its own buffer each");
+}
+
 /// **The free counter must be able to see a free** — M28/T28.0.
 ///
 /// A counter that never moves is indistinguishable from a counter that

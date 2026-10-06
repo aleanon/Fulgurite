@@ -1,0 +1,5 @@
+error: `#[app(msg = ..)]` needs `apply = path` to interpret it
+  --> tests/ui/fail_app_msg_without_apply.rs:15:7
+   |
+15 | #[app(msg = u32)]
+   |       ^^^

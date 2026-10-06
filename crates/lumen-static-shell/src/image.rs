@@ -9,8 +9,9 @@
 //! - [`ImageStore`], an id → frames map that implements
 //!   [`ImageSource`]. **Unconditional**: it needs no decoder, so an
 //!   application that decodes its own pixels (or generates them) uses it
-//!   with no feature at all. A stream (a video feed, M84b) overwrites an
-//!   id's pixels with [`ImageStore::replace`].
+//!   with no feature at all. A stream (a video feed, M84/T84.8's
+//!   `crate::video::VideoFeed`) overwrites an id's pixels with
+//!   [`ImageStore::replace`].
 //! - [`ImageChain`], the two-source lookup every renderer resolves a
 //!   command through since M84/T84.6: the application's store, which a
 //!   session hands over each present (`App::images`, through
@@ -89,7 +90,7 @@ impl ImageStore {
     }
 
     /// **A stream's next picture** — overwrite `id` with one frame of
-    /// `w × h`, as a video feed does per delivered frame (M84b), and
+    /// `w × h`, as a video feed does per delivered frame (M84/T84.8), and
     /// answer **the frame to paint it at** (M84/T84.6).
     ///
     /// The answer goes into the widget's `frame`, which is what makes the

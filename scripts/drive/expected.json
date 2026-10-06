@@ -14,13 +14,14 @@
   "M82/T82.3 added Card's static fill check: its centre and side pixels differ by at least 16 levels (a radial, by role) and its corner pixel is the stage behind it (rounded).",
   "M82/T82.5 added PaintBox's static path check: the star the callback fills with Painter::path covers at least 90% of its analytic outline in its colour, and none of that colour is outside the box.",
   "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to.",
-  "M84/T84.3 added Image: a second of playing presents 10 ± 1 frames at 1.00x the image's box and moves its pixels (paused, the same wait presents 0); a press pauses and holds the frame, a second resumes; and K84c's static check, the median layout per animated frame against 100 µs."
+  "M84/T84.3 added Image: a second of playing presents 10 ± 1 frames at 1.00x the image's box and moves its pixels (paused, the same wait presents 0); a press pauses and holds the frame, a second resumes; and K84c's static check, the median layout per animated frame against 100 µs.",
+  "M84/T84.8 added Video: play changes the picture within 250 ms; pause flips the button to Play and holds the picture over 500 ms; a press at 75% of the track hands on_seek 0.75 and shows frame 3 at 300 ms; a drag 25% -> 50% while playing ends at 50% with no frame from a stopped feed; and the static check that a press on the picture is not handled and changes nothing."
  ],
  "counts": {
-  "entries": 48,
-  "actions": 153,
-  "landed_checked": 121,
-  "isolated": 64
+  "entries": 49,
+  "actions": 158,
+  "landed_checked": 125,
+  "isolated": 68
  },
  "entries": {
   "Selectable": [
@@ -271,6 +272,13 @@
    "time advances the frame",
    "pause holds the frame",
    "K84c: the whole-tree mark per animated frame is priced"
+  ],
+  "Video": [
+   "play advances the picture",
+   "pause holds the picture",
+   "a press at 75% of the track seeks there",
+   "a drag from 25% to 50% ends at 50%, and no frame from before it lands after it",
+   "a press on the picture changes nothing"
   ]
  },
  "static": [
@@ -305,6 +313,7 @@
   "Toast/it paints a ground, so its light text is readable",
   "VectorText/drawn rotated",
   "VectorText/it speaks its text, and ~= finds it",
-  "Image/K84c: the whole-tree mark per animated frame is priced"
+  "Image/K84c: the whole-tree mark per animated frame is priced",
+  "Video/a press on the picture changes nothing"
  ]
 }

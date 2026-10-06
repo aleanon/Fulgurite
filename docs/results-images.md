@@ -352,3 +352,67 @@ firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** `.text` and
 **0** `.rodata` on all four (`firmware_interactive` 63,480 B). `App::images`
 is a provided method no firmware calls, and `App` is never a trait object;
 `docs/results-embedded.md`'s table does not move.
+
+## T84.8 — `Video<S>`, `VideoFeed`, `GifFeed` (2026-10-06)
+
+A controlled widget over a feed, not a codec: `Video<S>` shows the
+application's `(id, frame)` with a play/pause button, a seek track and the
+time; a `VideoFeed` run as a subscription by `video_job` sends each frame
+as the application's message, and `apply` copies it into the
+application's `ImageStore`. The seek's fraction reaches `on_seek` through
+`Node::take_action` (`docs/plan-images-in-motion.md`, "What building
+found", T84.8). Every gate below was run red under its injection and green
+restored, on a clean build, in the same session.
+
+**Headless** (`crates/lumen-static-shell/tests/video.rs` unless named):
+
+| gate | setup asserted | printed (green) | injection | printed (red) |
+|---|---|---|---|---|
+| seek fraction (P19): a pumped click at the track's midpoint | handled; `on_seek` ran twice (press and release) | **0.5**, 0.5 on a **108** px track (bound 0.5 ± 0.0093) | the track's width is the video's (`SeekTrack::layout`) | **0.16875**, failed by name |
+| a drag 25% → 50% | the press sought | after the press [0.25], after five moves [0.25], after the release [0.25, **0.5**] | the release does not seek | [0.25]: "the release did not seek" |
+| a press on the picture (the plan's isolate) | — | handled **false**, 0 toggles, 0 seeks; accept: the play button is handled and toggles once | `Video::handler` answers `on_toggle` for the picture | handled true, 1 toggle |
+| a reader's actions on the video; the button's label | both actions handled | default action → 1 toggle; `SetValue(0.3)` → seeks [0.3]; label "Play" paused, "Pause" playing | (a) the pass ignores `take_action`; (b) the layout never writes the label | (a) 0 toggles, seeks []; (b) ("Play", "Play") |
+| pacing: a `GifFeed` at 100 ms under `Threads` | 21 frames in 4 s | gaps over the first 20 **99.5–100.9** ms (bound 100 ± 10); `Inbox::refused` **0** | `video_job` does not sleep to `pts_ms` | refused **11,778**, gaps 0.0 ms |
+| `GifFeed` opens where its key says | — | from 300 ms: frames 3, 0, 1, 2, 3, 0 at 300…800 ms; from 250 ms frame 2, then 3 at 300 | the key's start is ignored | from 300 ms: frame **0**, "a start at 75% shows frame 3" |
+| UI-thread allocations per video frame (`tests/alloc_gate.rs`) | 50 frames applied; the list paints the newest | **0** allocations (bound 0); **50** frees, 1.00 per frame (bound 1: the message's buffer) | `ImageStore::replace` copies into a new `Vec` | **50** allocations, failed by name |
+| the derive's refusals (`fail_app_{msg_without_apply,apply_without_msg,jobs_without_msg}.stderr`) | — | each refused by name; the showcase and these tests are the accept direction | `msg` without `apply` accepted | `fail_app_msg_without_apply.rs` compiles, trybuild fails it |
+| role table (`crates/lumen-static-widgets/tests/a11y_roles.rs`) | — | `Video`: role `Video`, label, value "m:ss / m:ss", published Click and SetValue, **2 of 2** handled; `#video-track`: `Slider` "Seek", **4 of 4** | delete the `Video` row | "Node impls with no row in the table: [Video]" |
+
+**Live** (`just widget-drive Video`, `scripts/drive/widgets/video.py`, all
+six legs: `Everything`, `Boundaries`, `Boundaries+oracle`,
+`Boundaries+scale2`, and the two `+shaping` legs). Each injection was run
+on the `Boundaries` leg with its own action first, since a broken stop or
+seek also breaks the pause the others end on:
+
+| action | printed (green, every leg) | injection | printed (red) |
+|---|---|---|---|
+| play advances the picture | the picture changed **151–157** ms after the press (bound 250), readout playing | `on_toggle` not called (the play button's handler `None`) | "held for 250 ms … not playing" |
+| pause holds the picture | the button read "Pause" then "Play"; the picture held over **500** ms | the label ignores `playing` | "'Play' then 'Play'" |
+| a press at 75% of the track seeks there | `on_seek` **0.75** (bound ± 0.0093), position **300** ms (bound 300 ± 100), frame **3** (⌊0.75 · 4⌋) | the fraction against the video's box (`SeekTrack::layout`) | **0.253**, 101 ms, frame 1 |
+| a drag 25% → 50% while playing | on release **0.5**, position **200** ms (bound 200 ± 100); frames from a stopped feed over the next 400 ms **0** | (planned) the drain's stop check removed | **green**, 0 stale: cannot fire live (the plan's "What building found", T84.8) |
+| | | the host never sets the stop flag | **15** stale frames in 400 ms, by name |
+| a press on the picture changes nothing (static) | handled False, readout and picture unchanged | `Video::handler` answers `on_toggle` for the picture | handled True, readout "playing" |
+
+The keyboard pass reaches the play button in one Tab, and Enter plays and
+Enter pauses it; the reader pass finds three leaves on the demo and none
+silent; M57's D5 parity skips the entry (animated), as it skips Image.
+
+**K84e** — `cargo run --release -p benches --features image --bin
+video_rate`: a 1280 × 720 `GifFeed` at 30 frames/s on the software
+backend presented **301 frames in 10.00 s = 30.1/s** (bound ≥ 28; per
+second 30–31), every frame applied and none refused, at **11.98 ms** of
+raster per present. **Holds**: no size limit is stated.
+
+**Firmware (K4).** `just firmware-delta 479efa9 firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** `.text`
+and **0** `.rodata` on all four (`firmware_interactive` 63,480 B).
+`Node::take_action` and the pass's route are behind `std`, which no
+firmware takes. Ungated, the route cost `firmware_interactive` **+488 B**
+(**+320** out of line with the ctx by reference: `run_taken` 184,
+`dispatch` +108, 25 default `take_action`s 4 B each; `.rodata` +44),
+which this table's K4 row would have stopped the task at.
+`docs/results-embedded.md`'s table does not move.
+
+**K1, K2.** `Cmd`, `Style` and `NodeState` are untouched; the default
+window's crate count is **96** against 96 at `479efa9`
+(`scripts/check_default_crates.sh`), since `image` stays off by default.

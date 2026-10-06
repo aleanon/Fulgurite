@@ -87,6 +87,36 @@ What the feature costs — nine crates, and about 200 KB in a program that
 calls both decoders, nothing in one that calls neither — is in
 `docs/results-images.md` T84.1.
 
+## `Video`
+
+A video is not a codec here, and the widget is not one either. `Video`
+(M84/T84.8) shows an image id at a frame, like an `Image`, and draws a
+play/pause button, a seek track and the time — and everything it shows is
+the application's: whether it plays, where it is, how long it is, and
+which frame to paint. The pixels come from a `VideoFeed`, which the
+application runs as a subscription; each frame it sends is a message, and
+`apply` copies it into the application's own `ImageStore`, whose answer
+is the `frame` the widget paints next. A pause un-declares the feed, a seek
+declares it again under a new key, and the host stops the old one, so no
+frame from before a seek lands after it. `GifFeed`, a decoded GIF played at
+its own delays, is the feed that ships.
+
+The widget's one piece of real work is the seek. Only it knows how wide
+its track is, so it turns the press into a fraction itself, and the
+fraction reaches the application's `on_seek` through `Node::take_action`
+— the pass's route for a value a consumed gesture produced, since a handler
+runs only on activation and a captured release activates nothing:
+
+```text
+{{#include ../../crates/lumen-static-widgets/src/video.rs:seek}}
+```
+
+A drag moves the knob without seeking, and its release seeks: a seek
+restarts the feed, and one per pointer move would restart it sixty times
+a second. What a frame costs on the frame thread (no allocation) and what
+the software backend holds at 1280 × 720 are in `docs/results-images.md`
+T84.8.
+
 ## What a leaf owes the framework
 
 If you write one — [Writing your own widget](./custom-widget.md) is the

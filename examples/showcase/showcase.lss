@@ -132,3 +132,4 @@ DPagination { width: shrink; }
 DTree { width: shrink; }
 DScrollView { width: shrink; }
 DImage { width: shrink; }
+DVideo { width: shrink; }

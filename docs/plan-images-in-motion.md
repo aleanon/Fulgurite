@@ -4,7 +4,7 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M84a (T84.0–T84.4) built 2026-10-06 and closes on
 > `just ci-verify` of its T84.4 commit (S5), cited in AGENT.md; M84b
-> (T84.5–T84.11) building: T84.5 and T84.6 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> (T84.5–T84.11) building: T84.5–T84.8 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -1064,6 +1064,90 @@ task and is recorded with its number in `docs/results-images.md`):
   job as settled.
 - **T84.7: the drain checks the epoch first.** A result both stale and
   stopped is counted in `Inbox::stale`, not `stopped_dropped`.
+- **T84.8: a handler cannot be handed a value, so the pass gained a
+  route for one.** The plan wrote `on_seek: fn(&mut S, f32)`, but a
+  handler is the one `fn(&mut S, &EventCtx)` a node's `Handlers::handler`
+  answers, copied out of the tree before `&mut S` exists: no table can
+  return a `fn(&mut S, f32)` and no `fn` can capture the widget's pointer.
+  Handlers also run only on activation, and a captured release activates
+  nothing, so a drag's value had no way to reach the application at all.
+  `Node::take_action` (core, behind `std` with `App::outbox` and
+  `App::subscriptions`) is the route: after `on_event` answers `true`, in
+  the walk and under capture, the pass takes `(k, action)` once and runs
+  node `i + k`'s handler with `ctx.event = Event::Action { action, .. }`.
+  So `on_seek` is `fn(&mut S, &EventCtx)` and reads the fraction with
+  `video::seek_fraction(ctx)`; the widget still computes it (P19), and
+  P19's objection to an associated `seek_ms(&EventCtx)` — the ctx carries
+  no geometry — does not apply to a value the widget put there. Behind
+  `std`, the firmware links none of it: Δ 0 on all four. Its first build,
+  ungated, cost `firmware_interactive` **+488 B** (`run_taken` inlined at
+  both sites and the ctx copied in); out of line with the ctx by reference,
+  **+320** (`run_taken` 184, `dispatch` +108, 25 default `take_action`s
+  4 B each, `.rodata` +44 for the slots), which the strict K4 row of
+  `docs/results-images.md` would have stopped the task at.
+- **T84.8: the video root routes a reader's actions to its parts.** A
+  reader's default action and `SetValue` arrive at the `Video` node, whose
+  handler is neither the play button's nor the track's; the root consumes
+  an action aimed at itself (`ctx.target == ctx.node`, so a press on the
+  picture that bubbles there does nothing) and names the part in
+  `take_action`'s `k`.
+- **T84.8: the derive could not express a message.** The showcase is a
+  derived application, and a derived app's `Msg` was `Never` (M28/T28.2),
+  so a feed sending frames could not be derived — the plan's showcase
+  entry assumed it could. `#[app(msg = T, apply = f)]`,
+  `#[app(subscriptions = f)]` and `#[app(jobs = f)]` are the four keys;
+  `msg` without `apply`, `apply` without `msg`, and `jobs` without `msg`
+  are refused by name (`fail_app_*_without_*.stderr`), and the unknown-key
+  message lists all eight.
+- **T84.8: a drag previews and its release seeks.** A seek re-keys the
+  feed, and one per pointer move restarted it per move; the press seeks,
+  the knob follows the drag, and the release seeks where it ended.
+- **T84.8: a key is an identity, so it carries a seek counter.**
+  `VideoKey { source, seek, start_ms }`: a second seek to the position the
+  running feed started from would otherwise be the same subscription, still
+  declared, and the host would restart nothing.
+- **T84.8: a paused seek shows its frame on the frame thread.** No feed
+  runs while paused, so the showcase's `on_seek` opens the feed at the new
+  position and copies its first frame into the store itself — per seek,
+  never per video frame.
+- **T84.8: a video frame frees once on the frame thread.** The plan bounds
+  allocations at 0, and they are; the message's own buffer is dropped once
+  `replace` has copied it, **1** free per frame, printed and bounded at
+  one. Handing buffers back to the worker needs a return channel, and the
+  no-allocator profile has no video.
+- **T84.8: the scrub's planned live injection cannot fire.** With the
+  drain's stop check removed the scrub stayed green, 0 stale frames: the
+  window drains each frame as its waker fires, and the worker asks
+  `is_stopped` before every send, so at the stop nothing from the old feed
+  is waiting and nothing more is sent. T84.7's headless gate waits 35 ms
+  before its stopping frame for the same reason, and it is the gate that
+  owns the drain's check. The live injection is the host never setting the
+  flag, which removes both halves: **15** frames from stopped feeds landed
+  in 400 ms, by name.
+- **T84.8: two live injections needed moving to fire.** The seek's, first
+  written in `Video::layout` (the track's width set to the video's), left
+  the live seek green on the `Boundaries` leg: a press marks only the
+  track, whose own layout sets its width back before the event that reads
+  it. Written in `SeekTrack::layout`, it fires (0.253 against 0.75). And an
+  injection that breaks the stop or the seek also breaks the pause of
+  whichever action runs first, so each live injection run puts its own
+  action first, and that action fails by name.
+- **T84.8: an injection helper must restore with a fresh mtime.** Moving
+  the backup back left the source older than the last build, so cargo kept
+  the injected binary, and later runs drove a window with an earlier
+  task's injection still in it; it surfaced as a pause that did not hold.
+  Every injection was re-run on a clean build, and the numbers recorded are
+  from those runs.
+- **T84.8: the showcase's clip is 400 ms**, so the plan's "m:ss / m:ss"
+  reads "0:00 / 0:00" on it; the readout carries the position in ms for the
+  drive.
+- **T84.8: `book/src/gaps.md` never listed video**, as it never listed
+  animated images (T84.3); `docs/competitive-feature-gaps.md`'s Images row
+  said "Video: M84b" and now says what shipped.
+- **T84.8: the drive runs six legs**, as T84.3 found, and the track is
+  `SeekTrack`, a second `impl Node`, so it has its own `a11y_roles.rs` row
+  (a slider named "Seek") and a `SeekTrack = Video` line in
+  `scripts/drive/undriven.allow`.
 
 **What the review found (M84).**
 

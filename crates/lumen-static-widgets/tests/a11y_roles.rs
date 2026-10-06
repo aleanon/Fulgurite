@@ -71,6 +71,10 @@ const ROWS: &[Row] = &[
     row("TextInput", "TextInput", Role::TextInput, true),
     row("TextArea", "TextArea", Role::MultilineTextInput, false),
     row("Image", "Image", Role::Image, true),
+    // M84/T84.8: a video, which toggles and seeks for a reader, and its
+    // track, a slider over the played fraction.
+    row("Video", "Video", Role::Video, true),
+    row("video-track", "SeekTrack", Role::Slider, true),
     row("ScrollView", "ScrollView", Role::ScrollView, false),
     row("Select", "Select", Role::ComboBox, true),
     row("Popup", "Popup", Role::GenericContainer, false),

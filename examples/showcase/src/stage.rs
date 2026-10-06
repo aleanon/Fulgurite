@@ -145,6 +145,17 @@ pub struct DImage {
     pub pause: Button<Store>,
 }
 
+/// M84/T84.8: a video -- the same committed GIF, played as a stream by a
+/// `GifFeed` subscription into the application's own store (`App::images`),
+/// with the widget's play/pause, seek track and time. Every field the widget
+/// shows is the store's, written back by `refresh`.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DVideo {
+    #[widget_id("d_video")]
+    pub a: Video<Store>,
+}
+
 /// M27/T27.11's four. Each is a trigger and a popup of cells, and the
 /// only thing that differs is what a cell says — which is why they are
 /// one type with a `KIND` and four demos rather than four widgets.
@@ -859,6 +870,7 @@ demos! {
     DataGrid(DDataGrid),
     Scroll(DScrollView),
     Image(DImage),
+    Video(DVideo),
 }
 
 impl Default for Demo {
@@ -872,5 +884,5 @@ impl Default for Demo {
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
-// M84/T84.3's Image.
-pub const DEMOS: usize = 58 + cfg!(feature = "shader") as usize;
+// M84/T84.3's Image; M84/T84.8's Video.
+pub const DEMOS: usize = 59 + cfg!(feature = "shader") as usize;

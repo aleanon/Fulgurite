@@ -52,3 +52,5 @@ Symbol | n/a | data (an Icon's glyph)
 Collapsible = Accordion
 Labelled = CheckBox
 Popup = Select
+SeekTrack = Video
+

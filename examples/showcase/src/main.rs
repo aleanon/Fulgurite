@@ -253,7 +253,10 @@ pub struct Screen {
 }
 
 #[derive(DeriveApp, Default)]
-#[app(tick = advance, after_update = refresh, wake = wake)]
+#[app(tick = advance, after_update = refresh, wake = wake, images = app_images)]
+// M84/T84.8: the Video demo's frames arrive as messages from a subscription.
+#[app(msg = lumen_static_shell::video::VideoFrame, apply = catalog::apply_clip)]
+#[app(subscriptions = subscriptions, jobs = catalog::clip_jobs)]
 pub struct Show {
     #[tree]
     ui: Screen,
@@ -343,6 +346,26 @@ pub struct Store {
     /// `advance` writes its frame into the image, and `wake` answers its
     /// next change.
     spin: lumen_static::Playback,
+    /// **The Video demo** (M84/T84.8): what the widget shows, the
+    /// application's own image store its feed fills (`App::images`), and
+    /// the subscription set its play button and seeks declare.
+    clip: catalog::Clip,
+    clip_images: lumen_static_shell::image::ImageStore,
+    subs: lumen_static::spawn::Subs,
+}
+
+/// **The application's images** — `#[app(images = app_images)]`
+/// (M84/T84.6): the Video demo's store, which the renderer reads through
+/// the frame before the window's own (`Program::images`, the Image demo's
+/// GIF).
+fn app_images(s: &Show) -> Option<&dyn lumen_static::ImageSource> {
+    Some(&s.store.clip_images)
+}
+
+/// **What should be running** — `#[app(subscriptions = subscriptions)]`
+/// (M84/T84.8): the Video demo's feed while it plays.
+fn subscriptions(s: &mut Show) -> Option<&mut lumen_static::spawn::Subs> {
+    Some(&mut s.store.subs)
 }
 
 /// After every pump: rebuild the demos whose state lives in the store,
@@ -498,6 +521,20 @@ fn refresh(s: &mut Show) -> bool {
             changed = true;
         }
     }
+    // **The Video demo, controlled** (M84/T84.8): every field it shows is
+    // the store's, compared first, so a frame with no new picture writes
+    // nothing.
+    if let Demo::Video(d) = &mut s.ui.main.stage.row.demo {
+        let c = &s.store.clip;
+        let v = &mut d.a;
+        if (v.playing, v.position_ms, v.duration_ms, v.frame) != (c.playing, c.position_ms, c.duration_ms, c.frame) {
+            v.playing = c.playing;
+            v.position_ms = c.position_ms;
+            v.duration_ms = c.duration_ms;
+            v.frame = c.frame;
+            changed = true;
+        }
+    }
     // **A pull that fired is a refresh** (M57/B40): taken once, counted,
     // so the readout shows the widget doing what it is for.
     if let Demo::Pull(d) = &mut s.ui.main.stage.row.demo {
@@ -579,6 +616,10 @@ fn advance(s: &mut Show, dt_ms: f32) -> bool {
         };
     }
     // ANCHOR_END: image_tick
+    // The Video demo's frames are messages, not ticks (M84/T84.8).
+    if let Demo::Video(_) = &s.ui.main.stage.row.demo {
+        return false;
+    }
     // A toast's countdown runs on this clock, animated entry or not: a
     // widget has none of its own (M57/B34, `Toast::tick`).
     if let Demo::Toast(d) = &mut s.ui.main.stage.row.demo {
@@ -663,6 +704,9 @@ fn bind_nav(r: &mut NavRow<Store>, i: usize) {
 /// pump.
 fn choose(s: &mut Store, i: usize) {
     s.selected = i.min(CATALOG.len() - 1);
+    // A video left on stage stops: nothing would show its frames.
+    s.clip.playing = false;
+    s.subs.clear();
     s.select_open = false;
     s.phase = 0.0;
     s.needs_rebuild = true;
@@ -702,6 +746,13 @@ fn stack_of(p: &Program<Show>) -> Option<lumen_static_shell::text::FontStack> {
     lumen_static_shell::text::FontStack::system().map(|f| f.with_shaping(p.shaping))
 }
 
+/// **A headless frame as the window draws it** — the application's images
+/// (`App::images`, the Video demo's store, M84/T84.8) resolved before the
+/// canvas's own, as a session's present does (`FrameSource::images`).
+fn render_app(c: &mut lumen_static_shell::software::Canvas, host: &lumen_static_shell::Host<Show>) {
+    c.render_within_from(&host.list, [0.0, 0.0, W as f32, H as f32], lumen_static::event::App::images(&host.app));
+}
+
 /// One frame, headless — what the tests and the screenshots use.
 fn shot(path: &str, entry: usize, open: bool) {
     use lumen_static_shell::software::Canvas;
@@ -723,13 +774,13 @@ fn shot(path: &str, entry: usize, open: bool) {
     // The window's images, so the shot draws what the window draws.
     c.images = Some(Box::new(catalog::images()));
     c.clear(palette().page);
-    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    render_app(&mut c, &host);
     // M50/T50.2: the glyph cache on a real screen. A second, warm frame
     // must rasterise nothing and draw nothing uncached
     // (`docs/plan-raster-allocation.md` §5's risk).
     let cold = c.glyph_cache_stats();
     c.clear(palette().page);
-    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    render_app(&mut c, &host);
     let warm = c.glyph_cache_stats();
     println!(
         "glyph cache: first frame {cold:?}; second frame misses {}, uncached {} (bound 0, 0)",
@@ -883,7 +934,7 @@ fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host
     // The window's images (M84/T84.3), as `shot` hands them.
     c.images = Some(Box::new(catalog::images()));
     c.clear(palette().page);
-    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    render_app(&mut c, &host);
 
     // **The union of the demo's own subtree** — by the table, not by a
     // size.

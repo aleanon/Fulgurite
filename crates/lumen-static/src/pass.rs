@@ -603,6 +603,33 @@ pub fn deliver<S: crate::event::App>(
     }
 }
 
+/// **Run the handler a consuming node named** — M84/T84.8
+/// ([`Node::take_action`](crate::widget::Node::take_action)).
+///
+/// `i` consumed the event and `ctx` is what it was handed. If it names
+/// node `i + k` and an action, that node's handler runs with the action as
+/// `ctx.event` — the only route by which a value a gesture produced, and
+/// only the widget can compute, reaches an application that owns it. A
+/// node outside the table, or one with no handler, runs nothing. Behind
+/// `std`, as the hook is.
+#[cfg(feature = "std")]
+#[inline(never)]
+fn run_taken<S: crate::event::App>(state: &mut S, i: usize, ctx: &crate::event::EventCtx) {
+    use crate::event::Handlers;
+    let table = <S::Tree as crate::widget::Widget>::SUB_TABLE;
+    let Some((k, action)) = state.tree_mut().node_mut(i).take_action() else { return };
+    let node = i + k as usize;
+    if node >= table.len() {
+        return;
+    }
+    let mut ctx = *ctx;
+    ctx.node = node as u32;
+    ctx.event = crate::event::Event::Action { node: node as u32, action };
+    if let Some(h) = state.tree().handler(crate::event::NodeSel { i: node, inner: None }) {
+        h(state.state_mut(), &ctx);
+    }
+}
+
 /// [`dispatch`], with the hit supplied rather than computed.
 ///
 /// **Why this exists:** [`dispatch_overlaid`] has already hit-tested
@@ -960,6 +987,9 @@ fn dispatch_at<S: crate::event::App>(
                 let taken = state.tree_mut().node_mut(cap).on_event(ev, &cx);
                 if taken {
                     consumed.push(cap);
+                    // A drag's value reaches the application (M84/T84.8).
+                    #[cfg(feature = "std")]
+                    run_taken(state, cap, &cx);
                 }
                 if matches!(ev, Event::PointerUp { .. }) {
                     *capture = None;
@@ -1181,6 +1211,10 @@ fn dispatch_at<S: crate::event::App>(
                 if matches!(ev, Event::PointerDown { .. }) {
                     *capture = Some(i as u32);
                 }
+                // What the gesture produced, for the application's
+                // handler (M84/T84.8; `Node::take_action`).
+                #[cfg(feature = "std")]
+                run_taken(state, i, &ctx);
                 return true;
             }
             if table[i].parent == crate::desc::NO_PARENT {
