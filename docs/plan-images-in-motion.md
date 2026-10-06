@@ -4,7 +4,7 @@
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
 > its own file. M84a (T84.0–T84.4) built 2026-10-06 and closes on
 > `just ci-verify` of its T84.4 commit (S5), cited in AGENT.md; M84b
-> (T84.5–T84.11) building (`docs/results-images.md`).** The shared byte inventory, seams (S1,
+> (T84.5–T84.11) building: T84.5 landed 2026-10-06 (`docs/results-images.md`).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -964,6 +964,31 @@ task and is recorded with its number in `docs/results-images.md`):
   close". Nothing was built at the close:
   `App::tick_marked` stays unbuilt (K84c), and T84.2's origin gate moves
   with the application's store to T84.6, as T84.2's entry above says.
+- **T84.5: the pin is M84b's only gate that compiles today.** T84.6's
+  headless write, order, swap and bar gates name `FrameSource::images`,
+  `App::images` or `ImageChain`, and T84.8's name `Video` and
+  `VideoFeed`; none exists before its task. T84.6's GPU swap gate could
+  be written against `Gpu::set_images`, but `set_images` already resets
+  the atlas, so a pin there would read blue today and pin nothing: the
+  gap it guards is a store reaching an unchanged backend through the
+  frame, which only T84.6 creates.
+- **T84.5 pins both halves, not only the messages.** The plan asked for
+  the messages after the stop to be asserted and the iterations printed.
+  The first perturbation (the drain drops what the stopped job sends,
+  `Inbox::cancel` at the stop) read 0 messages and **20** iterations: a
+  drain check alone leaves the worker running, which is T84.7's
+  injection 2. So iterations > 1 is asserted too, and its own
+  perturbation (the host replaces its inbox at the stop, so the job's
+  next send answers `Disconnected`) read 1 and failed by name.
+- **T84.5: "after the stop" opens at the frame whose diff stops it.**
+  That frame's drain runs after its diff (`Host::pump_with`), so what it
+  applies was applied after the stop, and T84.7's drain check sees the
+  flag the diff just set. The application un-declares in `apply`, on the
+  first message, so the stop is the application's and the gate runs
+  under `Threads`, a real worker, not `Queued`.
+- **T84.5: M88/T88.1 has not landed** (`JobTrack` has no progress slot),
+  so if T84.7 lands first, T88.1 carries the progress-after-stop gate
+  (Decisions, M11).
 
 **What the review found (M84).**
 

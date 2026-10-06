@@ -286,3 +286,32 @@ firmware_bind=0 firmware_cascade=0` prints **+0** `.text` and **+0**
 `origin` and `Gpu::invalidate_images()` arrive with the application's
 store (T84.6); T84.0(e), the subscription-stop pin, is T84.5. The GPU
 half of the live Image drive reopens after M88/T88.2 (T84.3).
+
+## T84.5 — M84b's gate that compiles today, at `15d4aec` (2026-10-06)
+
+A pin, green, flipped by T84.7 (`docs/plan-iced-roadmap.md` §3.1). It is
+M84b's only gate that compiles before M84b's code: the others name
+`FrameSource::images`, `App::images`, `ImageChain`, `Video` or
+`VideoFeed`, none of which exists yet (`docs/plan-images-in-motion.md`,
+"What building found").
+
+| gate | prints today | flipped by |
+|---|---|---|
+| `crates/lumen-static-shell/tests/subscriptions.rs` `a_stopped_subscription_keeps_delivering_today`: a ticker sends every 10 ms under `Threads`; the application un-declares it when the first message lands; the next frame's diff stops it, `subscription_counts()` (1, 1); then 20 frames 10 ms apart | after the stop: **20** messages applied (pinned > 0), **20** job iterations (pinned > 1) | T84.7: 0 messages, ≤ 1 iteration |
+
+Perturbations, each a miniature of what T84.7 builds, put in
+`Host::diff_subscriptions` where it stops a subscription and then
+removed:
+
+| perturbation | prints | fails |
+|---|---|---|
+| the drain drops what the stopped job sends (`Inbox::cancel` at the stop) | **0** messages, **20** iterations | "pinned (T84.5): a stopped subscription's messages are applied after the stop -- 0 were" |
+| the job is told to end (the host replaces its inbox at the stop, so the next send answers `Disconnected`) | **0** messages, **1** iteration | the messages pin first; with it set aside, "pinned (T84.5): a stopped subscription's job runs on -- 1 iterations after the stop" |
+
+The first perturbation is T84.7's injection 2 seen from the other side:
+dropping the messages alone leaves the job running, which is why the pin
+counts iterations as well as messages.
+
+**Firmware (K4).** `just firmware-delta 15d4aec firmware=0
+firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0** on
+all four — the task adds a test and no library code.
