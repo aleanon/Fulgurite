@@ -51,6 +51,8 @@ ROLES = {
     "Select": "ComboBox",
     "ScrollView": "ScrollView",
     "Card": "Group",
+    # M85/T85.2: a box that offsets its child; the child speaks.
+    "Pin": "GenericContainer",
     "Toast": "Status",
     "Tooltip": "Group",
     "TextInput": "TextInput",

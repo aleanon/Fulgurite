@@ -641,6 +641,10 @@ pub static CATALOG: &[Entry] = &[
             go: btn("Manage"),
         }) })),
         |s| format!("presses: {}", s.store.presses)),
+    entry!("Surface", "Pin", "A button pinned at an offset inside its box.",
+        false,
+        |s| on(s, Demo::Pin(DPin { a: Pin::new(PinBody { go: btn("Pinned") }, 112.0, 64.0) })),
+        |s| format!("presses: {}", s.store.presses)),
     entry!("Surface", "Toast", "A transient message, in two lengths.",
         false,
         |s| on(s, Demo::Toast(DToast {

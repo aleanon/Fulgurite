@@ -60,6 +60,9 @@ DGrid { width: 420px; }
 DLayout { width: 300px; }
 #d_layout_flex { width: flexible(1); height: 32px; color: $accent; }
 #d_layout_fill { width: fill; height: 32px; color: $muted; }
+DPin { width: 240px; height: 120px; background: $raised; border-radius: 8px; }
+PinBody { width: shrink; }
+#d_pin_go { width: shrink; height: shrink; padding: 10px 18px 10px 18px; color: $on-accent; background: $accent; border-radius: 8px; font-size: 15px; font-weight: 600; hover-dim: 0.07; }
 #d_split_a { width: 360px; height: 140px; }
 DAccordion { width: 320px; }
 .veil-body { padding: 20px 20px 20px 20px; background: $surface; border-radius: 12px; box-shadow: 12px; }

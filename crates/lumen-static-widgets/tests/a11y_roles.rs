@@ -108,6 +108,8 @@ const ROWS: &[Row] = &[
     row("AppBar", "AppBar", Role::Banner, false),
     row("PullToRefresh", "PullToRefresh", Role::GenericContainer, false),
     row("Card", "Card", Role::Group, false),
+    // M85/T85.2: a box that offsets its child; the child speaks.
+    row("Pin", "Pin", Role::GenericContainer, false),
     row("Toast", "Toast", Role::Status, false),
     row("Tooltip", "Tooltip", Role::Group, false),
     row("Modal", "Veil", Role::Dialog, false),
@@ -159,9 +161,10 @@ fn feature_on(feature: &str) -> bool {
 /// combo box), two wrappers that add paint and no meaning, a loading
 /// placeholder, a gesture wrapper around content that has its own, and a
 /// divider, which is decoration (M48/T48.6 decided it and
-/// `lumen-static-agent/tests/tree_fields.rs` allows it by name).
+/// `lumen-static-agent/tests/tree_fields.rs` allows it by name), and a
+/// pin, which only offsets its child (M85/T85.2).
 const GENERIC_BOUND: &[&str] =
-    &["Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider"];
+    &["Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider", "Pin"];
 
 /// Lay the tree out and emit it; every node keyed by its author id.
 fn snapshot(ui: &mut Ui) -> BTreeMap<&'static str, AkNode> {

@@ -91,3 +91,24 @@ change touches layout only (no paint or render code moved), so it is
 recorded and not attributed. K1 holds (`Length` 8 B, `Style` and
 `NodeState` unchanged). K4 and K85d hold (436 of 1,000; 436 of M85's
 cumulative 1,024).
+
+## T85.2 — `Pin<W>` (2026-10-06)
+
+One child at an offset inside the pin's own box, in flow, clipped to
+the pin in `paint` and in `hit` (`crates/lumen-static-widgets/src/surface.rs`).
+Gates in `crates/lumen-static-widgets/tests/pin.rs` and live.
+
+| gate | prints | injection (red) |
+|---|---|---|
+| `the_child_sits_at_the_pins_position_plus_its_offset` | pin at (50, 50) 200×150; child at (**80, 90**) 60×30, offset (30, 40); a second pin's child at its position + (−30, 20) | `Pin::place` ignores the offset: child at (50, 50), fails by name |
+| `a_press_at_the_childs_centre_lands_on_the_child` | press at the pin + offset + half the child, (110, 105): release handled, hit **node 2** (the child; the pin is 1), clicks 0 → **1** | under the same injection: release not handled, hit `None`, clicks 0, fails by name |
+| `a_press_inside_the_pin_but_off_the_child_is_not_the_childs` | press inside the pin at (200, 170): hit `None`, clicks **0** | — (the accept half of the gate below) |
+| `a_child_past_the_pins_edge_is_not_pressable_there` | pin x 50..150, child x 20..80 (offset −30); press at x 35: hit `None`, clicks **0**; accept: at x 60, hit node 4, clicks **1** | drop the `hit` gate on the pin's rect: hit **node 4**, clicks 1, "a press past the pin's edge reached its child" |
+| `the_pin_clips_its_child_to_its_rect_in_paint` | `PushClip` at the pin's rect: **1** (bound 1) | drop the `push_clip`/`pop_clip` bracket: **0**, fails by name |
+| live, `scripts/widget_drive.sh Pin` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | button at (**112.0, 64.0**) from the pin's origin (bound (112, 64)); a click: presses 0 → 1, the damage over the pin **3,690 px²** against the button's 3,690 px² = **1.00×** (3,604 / 3,604 at scale 2); role `GenericContainer`; Enter reaches it in 1 Tab; D5 parity byte-identical; oracle 549 frames, none diverged | — (the unit gates' injections) |
+| firmware, `just firmware-delta 0307c4c firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** on all four `.text` and `.rodata` (`firmware_interactive` 63,916 B) | — |
+
+`a11y_roles.rs`'s `every_node_impl_has_a_row` fails by name ("Node impls
+with no row in the table: [\"Pin\"]") with the `Pin` row removed, and
+`scripts/check_observe.sh` with its ALLOW line removed. K1 holds: two
+`f32` in the application's struct, no `Style` or `NodeState` byte.

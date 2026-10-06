@@ -120,6 +120,9 @@ pub struct Ui {
     pub pull: PullToRefresh<Label<String>>,
     #[widget_id("Card")]
     pub card: Card<Label<String>>,
+    // M85/T85.2: a label pinned at an offset.
+    #[widget_id("Pin")]
+    pub pin: Pin<Label<String>>,
     #[widget_id("Toast")]
     pub toast: Toast<String>,
     #[widget_id("Tooltip")]
@@ -246,6 +249,7 @@ pub fn build() -> Ui {
     ui.rail = Strip::new(&["One", "Two"]);
     ui.appbar = AppBar::new("Title".into());
     ui.card = Card::new(Label::new("in a card".into()));
+    ui.pin = Pin::new(Label::new("pinned".into()), 8.0, 4.0);
     ui.toast = Toast::new("Saved".into());
     ui.tooltip = Tooltip::new(Label::new("anchor".into()), "a tip".into());
     ui.pagination = Pagination::new(5);

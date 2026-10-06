@@ -1615,6 +1615,21 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
             Selector::Id("d_layout_fill"),
             Patch::new().width(Length::FILL).height(Length::Fixed(32.0)).color_role(Role::Muted),
         ),
+        // M85/T85.2: the Pin demo's box, raised so its edges show, and
+        // its button on the accent ground the Card's has.
+        StyleRule::new(
+            Selector::Kind("DPin"),
+            Patch::new()
+                .width(Length::Fixed(240.0))
+                .height(Length::Fixed(120.0))
+                .background_role(Role::Raised)
+                .radius(8.0),
+        ),
+        // The pinned body shrinks to its button, so the offset is the
+        // button's and not a FILL row's.
+        StyleRule::new(Selector::Kind("PinBody"), Patch::new().width(Length::Shrink)),
+        StyleRule::new(Selector::Id("d_pin_go"), btn().background_role(Role::Accent)
+            .color_role(Role::OnAccent)),
         StyleRule::new(
             Selector::Id("d_split_a"),
             Patch::new().width(Length::Fixed(360.0)).height(Length::Fixed(140.0)),

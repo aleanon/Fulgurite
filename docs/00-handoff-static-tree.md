@@ -1507,3 +1507,15 @@ remains** — which is why §10 Step 1 is the kill criterion.
    `docs/results-layout-input.md` T85.1). `.lss` spells it `flexible` and
    `flexible(n)`. **Reopen** for an application that needs the second
    round, with its layout cost measured first (K85a).
+
+11. **A child at an offset** — iced's `pin` places one child at a
+   position inside its box. The question was whether that is
+   out-of-flow positioning, which `docs/plan-capabilities.md` rejects.
+   **DECIDED 2026-10-06 (M85/T85.2): `Pin<W>`, in flow.** The pin takes
+   its place like any container (`FILL` by default); its child is laid
+   out loose inside the pin's box less the offset and placed at the
+   pin's position plus `(x, y)`. The pin clips the child to its own rect
+   in `paint` and in `hit` alike and answers `clips_children()`, so what
+   is drawn and what is pressable agree. Over another widget is a
+   `stack` holding a `Pin` (`crates/lumen-static-widgets/tests/pin.rs`;
+   numbers in `docs/results-layout-input.md` T85.2).

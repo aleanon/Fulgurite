@@ -69,6 +69,8 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "SearchField": ("#d_search_a > #search-field",
                     [KeyAction("Escape clears the query", ["Escape"])]),
     "Card": ("#d_card_go", [KeyAction("Enter presses the card's button", ["Enter"])]),
+    # M85/T85.2: the button inside the Pin demo.
+    "Pin": ("#d_pin_go", [KeyAction("Enter presses the pinned button", ["Enter"])]),
     "Toast": ("#d_toast_show", [KeyAction("Enter raises a toast", ["Enter"])]),
     "Tooltip": ("#tooltip-content", [KeyAction("focus alone shows the tip", [], "tip")]),
     "Tabs": ("#d_tabs_a", [KeyAction("Right moves the tab", ["Right"])]),

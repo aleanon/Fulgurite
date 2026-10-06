@@ -16,13 +16,14 @@
   "M82/T82.8 added VectorText's two static checks: the 90° run's ink, read from the screenshot, is at least twice as tall as wide with none outside its box, and the node publishes \"Vertical\" as its value, which ~=Vertical resolves to.",
   "M84/T84.3 added Image: a second of playing presents 10 ± 1 frames at 1.00x the image's box and moves its pixels (paused, the same wait presents 0); a press pauses and holds the frame, a second resumes; and K84c's static check, the median layout per animated frame against 100 µs.",
   "M84/T84.8 added Video: play changes the picture within 250 ms; pause flips the button to Play and holds the picture over 500 ms; a press at 75% of the track hands on_seek 0.75 and shows frame 3 at 300 ms; a drag 25% -> 50% while playing ends at 50% with no frame from a stopped feed; and the static check that a press on the picture is not handled and changes nothing.",
-  "M85/T85.1 added Layout: a static geometry check that a flexible(1) bar with 80 px of content is min(80, row/2) wide beside a fill that takes the rest, on one line."
+  "M85/T85.1 added Layout: a static geometry check that a flexible(1) bar with 80 px of content is min(80, row/2) wide beside a fill that takes the rest, on one line.",
+  "M85/T85.2 added Pin: a static check that the pinned button sits at the pin's origin plus (112, 64), inside the pin; and a click on it moves the press counter by one with the damage over the pin at 1.00x the button's own box."
  ],
  "counts": {
-  "entries": 50,
-  "actions": 159,
-  "landed_checked": 125,
-  "isolated": 68
+  "entries": 51,
+  "actions": 161,
+  "landed_checked": 126,
+  "isolated": 69
  },
  "entries": {
   "Selectable": [
@@ -183,6 +184,10 @@
    "the content is inset by the card's padding",
    "the card's fill is a rounded radial"
   ],
+  "Pin": [
+   "the button sits at the pin's origin plus its offset",
+   "a click on the pinned button reaches the application"
+  ],
   "Toast": [
    "Save shows a toast below the stage, centred on the window",
    "it shrinks to its text rather than filling the window",
@@ -314,6 +319,7 @@
   "PaintBox/the star path is filled inside its own outline",
   "Card/the content is inset by the card's padding",
   "Card/the card's fill is a rounded radial",
+  "Pin/the button sits at the pin's origin plus its offset",
   "Toast/it shrinks to its text rather than filling the window",
   "Toast/it paints a ground, so its light text is readable",
   "VectorText/drawn rotated",

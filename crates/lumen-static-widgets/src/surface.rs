@@ -1,5 +1,6 @@
 //! M27/T27.4 — the three widgets that are mostly *a box with a look*:
-//! `Card`, `Toast` and `Tooltip`.
+//! `Card`, `Toast` and `Tooltip` — and M85/T85.2's `Pin`, the same
+//! one-child splice with an offset and a clip instead of a look.
 //!
 //! # Why a `Card` type at all
 //!
@@ -253,6 +254,183 @@ impl<W: Widget> Node for Card<W> {
 /// `k == 0` beside `k - Self::AT` reads like a typo for `k == Self::AT`.
 const fn i_zero() -> usize {
     0
+}
+
+// ---- Pin -------------------------------------------------------------
+
+/// **One child at an offset inside the pin's own box** — M85/T85.2,
+/// iced's `pin`.
+///
+/// The child is laid out loose (it may shrink to its content) inside the
+/// pin's box less the offset, and placed at the pin's position plus
+/// `(x, y)`. The pin fills its parent by default, and clips what it holds
+/// to its own rect in `paint` and in `hit` alike, so a child pinned past
+/// the edge is neither drawn nor pressable there — paint and hit agree
+/// (`docs/text-and-scrolling-decisions.md` A1), and it answers
+/// [`Node::clips_children`] so the audit agrees too.
+///
+/// **Not out-of-flow positioning**, which `docs/plan-capabilities.md`
+/// rejects: the pin takes its place in the flow like any container, and
+/// the offset moves the child only within it. What sits over another
+/// widget is a `stack` with a `Pin` in it.
+///
+/// It draws nothing of its own and claims no press: a press inside the
+/// pin but outside its child belongs to whatever is under the pin.
+pub struct Pin<W: Widget> {
+    pub content: W,
+    /// The child's offset from the pin's left edge, px.
+    pub x: f32,
+    /// The child's offset from the pin's top edge, px.
+    pub y: f32,
+}
+
+impl<W: Widget + Default> Default for Pin<W> {
+    fn default() -> Self {
+        Pin { content: W::default(), x: 0.0, y: 0.0 }
+    }
+}
+
+impl<W: Widget> Pin<W> {
+    /// Content index, relative to this node.
+    const AT: usize = 1;
+
+    /// `content` pinned at `(x, y)` from the pin's top-left corner.
+    pub fn new(content: W, x: f32, y: f32) -> Self {
+        Pin { content, x, y }
+    }
+}
+
+pub struct PinTable<W>(core::marker::PhantomData<W>);
+
+impl<W: Widget> PinTable<W> {
+    const ARRAY: [NodeDesc; MAX_SURFACE_NODES] = {
+        assert!(W::NODE_COUNT < MAX_SURFACE_NODES, "Pin content exceeds MAX_SURFACE_NODES");
+        let mut t = [NodeDesc::EMPTY; MAX_SURFACE_NODES];
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER);
+        lumen_static::widget::splice_child(&mut t, 1, W::SUB_TABLE, 0);
+        t
+    };
+    pub const SLICE: &'static [NodeDesc] = Self::ARRAY.split_at(1 + W::NODE_COUNT).0;
+
+    const SEED_ARRAY: [Seed; MAX_SURFACE_NODES] = {
+        let mut s = [Seed::WIDGET; MAX_SURFACE_NODES];
+        // A pin paints nothing of its own, so its size is all it reads.
+        s[0] = Seed::new(
+            <Pin<W> as Widget>::KIND,
+            <Pin<W> as Widget>::type_defaults,
+            Fields::of(&[Fields::WIDTH, Fields::HEIGHT, Fields::VISIBLE]),
+        );
+        lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = Self::SEED_ARRAY.split_at(1 + W::NODE_COUNT).0;
+}
+
+impl<W: Widget> Widget for Pin<W> {
+    const NODE_COUNT: usize = 1 + W::NODE_COUNT;
+    const DEPTH: usize = 1 + W::DEPTH;
+    /// As rigid as its content, `Card`'s answer: a `Shrink` pin is its
+    /// content plus the offset.
+    const IS_RIGID: bool = W::IS_RIGID;
+    const SUB_TABLE: &'static [NodeDesc] = PinTable::<W>::SLICE;
+    const KIND: &'static str = "pin";
+    const SEEDS: &'static [Seed] = PinTable::<W>::SEED_SLICE;
+
+    /// Fills its parent on both axes: the box the child is pinned in.
+    fn type_defaults() -> Style {
+        Style { width: Length::FILL, height: Length::FILL, ..Style::default() }
+    }
+}
+
+impl<W: Widget> Node for Pin<W> {
+    lumen_static::node_count!();
+
+    /// Its child is clipped to its rect, in paint and in hit
+    /// (M55/T55.6's question, answered for the audit).
+    fn clips_children(&self) -> bool {
+        true
+    }
+
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
+    fn layout(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+        }
+        // Inside its own size less the offset, loose: the maximum is
+        // inherited and the minimum is not, so the child may shrink to
+        // its content (M27/T27.5's wrapper rule).
+        let own = lumen_static::ops::within_own_size(limits, &me);
+        let inner = Constraints {
+            min_w: 0.0,
+            max_w: (own.max_w - self.x).max(0.0),
+            min_h: 0.0,
+            max_h: (own.max_h - self.y).max(0.0),
+        };
+        let c = self.content.layout(cx, inner, style, st, i + Self::AT);
+        let content = Size { w: (c.w + self.x).max(0.0), h: (c.h + self.y).max(0.0) };
+        let s = lumen_static::ops::resolve_self(limits, &me, content);
+        lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+
+    fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = origin;
+        self.content.place(
+            Point { x: origin.x + self.x, y: origin.y + self.y },
+            style,
+            st,
+            i + Self::AT,
+        );
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        if st[i].size.w <= 0.0 || st[i].size.h <= 0.0 {
+            return;
+        }
+        out.push_clip(lumen_static::ops::rect_of(&st[i]));
+        self.content.paint(st, i + Self::AT, out);
+        out.pop_clip();
+    }
+
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
+        // The clip's other half: outside the pin is outside its child,
+        // whatever the child's own rect says.
+        if !lumen_static::hit::contains(&st[i], x, y) {
+            return None;
+        }
+        // Transparent: what the child does not take is not the pin's.
+        self.content.hit(st, i + Self::AT, x, y)
+    }
+
+    fn node(&self, k: usize) -> &dyn Node {
+        if k == i_zero() {
+            self
+        } else {
+            self.content.node(k - Self::AT)
+        }
+    }
+
+    fn node_mut(&mut self, k: usize) -> &mut dyn Node {
+        if k == i_zero() {
+            self
+        } else {
+            self.content.node_mut(k - Self::AT)
+        }
+    }
 }
 
 // ---- Toast -----------------------------------------------------------
@@ -804,6 +982,23 @@ impl<W: Widget, S: TextStorage> Node for Tooltip<W, S> {
 
 /// A card is a surface; its content owns every handler.
 impl<W, S> lumen_static::event::Handlers<S> for Card<W>
+where
+    W: Widget + lumen_static::event::Handlers<S>,
+{
+    fn handler(
+        &self,
+        sel: lumen_static::event::NodeSel,
+    ) -> Option<fn(&mut S, &lumen_static::event::EventCtx)> {
+        if sel.i == 0 {
+            return None;
+        }
+        self.content
+            .handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, inner: sel.inner })
+    }
+}
+
+/// A pin is a box; its content owns every handler.
+impl<W, S> lumen_static::event::Handlers<S> for Pin<W>
 where
     W: Widget + lumen_static::event::Handlers<S>,
 {

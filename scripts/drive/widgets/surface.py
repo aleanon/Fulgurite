@@ -1,4 +1,5 @@
-"""M27/T27.4 — `Card`, `Toast`, `Tooltip` against the live window.
+"""M27/T27.4 — `Card`, `Toast`, `Tooltip` against the live window, and
+M85/T85.2's `Pin`.
 
 The Card's one action is the claim `Dyn` failed: a control *inside* a
 wrapper must reach the application. The headless test makes it too, but
@@ -266,4 +267,64 @@ TOOLTIP = ("Tooltip", "#tooltip-content", [
     ),
 ], "#d_tooltip_a")
 
-ALL = [CARD, TOAST, TOOLTIP]
+# --- Pin -----------------------------------------------------------
+# M85/T85.2: `#d_pin_a` is a 240 x 120 pin (its demo box, raised so the
+# edges show) holding `#d_pin_go` at (112, 64).
+PIN_AT = (112.0, 64.0)
+
+
+def _pin_offset(c):
+    p, b = _box(c, "#d_pin_a"), _box(c, "#d_pin_go")
+    dx, dy = b[0] - p[0], b[1] - p[1]
+    return (
+        abs(dx - PIN_AT[0]) <= 0.5 and abs(dy - PIN_AT[1]) <= 0.5
+        and b[2] <= p[2] + 0.5 and b[3] <= p[3] + 0.5,
+        f"button at ({dx:.1f}, {dy:.1f}) from the pin's origin (bound {PIN_AT}); "
+        f"button {[round(v) for v in b]} inside the pin {[round(v) for v in p]}",
+    )
+
+
+def _pin_press(c):
+    """The press counter moved by one, and the damage over the pin is the
+    button's own box: each region that meets the pin, against the
+    button's area, printed."""
+    b = _box(c, "#d_pin_go")
+    p = _box(c, "#d_pin_a")
+    regions = c.c.rpc("ui.lastDamage", since=c._since).get("regions", [])
+    over = [r for r in regions if not (r[2] <= p[0] or r[0] >= p[2] or r[3] <= p[1] or r[1] >= p[3])]
+    worst = max((_area(r) for r in over), default=0.0)
+    ratio = worst / max(_area(b), 1.0)
+    return (
+        _presses(c) == c._n + 1 and over and ratio <= 1.0 + 1e-3,
+        f"presses {c._n} -> {_presses(c)}; {len(over)} damage region(s) over the pin, "
+        f"the largest {worst:.0f} px² against the button's {_area(b):.0f} px² = "
+        f"{ratio:.2f}x (bound 1.00)",
+    )
+
+
+PIN = ("Pin", "#d_pin_a", [
+    Action(
+        name="the button sits at the pin's origin plus its offset",
+        needs="a 240 x 120 pin holding a button at (112, 64)",
+        do=lambda c: c.hover(),
+        expect=_pin_offset,
+        static=True,
+        injection="make Pin::place ignore the offset -- the button then sits "
+                  "at the pin's origin, (0, 0)",
+    ),
+    Action(
+        visible=True,
+        subject="#d_pin_go",
+        name="a click on the pinned button reaches the application",
+        needs="a pinned button wired to the press counter",
+        do=lambda c: (c.__dict__.__setitem__("_n", _presses(c)),
+                      c.__dict__.__setitem__("_since", c.mark()),
+                      c.click("#d_pin_go"))[0],
+        expect=_pin_press,
+        isolate=lambda c: (c.__dict__.__setitem__("_n", _presses(c)),
+                           c.click_outside())[0],
+        injection="make Pin::handler return None, or Pin::place ignore the offset",
+    ),
+])
+
+ALL = [CARD, PIN, TOAST, TOOLTIP]

@@ -533,6 +533,23 @@ pub struct CardBody {
     pub go: Button<Store, String>,
 }
 
+/// `Pin` — M85/T85.2. A button pinned at (112, 64) inside a 240 x 120
+/// raised box: the pin fills the box, and the offset moves the button
+/// only within it.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DPin {
+    #[widget_id("d_pin_a")]
+    pub a: Pin<PinBody>,
+}
+
+#[derive(StaticTree, Default)]
+#[widget(row, spacing = 0.0)]
+pub struct PinBody {
+    #[widget_id("d_pin_go")]
+    pub go: Button<Store, String>,
+}
+
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 12.0)]
 pub struct DToast {
@@ -845,6 +862,7 @@ demos! {
     Line(DLineChart),
     Pie(DPieChart),
     Card(DCard),
+    Pin(DPin),
     Toast(DToast),
     Tooltip(DTooltip),
     Number(DNumberInput),
@@ -898,5 +916,5 @@ impl Default for Demo {
 // M45), M80/T80.4's Selectable and M81/T81.6's right-to-left TextInput; main's second `Select` is not among them — the sidebar replaced
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
-// M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout.
-pub const DEMOS: usize = 60 + cfg!(feature = "shader") as usize;
+// M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout; M85/T85.2's Pin.
+pub const DEMOS: usize = 61 + cfg!(feature = "shader") as usize;

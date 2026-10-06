@@ -188,7 +188,7 @@ pub use pick::{
 pub use nav::{AppBar, BottomNav, PullToRefresh, Item, NavigationRail, Strip, Tabs, MAX_ITEMS, BOTTOM, RAIL, TABS};
 pub use indicator::{ProgressBar, Skeleton, Spinner};
 pub use split::{Collapsible, PaneGrid, SplitPane, VSplitPane, MAX_SPLIT_NODES};
-pub use surface::{Card, Toast, Tooltip, MAX_SURFACE_NODES};
+pub use surface::{Card, Pin, Toast, Tooltip, MAX_SURFACE_NODES};
 #[cfg(feature = "alloc")]
 pub use vector::VectorText;
 #[cfg(feature = "shader")]
@@ -213,7 +213,7 @@ pub mod prelude {
     pub use crate::{
         Avatar, Badge, BarChart, Card, Chip, Divider, Icon, LineChart, PieChart, ProgressBar,
         AppBar, BottomNav, Collapsible, Drawer, Modal, NavigationRail, PullToRefresh, Series,
-        PaneGrid, Sheet, SplitPane,
+        PaneGrid, Pin, Sheet, SplitPane,
         Skeleton, Spinner, Symbol,
         Tabs, Toast, Tooltip,
     };

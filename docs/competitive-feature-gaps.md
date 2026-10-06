@@ -142,7 +142,9 @@ is roughly 3× lumen-static's. Present in `iced_widget` and absent here:
 - `pane_grid` — draggable, splittable, resizable panes.
 - `table`, `grid` — tabular layout.
 - `combo_box`, `pick_list`, `tooltip`, `overlay` — all overlay-dependent.
-- `progress_bar`, `rule`, `toggler`, `float`, `pin`, `stack`.
+- `progress_bar`, `rule`, `toggler`, `float`, `pin`, `stack`. (`pin` has
+  shipped since, as `Pin<W>`: one child at an offset inside its box,
+  in flow and clipped to it — M85/T85.2.)
 - `scrollable` with programmatic scroll-to and scrollbar styling.
 - `lazy`, `keyed`, `responsive`, `themer` — view-tree machinery with no
   analogue in a static tree (and mostly not wanted: see below).
