@@ -296,7 +296,7 @@ takes the next free byte and prints the size either way:
 | M80, line height | `line_height: u8` | 79/80 | 83/84 (paint copy) |
 | M80, overflow | `overflow: TextOverflow`, the whole `u8` (`max_lines` is not built) | 80/80 | — (the cut is made in layout) |
 | M82, style gradient | `background_fill: u8` | **81/84, re-budget** | 84/84 (paint copy) |
-| M86, transitions | `transition: u8` (tens of ms; set by `Patch::transition_ms`) | 82/84 | **86/88**: `pointer_mix: u16`, the level `shaded` reads |
+| M86, transitions | `transition: u8` (tens of ms; set by `Patch::transition_ms`) | 82/84 | **86/88**: `pointer_mix: u16`, the level `shaded` reads (**built as a `u32`, 88/88**: the `u16`'s two padding bytes cost the firmware 142 B; `docs/results-transitions.md` T86.1) |
 | **end-of-plan maximum** | | **84** | **88** |
 
 **RAM per 100 nodes** is `PER_NODE_RAM` (`NodeState` + `Style`,

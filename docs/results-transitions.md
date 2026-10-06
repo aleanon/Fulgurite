@@ -57,3 +57,98 @@ rows). Median of the eight medians, (min–max of them):
 The spreads are wide because the machine was shared; K86b is judged
 against a fresh base side taken in the same lock as the tree it judges,
 interleaved, which is how M85 measured K85a and K85c.
+
+## T86.1 — the level in `NodeState`, and the blend in `shaded` (2026-10-06)
+
+`Style::transition` (tens of ms, byte 82), `Patch::transition_ms`,
+`Fields::TRANSITION` (bit 20, `Fields::EACH` 20 → 21),
+`NodeState::pointer_mix`, `ops::MIX_LEVELS` and `ops::encode_mix`, the
+blend in `ops::shaded` behind the additive core feature `transitions`
+(enabled by `lumen-static-shell`, never by `fixtures/embedded`), and
+`.lss` `transition-duration` (`Takes::Millis`, `Val::Millis`, `Unit::Ms`).
+Nothing writes `pointer_mix` yet except tests.
+
+| gate | prints | injection (red) |
+|---|---|---|
+| `crates/lumen-static-shell/tests/transition_shade.rs`, endpoints: 64 colours × `hover_dim` {0, 0.07, 0.12} × `pressed_dim` {0, 0.15} = 384 cases, at the four encoded level pairs against the bit path | **0 of 1,536** differ (bound 0); every `pointer_mix` written has bit 15 set | `shaded` ignoring the press level: **376 of 1,536** differ, first `#ffffffff`, `pressed_dim` 0.15, pressed: bit path `(216,216,216)`, blend `(255,255,255)` |
+| the same file, a level between: `#c8783c`, `hover_dim` 0.12, `h = 64/127` | red channel rest **200**, mid **188**, hover **176** (strictly between) | — |
+| the same file, interior: `h = p = 64` over the 384 cases against `a + ((b − a)·t + 63.5)/127` floored, in `f32` | **0 of 1,152** channels differ (bound 0) | a truncating `lerp` (`a + (b − a)·t/127`): **584 of 1,152** differ, first `#ffffffff` channel 0 got 236, want 235. The endpoint check stays **0 of 1,536** under it — truncation is exact at `t = 0` and `t = 127` |
+| `crates/lumen-static/tests/cursor.rs` and `focus.rs`, sizes (K86d, K1) | `Style` **84** B (82 used), `NodeState` **88** B (88 used), **172** B/node, **16.8 KB** per 100 nodes (parent 84 / 84, 168 B, 16.4 KB; bound 84 / 88 / 172, 24 KB); `Cmd` **60**, `Event` **16** | `pointer_mix: u64`: `NodeState` **96** B (92 used), 180 B/node, fails by name |
+| `fixtures/embedded/src/lib.rs` on the target | `NODE_STATE == 88`, `STYLE == 84`, `PER_NODE_RAM == 172`; `Ui` **1,216** unchanged | — |
+| `lumen-static-lss` unit tests | `transition-duration: 150ms` → `transition_ms(150)`; `155ms`, `2560ms`, `150` and `150.5ms` refused at 1:27 with `Takes::Millis`'s description; accept: `0ms` → `Millis(0)`, `2550ms` → `Millis(2550)` | — |
+| `scripts/check_lss_setters.sh` | `Patch` **26** setters, the table **26** | the `transition-duration` row removed: "Patch setters with no .lss declaration: ['transition_ms']", exit 1 |
+| `crates/lumen-static-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `transition-duration: 150ms` on `#title, #badge`) | `include_lss!` and `lss::load` agree, 6 and 7 rules | the shell's `set` arm dropped: `load` panics, "no setter `transition_ms` taking Millis(150)" |
+| `crates/lumen-static/tests/sheet_lint.rs` (`W1010`) | on `#go` (a `Button`): **0** findings; on `Kind("fixed")`: `Unread(TRANSITION)` | `Fields::TRANSITION` dropped from `Button`'s seed: "a transition on a `Button` is read: [Unread(Fields(1048576))]" |
+| `crates/lumen-static-widgets/tests/style_reads.rs` — `transition` changes no frame, so it counts as read exactly when `hover_dim` or `pressed_dim` is measured as read | every kind's declared mask equals the measured set (`label`, `button`, `checkbox`, `radio`, `switch`, … measure `transition`) | `Fields::TRANSITION` dropped from `Button`'s seed: the mask check fails |
+| the `justfile` lint line, `cargo clippy -p lumen-static --features transitions --all-targets -- -D warnings` and its `cargo doc` | green | an unused binding inside `blend`: "unused variable: `unused_in_blend`", the line fails; `cargo clippy -p lumen-static --all-targets` (default features) stays green |
+| `transition_oracle.rs` (T86.0), now comparing `pointer_mix` too | **65** frames, **0** differ | — |
+
+**Seeds that declare `Fields::TRANSITION`**, from `grep -rlE
+'HOVER_DIM|PRESSED_DIM' --include=*.rs` at landing (not `style.rs`):
+**17 sites in 15 files** — the derive's container seed, core `Repeat`,
+`lumen-static-widgets`' `chart.rs` (2), `input.rs`, `ops.rs` (2: `Label`,
+`Button`), `pick.rs`, `rich.rs`, `scroll.rs`, `selectable.rs`, `slider.rs`,
+`textarea.rs`, `toggle.rs`, `trim.rs`, `vector.rs`, and
+`examples/showcase/src/nav.rs`. The plan counted twelve at `553fa5e`;
+`selectable.rs`, `rich.rs` and `vector.rs` arrived with M80 and M82.
+
+**K86a — the firmware does not pay for the blend: holds.** `NodeState`
+grew, so the bounds are 64 / 96 / 64 / 96 (`just firmware-delta db138c0
+firmware=64 firmware_bind=64 firmware_cascade=96 firmware_interactive=96`):
+
+| binary | `.text` | Δ | bound | `.rodata` Δ |
+|---|---:|---:|---:|---:|
+| `firmware` | 31,138 | **+40** | 64 | +0 |
+| `firmware_interactive` | 63,980 | **+60** | 96 | +0 |
+| `firmware_bind` | 34,494 | **+36** | 64 | +0 |
+| `firmware_cascade` | 33,230 | **+44** | 96 | +0 |
+
+By a symbol diff: copy and offset changes (`_start` +44 to +48, the
+fixture's `place` +8 to +12, the focus walks and `dispatch` +8 to +16 for
+the 88 B stride, every `type_defaults` −2 to −12) and `cascade_range`
+**+2** for `Patch::apply_to`'s branch (allowance 32). No blend symbol
+links. Injection: `features = ["transitions"]` on the fixture's
+`lumen-static` line prints **+324 / +344 / +320 / +328** and fails all
+four; removed, the figures above return.
+
+**The first spelling fired K86a.** With `pointer_mix: u16` (the plan's
+type) the same invocation printed **+140 / +164 / +148 / +144** and failed
+all four. The symbol diff put **+142** of it in `_start`: the `u16` left
+two bytes of padding in the 88 B struct, and `[NodeState::default(); N]`
+stopped compiling to one clear of the array and became a clear per element
+plus a store per field. `pointer_mix` is a `u32` whose bits 16–31 are
+always 0 — the same 88 B, no padding — and is what shipped.
+
+**K86b — unused costs nothing: fired on `idle (floor)` after its written
+response, so M86 stops at T86.1.** Every tree at `transition == 0`, the
+shell enabling `transitions`; eight interleaved runs a side under one
+`just bench-lock` (quiet each time, load1 ≤ 2.24), the base side built at
+`db138c0`. With the blend inlined into `shaded` (first run):
+
+| row | base median (spread) | tree | |
+|---|---:|---:|---|
+| `appearance` `1k-toggles/still` | 16,327 ns (14,779–17,524) | **18,664** | **above** |
+| `appearance` `1k-toggles/hover` | 14,866 ns (14,774–17,326) | 16,556 | inside (+11%) |
+
+It fired, so the response: `blend` is `#[cold] #[inline(never)]` behind
+the `pointer_mix & 0x8000` test. Re-measured, three runs:
+
+| row | base median (spread) | tree | |
+|---|---:|---:|---|
+| `appearance` `still` | 15,678 ns (14,980–17,878) | 16,342 | inside |
+| `appearance` `hover` | 15,122 ns (14,850–17,581) | 16,017 | inside |
+| frame arm `idle (floor)`, run A | 61.8 µs (55.8–62.5) | **64.0** (63.6–64.3) | **above** |
+| frame arm `idle (floor)`, run B | 59.15 µs (53.3–62.4) | **63.85** | **above** |
+| frame arm `idle (floor)`, run C (order reversed) | 60.50 µs (53.3–62.5) | 61.45 | inside |
+
+The struct's growth is not the cost: the tree built with `transitions`
+removed from the shell reads `still` 15,655, `hover` 15,151, `idle` 56.50
+(run B) and 62.15 (run C), each on the base. What `transitions` adds, with
+the blend out of line, is a load, a test and a branch in `shaded` — and
+`idle (floor)` lays nothing out, so its two high runs are code placement,
+not the branch executing; `layout`, which is not a K86b row, reads 20.40
+against 19.20 in both runs B and C (inside the base's 19.0–20.8). Two of
+three re-measured runs leave the spread, so by its written response **M86
+stops at T86.1**, and T86.1 stands: it adds no behaviour, and the blend is
+what T86.2 would need. Whether run C's agreement is the row's real answer
+is a question for a re-measure, not for this commit.

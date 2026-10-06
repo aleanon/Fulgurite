@@ -133,6 +133,8 @@ pub enum Unit {
     Px,
     /// Percent — lexed so the error can name it; no property takes one.
     Percent,
+    /// Milliseconds — M86/T86.1, for `transition-duration: 150ms`.
+    Ms,
 }
 
 impl core::fmt::Display for Value {
@@ -141,6 +143,7 @@ impl core::fmt::Display for Value {
             Value::Number(n, Unit::None) => f.write_str(n),
             Value::Number(n, Unit::Px) => write!(f, "{n}px"),
             Value::Number(n, Unit::Percent) => write!(f, "{n}%"),
+            Value::Number(n, Unit::Ms) => write!(f, "{n}ms"),
             Value::Color([r, g, b, a]) => write!(f, "#{r:02x}{g:02x}{b:02x}{a:02x}"),
             Value::Keyword(k) => f.write_str(k),
             Value::Var(v) => write!(f, "${v}"),

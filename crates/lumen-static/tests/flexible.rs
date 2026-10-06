@@ -233,7 +233,12 @@ fn two_flexibles_never_share_their_leftover() {
 
 /// `Style` and `NodeState` at the parent commit (a21135b), whatever
 /// they were: this task adds a `Length` variant and must move neither.
-const AT_PARENT: (usize, usize) = (84, 84);
+///
+/// **`NodeState` is 88 since M86/T86.1** (`pointer_mix`, the transition
+/// level; `docs/results-transitions.md`), which is not this test's claim:
+/// the claim is about `Length`, so the pin moves with the struct and the
+/// `Length` bound stays.
+const AT_PARENT: (usize, usize) = (84, 88);
 
 #[test]
 fn flexible_moves_no_struct() {

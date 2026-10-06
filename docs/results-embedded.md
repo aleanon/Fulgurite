@@ -45,12 +45,12 @@ that produces real sections.
 
 | | Threshold | Measured | |
 |---|---:|---:|---|
-| `.text` | ≤ 80 KB | **31,098 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at `fix(T15.0)` after M85/T85.7 (2026-10-06; the four-binary table below, +8 B), against the 80 KB ceiling since M80/T80.0 |
+| `.text` | ≤ 80 KB | **31,138 B** (30.4 KB) | **pass**, at 38.0% of budget; re-measured at M86/T86.1 (2026-10-06; the four-binary table below, +40 B), against the 80 KB ceiling since M80/T80.0 |
 | `.bss` + `.data` | zero framework symbols | **1 symbol, 4 B, exempted** | **pass** — the fixture's own `SINK` (`scripts/bss.allow`) |
 | `.data` | 0 B | **0 B** in all four binaries | **pass**; asserted by `scripts/check_bss.sh` since M52/T52.3 — the interactive and bind-only builds had 4 B, one binding's cache (F-NEW-1) |
 | `.rodata` | — | 13,348 B | of which the baked face is most; 9,010 B at T13.7; re-measured at `fix(T15.0)` after M85/T85.7, +4 B (`Painter::in_arena`'s vtable slot) |
 | Total (`size -A`) | ≤ 512 KB flash | **44,167 B** (43.1 KB) | 8.4% of the part; re-measured at M82/T82.7 (44,155 B at T82.5) |
-| RAM, 100 nodes | ≤ 24 KB | **16.4 KB** state + style | **pass**; measured at M82/T82.3 (2026-10-04), below — `Style` 84 B, `NodeState` 84 B |
+| RAM, 100 nodes | ≤ 24 KB | **16.8 KB** state + style | **pass**; measured at M86/T86.1 (2026-10-06), below — `Style` 84 B, `NodeState` 88 B |
 | Stack, release | ≤ 4 KB | **1,192 B** a cold frame (model 1,328) | **pass**, measured under qemu by `just stack` since M52/T52.6; dev 6,996 B, recorded not gated — below |
 | `f64` in the frame path | zero | **0 soft-f64 symbols**, and 0 float-formatting | in all four binaries, counted by `scripts/check_text.sh` (M52/T52.2); the only `f64` is `observe`'s accesskit call, which needs `std` |
 | Fixture builds and runs | yes | **yes** | links for the target; runs on the host with an aborting allocator |
@@ -813,6 +813,31 @@ injection reads 82 against 81. `fixtures/embedded/src/lib.rs` asserts
 `STYLE == 84` and `PER_NODE_RAM == 168` on the target; `Ui` holds no
 `Style`, and its assertion (1,216) held on the thumb build unchanged.
 
+### RAM: `Style` stays 84 B, `NodeState` 84 → 88 — M86/T86.1
+
+| | before | after | Δ |
+|---|---:|---:|---:|
+| `Style` | 84 B (81 used) | **84 B** (82 used) | 0 |
+| `NodeState` | 84 B (84 used) | **88 B** (88 used) | +4 |
+| **per node** (`PER_NODE_RAM`) | 168 B | **172 B** | **+4 (+2.4%)** |
+| 100 nodes | 16.4 KB | **16.8 KB** | +0.4 KB, against 24 KB |
+| `Ui`, the fixture's widget structs, on the target | 1,216 B | **1,216 B** | 0 |
+
+`Style.transition: u8` (tens of ms, `docs/plan-transitions.md`) took
+`Style`'s byte 82 and did not grow it. Its level,
+`NodeState.pointer_mix`, found `NodeState` full (M82 took the last byte)
+and grew it by four: K1's end-of-plan maximum, 172 B per node
+(`docs/plan-iced-roadmap.md` §2.1; `docs/results-transitions.md` K86d).
+**A `u32`, not the plan's `u16`**: both make the struct 88 B, but a `u16`
+left two bytes of padding, and the fixture's `[NodeState::default(); N]`
+then compiled to a clear per element and a store per field — `_start`
+**+142 B**, K86a fired at +140 / +164 / +148 / +144. With no padding the
+array clears in one call again. `tests/cursor.rs` asserts 84 / 88 and the
+used bytes 82 / 88; `fixtures/embedded/src/lib.rs` asserts `NODE_STATE ==
+88`, `STYLE == 84` and `PER_NODE_RAM == 172` on the target, and `Ui`'s
+1,216 held. The firmware never writes the level: the blend that reads it
+is behind the core `transitions` feature, which only the shell enables.
+
 ### `Selectable` costs the firmware nothing — M80/T80.4
 
 `just firmware-delta 1cd123e firmware=0 firmware_interactive=0
@@ -1059,14 +1084,31 @@ found by M85/T85.6 and fixed after T85.7 — moves all four by **+8 B**
 and `Node::arena_node` is behind `alloc` with them, so it links nothing
 (`just firmware-delta b6163e5`, K4's default). K85d's cumulative is
 **+440** of 1,024 against `a21135b`.
+Rewritten by M86/T86.1 (`Style.transition`, `NodeState.pointer_mix` and
+the blend in `ops::shaded`, behind the core `transitions` feature the
+firmware does not enable): **+40 B** on `firmware`, **+60 B** on
+`firmware_interactive`, **+36 B** on `firmware_bind`, **+44 B** on
+`firmware_cascade`, `.rodata` +0, inside K86a's bounds (64 / 96 / 64 / 96,
+`NodeState` having grown). By a symbol diff, copy and offset changes
+only: `_start` +44 to +48 (the wider state array's stack offsets), the
+fixture's `place` +8 to +12 and `pass::next_focusable_in` /
+`prev_focusable_in` / `sole_focusable` / `dispatch` +8 to +16 (the 88 B
+stride), every `type_defaults` −2 to −12 (`Style`'s new byte filling its
+slot lets the default be stored in fewer words), and `cascade_range` **+2**
+(`Patch::apply_to`'s new branch, against its 32 B allowance). No blend
+symbol links. Printed by `just firmware-delta db138c0 firmware=64
+firmware_bind=64 firmware_cascade=96 firmware_interactive=96`, with
+`firmware_interactive` at **17,940 B** of headroom; with `transitions`
+added to the fixture's `lumen-static` line (K86a's injection) the same
+invocation prints +324 / +344 / +320 / +328 and fails all four.
 M80a's column is T80.0–T80.3, as K80b bounds it.
 
-| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `firmware` | 31,098 | 38.0% | 50,822 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 |
-| `firmware_interactive` | **63,920** | **78.0%** | **18,000** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** |
-| `firmware_bind` | 34,458 | 42.1% | 47,462 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 |
-| `firmware_cascade` | 33,186 | 40.5% | 48,734 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 |
+| binary | `.text` | of 81,920 | headroom | `.rodata` | `.text` at `553fa5e` | T80.1 Δ | T80.2 Δ | T80.3 Δ | T80.5 Δ | M80a (K80b) | T81.1 Δ | T81.2 Δ | T81.3 Δ | T81.5 Δ | T81.6 Δ | T82.1 Δ | T82.2 Δ | T82.3 Δ | T82.5 Δ | T82.7 Δ | T85.1 Δ | T85.3 Δ | T15.0 fix Δ | T86.1 Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `firmware` | 31,138 | 38.0% | 50,782 | 13,348 | 28,616 | +56 | +630 | +224 | +60 | **910 of 1,024** | +0 | −220 | +0 | +860 | +0 | +16 | +136 | +156 | +64 | +8 | +484 | +0 | +8 | +40 |
+| `firmware_interactive` | **63,980** | **78.1%** | **17,940** | 21,890 | 61,922 | **+52** | **+802** | **+296** | **+116** | **1,150 of 1,536** | +0 | **−240** | +0 | **+844** | **−708** | **+16** | **+16** | **+288** | **+68** | **+8** | **+436** | **−4** | **+8** | **+60** |
+| `firmware_bind` | 34,494 | 42.1% | 47,426 | 13,952 | 32,008 | +56 | +678 | +248 | +56 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +436 | +0 | +8 | +36 |
+| `firmware_cascade` | 33,230 | 40.6% | 48,690 | 14,136 | 30,644 | +56 | +730 | +236 | +60 | — | +0 | −220 | +0 | +860 | +0 | +16 | +16 | +220 | +68 | +8 | +484 | +0 | +8 | +44 |
 
 **T82.3's cost, from a symbol diff of the two builds** (attributions, not
 a partition): `ops::fill` **+312** in all four — the index check, the

@@ -259,6 +259,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::CURSOR,
                 lumen_static::style::Fields::PRESSED_DIM,
                 lumen_static::style::Fields::HOVER_DIM,
+                lumen_static::style::Fields::TRANSITION,
             ]),
             _ => lumen_static::style::Fields::of(&[
                 lumen_static::style::Fields::WIDTH,
@@ -273,6 +274,7 @@ impl<const KIND: u8> Widget for Chart<KIND> {
                 lumen_static::style::Fields::CURSOR,
                 lumen_static::style::Fields::PRESSED_DIM,
                 lumen_static::style::Fields::HOVER_DIM,
+                lumen_static::style::Fields::TRANSITION,
             ]),
         })
         // `border` is the axes' ink (M57/B30): muted text, at 4.5:1.

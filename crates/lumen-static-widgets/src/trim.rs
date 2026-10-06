@@ -379,6 +379,7 @@ impl<T: TextStorage, S: 'static> Widget for Chip<T, S> {
             lumen_static::style::Fields::FOCUS_RING,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::TRANSITION,
             lumen_static::style::Fields::COLOR,
             lumen_static::style::Fields::BACKGROUND,
             lumen_static::style::Fields::BORDER,

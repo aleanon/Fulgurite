@@ -71,6 +71,9 @@ pub enum Val {
     Cursor(Cursor),
     /// `text-overflow` — M80/T80.3.
     TextOverflow(TextOverflow),
+    /// `transition-duration` — M86/T86.1: whole milliseconds, a multiple
+    /// of 10 from 0 to 2,550, for `Patch::transition_ms`.
+    Millis(u16),
 }
 
 /// `lumen_static::style::Length`.
@@ -194,6 +197,10 @@ pub enum Takes {
     /// `wrap`, `clip` or `ellipsis` — M80/T80.3.
     Overflow,
     Bool,
+    /// A duration in ms, a multiple of 10 from 0 to 2,550: `150ms` —
+    /// M86/T86.1. Refused rather than rounded, because the setter would
+    /// round it to tens of ms and the sheet would not say what it does.
+    Millis,
 }
 
 impl Takes {
@@ -212,6 +219,7 @@ impl Takes {
             }
             Takes::Overflow => "`wrap`, `clip` or `ellipsis`",
             Takes::Bool => "`true` or `false`",
+            Takes::Millis => "a duration in ms, a multiple of 10 from 0 to 2550, like `150ms`",
         }
     }
 }
@@ -263,6 +271,9 @@ pub const PROPERTIES: &[Property] = &[
     // M80/T80.3: CSS's name. `wrap` has no CSS spelling under this
     // property (CSS wraps by `white-space`), and is the default.
     Property { name: "text-overflow", setter: "overflow", role_setter: None, takes: Takes::Overflow },
+    // M86/T86.1: CSS's name. One duration for hover, press and the focus
+    // ring alike; there is no `transition-property` or timing function.
+    Property { name: "transition-duration", setter: "transition_ms", role_setter: None, takes: Takes::Millis },
 ];
 
 /// Names a CSS writer reaches for that v1 spells differently, or does
@@ -544,6 +555,13 @@ fn typed(takes: Takes, v: &Value) -> Option<Val> {
             Value::Number(n, Unit::None) => {
                 let p = f32_of(n)?;
                 (p.fract() == 0.0 && (0.0..=255.0).contains(&p)).then_some(Val::U8(p as u8))
+            }
+            _ => None,
+        },
+        Takes::Millis => match v {
+            Value::Number(n, Unit::Ms) => {
+                let ms = n.parse::<u16>().ok()?;
+                (ms % 10 == 0 && ms <= 2550).then_some(Val::Millis(ms))
             }
             _ => None,
         },

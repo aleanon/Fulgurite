@@ -796,6 +796,12 @@ a problem.
 For a leaf application, feature flags are fine — you control your own graph. For
 an ecosystem framework they are the one mechanism that structurally cannot work.
 
+**Not this rejection: the core's `transitions` feature** (M86/T86.1,
+`docs/plan-transitions.md`). It is additive and not exclusive of anything —
+the fields it reads exist either way, so a widget crate compiles the same
+with or without it, and turning it on only makes `ops::shaded` blend a level
+the firmware never writes (`docs/results-transitions.md`, K86a).
+
 ### DECIDED: one representation, sliding const-ness
 
 Do not build a "small mode" and a "large mode". The `NODE_TABLE` format is

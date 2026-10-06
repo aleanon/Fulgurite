@@ -293,7 +293,9 @@ What v1 accepts:
   `border-radius`, `font-size`, `font-weight`, `box-shadow`, `hover-dim`,
   `pressed-dim`, `line-height` (a bare ratio, `1.5`), `text-overflow`
   (`wrap`, `clip` or `ellipsis`), `background-fill` (a fill table index,
-  a bare number, `1`). A setter added to `Patch` without a declaration here
+  a bare number, `1`), `transition-duration` (how long the hover and
+  press shade take to move, in `ms`, a multiple of 10 up to `2550ms`;
+  `0ms`, the default, is instant). A setter added to `Patch` without a declaration here
   fails `just static`.
 * **`@tokens { name: value; }`**, used as `$name`.
 * **Palette roles as tokens**: `$page`, `$surface`, `$control`, `$text`,

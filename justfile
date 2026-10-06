@@ -167,6 +167,12 @@ dev-shape:
     cargo build -q -p benches --features image --bin video_rate
     cargo clippy -q -p lumen-static-shell --features image --all-targets -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features image
+    # M86/T86.1 (docs/plan-iced-roadmap.md §3.1, second review X7): the
+    # core's additive `transitions` -- the blend in `ops::shaded`. The
+    # workspace lines unify it on through the shell; this keeps it linted
+    # and documented on the core alone if that ever changes.
+    cargo clippy -q -p lumen-static --features transitions --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static --no-deps --features transitions
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An

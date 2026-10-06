@@ -9,6 +9,12 @@ use lumen_static::{pass, Style};
 /// one, and why this assertion exists rather than a comment saying it
 /// was free once.
 ///
+/// **M86/T86.1 took byte 82** (`transition`, tens of ms) and `Style`
+/// stayed 84; its level, `NodeState::pointer_mix`, found `NodeState`
+/// full (84/84) and grew it to **88** — 172 B per node, K86d's maximum
+/// (`docs/results-transitions.md`). `Cmd` and `Event` are not per node
+/// and are asserted unchanged below.
+///
 /// **84 since M82/T82.3**: `background_fill`, the fill table index, found
 /// no spare byte (M80 took the last two) and grew the tail slot by four;
 /// 81 of 84 bytes are used, and the mirror below prints both.
@@ -37,22 +43,32 @@ fn the_cursor_costs_nothing() {
     // `NodeState`; **M82/T82.3's `background_fill` grew `Style` 80 -> 84**
     // and took `NodeState`'s last spare byte (84/84) —
     // `docs/plan-iced-roadmap.md` §2.1, `docs/results-embedded.md`.
+    // **M86/T86.1**: `transition` takes `Style`'s byte 82 (still 84), and
+    // `pointer_mix` grows `NodeState` 84 -> 88 (parent: 84 / 84,
+    // 168 B/node, 16.4 KB per 100 nodes).
     let (style, state) = (core::mem::size_of::<Style>(), core::mem::size_of::<lumen_static::NodeState>());
     let (style_used, state_used) = (style_used_bytes(), state_used_bytes());
     println!(
-        "Style {style} B (bound 84; {style_used} B used, bound 81), NodeState {state} B (bound 84; {state_used} B used, bound 84): {} B/node, {:.1} KB per 100 nodes (bound 24 KB)",
+        "Style {style} B (bound 84; {style_used} B used, bound 82), NodeState {state} B (bound 88; {state_used} B used, bound 88): {} B/node (bound 172), {:.1} KB per 100 nodes (bound 24 KB)",
         style + state,
         (style + state) as f32 * 100.0 / 1024.0
     );
     assert_eq!(core::mem::size_of::<Style>(), 84, "Style grew; every node grew with it");
-    assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 84);
+    assert_eq!(core::mem::size_of::<lumen_static::NodeState>(), 88);
+    // K1: neither is per node, and M86 moves neither.
+    let (cmd, event) = (core::mem::size_of::<lumen_static::Cmd>(), core::mem::size_of::<lumen_static::Event>());
+    println!("Cmd {cmd} B (bound 60), Event {event} B (bound 16)");
+    assert_eq!(cmd, 60, "Cmd changed");
+    assert_eq!(event, 16, "Event changed");
     // **The used-bytes mirrors** (the `glass_cmd.rs` payload pattern):
     // `size_of` alone cannot see a byte that lands in padding — a second
     // `u8` beside `background_fill` still pads to 84 — so the fields are
     // summed too. The destructuring names every field, so a new one is a
     // compile error here before it is a number.
-    assert_eq!(style_used, 81, "Style's fields grew into its padding; that is a byte every node pays for");
-    assert_eq!(state_used, 84, "NodeState's fields changed");
+    assert_eq!(style_used, 82, "Style's fields grew into its padding; that is a byte every node pays for");
+    // 88: `pointer_mix` is a `u32` so the struct has no padding (see its
+    // rustdoc; a `u16` would read 86 here and cost the firmware 142 B).
+    assert_eq!(state_used, 88, "NodeState's fields changed");
     assert_eq!(core::mem::size_of::<Cursor>(), 1);
 }
 
@@ -91,6 +107,7 @@ fn style_used_bytes() -> usize {
         line_height,
         overflow,
         background_fill,
+        transition,
         visible,
         disabled,
     } = Style::default();
@@ -114,6 +131,7 @@ fn style_used_bytes() -> usize {
         + z(&line_height)
         + z(&overflow)
         + z(&background_fill)
+        + z(&transition)
         + z(&visible)
         + z(&disabled)
 }
@@ -141,6 +159,7 @@ fn state_used_bytes() -> usize {
         disabled,
         line_height,
         fill,
+        pointer_mix,
     } = lumen_static::NodeState::default();
     z(&constraints)
         + z(&size)
@@ -161,6 +180,7 @@ fn state_used_bytes() -> usize {
         + z(&disabled)
         + z(&line_height)
         + z(&fill)
+        + z(&pointer_mix)
 }
 
 #[test]

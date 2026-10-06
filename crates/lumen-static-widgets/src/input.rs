@@ -661,6 +661,7 @@ impl<S: TextBuffer> Widget for TextInput<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::TRANSITION,
         ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
 

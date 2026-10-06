@@ -431,7 +431,16 @@ pub mod sizes {
     // `radius` do — and this struct's tail was full too: three `bool`s
     // and `focus_ring` in one 4-byte slot. So the border costs eight
     // bytes here as well as eight in `Style`.
-    const _: () = assert!(NODE_STATE == 84, "NodeState grew; re-budget docs/results-embedded.md");
+    //
+    // **88 since M86/T86.1** — `pointer_mix`, the level a running
+    // transition writes for `ops::shaded`. M82 had taken the last spare
+    // byte (84/84), so it grew the struct by four. A `u32` and not a
+    // `u16`, so the four bytes carry no padding: with two, this fixture's
+    // `[NodeState::default(); N]` stopped clearing in one call (+142 B).
+    // The firmware never writes it and does not enable `transitions`, but
+    // the field is unconditional so every build sizes the same
+    // (`docs/results-transitions.md` K86d, `docs/results-embedded.md`).
+    const _: () = assert!(NODE_STATE == 88, "NodeState grew; re-budget docs/results-embedded.md");
     // **80, not 72, since M27/T27.1** — `Style` gained `border_width: u8`
     // and `border_color: Color`. It had *no* spare tail padding: `align`,
     // `focus_ring`, `cursor` and `visible` fill one 4-byte slot exactly,
@@ -446,7 +455,10 @@ pub mod sizes {
     // `docs/results-embedded.md` M82/T82.3 records it. `NodeState`'s copy
     // took its last spare byte and did not grow (84/84).
     const _: () = assert!(STYLE == 84, "Style grew; re-budget docs/results-embedded.md");
-    const _: () = assert!(PER_NODE_RAM == 168, "per-node RAM changed");
+    // **172 since M86/T86.1** (84 + 88): K1's end-of-plan maximum,
+    // 16.8 KB per 100 nodes against 24 KB. `Style` took `transition` in
+    // its padding and stayed 84.
+    const _: () = assert!(PER_NODE_RAM == 172, "per-node RAM changed");
     // 32 on a 32-bit target, 48 on a 64-bit host: this one is
     // deliberately checked only where the budget applies.
     #[cfg(target_pointer_width = "32")]

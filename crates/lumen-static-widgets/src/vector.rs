@@ -191,6 +191,7 @@ impl<S: TextStorage> Widget for VectorText<S> {
         Fields::FONT_WEIGHT,
         Fields::PRESSED_DIM,
         Fields::HOVER_DIM,
+        Fields::TRANSITION,
     ]))
     .with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }

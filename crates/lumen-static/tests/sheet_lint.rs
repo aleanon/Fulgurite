@@ -202,3 +202,27 @@ fn a_fill_on_a_checkbox_is_reported_and_on_a_card_is_not() {
         "a fill on a `CheckBox` is a no-op the lint must name"
     );
 }
+
+/// **A transition on a node with no shade to move is reported** —
+/// M86/T86.1. `Button` declares a hover and a press shade, and so
+/// `Fields::TRANSITION`; a `Fixed` declares neither, so a
+/// `transition-duration` on it moves nothing and the lint names it.
+///
+/// Not a `Label`, which the plan named: a `Label` declares
+/// `Fields::HOVER_DIM` (it shades through `record_painted`, and its
+/// hovered bit flips like any table node's), so by the plan's own seed
+/// rule it declares `Fields::TRANSITION` and honours one
+/// (`docs/plan-transitions.md`, "What building found").
+#[test]
+fn a_transition_on_a_button_is_quiet_and_on_a_fixed_is_reported() {
+    let on_button = lint(&[Rule::new(Selector::Id("go"), Patch::new().transition_ms(150))]);
+    println!("on the button: {} finding(s) (bound 0)", on_button.len());
+    assert!(on_button.is_empty(), "a transition on a `Button` is read: {on_button:?}");
+    let found = lint(&[Rule::new(Selector::Kind("fixed"), Patch::new().transition_ms(150))]);
+    println!("on a fixed: {found:?}");
+    assert_eq!(
+        found,
+        vec![SheetFinding { rule: 0, issue: SheetIssue::Unread(Fields::TRANSITION) }],
+        "a transition on a `Fixed` is a no-op the lint must name"
+    );
+}

@@ -602,7 +602,7 @@ impl Parser {
             }
             Tk::NumBadUnit(n, unit) => {
                 self.bump();
-                self.err(span, format!("unknown unit in `{n}{unit}`: v1 takes `px` or a bare number"));
+                self.err(span, format!("unknown unit in `{n}{unit}`: v1 takes `px`, `ms` or a bare number"));
                 None
             }
             Tk::Hash(h) => {
@@ -675,6 +675,7 @@ fn token_text(t: &Tk) -> String {
         Tk::Num(n, Unit::None) => n.clone(),
         Tk::Num(n, Unit::Px) => format!("{n}px"),
         Tk::Num(n, Unit::Percent) => format!("{n}%"),
+        Tk::Num(n, Unit::Ms) => format!("{n}ms"),
         Tk::NumBadUnit(n, u) => format!("{n}{u}"),
         Tk::Dot => ".".into(),
         Tk::Colon => ":".into(),

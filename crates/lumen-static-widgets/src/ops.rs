@@ -363,6 +363,7 @@ impl<S: TextStorage> Widget for Label<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::TRANSITION,
             lumen_static::style::Fields::LINE_HEIGHT,
         ]).union(LABEL_OVERFLOW)).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 }
@@ -700,6 +701,7 @@ impl<S: 'static, T: TextStorage, const ROW: bool> Widget for Button<S, T, ROW> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::TRANSITION,
         ]))
         // A row sits on its menu's raised panel; a button on the page.
         .with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(

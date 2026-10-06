@@ -316,8 +316,26 @@ pub struct Style {
     ///
     /// **This byte grew `Style` 80 → 84** (`tests/cursor.rs`): M80 had
     /// taken both spare tail bytes, and `docs/plan-iced-roadmap.md` §2.1
-    /// budgets the re-budget. 81 of the 84 bytes are used.
+    /// budgets the re-budget. 81 of the 84 bytes were used (82 since
+    /// M86/T86.1's `transition`).
     pub background_fill: u8,
+    /// How long the hover and press shade, and the focus ring, take to
+    /// move — M86/T86.1 (`docs/plan-transitions.md`), in **tens of ms**:
+    /// `12` is 120 ms, `255` the longest, 2,550 ms. `0`, the default, is
+    /// instant, which is what every tree that sets nothing draws.
+    ///
+    /// Read by the host, not by paint: when a pointer or focus bit flips
+    /// on a node whose `transition` is not 0, the host runs the change
+    /// over this long and writes the level it has reached into
+    /// [`crate::NodeState::pointer_mix`], which [`crate::ops::shaded`]
+    /// blends from (behind the core `transitions` feature). Set through
+    /// [`Patch::transition_ms`], which takes milliseconds and rounds them;
+    /// `.lss` spells it `transition-duration: 150ms`. Declared by every
+    /// seed that declares a hover or press shade ([`Fields::TRANSITION`]).
+    ///
+    /// Byte 82 of 84: `Style` does not grow (`tests/cursor.rs`), and two
+    /// tail bytes are left.
+    pub transition: u8,
     /// Whether this node and everything under it participates in the
     /// frame.
     ///
@@ -373,6 +391,7 @@ impl Default for Style {
             line_height: 0,
             overflow: TextOverflow::Wrap,
             background_fill: 0,
+            transition: 0,
             cursor: Cursor::Default,
             visible: true,
             disabled: false,
@@ -622,11 +641,17 @@ impl Fields {
     /// widgets that draw a border); a rule setting it on any other kind is
     /// a `W1010` finding.
     pub const BACKGROUND_FILL: Fields = Fields(1 << 19);
+    /// [`Style::transition`] — M86/T86.1, the next free bit when it
+    /// landed. Declared by every seed that declares
+    /// [`Fields::HOVER_DIM`] or [`Fields::PRESSED_DIM`]: a transition moves
+    /// the shade those fields give, so a kind with no shade has nothing to
+    /// move and a rule setting it there is a `W1010` finding.
+    pub const TRANSITION: Fields = Fields(1 << 20);
     pub const ALL: Fields = Fields(u32::MAX);
 
     /// Every field with its name, for reports and for the tests that
     /// measure a mask field by field.
-    pub const EACH: [(Fields, &'static str); 20] = [
+    pub const EACH: [(Fields, &'static str); 21] = [
         (Fields::WIDTH, "width"),
         (Fields::HEIGHT, "height"),
         (Fields::PADDING, "padding"),
@@ -647,6 +672,7 @@ impl Fields {
         (Fields::LINE_HEIGHT, "line_height"),
         (Fields::OVERFLOW, "overflow"),
         (Fields::BACKGROUND_FILL, "background_fill"),
+        (Fields::TRANSITION, "transition"),
     ];
 
     /// The union of a list — how a widget spells its mask at the
@@ -985,6 +1011,9 @@ pub struct Patch {
     /// [`Style::background_fill`] — M82/T82.3: the fill table index, `0`
     /// for none.
     pub background_fill: Option<u8>,
+    /// [`Style::transition`] — M86/T86.1: already in tens of ms, as
+    /// [`Patch::transition_ms`] rounded it.
+    pub transition: Option<u8>,
 }
 
 impl Patch {
@@ -1015,6 +1044,7 @@ impl Patch {
             line_height: None,
             overflow: None,
             background_fill: None,
+            transition: None,
         }
     }
 
@@ -1157,6 +1187,18 @@ impl Patch {
         self
     }
 
+    /// How long the hover and press shade and the focus ring take to move,
+    /// in ms — M86/T86.1 ([`Style::transition`]). **Rounded to the
+    /// nearest 10 ms and saturating at 2,550**, because the field is a
+    /// byte of tens of ms; `0` is instant. Records [`Fields::TRANSITION`].
+    /// `.lss` spells it `transition-duration: 150ms`, and refuses a value
+    /// that is not a multiple of 10 or is above 2,550 rather than round it.
+    pub const fn transition_ms(mut self, ms: u16) -> Self {
+        let tens = (ms as u32 + 5) / 10;
+        self.transition = Some(if tens > 255 { 255 } else { tens as u8 });
+        self
+    }
+
     /// How much darker the background goes while pressed (0.0–1.0).
     pub const fn pressed_dim(mut self, v: f32) -> Self {
         self.pressed_dim = Some(v);
@@ -1245,6 +1287,9 @@ impl Patch {
         }
         if let Some(v) = self.background_fill {
             s.background_fill = v;
+        }
+        if let Some(v) = self.transition {
+            s.transition = v;
         }
     }
 }
@@ -1437,6 +1482,9 @@ impl Patch {
         }
         if self.background_fill.is_some() {
             f |= Fields::BACKGROUND_FILL.0;
+        }
+        if self.transition.is_some() {
+            f |= Fields::TRANSITION.0;
         }
         Fields(f)
     }

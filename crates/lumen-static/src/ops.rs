@@ -452,6 +452,15 @@ pub fn record(st: &mut [NodeState], i: usize, limits: Constraints, size: Size) -
 /// Every widget that draws calls this instead, so `paint` — which has no
 /// `&[Style]` — can read the cascade's answer out of the state array it
 /// already has.
+///
+/// **Which fields it derives**: `fg`, `bg`, `border_color`, `radius`,
+/// `focus_ring`, `border_width`, `font_size`, `font_weight`,
+/// `line_height`, `fill`, `shadow`, `pad` and `disabled`, all from
+/// `style`. `bg` is [`shaded`]'s answer, so it follows the node's
+/// `pressed` and `hovered` bits and, while a transition runs, its
+/// [`NodeState::pointer_mix`] level (M86/T86.1). It reads `pointer_mix`
+/// and **never writes it**: the level belongs to the host's transition
+/// table, and a layout that reset it would end a transition early.
 pub fn record_painted(
     st: &mut [NodeState],
     i: usize,
@@ -500,6 +509,26 @@ pub fn record_painted(
     record(st, i, limits, size)
 }
 
+/// How many steps each level in [`NodeState::pointer_mix`] has — M86/T86.1.
+///
+/// Seven bits each for hover and press, so a level is `0..=127` and both
+/// fit beside the active bit in a `u16`. 127 steps is finer than any
+/// transition shows at 60 Hz: the longest, 2,550 ms, is 153 frames.
+pub const MIX_LEVELS: u32 = 127;
+
+/// [`NodeState::pointer_mix`] for a hover level `h` and a press level `p`,
+/// each out of [`MIX_LEVELS`] (larger values saturate) — M86/T86.1.
+///
+/// Sets bit 15, so even `encode_mix(0, 0)` is an active level (the rest
+/// colour, drawn by the blend), distinct from the settled `0` that sends
+/// [`shaded`] down the bit path. Bits 16–31 are never set; the field is a
+/// `u32` only so `NodeState` has no padding ([`NodeState::pointer_mix`]).
+pub const fn encode_mix(h: u32, p: u32) -> u32 {
+    let h = if h > MIX_LEVELS { MIX_LEVELS } else { h };
+    let p = if p > MIX_LEVELS { MIX_LEVELS } else { p };
+    0x8000 | (h << 7) | p
+}
+
 /// `c` as the pointer affordance shows it on `n`: darkened by the style's
 /// `pressed_dim` while pressed, else by `hover_dim` while hovered.
 ///
@@ -508,7 +537,29 @@ pub fn record_painted(
 /// on is drawn in `color`, so it showed no hover and no press at all:
 /// `record_painted` shades only the background, which an on toggle does
 /// not paint.
+///
+/// **While a transition runs** (M86/T86.1, under the core `transitions`
+/// feature) `n.pointer_mix` has bit 15 set and carries a hover level `h`
+/// and a press level `p` ([`encode_mix`]). Then the shade is blended in
+/// `u8` integer arithmetic, rounding to nearest:
+/// `base = lerp(c, dim(c, hover_dim), h)`, then
+/// `lerp(base, dim(c, pressed_dim), p)` when `pressed_dim > 0`. At the
+/// four endpoint pairs (each level 0 or [`MIX_LEVELS`]) that is the bit
+/// path exactly, including "pressed with no `pressed_dim` shows the hover
+/// shade" (`crates/lumen-static-shell/tests/transition_shade.rs`). A
+/// settled `pointer_mix == 0` takes the bit path unchanged, so a tree
+/// that sets no `transition` draws today's frame.
+///
+/// **Without the feature the field is ignored** — "no transition", which
+/// is the documented contract, not a degraded default: the firmware
+/// never writes the level, so it does not link the blend
+/// (`docs/results-transitions.md`, K86a). Nothing wraps `shaded`, so
+/// this is not a provided method a wrapper could inherit wrongly.
 pub fn shaded(c: crate::display::Color, n: &NodeState, style: &Style) -> crate::display::Color {
+    #[cfg(feature = "transitions")]
+    if n.pointer_mix & 0x8000 != 0 {
+        return blend(c, n.pointer_mix, style);
+    }
     if n.pressed && style.pressed_dim > 0.0 {
         dim(c, style.pressed_dim)
     } else if n.hovered && style.hover_dim > 0.0 {
@@ -516,6 +567,40 @@ pub fn shaded(c: crate::display::Color, n: &NodeState, style: &Style) -> crate::
     } else {
         c
     }
+}
+
+/// [`shaded`]'s blend, for an active `mix` — M86/T86.1.
+///
+/// **Out of line and cold**, K86b's written response
+/// (`docs/results-transitions.md` T86.1): inlined into `shaded`, which
+/// every drawing node's layout calls, the blend cost the `appearance`
+/// bench's `still` row about 9% on a tree where no level is ever set.
+#[cfg(feature = "transitions")]
+#[cold]
+#[inline(never)]
+fn blend(c: crate::display::Color, mix: u32, style: &Style) -> crate::display::Color {
+    let h = (mix >> 7) & MIX_LEVELS;
+    let p = mix & MIX_LEVELS;
+    let base = lerp(c, dim(c, style.hover_dim), h);
+    if style.pressed_dim > 0.0 {
+        lerp(base, dim(c, style.pressed_dim), p)
+    } else {
+        base
+    }
+}
+
+/// `a` toward `b` by `t / MIX_LEVELS`, per channel, rounded to nearest;
+/// alpha from `b` (the dimmed colours keep `a`'s, so it is `a`'s).
+///
+/// `(a·(127 − t) + b·t + 63) / 127` is `a + (b − a)·t/127` rounded half
+/// up, in unsigned integers: the sum is never negative, so the division
+/// floors, and an exact half cannot occur because 127 is odd.
+#[cfg(feature = "transitions")]
+#[inline]
+fn lerp(a: crate::display::Color, b: crate::display::Color, t: u32) -> crate::display::Color {
+    let s = MIX_LEVELS - t;
+    let ch = |x: u8, y: u8| ((x as u32 * s + y as u32 * t + 63) / MIX_LEVELS) as u8;
+    crate::display::Color(ch(a.0, b.0), ch(a.1, b.1), ch(a.2, b.2), b.3)
 }
 
 /// `c` darkened by `f` (0.0–1.0), alpha untouched.

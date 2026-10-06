@@ -251,6 +251,7 @@ impl<S: TextStorage> Widget for Selectable<S> {
             lumen_static::style::Fields::FONT_WEIGHT,
             lumen_static::style::Fields::PRESSED_DIM,
             lumen_static::style::Fields::HOVER_DIM,
+            lumen_static::style::Fields::TRANSITION,
             lumen_static::style::Fields::LINE_HEIGHT,
             lumen_static::style::Fields::OVERFLOW,
         ]))

@@ -104,9 +104,10 @@ Accepted in v1:
   merge), `cursor`, `focus-ring`,
   `box-shadow`, `hover-dim`, `pressed-dim`, `line-height` (M80/T80.2),
   `text-overflow` (M80/T80.3), `background-fill` (M82/T82.3, a fill
-  table index, a bare number)),
+  table index, a bare number), `transition-duration` (M86/T86.1, `ms`,
+  a multiple of 10 up to 2550)),
   values as the setter takes
-  them (`px`, `#rrggbb[aa]`, keywords for `align`/`cursor`/`text-overflow`, `fixed(n)` /
+  them (`px`, `ms`, `#rrggbb[aa]`, keywords for `align`/`cursor`/`text-overflow`, `fixed(n)` /
   `fill` / `shrink` for lengths).
 - `@tokens { name: value; }` — compile-time constants, `$name` to use.
 - **Palette roles as tokens:** `$page`, `$surface`, `$control`, `$text`,

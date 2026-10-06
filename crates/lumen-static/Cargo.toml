@@ -62,6 +62,14 @@ rdyn_opaque = ["lumen-static-macros/rdyn_opaque"]
 # `DEP_LUMEN_STATIC_SHADER`, and they match the variants under
 # `cfg(lumen_shader)`.
 shader = ["alloc"]
+# M86/T86.1 (docs/plan-transitions.md): the hover/press blend in
+# `ops::shaded`, which reads `NodeState::pointer_mix`. Additive, like
+# `a11y`, and not mutually exclusive: the fields exist either way, so a
+# widget crate compiles the same and the size assertions do not depend on
+# it. `lumen-static-shell` enables it, because its host is what writes the
+# level; the firmware does not, writes no level, and so links no blend
+# (K86a). Without it `shaded` ignores the field -- "no transition".
+transitions = []
 
 [dev-dependencies]
 # **M30.** The widgets moved out; core's own tests and doctests still

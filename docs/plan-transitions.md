@@ -2,7 +2,7 @@
 
 > **Written 2026-09-28 as a section of `docs/plan-iced-roadmap.md`;
 > revised 2026-09-29 after that plan's seven-lens review, and moved to
-> its own file. T86.0 landed 2026-10-06 (`docs/results-transitions.md`).** The shared byte inventory, seams (S1,
+> its own file. T86.0 and T86.1 landed 2026-10-06. K86a held after one respelling; **K86b fired on the frame arm's `idle (floor)` after its written response (the blend `#[cold]`), so M86 stops at T86.1** (`docs/results-transitions.md` T86.1; "What building found" below).** The shared byte inventory, seams (S1,
 > S2), test and doc discipline, and plan-wide kill rules K1–K4 are in
 > `docs/plan-iced-roadmap.md` §2–§4 and bind this plan; this file does
 > not restate them.
@@ -571,6 +571,51 @@ exists there, so the new property's declaration is unconditional.*
   `just widget-drive`. It fires if any action's `ui.waitSettled` times
   out at 1000 ms with no transition running. That is a settle defect,
   not a transition one, and it blocks T86.4 until it is fixed.
+
+**What building found (M86).**
+
+- **T86.1 — `pointer_mix` is a `u32`, not a `u16`.** The `u16` fired
+  K86a: +140 / +164 / +148 / +144 B against bounds of 64 / 96 / 64 / 96,
+  +142 of it in the firmware's `_start`. The struct was 88 B either way,
+  but the `u16` left two bytes of padding, and the fixture's
+  `[NodeState::default(); N]` became a clear per element and a store per
+  field instead of one clear. As a `u32` (bits 16–31 always 0) there is
+  no padding and the Δ is +40 / +60 / +36 / +44, attributed to copies and
+  offsets, with `cascade_range` +2 for `Patch::apply_to`'s branch. The
+  encoding (bit 15 active, 7–13 hover, 0–6 press) is unchanged;
+  `encode_mix` and `MIX_LEVELS` are `u32` to match.
+- **T86.1 — the `W1010` negative case is a `Fixed`, not a `Label`.** The
+  plan's own seed rule (every seed declaring `HOVER_DIM` or `PRESSED_DIM`
+  adds `TRANSITION`) gives `Label` the bit: it declares `HOVER_DIM`,
+  shades through `record_painted`, and its hovered bit flips like any
+  table node's. So a transition on a `Label` is honoured and correctly
+  not flagged; `Kind("fixed")`, which declares no shade, is.
+- **T86.1 — the seed list is 17 sites in 15 files**, not twelve:
+  `selectable.rs`, `rich.rs` and `vector.rs` arrived after `553fa5e`, and
+  `chart.rs` and the widgets' `ops.rs` carry two seeds each.
+- **T86.1 — the shade gate's counts.** 64 colours × 3 × 2 is 384 cases,
+  not 768: the endpoint check compares 1,536 (384 × 4 level pairs), the
+  interior 1,152 channels. Printed as built.
+- **T86.1 — `.lss` needed a unit.** The lexer took `px` or a bare number;
+  `150ms` was a bad unit. `Unit::Ms` is lexed, printed and refused by
+  every other `Takes`, and the bad-unit message now names `ms`
+  (`fail_bad_unit.stderr` follows).
+- **T86.1 — the lint line's injection.** §3.1 says the workspace clippy
+  line stays green under an unused binding in the feature's code; for
+  `transitions` it does not, because the shell unifies the feature into
+  every workspace build. The default-feature `cargo clippy -p
+  lumen-static` is the line that stays green, and was the one checked.
+- **K86b fired, after its response, on `idle (floor)`.** Inlined, the
+  blend put `appearance`'s `still` above its spread (18,664 against
+  14,779–17,524 ns). `#[cold] #[inline(never)]` brought `still` and
+  `hover` inside, but two of three re-measured frame-arm runs read
+  `idle (floor)` above the base's (64.0 against 55.8–62.5 µs; 63.85
+  against 53.3–62.4), and a third, in reversed order, inside (61.45). The
+  shell without `transitions` reads on the base, so it is the feature,
+  and `idle` lays nothing out, so the likely cause is code placement
+  rather than the branch running. By the rule's written response M86
+  stops at T86.1; T86.1 stands, since it adds no behaviour. Every figure
+  is `docs/results-transitions.md` T86.1's.
 
 **What the review found (M86).**
 

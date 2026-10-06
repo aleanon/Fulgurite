@@ -818,6 +818,7 @@ impl<const KIND: u8> PickerTable<KIND> {
                 Fields::CURSOR,
                 Fields::HOVER_DIM,
                 Fields::PRESSED_DIM,
+                Fields::TRANSITION,
             ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text).background(lumen_static::style::Role::Raised).border(lumen_static::style::Role::Border));
         lumen_static::widget::splice_seeds(&mut s, 2, <Popup<Pad<KIND>> as Widget>::SEEDS);
         s

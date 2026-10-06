@@ -344,13 +344,14 @@ pub struct NodeState {
     pub border_width: u8,
     /// `Style::disabled`, resolved — M57/A16. The pass reads it (with
     /// every ancestor's) to refuse hits, focus and activation. In the
-    /// struct's tail padding, so `NodeState` stays 84 bytes.
+    /// struct's tail padding, so `NodeState` stayed 84 bytes (88 since
+    /// M86/T86.1's `pointer_mix`).
     pub disabled: bool,
     /// `Style::line_height`, resolved — M80/T80.2: sixteenths of
     /// `font_size`, 0 for the measurer's own spacing. Here for the reason
     /// `font_size` is: `paint` has no `&[Style]`, and a `Label` hands this
     /// byte to `Painter::text_spaced`. One of the two spare tail bytes, so
-    /// `NodeState` stays 84 (`tests/cursor.rs`); one is left.
+    /// `NodeState` stayed 84 (`tests/cursor.rs`); one was left.
     pub line_height: u8,
     /// `Style::background_fill`, resolved — M82/T82.3: `0` for none, `n`
     /// for entry `n - 1` of the fill table the painter answers
@@ -359,9 +360,37 @@ pub struct NodeState {
     /// for the reason `bg` is here: `paint` has no `&[Style]`. An index
     /// and not the stops, so what reaches retention and the journal is
     /// the resolved content `ops::fill` paints, never this byte. The last
-    /// spare tail byte: `NodeState` stays 84 (`tests/cursor.rs`), 84 of
+    /// spare tail byte: `NodeState` stayed 84 (`tests/cursor.rs`), 84 of
     /// 84 used.
     pub fill: u8,
+    /// **How far a hover or press shade has moved**, while a transition
+    /// runs — M86/T86.1 (`docs/plan-transitions.md`).
+    ///
+    /// `0` means settled: [`crate::ops::shaded`] takes the bit path on
+    /// `pressed` and `hovered`, so a zeroed state, and every tree whose
+    /// [`crate::Style::transition`] is 0, draws today's frame byte for
+    /// byte. Otherwise bit 15 is set and bits 7–13 hold the hover level,
+    /// bits 0–6 the press level, each out of [`crate::ops::MIX_LEVELS`]
+    /// ([`crate::ops::encode_mix`] packs them). `shaded` blends between
+    /// the rest colour and the two dimmed ones by those levels, under the
+    /// core `transitions` feature; without it the field is ignored.
+    ///
+    /// **Here because paint has no `&[Style]` and no host**, the reason
+    /// `bg` is here: the level has to reach `shaded` through the state
+    /// array. Written by the host's transition table and by nothing else;
+    /// [`crate::ops::record_painted`] reads it and never overwrites it.
+    ///
+    /// **This field grew `NodeState` 84 → 88** (`tests/cursor.rs`): M82
+    /// took the last spare tail byte. `docs/plan-iced-roadmap.md` §2.1
+    /// budgets it, and `docs/results-embedded.md` has the RAM row.
+    ///
+    /// **A `u32`, of which bits 16–31 are always 0**, and not the `u16`
+    /// the plan named: either way the struct is 88 B, but a `u16` left two
+    /// bytes of padding in it, and the firmware's `[NodeState::default();
+    /// N]` then compiled to a clear per element and a store per field
+    /// instead of one clear of the array — +142 B of `.text` in `_start`
+    /// alone, which fired K86a (`docs/results-transitions.md` T86.1).
+    pub pointer_mix: u32,
 }
 
 /// Scalar facts a kind knows about itself that geometry cannot show —

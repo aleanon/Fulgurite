@@ -1583,6 +1583,10 @@ impl Agent {
             "line_height": s.line_height,
             // M80/T80.3: `Wrap`, `Clip` or `Ellipsis`, for the same reason.
             "overflow": format!("{:?}", s.overflow),
+            // M86/T86.1: tens of ms, 0 for instant -- so a drive can
+            // refuse to test a transition the sheet never set (T86.3's
+            // setup check) without reading pixels.
+            "transition": s.transition,
             "align": format!("{:?}", s.align),
             "visible": s.visible,
             "disabled": s.disabled,
@@ -1594,6 +1598,9 @@ impl Agent {
                 "focused": st.focused,
                 "disabled": st.disabled,
                 "painted_background": color(st.bg),
+                // M86/T86.1: the running transition's level, `0` when
+                // settled (`NodeState::pointer_mix`).
+                "pointer_mix": st.pointer_mix,
             },
         }))
     }

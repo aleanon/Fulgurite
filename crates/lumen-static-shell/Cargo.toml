@@ -9,7 +9,9 @@ license.workspace = true
 # headless oracle and every test work without it, on the block-metrics
 # stand-in. See src/text.rs.
 fontdue = { version = "0.9", optional = true }
-lumen-static = { path = "../lumen-static" }
+# M86/T86.1: `transitions`, because this host is what writes
+# `NodeState::pointer_mix`, so it is what needs `ops::shaded` to read it.
+lumen-static = { path = "../lumen-static", features = ["transitions"] }
 # M61/T61.5: `lss::load`, the run-time reading of a `.lss` sheet. Not
 # optional -- a std crate with no dependencies -- and reached only through
 # `Program::live_lss`, which the window calls in debug and `reload` builds,

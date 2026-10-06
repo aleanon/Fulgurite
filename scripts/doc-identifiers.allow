@@ -130,7 +130,6 @@ GstFeed                        # deferred by M84/T84.10 (K84b fired); docs/resul
 LineHeight                     # proposed by ?
 LinuxClipboardKind             # proposed by ?
 MainContext                    # proposed by ?
-TRANSITION                     # proposed by ?
 TextSource                     # proposed by M80
 GlyphRuns                      # proposed by M81
 TRACKED                        # proposed by M81
@@ -142,7 +141,6 @@ RunId                          # proposed by M83
 AnimatedImage                  # decided against by M84 (an animated image is an `Image` whose frame moves; M84/T84.3 built none), and the plan says so by name
 CullTo                         # proposed by M85
 INKS_OUTSIDE                   # proposed by M85
-MIX_LEVELS                     # proposed by M86
 ImageRef                       # proposed by M87
 KEYS                           # proposed by M87
 LINKED_MARKDOWN                # proposed by M87

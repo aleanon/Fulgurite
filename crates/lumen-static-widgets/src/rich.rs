@@ -240,6 +240,7 @@ impl Widget for RichText {
         Fields::VISIBLE,
         Fields::PRESSED_DIM,
         Fields::HOVER_DIM,
+        Fields::TRANSITION,
         Fields::LINE_HEIGHT,
     ])).with_roles(lumen_static::style::SeedRoles::NONE.color(lumen_static::style::Role::Text))];
 

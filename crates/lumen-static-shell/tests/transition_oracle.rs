@@ -194,7 +194,8 @@ fn differs(a: &NodeState, b: &NodeState) -> Option<&'static str> {
         border_width,
         disabled,
         line_height,
-        fill
+        fill,
+        pointer_mix
     );
     None
 }

@@ -119,6 +119,7 @@ impl<S: 'static> Widget for NavRow<S> {
             Fields::FONT_SIZE,
             Fields::HOVER_DIM,
             Fields::PRESSED_DIM,
+            Fields::TRANSITION,
         ]),
     )];
 }

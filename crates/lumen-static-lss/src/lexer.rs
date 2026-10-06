@@ -231,6 +231,7 @@ impl Lexer<'_> {
         match suffix.as_str() {
             "" => Tk::Num(s, Unit::None),
             "px" => Tk::Num(s, Unit::Px),
+            "ms" => Tk::Num(s, Unit::Ms),
             _ => Tk::NumBadUnit(s, suffix),
         }
     }

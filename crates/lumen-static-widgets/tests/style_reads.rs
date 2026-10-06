@@ -18,6 +18,12 @@
 //! (`Host::cursor`) — so it counts as read exactly when a hit at the
 //! kind's centre lands on the kind itself.
 //!
+//! `transition` changes no frame either (M86/T86.1): the host reads it
+//! when a pointer bit flips and moves the shade `hover_dim` and
+//! `pressed_dim` give, through `NodeState::pointer_mix`. So it counts as
+//! read exactly when either dim was measured as read — a kind with no
+//! shade has nothing to move.
+//!
 //! **Why every render sets a base background, colour and size.** A
 //! transparent background hides `radius`, `shadow` and both dims; a
 //! shrink-wrapped container hides `align`. The base makes each field
@@ -184,6 +190,9 @@ fn measured<R: Widget + Node + Default>(setup: fn(&mut R)) -> Fields {
                 }
                 continue;
             }
+            if name == "transition" {
+                continue;
+            }
             let with = [base, Rule::new(Selector::Id("probe"), patch_for(name))];
             for sc in SCENARIOS {
                 let reachable = match sc {
@@ -201,6 +210,9 @@ fn measured<R: Widget + Node + Default>(setup: fn(&mut R)) -> Fields {
                 }
             }
         }
+    }
+    if read.contains(Fields::HOVER_DIM) || read.contains(Fields::PRESSED_DIM) {
+        read = read.union(Fields::TRANSITION);
     }
     read
 }

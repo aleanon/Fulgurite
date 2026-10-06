@@ -247,6 +247,7 @@ impl<W: Widget> ScrollTable<W> {
                 lumen_static::style::Fields::RADIUS,
                 lumen_static::style::Fields::PRESSED_DIM,
                 lumen_static::style::Fields::HOVER_DIM,
+                lumen_static::style::Fields::TRANSITION,
             ]));
         lumen_static::widget::splice_seeds(&mut s, 1, W::SEEDS);
         s

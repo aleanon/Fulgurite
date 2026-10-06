@@ -597,9 +597,10 @@ mod shader {
             core::mem::size_of::<lumen_static::Style>(),
             core::mem::size_of::<lumen_static::NodeState>(),
         );
-        println!("size_of: ShaderView<16> {view} B (a11y on); Style {style} B (bound 84); NodeState {state} B (bound 84)");
+        println!("size_of: ShaderView<16> {view} B (a11y on); Style {style} B (bound 84); NodeState {state} B (bound 88)");
         assert_eq!(style, 84, "Style changed size in a shader build");
-        assert_eq!(state, 84, "NodeState changed size in a shader build");
+        // 88 since M86/T86.1 (`pointer_mix`, `docs/results-transitions.md`).
+        assert_eq!(state, 88, "NodeState changed size in a shader build");
     }
 
     /// Two views with no bindings, written directly: the first's uniform

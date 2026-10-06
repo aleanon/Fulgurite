@@ -231,6 +231,10 @@ fn val(v: &Val) -> Ts2 {
             quote!(#l)
         }
         Val::Bool(b) => quote!(#b),
+        Val::Millis(x) => {
+            let l = Literal::u16_suffixed(x);
+            quote!(#l)
+        }
         Val::Color([r, g, b, a]) => {
             let [r, g, b, a] = [r, g, b, a].map(Literal::u8_suffixed);
             quote!(::lumen_static::display::Color(#r, #g, #b, #a))

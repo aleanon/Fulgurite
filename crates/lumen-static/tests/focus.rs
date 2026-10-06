@@ -201,9 +201,18 @@ fn the_ring_costs_no_bytes_per_node() {
     // the *ring*, so it is kept and its number moved rather than deleted:
     // if `focus_ring` ever became an `f32` it would cost bytes again.
     // **84 since M82/T82.3**, for `background_fill` (`tests/cursor.rs`
-    // prints the used bytes, 81 of 84).
-    assert_eq!(core::mem::size_of::<lumen_static::Style>(), 84);
-    assert_eq!(core::mem::size_of::<NodeState>(), 84);
+    // prints the used bytes, 82 of 84 since M86/T86.1's `transition`).
+    // `NodeState` is **88 since M86/T86.1**, for `pointer_mix`, the
+    // transition level — a `u16`, not the ring (`docs/results-transitions.md`).
+    let (style, state) = (core::mem::size_of::<lumen_static::Style>(), core::mem::size_of::<NodeState>());
+    println!(
+        "Style {style} B (bound 84), NodeState {state} B (bound 88): {:.1} KB per 100 nodes",
+        (style + state) as f32 * 100.0 / 1024.0
+    );
+    assert_eq!(style, 84);
+    assert_eq!(state, 88);
+    assert_eq!(core::mem::size_of::<lumen_static::Cmd>(), 60, "Cmd changed");
+    assert_eq!(core::mem::size_of::<lumen_static::Event>(), 16, "Event changed");
 }
 
 /// **A ring for the keyboard, not for the mouse.**

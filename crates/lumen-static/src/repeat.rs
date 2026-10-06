@@ -504,6 +504,7 @@ impl<T: Widget + Default + 'static> Widget for Repeat<T> {
             crate::style::Fields::SHADOW,
             crate::style::Fields::PRESSED_DIM,
             crate::style::Fields::HOVER_DIM,
+            crate::style::Fields::TRANSITION,
         ]))];
 
     fn type_defaults() -> Style {

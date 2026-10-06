@@ -172,7 +172,7 @@ fn every_property_lowers_to_its_setter() {
             color: $ink; background: $surface; border-width: 1px; border-color: $focus;
             border-radius: 8px; font-size: 15px; font-weight: 600; box-shadow: 12px;
             pressed-dim: 0.15; hover-dim: 0.07; disabled: true; line-height: 1.5;
-            text-overflow: ellipsis; background-fill: 1;
+            text-overflow: ellipsis; background-fill: 1; transition-duration: 150ms;
          }
          #b { width: fill; height: shrink; padding: 1px 2px 3px; color: #10203040; }
          #c { width: fill(3); padding: 1px 2px 3px 4px; }
@@ -201,6 +201,7 @@ fn every_property_lowers_to_its_setter() {
         set("line_height", Val::F32(1.5)),
         set("overflow", Val::TextOverflow(TextOverflow::Ellipsis)),
         set("background_fill", Val::U8(1)),
+        set("transition_ms", Val::Millis(150)),
     ];
     assert_eq!(s.base[0].setters, want_a);
     assert_eq!(
@@ -236,6 +237,16 @@ fn every_property_lowers_to_its_setter() {
             p.name
         );
     }
+}
+
+/// M86/T86.1, the accept direction of the `Takes::Millis` refusals: both
+/// ends of the range lower, unrounded.
+#[test]
+fn a_duration_at_either_end_of_its_range_is_accepted() {
+    let s = lowered("#a { transition-duration: 0ms; }\n#b { transition-duration: 2550ms; }");
+    println!("0ms -> {:?}, 2550ms -> {:?}", s.base[0].setters, s.base[1].setters);
+    assert_eq!(s.base[0].setters, vec![set("transition_ms", Val::Millis(0))]);
+    assert_eq!(s.base[1].setters, vec![set("transition_ms", Val::Millis(2550))]);
 }
 
 #[test]
@@ -284,6 +295,12 @@ const REFUSED_LOWERING: &[(&str, &str, &str, u32, u32)] = &[
     ("index in px", "#t { background-fill: 1px; }", "`background-fill` takes a whole number from 0 to 255, no unit, like `1`", 1, 23),
     ("index fraction", "#t { background-fill: 1.5; }", "`background-fill` takes a whole number from 0 to 255", 1, 23),
     ("index too big", "#t { background-fill: 256; }", "`background-fill` takes a whole number from 0 to 255", 1, 23),
+    // M86/T86.1: a duration is whole ms in tens, 0 to 2,550; refused, not
+    // rounded, with `Takes::Millis`'s own description.
+    ("ms not tens", "#t { transition-duration: 155ms; }", "`transition-duration` takes a duration in ms, a multiple of 10 from 0 to 2550, like `150ms`", 1, 27),
+    ("ms too long", "#t { transition-duration: 2560ms; }", "`transition-duration` takes a duration in ms, a multiple of 10 from 0 to 2550", 1, 27),
+    ("ms without unit", "#t { transition-duration: 150; }", "`transition-duration` takes a duration in ms", 1, 27),
+    ("ms fraction", "#t { transition-duration: 150.5ms; }", "`transition-duration` takes a duration in ms", 1, 27),
     ("five edges", "#t { padding: 1px 2px 3px 4px 5px; }", "`padding` takes one to four lengths", 1, 15),
     ("align", "#t { align: middle; }", "`align` takes `start`, `center`, `end` or `fill`", 1, 13),
     ("cursor", "#t { cursor: hand; }", "`cursor` takes `default`", 1, 14),

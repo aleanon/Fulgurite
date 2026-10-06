@@ -36,7 +36,8 @@ fn by_hand(loud: bool) -> Vec<Rule> {
         .radius(8.0)
         .shadow(12.0)
         .hover_dim(0.07)
-        .pressed_dim(0.15);
+        .pressed_dim(0.15)
+        .transition_ms(150);
     let mut v = vec![
         Rule::new(Selector::Any, Patch::new().spacing(6.0)),
         Rule::new(

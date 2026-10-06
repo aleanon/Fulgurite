@@ -114,6 +114,7 @@ fn set(p: Patch, method: &str, v: Val) -> Patch {
         ("line_height", Val::F32(x)) => p.line_height(x),
         ("background_fill", Val::U8(x)) => p.background_fill(x),
         ("overflow", Val::TextOverflow(o)) => p.overflow(overflow(o)),
+        ("transition_ms", Val::Millis(x)) => p.transition_ms(x),
         (m, v) => panic!("lumen_static_shell::lss: no setter `{m}` taking {v:?}"),
     }
 }
