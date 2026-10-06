@@ -9,9 +9,10 @@
 # - the first GPU window over the software one: what opening a context
 #   costs (§5's 174 MB, re-read here on this example);
 # - the second window over the first, on each backend: what one more
-#   window costs. Until M89b/T89.10 every GPU window makes a context of
-#   its own; K89b (`docs/plan-windows.md`) compares T89.10's shared
-#   second window with this separate-context delta, bound < 50%.
+#   window costs. Every GPU window makes a context of its own: K89b
+#   (`docs/plan-windows.md`) compared a shared second window with this
+#   separate-context delta at T89.10, fired on the raw delta, and the
+#   sharing was not shipped (`docs/results-windows.md` T89.10).
 #
 # The GPU legs need a real adapter, so this runs on the user's display,
 # off the monitor they read and without focus (scripts/drive_window.sh);

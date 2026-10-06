@@ -441,6 +441,16 @@ method `docs/results-competitive.md` §3 uses.
 > **+3.87 MB**, not +6.97 — the old figure overstated it by 1.8×. The
 > crate count and the RSS rows were never affected.
 
+**A second window, measured — M89b/T89.10.** On `examples/two-windows`
+(release, `just windows-rss`, median of three, this section's method per
+window), a second GPU window with a context of its own costs 17.5 MB
+more than the same window on the software canvas; sharing one context
+between the windows took that to 0.9 MB. The sharing is **not shipped**:
+K89b, judged on the whole second-window delta, fired (82% of the
+separate-context delta against a 50% bound), because 74.5 MB of that
+delta is the window's own fonts on either backend. The rows and the
+reasoning are `docs/results-windows.md` T89.9–T89.10.
+
 **The price is the context, not the code.** Compiling the GPU backend in
 and not using it costs 0.6 MB resident. Opening an adapter costs 174 MB,
 which lands `lumen-static` squarely among the GPU-backed arms of

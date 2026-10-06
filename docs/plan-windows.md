@@ -1108,3 +1108,20 @@ the first review's findings of the same name.
   windows-rss` prints the GPU's share beside it, the difference of the
   two backends' second-window medians (+17.5 MB), and T89.10 reads K89b
   on both.
+- **T89.10, K89b fired and the sharing is not shipped.** `GpuContext`
+  shared by `Rc`, a surface per window and `Win`'s `Weak` were built as
+  the Decisions describe and measured: K89a held (0 differing pixels on
+  both windows across the round trip, no panic, the backend lines
+  `shared context (2 surfaces)` for window 2, each program's
+  `ImageId(0)` its own colour), and the second GPU window's `VmRSS`
+  delta read 75.4 MB against T89.9's 91.9 — **82%, against a bound of
+  50%**. Its response was followed: every window keeps a context of its
+  own, and the implementation is on the side branch
+  `t89.10-shared-gpu-context` (`9cc2e22`). **The quantity, as T89.9
+  recorded before the measurement, is the wrong one**: 74.5 MB of both
+  arms' delta is the detail's fallback faces, which the software canvas
+  pays too, so the raw ratio cannot fall below 81%. On the GPU's share
+  (each arm's GPU delta less the software delta of the same launches)
+  sharing took a second window from 17.5 MB to 0.9 MB, 5%. Re-judging
+  K89b on that share, and shipping from the side branch, is an owner
+  decision, not this task's (`docs/results-windows.md` T89.10).

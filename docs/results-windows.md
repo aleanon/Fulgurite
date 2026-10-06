@@ -322,3 +322,50 @@ Raw launches, kB (one → two): GPU 236,268 → 328,600, 202,500 → 296,624,
   pays the 74.5 MB the software one pays, so the raw form could not tell
   a shared context from a separate one (`docs/plan-windows.md`, What
   building found).
+
+## T89.10 — one GPU context shared by the windows: K89b fired, not shipped (2026-10-06)
+
+`GpuContext` shared by `Rc` with a surface per window was built and
+measured, and **K89b fired on its quantity as written**. Following its
+response, every window keeps a context of its own (M89a's behaviour, as
+committed at T89.9); the implementation is kept on the side branch
+`t89.10-shared-gpu-context` (`9cc2e22`), not on this one. Read on `:0`,
+the RTX 4070, as T89.9.
+
+**K89a** (`just resume-drive`'s `two-windows-gpu` leg on the shared build):
+
+| quantity | read | bound | verdict |
+|---|---|---|---|
+| window 1 / window 2 differing pixels after the round trip | **0** / 149,600, **0** / 120,000 | 0.1% each | holds |
+| panics across the leg | 0 | 0 | holds |
+| backends made before / by the resume | 2 / 2 | 2 / 2 | setup |
+| backend lines | `shared context (1 surface)`, `(2 surfaces)`, then the same after the resume; every surface Bgra8Unorm | window 2's the second surface | the context was shared |
+| `#swatch` centre, each program's `ImageId(0)` (before and after) | list (208, 48, 48), detail (32, 112, 208) | each its own | holds |
+
+**K89b** (`just windows-rss` on the shared build, median of three; T89.9's
+rows are the separate-context arm):
+
+| | separate contexts (T89.9) | shared (T89.10) | ratio | bound | verdict |
+|---|---:|---:|---:|---|---|
+| second GPU window's `VmRSS` delta (K89b as written) | 91.9 MB | **75.4 MB** | **82%** | < 50% | **fires** |
+| software canvas's second window, same launches | 74.5 MB | 74.5 MB | | | the control |
+| the second window's GPU share (GPU delta − software delta) | 17.5 MB | **0.9 MB** | **5%** | < 50% | holds |
+
+Raw launches, kB (one → two): shared GPU 202,436 → 279,624, 202,264 →
+279,440, 202,380 → 280,596; software 30,336 → 106,612, 30,372 → 106,632,
+30,284 → 106,616. The first GPU window is unchanged (197.6 MB against
+197.8 at T89.9).
+
+- **Sharing removed 95% of what a second GPU window cost**, 17.5 MB to
+  0.9 MB. K89b as written cannot see it: 74.5 MB of either arm's delta
+  is the detail program's fallback faces, which the software canvas pays
+  identically (T89.9), so the raw ratio is bounded below by 74.5 / 91.9 =
+  81% whatever the GPU does — a bound computed from the wrong quantity,
+  recorded at T89.9 before this measurement was taken.
+- **The kill rule's response was followed regardless**, because a kill
+  rule that is re-read after it fires is not one. Whether K89b should be
+  judged on the GPU share — and the sharing shipped from the side branch —
+  is the owner's call (`docs/plan-windows.md`, What building found).
+- Not run on the shared build, because it is not shipped: `just
+  gpu-parity`, and the plan's two injections (the image atlas in
+  `GpuContext`; one shared `target`).
