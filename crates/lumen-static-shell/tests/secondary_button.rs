@@ -13,9 +13,11 @@
 //! `Right` or `Middle` press or release stops in dispatch before pass 1
 //! (`pass::secondary`), so it runs no handler, latches no press, sets no
 //! pressed bit, moves no focus and ends no capture. A primary touch held
-//! for 600 ms is still a tap — its `End` is a release, so a `Button` under
-//! it activates — and a press-acting control has acted at `Begin`; T90.3
-//! flips the first and keeps the second (second review P16).
+//! for 600 ms was still a tap — its `End` a release, so a `Button` under
+//! it activated — and a press-acting control has acted at `Begin`;
+//! **T90.3 flipped the first** (the host's long press spends the touch,
+//! and its `End` is a cancel) **and keeps the second** (second review
+//! P16; `tests/context_routes.rs` has the routes themselves).
 //!
 //! Each gate asserts its setup landed (the left button at the same point
 //! changes the same effect) and prints the quantity it checks.
@@ -300,12 +302,12 @@ fn hold<I: Invalidation>(name: &str) -> (f32, f32, f32) {
 fn long_hold<I: Invalidation>(strategy: &str) {
     let mut fired = Vec::new();
     let (b, held, lifted) = hold::<I>("Button");
-    println!("[{strategy}] Button held 600 ms: handler count {b} -> {held} (held) -> {lifted} (lifted; pinned 1)");
+    println!("[{strategy}] Button held 600 ms: handler count {b} -> {held} (held) -> {lifted} (lifted; want 0, a cancel)");
     assert_eq!(held, 0.0, "setup [{strategy}]: the button activated before its touch lifted");
-    if lifted != 1.0 {
+    if lifted != 0.0 {
         fired.push(format!(
-            "GAP pinned [{strategy}]: a 600 ms hold's End is a release today, so the button under it \
-             activates -- T90.3 flips this to a cancel; handler count {lifted}"
+            "[{strategy}] a 600 ms hold's End activated the button under it -- the long press asked for a \
+             context menu, so its lift must be a cancel (T90.3); handler count {lifted}"
         ));
     }
     for name in ["Collapsible", "Tabs"] {
@@ -321,10 +323,11 @@ fn long_hold<I: Invalidation>(strategy: &str) {
     assert!(fired.is_empty(), "{}", fired.join("\n"));
 }
 
-/// **A long hold is a tap today**, and a press-acting control has acted
-/// at `Begin`. T90.3 cancels the release and keeps the press (P16).
+/// **A long hold is not a tap** — T90.3, the flip of T90.0's pin: the
+/// release under a 600 ms hold is a cancel, so the button does not
+/// activate. A press-acting control has still acted at `Begin` (P16, kept).
 #[test]
-fn a_long_hold_is_a_tap_today() {
+fn a_long_hold_is_not_a_tap() {
     long_hold::<Everything>("Everything");
     long_hold::<Boundaries<256>>("Boundaries");
 }

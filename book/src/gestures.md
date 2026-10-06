@@ -37,6 +37,37 @@ a `Button` although no widget handles touch itself. A `Cancel` becomes
 `Event::PointerCancel`, which ends the gesture and activates nothing: a
 cancelled tap is not a click. Other fingers never drive the pointer.
 
+## The one recogniser the host owns: a held touch
+
+There is one exception to "an application owns its recognisers"
+(M90/T90.3). A `Host` holds one `LongPress` for the primary touch. When
+the finger has been down and still for its 500 ms, the host asks for a
+context menu there — `Event::ContextRequest` at the touch point, offered
+to what is under it and its ancestors, the same event a right click and
+Shift+F10 produce — and marks the touch **spent**, so its `End` becomes
+an `Event::PointerCancel` rather than a release.
+
+The reason is the release. A button, a checkbox and a menu row activate
+when the finger lifts, so the lift of a long press would press whatever
+it is over and close the menu that just opened. Only the intake can turn
+that release into a cancel: an application's own `LongPress` sees the
+`End` after the host has already delivered it as a release. A drift past
+the 10 px slop makes it a drag and the lift a tap again, and while a hold
+is pending the host's next deadline includes it, so a window that sleeps
+until something is due still fires it:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/context_routes.rs:held_touch}}
+```
+
+**A control that acts on the press has already acted.** The primary
+touch's `Begin` is a press at once, so 500 ms before the hold fires a
+collapsible has toggled and a tab has been selected; cancelling the
+release cannot undo that. Holding the press back until the hold resolves
+would delay every tap's press, and its press shade, by the length of the
+tap, so it is not built. The numbers are in
+`docs/results-desktop-integration.md` (T90.3).
+
 ## `Drag<T>`, and the two halves not to conflate
 
 **Within an application** is `Drag<T>`: a payload, drop targets and hover

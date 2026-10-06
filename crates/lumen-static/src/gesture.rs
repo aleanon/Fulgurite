@@ -9,6 +9,13 @@
 //! widget or an application holds, fed the same `Event::Touch` stream
 //! everything else sees, and a tree that holds none carries nothing.
 //!
+//! **One exception** — M90/T90.3. A host holds one [`LongPress`] for the
+//! primary touch and turns it into a context request
+//! (`Event::ContextRequest`), because the touch's release must then be
+//! cancelled rather than delivered, and only the intake can do that: a
+//! recognizer an application owns sees the release after it has already
+//! activated whatever was under it (`book/src/gestures.md`).
+//!
 //! All of it is `no_std`: fixed arrays, no clock of its own. [`LongPress`]
 //! takes elapsed time the way [`crate::Animated`] does, because the core
 //! still has no timer and still should not.
@@ -189,6 +196,17 @@ impl LongPress {
             }
             TouchPhase::Begin => {}
         }
+    }
+
+    /// How long until this press completes, in ms: `None` with no touch
+    /// down or once it has fired — M90/T90.3. A host folds it into its
+    /// next deadline, or a hold on an idle window would never be checked
+    /// (the M28/T28.12 lesson).
+    pub fn remaining_ms(&self) -> Option<f32> {
+        if self.fired {
+            return None;
+        }
+        self.down.map(|_| (self.hold - self.held).max(0.0))
     }
 
     /// Advance by `dt` ms; returns the press's position **once**, on

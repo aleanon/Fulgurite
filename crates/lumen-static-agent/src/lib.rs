@@ -2243,7 +2243,7 @@ fn parse_mods(v: &Value) -> Result<lumen_static::event::Mods, (i64, String, Valu
 
 /// Named keys; any single character is also a key, `Key::Char` —
 /// M57/B8, so a shortcut (`a` with `mods: ["ctrl"]`) can be driven.
-const KEY_NAMES: [&str; 15] = [
+const KEY_NAMES: [&str; 28] = [
     "Enter",
     "Space",
     "Escape",
@@ -2258,6 +2258,21 @@ const KEY_NAMES: [&str; 15] = [
     "End",
     "PageUp",
     "PageDown",
+    // M90/T90.3 (second review G21): Shift+F10 and the Menu key are how
+    // a keyboard asks for a context menu, and "F10" was an unknown key.
+    "Menu",
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    "F10",
+    "F11",
+    "F12",
     "a single character",
 ];
 
@@ -2277,6 +2292,13 @@ fn parse_key(name: &str) -> Option<Key> {
         "Down" => Key::Down,
         "Home" => Key::Home,
         "End" => Key::End,
+        "Menu" => Key::Menu,
+        // `F1` to `F12`, as `Key::F(n)` (M90/T90.3); `F0` and `F13` are
+        // unknown keys, refused naming the value.
+        f if f.len() > 1 && f.starts_with('F') && f[1..].bytes().all(|b| b.is_ascii_digit()) => match f[1..].parse::<u8>() {
+            Ok(n @ 1..=12) => Key::F(n),
+            _ => return None,
+        },
         // One character, lower-cased as a key is: `Key::Char` names the
         // key, and Shift is a modifier.
         _ => {

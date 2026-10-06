@@ -30,6 +30,12 @@ consequence *shows* rather than that a value moved (M57/D1).
 `input.pointerDown`, `input.pointerUp`, `input.invokeAction`,
 `input.compose` (an input-method step: `{text, commit}` or `{cancel:
 true}`, through the same route the window's IME takes).
+`input.key`'s `key` is one of `Enter`, `Space`, `Escape`, `Tab`,
+`Backspace`, `Delete`, `Left`, `Right`, `Up`, `Down`, `Home`, `End`,
+`PageUp`, `PageDown`, `Menu`, `F1` to `F12` (the last two since
+M90/T90.3, so a drive can send Shift+F10 and the Menu key, which ask for a
+context menu), or a single character; anything else is refused with the
+list.
 `input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only,
 and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 `input.click`, `input.pointerDown` and `input.pointerUp` take `button`

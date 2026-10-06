@@ -56,6 +56,13 @@ pub enum Key {
     /// F1 help, F2 rename, F5 refresh and F11 fullscreen are the common
     /// ones, and a table is a worse fit than a number.
     F(u8),
+    /// The Menu (application) key — M90/T90.3
+    /// (`docs/plan-desktop-integration.md`, "Every route to a context
+    /// menu becomes one event"). Dispatch answers it, as it answers
+    /// Shift+F10, with an [`Event::ContextRequest`] at the focused node;
+    /// a press nothing consumed as a request goes on as a key. The
+    /// windowing layer maps the platform's `ContextMenu` key to it.
+    Menu,
 }
 
 /// Which modifier keys are held — `docs/plan-desktop.md` T14.1.
@@ -291,10 +298,18 @@ pub enum Event {
     /// pointer. That is what makes a tap on a touchscreen press a button:
     /// no stock widget handles `Touch` itself.
     ///
-    /// Gesture *recognition* — pinch, rotate, swipe, long-press — is
-    /// not here. Those are stateful, and a framework pass that
-    /// recognised them would cost every tree that wants none. They are
-    /// types an application owns: see [`crate::gesture`].
+    /// Gesture *recognition* — pinch, rotate, swipe — is not here.
+    /// Those are stateful, and a framework pass that recognised them
+    /// would cost every tree that wants none. They are types an
+    /// application owns: see [`crate::gesture`].
+    ///
+    /// **One exception, the primary touch held still** — M90/T90.3. A
+    /// host holds one [`crate::gesture::LongPress`] for the primary touch
+    /// and, when it fires, dispatches an [`Event::ContextRequest`] at the
+    /// touch point and turns the touch's `End` into a
+    /// [`Event::PointerCancel`], so a control that activates on release
+    /// does not. Only the intake can cancel that release, which is why
+    /// this one recognizer is the host's (`book/src/gestures.md`).
     Touch { id: u32, x: f32, y: f32, phase: TouchPhase },
     /// The modifier keys changed — T14.1.
     ///
@@ -350,9 +365,23 @@ pub enum Event {
     /// answers `false` and nothing else happens: **a secondary button
     /// never presses anything** ([`PointerButton`]).
     ///
-    /// The keyboard (Shift+F10, the Menu key), a touch held still and an
-    /// assistive technology's "show context menu" reach the same event
-    /// from M90/T90.3. `Event` stays 16 B (`tests/modifiers.rs`).
+    /// **Every other route is the same event** — M90/T90.3. Shift+F10
+    /// and [`Key::Menu`] ask at the focused node's bottom-left (the point
+    /// under it), bubbling from it, and a key nothing consumed as a
+    /// request goes on as a key. A primary touch held still for the
+    /// host's long press asks at the touch point, and its release becomes
+    /// a [`Event::PointerCancel`]. [`Action::ContextMenu`] asks at the
+    /// centre of its target's rect.
+    ///
+    /// **A press-acting control has already acted** by the time a held
+    /// touch asks (second review P16): the touch's `Begin` was a press at
+    /// once, so a `Collapsible` has toggled and a `Tabs` item has been
+    /// selected 500 ms before the request. Cancelling the release cannot
+    /// undo that. Deferring the primary touch's press until the hold
+    /// resolves would delay every tap's press and its shade by the tap's
+    /// length, so it is not built; the reopen condition is in
+    /// `docs/plan-desktop-integration.md`. `Event` stays 16 B
+    /// (`tests/modifiers.rs`).
     ContextRequest { x: f32, y: f32 },
 }
 
@@ -379,6 +408,12 @@ pub enum Action {
     Collapse,
     /// Take keyboard focus.
     Focus,
+    /// Show the node's context menu — AccessKit's `ShowContextMenu`,
+    /// M90/T90.3. Delivered as an [`Event::ContextRequest`] at the centre
+    /// of the target's rect, bubbling from the target, the way a right
+    /// press is; a node with no consumer answers `false`. `Action` stays
+    /// 8 B (`SetValue(f32)` is the largest).
+    ContextMenu,
 }
 
 impl Event {

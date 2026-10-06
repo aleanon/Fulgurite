@@ -642,7 +642,7 @@ fn secondary<S: crate::event::App, O: crate::overlay::OverlaySink>(
         // `ov` until the next paint, and the request belongs to what the
         // person sees once it has gone.
         let hit = if dismissed { state.tree().hit(st, 0, x, y) } else { hit };
-        let asked = hit.is_some_and(|h| request_context(state, st, input, h.node, Point { x, y }, consumed));
+        let asked = hit.is_some_and(|h| request_context(state, st, input.mods, h.node, Point { x, y }, consumed));
         return Some(dismissed || asked);
     }
     let _ = style;
@@ -704,11 +704,18 @@ impl<'a> Hover<'a> {
 /// M90/T90.2, [`deliver`] with the point: `ctx.pos` is `p` and
 /// `ctx.local` is re-derived at each node. A disabled node takes nothing
 /// (M57/A16), as it takes no press. Answers whether anything took it.
+///
+/// `#[cold]`: a context request is rare beside the presses and moves
+/// that share `dispatch_at` with it. K90b measured the dispatch rows
+/// moving by a few nanoseconds with nothing but this function's inlining
+/// changed, on paths that never call it (`docs/results-desktop-integration.md`
+/// T90.3); the hint keeps it out of the hot layout.
 #[cfg(feature = "std")]
+#[cold]
 fn request_context<S: crate::event::App>(
     state: &mut S,
     st: &[NodeState],
-    input: &crate::event::InputState,
+    mods: crate::event::Mods,
     node: u32,
     p: Point,
     consumed: &mut Consumed,
@@ -719,7 +726,7 @@ fn request_context<S: crate::event::App>(
         return false;
     }
     let ev = crate::event::Event::ContextRequest { x: p.x, y: p.y };
-    let mut ctx = crate::event::EventCtx::for_event_with(node, ev, input.mods);
+    let mut ctx = crate::event::EventCtx::for_event_with(node, ev, mods);
     ctx.pos = p;
     ctx.target_is_control = table[start].is_focusable();
     let mut i = start;
@@ -735,6 +742,25 @@ fn request_context<S: crate::event::App>(
         }
         i = table[i].parent as usize;
     }
+}
+
+/// **A context request at `p`, from whatever is under it** — M90/T90.3,
+/// for a host's own route: the primary touch held still. Hit-tests with
+/// the overlays on top, as a press would, and delivers
+/// [`Event::ContextRequest`](crate::event::Event::ContextRequest) from the
+/// node it finds, bubbling. Answers whether anything consumed it; the
+/// consumer is in `consumed`, for the host to mark.
+#[cfg(feature = "std")]
+pub fn request_context_at<S: crate::event::App, O: crate::overlay::OverlaySink>(
+    state: &mut S,
+    st: &[NodeState],
+    input: &crate::event::InputState,
+    ov: &O,
+    p: Point,
+    consumed: &mut Consumed,
+) -> bool {
+    hit_test_overlaid(state.tree(), st, ov, p.x, p.y)
+        .is_some_and(|h| request_context(state, st, input.mods, h.node, p, consumed))
 }
 
 /// Hit-test with the overlays from the last [`paint_overlaid`] on top.
@@ -967,6 +993,16 @@ fn dispatch_at<S: crate::event::App>(
             input.focus = Some(node);
             input.focus_visible = true;
             return true;
+        }
+        // **"Show context menu" is a context request** — M90/T90.3, at
+        // the centre of the target's rect, bubbling from it as a right
+        // press does. Behind `std`, as the request is; a `no_std` build
+        // delivers it as any other action, which no stock widget takes.
+        #[cfg(feature = "std")]
+        if action == crate::event::Action::ContextMenu {
+            let s = &st[n];
+            let p = Point { x: s.pos.x + s.size.w / 2.0, y: s.pos.y + s.size.h / 2.0 };
+            return request_context(state, st, input.mods, node, p, consumed);
         }
     }
     // **Whether this key-down is an auto-repeat** — M57/A10. A host sends
@@ -1371,6 +1407,25 @@ fn dispatch_at<S: crate::event::App>(
             // below would then panic on a safe API.
             // `docs/plan-review-fixes.md` F1.8.
             Some(f) if (f as usize) < table.len() => {
+                // **Shift+F10 and the Menu key ask for a context menu** —
+                // M90/T90.3, at the focused node's bottom-left (the point
+                // under it), bubbling from it. A request nothing consumed
+                // lets the key go on as a key, so a tree with no context
+                // menu still hands Shift+F10 to the application's key
+                // hook. Exactly Shift: Ctrl+Shift+F10 is another shortcut.
+                // Here, on the key's own path, so no pointer event pays
+                // for the test (K90b, `docs/results-desktop-integration.md`
+                // T90.3).
+                #[cfg(feature = "std")]
+                if let Event::Key { key, down: true } = *ev {
+                    if key == Key::Menu || (key == Key::F(10) && mods == crate::event::Mods::SHIFT) {
+                        let s = &st[f as usize];
+                        let p = Point { x: s.pos.x, y: s.pos.y + s.size.h };
+                        if request_context(state, st, mods, f, p, consumed) {
+                            return true;
+                        }
+                    }
+                }
                 let mut cx = EventCtx::for_event_with(f, *ev, mods);
                 // **Enter or Space on a list activates its active row**
                 // (M44/T44.10): the selection and `ctx.row` a click on

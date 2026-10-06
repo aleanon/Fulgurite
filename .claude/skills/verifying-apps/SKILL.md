@@ -123,6 +123,10 @@ open window has is `-32602` naming `app.windows`, and every reply carries
 windows also carries `"opened": [keys]` (M89/T89.3). `input.compose` takes `{text, commit}` or
 `{cancel: true}` and routes through the same `Host::compose` the window's
 IME path does.
+`input.key`'s `key` is `Enter` `Space` `Escape` `Tab` `Backspace` `Delete`
+`Left` `Right` `Up` `Down` `Home` `End` `PageUp` `PageDown` `Menu` `F1`–`F12`
+or one character (`Menu` and the F keys since M90/T90.3: Shift+F10 and the
+Menu key ask the focused node for a context menu).
 `input.key` takes `mods` (`["ctrl"]`, held for that key only) and
 `input.click` takes `clicks` (2 or 3) — M45/T45.6 — and `input.click`,
 `input.pointerDown` and `input.pointerUp` take `button` (`"left"`, the

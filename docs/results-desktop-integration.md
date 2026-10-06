@@ -194,3 +194,96 @@ task's binaries interleaved (all quiet), min / median / max µs:
 No row costs more than its parent: the idle row dispatches nothing, so
 the filter cannot be in it, and the second interleaved run puts its median
 back inside the parent's spread. K90b does not fire.
+
+## T90.3 — keyboard, touch and assistive-technology routes (2026-10-06, on `cce0f65`)
+
+Shift+F10 and `Key::Menu` ask at the focused node's bottom-left; the
+host's `LongPress` on the primary touch asks at the touch point and spends
+the touch (its `End` a `PointerCancel`); `Action::ContextMenu` asks at the
+centre of its target. All three end in `Event::ContextRequest`.
+
+### Gates (`crates/lumen-static-shell/tests/context_routes.rs` unless named)
+
+Identical under `Everything` and `Boundaries<256>`.
+
+| gate | measured | bound / accept |
+|---|---|---|
+| Shift+F10, focus on `#probe` `[0, 42, 120, 82]` | one request at `(0, 82)`, handled true; `on_key` 0 times | the bottom-left; consumed, so not a key |
+| the Menu key, same | one request at `(0, 82)`; `on_key` 0 | same |
+| either, focus on a `Button` (no consumer) | `on_key` saw it once: `(F(10), SHIFT)`, `(Menu, NONE)`; 0 clicks | accept: the key goes on as a key |
+| a hold over `#probe` at `(60, 20)` | 0 requests at 499 ms, one at `(60, 20)` at 500 ms | `LongPress`'s 500 ms |
+| a 500 ms hold over a `Button` | clicks 0 held, 0 lifted (a cancel) | — |
+| a hold drifting 11 px (slop 10) | 0 requests; over the `Button` the lift is a tap, clicks 1 | accept |
+| `next_deadline_ms` | no touch `None`; a hold pending `Some(500)`, 200 ms in `Some(300)`; lifted `None` | ≤ 500; unchanged with none |
+| a 500 ms hold over `Collapsible`, `Tabs` (P16) | 0 → 1 (held) → 1 (lifted), captured while held, no capture or press after the lift | kept, as T90.0 pinned it |
+| `Action::ContextMenu` on `#probe` | handled true, one request at `(60, 62)`, inside its rect | inside |
+| `Action::ContextMenu` on a `Button` | handled false, 0 clicks | accept |
+| `secondary_button.rs`, the 600 ms hold (T90.0's pin, flipped) | `Button` 0 → 0 → **0**; `Collapsible`, `Tabs` 0 → 1 → 1 | the release is a cancel |
+| `crates/lumen-static-agent/tests/input.rs` | `"F1"`..`"F12"` reach the host as `F(1)`..`F(12)`; `"F10"` + shift as `(F(10), SHIFT)`; `"Menu"` as `Menu`; `"F0"`, `"F13"` refused, naming the key, with 28 known names | both directions |
+| `crates/lumen-static-winit/tests/translate.rs` | `key_of(ContextMenu) = Some(Menu)`; with `a11y`, `action_of(ShowContextMenu) = Some((3, ContextMenu))` | T90.0's pins flipped |
+
+The flip's red run (T90.0's pins against this code): "a 600 ms hold's End
+is a release today ... handler count 0"; "the Menu key translates to
+nothing today ... it answered Some(Menu)"; "ShowContextMenu is not routed
+today ... it answered Some((3, ContextMenu))".
+
+### Injections (red, by name)
+
+| injection | what went red |
+|---|---|
+| (1) the spent touch's `End` stays a `PointerUp` | "the lift of a long hold activated the button" (handler count 1) |
+| (2) the hold leaves `next_deadline_ms` | "a pending hold set no deadline: None" |
+| (3) the keyboard request at `(0, 0)` | "want one request at (0.0, 82.0), got [(0.0, 0.0)] (on #probe's rect [0.0, 42.0, 120.0, 82.0]: false)" |
+| (4) `parse_key` loses its `"F<n>"` arm | "unknown key `F1`" (the first of the twelve) |
+| (5, added) the `Action::ContextMenu` arm in dispatch removed | "want one request inside [0.0, 42.0, 120.0, 82.0], got []" |
+
+### Firmware (K90a)
+
+`just firmware-delta 59cc73b firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0` (the parent for firmware, since
+`cce0f65` touches no firmware): +0 on all four binaries, `.text` and `.rodata` (the routes are behind `std`;
+`Key::Menu` and `Action::ContextMenu` move no firmware byte). K90a does
+not fire.
+
+### K90b, and the layout the dispatch rows can see
+
+The parent's binaries (`59cc73b`; `cce0f65` changed two scripts only)
+against this task's, interleaved, eight runs a side under
+`scripts/bench_lock.sh` (all quiet), min / median / max µs:
+
+| row | parent | T90.3 | reading |
+|---|---|---|---|
+| `dispatch, one PointerMove` | 0.030 / 0.030 / 0.040 | 0.030 / **0.040** / 0.060 | inside (at the max; a 10 ns step) |
+| `dispatch, one PointerMove (tiny)` | 0.020 / 0.020 / 0.020 | 0.020 / **0.020** / 0.040 | inside |
+| `dispatch, left press+release` | 0.060 / 0.061 / 0.064 | 0.062 / **0.063** / 0.101 | inside |
+| `dispatch, right press+release` | 0.061 / 0.062 / 0.064 | 0.062 / **0.063** / 0.104 | inside |
+| `pump_with, one consumed click` | 10.790 / 10.815 / 11.340 | 10.500 / **10.520** / 23.000 | below (faster) |
+| `idle (floor)` | 56.900 / 63.600 / 64.300 | 57.100 / **60.500** / 106.200 | inside |
+
+**The first build fired K90b**, and why is worth keeping. With the
+keyboard test ahead of the position branch, the left press+release median
+read 0.064–0.065 against the parent's 0.060–0.063 in two interleaved
+runs. The written response (gate the per-event work) was applied: the
+test moved onto the key's own path, where no pointer event reaches it, and
+`request_context` was marked `#[inline(never)]` — and the row read
+**0.066–0.068**, slower. A bisect, sixteen interleaved runs per binary
+under the lock, then showed the rows move with code a press never runs:
+
+| build (left press+release, median µs) | |
+|---|---:|
+| the parent | 0.061 |
+| the parent + `Key::Menu` and `Action::ContextMenu` only | 0.061 |
+| the parent + `#[inline(never)]` on `request_context` only — a function only a right press calls | **0.068** |
+| T90.3's first build: the key test ahead of the position branch, no attribute | 0.064–0.065 |
+| the key test on the key path, no attribute | 0.067 |
+| the same with the key and action arms compiled out (`if false`) | 0.069 |
+| the key test on the key path, `request_context` `#[inline(never)]` | 0.066–0.068 |
+| the same, `#[inline(always)]` | 0.063 |
+| the same, `#[cold]` (shipped) | 0.063–0.064 |
+
+So a few nanoseconds on these rows is the layout of `dispatch_at`, not
+work on the row's path (M26's Phase D finding again: two arms that
+disagree about one quantity are a fact about the arms). The shipped
+build keeps the key test on the key path and marks `request_context`
+`#[cold]`, which is what it is, and reads inside every spread. K90b does
+not fire on it.

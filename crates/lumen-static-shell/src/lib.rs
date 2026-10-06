@@ -305,6 +305,18 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// The touch id that drives the pointer, from its `Begin` until it
     /// lifts or is cancelled — M44/T44.4. See [`Host::pump_with`].
     primary_touch: Option<u32>,
+    /// **The primary touch held still** — M90/T90.3
+    /// (`docs/plan-desktop-integration.md`, "Every route to a context
+    /// menu becomes one event"). Fed every `Touch` in the pump, ticked in
+    /// [`Host::tick`] beside the linger clock, and folded into
+    /// [`Host::next_deadline_ms`]. When it fires the host asks for a
+    /// context menu at the touch point and marks the touch `touch_spent`.
+    /// One recognizer per host, not per node.
+    long_press: lumen_static::gesture::LongPress,
+    /// The primary touch has asked for a context menu, so its `End` is a
+    /// `PointerCancel`, not a release: a control that activates on
+    /// release does not, and the menu just opened is not dismissed.
+    touch_spent: bool,
     /// Surface size in **physical** pixels — what a window reports.
     size: (u32, u32),
     /// Physical pixels per logical pixel (M10b).
@@ -914,6 +926,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             overlays: Default::default(),
             queue: lumen_static::InputQueue::new(),
             primary_touch: None,
+            long_press: Default::default(),
+            touch_spent: false,
             size: (width, height),
             scale: 1.0,
             frame: 0,
@@ -1985,7 +1999,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // is also a mouse. Here in the intake rather than in the
             // winit translation, so an embedded touch panel that feeds
             // `Event::Touch` into a `Host` gets the same behaviour.
-            for synth in promote_touch(&mut self.primary_touch, &ev).into_iter().flatten() {
+            // The long press sees every touch (M90/T90.3); it tracks the
+            // first finger down, which is the primary.
+            if matches!(ev, Event::Touch { .. }) {
+                self.long_press.feed(&ev);
+            }
+            for synth in promote_touch(&mut self.primary_touch, &mut self.touch_spent, &ev).into_iter().flatten() {
                 handled |= self.dispatch_now(&synth, &mut consumed);
             }
             // A move restarts the wait for hover intent on whatever the
@@ -2493,6 +2512,12 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// and asks for another frame while it keeps returning `true`.
     /// Costs nothing for an application that animates nothing: the
     /// default `App::tick` returns `false` and inlines away.
+    ///
+    /// The host's own clocks advance here too: a wheel gesture's end
+    /// (`Event::ScrollEnd`), hover intent (`Event::Linger`), and since
+    /// M90/T90.3 the primary touch held still, which asks for a context
+    /// menu at the touch point (`Event::ContextRequest`) and spends the
+    /// touch so its lift is a cancel.
     pub fn tick(&mut self, dt_ms: f32) -> bool {
         // **Timers first** — M28/T28.11. Each one that came due pushes a
         // descriptor into the outbox, so a tick is spawned by exactly
@@ -2574,6 +2599,21 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 }
             }
         }
+        // **The primary touch has been held still** — M90/T90.3. A
+        // context request at the touch point, from what is under it, and
+        // the touch is spent whether or not anything took it: a long hold
+        // is not a tap, so its lift must not activate what it is over.
+        if let Some(p) = self.long_press.tick(dt_ms) {
+            self.touch_spent = self.primary_touch.is_some();
+            let mut consumed = pass::Consumed::default();
+            if pass::request_context_at(&mut self.app, &self.states, &self.input, &self.overlays, p, &mut consumed) {
+                let table = <A::Tree as Widget>::SUB_TABLE;
+                for &k in consumed.nodes() {
+                    self.invalidation.mark(lumen_static::style::subtree_range(table, k as usize));
+                }
+                ended = true;
+            }
+        }
         let ticked = self.app.tick(dt_ms);
         if ticked && dt_ms > 0.0 {
             self.invalidation.mark_all();
@@ -2622,6 +2662,8 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             timers,
             self.scroll_end.map(|(_, l)| l.max(0.0)),
             self.linger.map(|(_, l)| l.max(0.0)),
+            // So is the primary touch being held (M90/T90.3).
+            self.long_press.remaining_ms(),
             // A visibility change waiting to be delivered is due now
             // (M85/T85.3): the pump that delivers it is the frame its
             // handler's write is drawn in.
@@ -2915,21 +2957,29 @@ pub struct Reissued {
     pub refused: usize,
 }
 
-fn promote_touch(primary: &mut Option<u32>, ev: &Event) -> [Option<Event>; 2] {
+/// The pointer events the primary touch stands for (M44/T44.4). A
+/// **spent** touch — one whose long press asked for a context menu
+/// (M90/T90.3) — ends in a `PointerCancel`, not a release.
+fn promote_touch(primary: &mut Option<u32>, spent: &mut bool, ev: &Event) -> [Option<Event>; 2] {
     use lumen_static::event::TouchPhase;
     let Event::Touch { id, x, y, phase } = *ev else { return [None, None] };
     match phase {
         TouchPhase::Begin if primary.is_none() => {
             *primary = Some(id);
+            *spent = false;
             [Some(Event::PointerMove { x, y }), Some(Event::down(x, y))]
         }
         TouchPhase::Move if *primary == Some(id) => [Some(Event::PointerMove { x, y }), None],
         TouchPhase::End if *primary == Some(id) => {
             *primary = None;
+            if core::mem::take(spent) {
+                return [Some(Event::PointerCancel { x, y }), None];
+            }
             [Some(Event::up(x, y)), None]
         }
         TouchPhase::Cancel if *primary == Some(id) => {
             *primary = None;
+            *spent = false;
             [Some(Event::PointerCancel { x, y }), None]
         }
         _ => [None, None],

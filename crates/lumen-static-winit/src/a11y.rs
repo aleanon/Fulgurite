@@ -54,6 +54,8 @@ pub fn action_of(req: &ActionRequest) -> Option<(u64, lumen_static::Action)> {
         Ak::Expand => Action::Expand,
         Ak::Collapse => Action::Collapse,
         Ak::Focus => Action::Focus,
+        // M90/T90.3: a context request inside the target.
+        Ak::ShowContextMenu => Action::ContextMenu,
         Ak::SetValue => match req.data {
             Some(ActionData::NumericValue(v)) => Action::SetValue(v as f32),
             _ => return None,

@@ -968,3 +968,23 @@ T90.0; everything else cites it.
   red under the filter, which is this task's point; it now asserts a right
   press and release runs no handler and a left click at the same point
   does, and `docs/plan-desktop.md` T14.3 says it was superseded.
+- **T90.3, the keyboard test sits on the key's own path.** Placed ahead
+  of the position branch it was a discriminant test on every pointer
+  event, and the first build's left press+release read 0.064–0.065 µs
+  against the parent's 0.060–0.063 (K90b). Moved into the focused-key arm
+  no pointer event reaches. The bisect that followed found the dispatch
+  rows move by up to 7 ns with nothing but `request_context`'s inlining
+  changed on the parent, so the shipped build marks it `#[cold]` and
+  says why; the numbers are in `docs/results-desktop-integration.md`
+  T90.3.
+- **T90.3, `Action::ContextMenu` asks at the centre of its target**, not
+  at the bottom-left the keyboard uses: the plan's gate wants the point
+  inside the rect, and the bottom-left is on its edge.
+- **T90.3, the touch is spent whether or not anything took the request.**
+  A hold is not a tap even in a tree with no context menu, which is what
+  T90.0's pin (a `Button` and no consumer) flips to.
+- **T90.3, Shift+F10 is exactly Shift.** Ctrl+Shift+F10 is another
+  shortcut and goes on as a key.
+- **T90.3, the agent's `"F<n>"` parse is digits only and 1–12**, so
+  `"F0"`, `"F13"` and `"F1x"` are unknown keys, refused naming the value;
+  `"F"` alone is still the character.

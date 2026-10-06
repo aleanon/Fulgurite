@@ -369,6 +369,9 @@ pub fn key_of(k: &WKey) -> Option<Key> {
         NamedKey::PageUp => Key::PageUp,
         NamedKey::PageDown => Key::PageDown,
         NamedKey::Insert => Key::Insert,
+        // The Menu (application) key: a context request at the focused
+        // node, as Shift+F10 is (M90/T90.3).
+        NamedKey::ContextMenu => Key::Menu,
         NamedKey::F1 => Key::F(1),
         NamedKey::F2 => Key::F(2),
         NamedKey::F3 => Key::F(3),

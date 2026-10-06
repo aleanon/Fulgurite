@@ -709,3 +709,59 @@ fn a_reply_counts_what_arrived_when_the_queue_drops_some() {
     assert_eq!(r["result"]["chars"], 4, "the reply claims characters that never arrived");
     assert_eq!(r["result"]["dropped"], 6, "the reply does not name the loss");
 }
+
+/// The key the host saw for one `input.key` call, with the modifiers
+/// held when it arrived: the last `Event::Modifiers` before the key-down
+/// in the trace.
+fn key_as_seen(trace: &[Event]) -> Option<(lumen_static::Key, lumen_static::event::Mods)> {
+    let mut mods = lumen_static::event::Mods::NONE;
+    for ev in trace {
+        match *ev {
+            Event::Modifiers(m) => mods = m,
+            Event::Key { key, down: true } => return Some((key, mods)),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// **`"F1"`–`"F12"` and `"Menu"` are key names** — M90/T90.3 (second
+/// review G21): Shift+F10 and the Menu key are how a keyboard asks for a
+/// context menu, and the agent answered `"F10"` as an unknown key. Each
+/// reaches the host as the key it names, with the modifiers it was sent
+/// with; `"F0"` and `"F13"` are refused naming the value (both
+/// directions), and the refusal lists the names it does know.
+#[test]
+fn function_keys_and_menu_reach_the_host() {
+    use lumen_static::event::Mods;
+    use lumen_static::Key;
+    let agent = Agent::new();
+    let mut cases: Vec<(String, Key, Option<&str>)> = (1..=12).map(|n| (format!("F{n}"), Key::F(n), None)).collect();
+    cases.push(("F10".into(), Key::F(10), Some("shift")));
+    cases.push(("Menu".into(), Key::Menu, None));
+    for (name, want, m) in &cases {
+        let mut h = Host::new();
+        let mut params = json!({ "key": name });
+        if let Some(m) = m {
+            params["mods"] = json!([m]);
+        }
+        let r = call(&mut h, &agent, "input.key", params);
+        assert!(r.get("error").is_none(), "{name}: {r}");
+        let want_mods = if m.is_some() { Mods::SHIFT } else { Mods::NONE };
+        let seen = key_as_seen(&h.trace);
+        if m.is_some() || name == "Menu" || name == "F1" || name == "F12" {
+            println!("input.key {name:?} mods {m:?} -> the host saw {seen:?} (want {:?})", (want, want_mods));
+        }
+        assert_eq!(seen, Some((*want, want_mods)), "{name} {m:?} reached the host as {seen:?}");
+    }
+    for bad in ["F0", "F13"] {
+        let mut h = Host::new();
+        let r = call(&mut h, &agent, "input.key", json!({ "key": bad }));
+        let known = r["error"]["data"]["known"].as_array().map_or(0, |k| k.len());
+        println!("input.key {bad:?}: {} (known names {known}, want 28)", r["error"]);
+        assert_eq!(r["error"]["code"], -32602, "{bad}: {r}");
+        assert!(r["error"]["message"].as_str().unwrap_or("").contains(bad), "{bad}: the refusal does not name it: {r}");
+        assert!(h.trace.is_empty(), "{bad}: a refused key still queued {:?}", h.trace);
+        assert_eq!(known, 28, "the refusal's key list");
+    }
+}
