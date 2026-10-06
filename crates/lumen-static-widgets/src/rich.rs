@@ -23,10 +23,12 @@
 //! (`crates/lumen-static-shell/tests/alloc_gate.rs`, the Markdown arm).
 //! Until T87.1 they were arrays of 192 words held inline, and `push`
 //! refused the 193rd silently: a 64 KB document laid out its first 192
-//! words, and any probe of it timed a truncated parse. The widget's
-//! inline size and the heap per word are `docs/results-markdown.md`'s
-//! (T87.1). This crate's `rich` module is behind `alloc`, and the leaf
-//! firmware links none of it.
+//! words, and any probe of it timed a truncated parse. Since M87/T87.6 a
+//! fourth, each measured word's content key, lets an edit re-measure only
+//! the words it touched (`RichText::remeasure`). The widget's inline size
+//! and the heap per word are `docs/results-markdown.md`'s (T87.1, T87.6).
+//! This crate's `rich` module is behind `alloc`, and the leaf firmware
+//! links none of it.
 //!
 //! # What the Markdown subset leaves out, and why
 //!
@@ -134,8 +136,23 @@ pub struct RichText {
     /// The widths do not depend on the box (a span never wraps inside
     /// itself), so the key is the text, the spans, the font size and the
     /// display scale, folded; a still frame measures nothing.
+    ///
+    /// **In step with `word_keys`, not with `spans`**: between a parse and
+    /// the next layout it still holds the widths of the spans it was
+    /// measured for, which is what lets that layout reuse them
+    /// (`remeasure`).
     widths: Vec<(f32, f32)>,
     measured_under: u64,
+    /// Each measured span's content key (`RichText::word_key`: its
+    /// word's bytes, scale, weight, trailing space and kind) — M87/T87.6.
+    /// When the fold misses, a span whose key matches the one at its place
+    /// in the common prefix or suffix keeps its width, so an edit
+    /// re-measures the words it touched and not the document
+    /// (`docs/results-markdown.md` T87.6).
+    word_keys: Vec<u64>,
+    /// The font size and display scale `widths` were measured at, as bits:
+    /// a change to either re-measures every word.
+    measured_at: (u32, u32),
     /// The last kept layout's padding origin, font size and line ratio —
     /// M87/T87.3: what turns a point in the node into a placed word
     /// ([`RichText::link_at`]) for a hit and for `cursor_at`, which is
@@ -219,7 +236,10 @@ impl RichText {
         let joined = sp.link != Span::NO_LINK
             && sp.space
             && self.spans.get(k + 1).is_some_and(|n| n.link == sp.link && !n.br && self.placed[k + 1].1 == y);
-        let w = w + if joined { self.widths[k].1 } else { 0.0 };
+        // `widths` follows the last measure, not the last parse (its
+        // field's doc), so a hit between the two reads no gap rather than
+        // past the store's end.
+        let w = w + if joined { self.widths.get(k).map_or(0.0, |g| g.1) } else { 0.0 };
         let h = self.font_size * sp.scale * self.ratio;
         let (x0, y0) = (self.pad.0 + x, self.pad.1 + y);
         [x0, y0, x0 + w, y0 + h]
@@ -262,21 +282,96 @@ impl RichText {
         Some([x0, y0, x0 + w, y0 + h])
     }
 
-    /// Size `placed` and `widths` to `spans` — called once a parse is
-    /// done, and by `layout` only when a span was pushed since, so a still
-    /// frame resizes nothing. Shrinking keeps the capacity; growing
-    /// allocates, at parse time.
+    /// Size `placed` to `spans`, and make room in `widths` and
+    /// `word_keys` for them — called once a parse is done, and by `layout`
+    /// only when a span was pushed since, so a still frame resizes
+    /// nothing. Shrinking keeps the capacity; growing allocates, at parse
+    /// time. `widths` keeps its length here (M87/T87.6): it is resized by
+    /// the next measure, which reuses what it held, inside the capacity
+    /// reserved here.
     fn fit(&mut self) {
         let n = self.spans.len();
         if self.placed.len() != n {
             self.placed.resize(n, (0.0, 0.0, 0.0));
         }
-        if self.widths.len() != n {
-            self.widths.resize(n, (0.0, 0.0));
-            // A store that changed length holds no widths for the new
-            // spans, so the memo cannot be trusted whatever the fold says.
-            self.measured_under = 0;
+        self.widths.reserve(n.saturating_sub(self.widths.len()));
+        self.word_keys.reserve(n.saturating_sub(self.word_keys.len()));
+    }
+
+    /// Span `k`'s content key — M87/T87.6: FNV-1a over what its width
+    /// depends on besides the font size and scale (its word's bytes, its
+    /// scale, weight, trailing space and kind), and **not** its position,
+    /// so a word that moved keeps its key.
+    fn word_key(&self, k: usize) -> u64 {
+        let s = self.spans[k];
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut eat = |b: &[u8]| {
+            for &x in b {
+                h = (h ^ x as u64).wrapping_mul(0x100_0000_01b3);
+            }
+        };
+        eat(self.span_str(k).as_bytes());
+        eat(&s.scale.to_bits().to_le_bytes());
+        eat(&s.weight.to_bits().to_le_bytes());
+        eat(&[s.space as u8, s.kind]);
+        h
+    }
+
+    /// Bring `widths` up to `spans`, re-measuring only what changed —
+    /// M87/T87.6, K87's response (`docs/plan-markdown.md`). Until T87.6 a
+    /// miss of the whole-text fold re-measured every word through the
+    /// measurer, so one appended character to 64 KB cost 2.7 ms of
+    /// measuring (`docs/results-markdown.md` T87.1). Now the spans are
+    /// compared with the ones `widths` was measured for, by content key:
+    /// the common prefix and the common suffix keep their widths (the
+    /// suffix moved to its new index), and only the spans between are
+    /// measured. At a new font size or scale nothing is reused.
+    ///
+    /// Reuse is by **content at an aligned place**, not by index: an
+    /// inserted word shifts every word after it, and a width reused by
+    /// index would be its neighbour's (the gate,
+    /// `markdown_m69.rs`'s `append_matches_full_parse`).
+    fn remeasure(&mut self, cx: &mut LayoutCx, font_size: f32) {
+        let at = (font_size.to_bits(), cx.scale().to_bits());
+        let (old, new) = (self.word_keys.len(), self.spans.len());
+        let (mut p, mut q) = (0usize, 0usize);
+        if at == self.measured_at && self.widths.len() == old {
+            let both = old.min(new);
+            while p < both && self.word_keys[p] == self.word_key(p) {
+                p += 1;
+            }
+            while q < both - p && self.word_keys[old - 1 - q] == self.word_key(new - 1 - q) {
+                q += 1;
+            }
         }
+        // Move the kept suffix to where it now starts; `fit` reserved the
+        // room, so this does not allocate.
+        self.widths.resize(old, (0.0, 0.0));
+        if new >= old {
+            self.widths.resize(new, (0.0, 0.0));
+            self.word_keys.resize(new, 0);
+            self.widths.copy_within(old - q..old, new - q);
+            self.word_keys.copy_within(old - q..old, new - q);
+        } else {
+            self.widths.copy_within(old - q..old, new - q);
+            self.word_keys.copy_within(old - q..old, new - q);
+            self.widths.truncate(new);
+            self.word_keys.truncate(new);
+        }
+        for k in p..new - q {
+            let s = self.spans[k];
+            self.word_keys[k] = self.word_key(k);
+            if s.kind == Span::IMAGE {
+                // A block's width is the box's, decided in `lay`.
+                self.widths[k] = (0.0, 0.0);
+                continue;
+            }
+            let size = font_size * s.scale;
+            let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
+            let gap = if s.space { cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w } else { 0.0 };
+            self.widths[k] = (w, gap);
+        }
+        self.measured_at = at;
     }
 
     fn split_plain(&mut self) {
@@ -411,18 +506,7 @@ impl RichText {
         let count = self.spans.len();
         let key = self.fold(me.font_size, cx.scale());
         if key != self.measured_under {
-            for k in 0..count {
-                let s = self.spans[k];
-                if s.kind == Span::IMAGE {
-                    // A block's width is the box's, decided below.
-                    self.widths[k] = (0.0, 0.0);
-                    continue;
-                }
-                let size = me.font_size * s.scale;
-                let w = cx.text.measure_weighted(self.span_str(k), size, s.weight, f32::INFINITY).w;
-                let gap = if s.space { cx.text.measure_weighted(" ", size, s.weight, f32::INFINITY).w } else { 0.0 };
-                self.widths[k] = (w, gap);
-            }
+            self.remeasure(cx, me.font_size);
             self.measured_under = key;
         }
         let (mut x, mut y) = (0.0f32, 0.0f32);

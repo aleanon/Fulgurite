@@ -238,3 +238,60 @@ the gap, and both now carry the reopen condition: **M81 (or a successor)
 exposes a per-run face to `Painter`**. Finding an italic file is the easy
 half — this machine has two — and choosing it per span is the half no
 milestone builds. No gate is owed (the plan's gate is the build's).
+
+## T87.6 — K87 fired; width reuse keyed by word content
+
+**K87 — incremental parsing: fired.** `--bin markdown -- 64`, eight runs a
+side, each the median of 21 one-character appends, under `just
+bench-lock` (quiet: load 1.08 and 0.36, bound 8). Each run's whole
+quantity (parse + measure + place) and its split medians:
+
+| build | eight medians, ms | spread | parse | measure | place |
+|---|---|---|---:|---:|---:|
+| T87.5 (`f501d3a`) | 3.228, 3.230, 3.228, 3.232, 3.215, 3.222, 3.223, 3.239 | **3.215–3.239** | 0.291–0.300 | **2.722–2.753** | 0.199 |
+| T87.6 | 0.560, 0.563, 0.576, 0.616, 0.565, 0.571, 0.560, 0.565 | **0.560–0.616** | 0.303–0.332 | **0.057–0.066** | 0.200–0.211 |
+
+Every run at `f501d3a` is over K87's **1.5 ms**, by 2.1x; **measure is
+85%** of it (2.73 of 3.23 ms). The rule's response is to build the
+dominant split quantity only, and the plan names two builds: a
+block-level re-parse, and width reuse keyed by word content. **Parse is
+0.30 ms, 9% of the append**, so a re-parse from the last complete block
+could remove at most that and leave the frame at about 2.9 ms, still
+over the bound: an incremental *parse* cannot touch a cost that is in
+the measure. So T87.6 built the second: when the whole-text fold
+misses, `RichText::remeasure` compares the new spans with the ones its
+widths were measured for, by a per-word content key (the word's bytes,
+scale, weight, trailing space and kind), keeps the common prefix and the
+common suffix (moved to its new index), and measures only the spans
+between. The parse is unchanged and still walks the whole text.
+
+After it every run is under the bound, at **0.56–0.62 ms** (5.7x on the
+median of medians, 3.229 → 0.565); measure falls **48x** (2.733 →
+0.057 ms) and is now the key comparison plus the one word the append
+touched. What is left is parse (0.31) and place (0.20), each a whole-text
+walk; neither is needed under the bound, so neither is built.
+
+| quantity | value | gate |
+|---|---:|---|
+| `append_matches_full_parse`: spans compared over ten edits of the 64 KB fixture | **95,861** (spans, `placed` as `f32` bits and the line count, each equal to a fresh `Markdown`'s) | `markdown_m69.rs` |
+| runs measured by the one-character append, incremental / full | **1** / 18,910 (setup bound: under 1%) | the same |
+| runs measured per edit, incremental | 1, 14, 2, 0, 2, 9, 1, 0, 2, 0 (append char, append line, insert in a bullet, delete word, bold, heading level, split line, delete line, first word, truncate) | printed |
+| `size_of::<RichText>()` | 160 → **192 B** (the keys' `Vec` and the font size and scale they were measured at) | gate 1 |
+| `size_of::<Markdown>()` | 312 → **344 B** | `a_theme_scales_its_heading` |
+| heap per word | 44 → **52 B** (a `u64` key) | — |
+
+| injection | red |
+|---|---|
+| reuse by index, not content (the prefix taken unchecked) | `append words and a line: span 10086 ("and") is placed at (8.0, …, 26.0) incrementally and (12.0, …, 26.0) by a full measure` — the last word gained a trailing space and kept its old, zero gap |
+| the key leaves out the weight | `bold a word: span 5064 ("sit") is placed at (135.0, …, 17.0) incrementally and (135.0, …, 19.0)` |
+| nothing reused (`remeasure` always measures every span) | `setup: the append re-measured 18910 of 18910 runs, so nothing was reused` |
+
+**The weight injection was green under the pinned face**: `DejaVuSans`
+alone has no bold face, so a bold word measures as a regular one and the
+"bold a word" edit could not see a key that forgot the weight. The gate
+measures under the system stack, as `--bin markdown` does, and asserts
+first that its bold measures differently (`sit` at 16 px: 19.000
+regular, 20.000 bold).
+
+Firmware: `rich.rs` is behind `alloc`, which no leaf firmware binary
+enables; Δ 0 on all four (the commit body quotes `just firmware-delta`).

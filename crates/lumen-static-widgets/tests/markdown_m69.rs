@@ -22,6 +22,7 @@
 //! T87.4's: `an_image_is_a_block_at_its_size` and
 //! `an_image_scales_down_with_its_aspect`. Loading an image (its damage)
 //! is the shell's `tests/markdown_images.rs`, which needs a `Host`.
+//! And T87.6's: `append_matches_full_parse`, the gate for K87's build.
 
 use std::time::{Duration, Instant};
 
@@ -338,4 +339,174 @@ fn a_quote_is_indented_and_barred_on_every_line() {
     println!("bars {bars} (bound = lines {lines}); words at the 14 px indent {starts} (bound = lines)");
     assert_eq!(starts, lines, "a quote line does not start at the bullet indent");
     assert_eq!(bars, lines, "the quote bar is not drawn once per line");
+}
+
+/// `bytes` of the `--bin markdown` fixture's lines (`benches/src/bin/
+/// markdown.rs`): a heading, prose with a bold and a code word, a bullet
+/// and more prose, repeated, no blank lines.
+fn doc_like_the_bench(bytes: usize) -> String {
+    let lines = [
+        "# A heading over the section\n",
+        "lorem ipsum **dolor** sit amet `consectetur` adipiscing elit sed\n",
+        "- do eiusmod tempor incididunt ut labore et dolore magna\n",
+        "aliqua ut enim ad minim veniam quis nostrud exercitation\n",
+    ];
+    let mut s = String::with_capacity(bytes + 80);
+    'fill: loop {
+        for l in lines {
+            if s.len() >= bytes {
+                break 'fill;
+            }
+            s.push_str(l);
+        }
+    }
+    s
+}
+
+fn lay_measured(w: &mut Markdown, m: &mut lumen_static_shell::text::FontMetrics) {
+    let styles = lumen_static::pass::default_styles(w);
+    let mut st = vec![NodeState::default(); <Markdown as Widget>::NODE_COUNT];
+    let limits = Constraints { min_w: 0.0, max_w: 640.0, min_h: 0.0, max_h: f32::INFINITY };
+    {
+        let mut cx = lumen_static::LayoutCx::new(m);
+        Node::layout(w, &mut cx, limits, &styles, &mut st, 0);
+    }
+    Node::place(w, Point { x: 0.0, y: 0.0 }, &styles, &mut st, 0);
+}
+
+/// The first byte of `pat` at or after the middle of `src`.
+fn mid(src: &str, pat: &str) -> usize {
+    src[src.len() / 2..].find(pat).map(|k| src.len() / 2 + k).expect("the fixture holds the pattern past its middle")
+}
+
+/// **An incremental measure equals a full one** — M87/T87.6, the gate for
+/// K87's build. K87 fired (`docs/results-markdown.md` T87.6), and its
+/// dominant split quantity was *measure*, so what T87.6 built is width
+/// reuse keyed by word content (`RichText::remeasure`), not a block-level
+/// re-parse: the parse is unchanged and still walks the whole text. So
+/// what must not drift is what a reused width feeds — the spans, every
+/// placement (`placed`, compared as `f32` bits: a reused width is the
+/// word's own measurement or this is red) and the line count — between
+/// one `Markdown` carried through ten edits of the 64 KB fixture and a
+/// fresh `Markdown` laid out from each edit's text, both under the system
+/// face stack (`--bin markdown`'s; skipped without one, as the shell's
+/// face tests are), whose bold face is asserted to measure differently.
+///
+/// **The setup is asserted too**: with the measurer's process-wide
+/// `measured` counter (no other test in this binary measures through a
+/// face), the one-character append must measure fewer than 1% of the
+/// runs a full measure does, or the comparison is of two full measures
+/// and proves nothing about reuse.
+///
+/// Injections (recorded in the commit): reuse by index, not content —
+/// the common prefix taken as every index both stores have, unchecked —
+/// is red on the second edit, where the last word gains a trailing space
+/// and keeps its old, zero gap; and a key that leaves out the weight is
+/// red on "bold a word".
+#[test]
+fn append_matches_full_parse() {
+    use lumen_static::TextMeasure;
+    use lumen_static_shell::text::{text_counters, FontMetrics, FontStack};
+    // The system stack, as `--bin markdown` measures under: it pairs a
+    // bold face with the regular one. The pinned face alone has none, so
+    // under it a bold word measures as a regular one and the "bold a
+    // word" edit could not see a key that forgot the weight (found by that
+    // injection, which stayed green under the pinned face).
+    let Some(font) = FontStack::system() else {
+        println!("append_matches_full_parse: no system face; skipped");
+        return;
+    };
+    {
+        let mut m = FontMetrics::new(font.clone());
+        let (regular, bold) = (m.measure_weighted("sit", 16.0, 400.0, f32::INFINITY).w, m.measure_weighted("sit", 16.0, 700.0, f32::INFINITY).w);
+        println!("append_matches_full_parse: 'sit' at 16 px measures {regular:.3} regular, {bold:.3} bold");
+        assert!(bold != regular, "setup: this stack measures bold as regular, so the bold edit cannot exhibit a weight-blind key");
+    }
+    let mut src = doc_like_the_bench(64 * 1024);
+    let mut inc = Markdown::new(&src);
+    let mut metrics = FontMetrics::new(font.clone());
+    lay_measured(&mut inc, &mut metrics);
+
+    type Edit = fn(&mut String);
+    let edits: [(&str, Edit); 10] = [
+        ("append one character", |s| s.push('x')),
+        ("append words and a line", |s| s.push_str(" and more words\nthen a new line\n")),
+        ("insert a word inside a bullet", |s| {
+            let at = mid(s, "- do eiusmod") + 2;
+            s.insert_str(at, "extra ");
+        }),
+        ("delete a word", |s| {
+            let at = mid(s, "tempor ");
+            s.replace_range(at..at + 7, "");
+        }),
+        ("bold a word", |s| {
+            let at = mid(s, " sit ") + 1;
+            s.replace_range(at..at + 3, "**sit**");
+        }),
+        ("heading level", |s| {
+            let at = mid(s, "# A heading");
+            s.insert(at, '#');
+        }),
+        ("split a line", |s| {
+            let at = mid(s, " minim ");
+            s.replace_range(at..at + 1, "\n");
+        }),
+        ("delete a line", |s| {
+            let at = mid(s, "aliqua ut");
+            let end = at + s[at..].find('\n').unwrap() + 1;
+            s.replace_range(at..end, "");
+        }),
+        ("edit the first word", |s| s.insert(4, 'x')),
+        ("truncate to half", |s| {
+            let at = s[..s.len() / 2].rfind('\n').unwrap() + 1;
+            s.truncate(at);
+        }),
+    ];
+
+    let mut compared = 0usize;
+    let mut append_runs = (0u64, 0u64);
+    for (k, (name, edit)) in edits.iter().enumerate() {
+        edit(&mut src);
+        let before = text_counters().measured;
+        inc.set_str(&src);
+        lay_measured(&mut inc, &mut metrics);
+        let inc_runs = text_counters().measured - before;
+
+        let mut full = Markdown::new(&src);
+        let mut fresh = FontMetrics::new(font.clone());
+        let before = text_counters().measured;
+        lay_measured(&mut full, &mut fresh);
+        let full_runs = text_counters().measured - before;
+
+        let (a, b) = (inc.rich(), full.rich());
+        let n = b.spans().len();
+        println!("append_matches_full_parse: {name}: {n} spans compared, measured {inc_runs} runs incrementally against {full_runs} in full");
+        assert_eq!(a.text(), b.text(), "setup: {name}: the two did not take the same text");
+        assert_eq!(a.spans().len(), n, "{name}: span counts differ");
+        if let Some(i) = (0..n).find(|&i| a.spans()[i] != b.spans()[i]) {
+            panic!("{name}: span {i} differs: {:?} against {:?}", a.spans()[i], b.spans()[i]);
+        }
+        let bits = |p: &(f32, f32, f32)| (p.0.to_bits(), p.1.to_bits(), p.2.to_bits());
+        if let Some(i) = (0..n).find(|&i| bits(&a.placed()[i]) != bits(&b.placed()[i])) {
+            panic!(
+                "{name}: span {i} ({:?}) is placed at {:?} incrementally and {:?} by a full measure",
+                b.span_str(i),
+                a.placed()[i],
+                b.placed()[i]
+            );
+        }
+        assert_eq!(a.lines(), b.lines(), "{name}: line counts differ");
+        compared += n;
+        if k == 0 {
+            append_runs = (inc_runs, full_runs);
+        }
+    }
+    let (inc_runs, full_runs) = append_runs;
+    println!(
+        "append_matches_full_parse: {compared} spans compared over ten edits; the one-character append measured \
+         {inc_runs} runs against a full measure's {full_runs} (bound: under 1%, {})",
+        full_runs / 100
+    );
+    assert!(full_runs > 10_000, "setup: a full measure of the 64 KB fixture measured only {full_runs} runs");
+    assert!(inc_runs * 100 < full_runs, "setup: the append re-measured {inc_runs} of {full_runs} runs, so nothing was reused");
 }

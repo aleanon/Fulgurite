@@ -1,7 +1,7 @@
 //! `--bin markdown`: a one-character append to a Markdown document of a
 //! size given in KB, then `Markdown::set_str` and a layout under
-//! `FontStack` — M87/T87.1 (`docs/plan-markdown.md`, kill rule K87;
-//! `docs/results-markdown.md` owns the numbers).
+//! `FontStack` — M87/T87.1, judged by T87.6 (`docs/plan-markdown.md`, kill
+//! rule K87; `docs/results-markdown.md` owns the numbers).
 //!
 //! `cargo run --release -p benches --bin markdown -- 1 16 64` prints, per
 //! size, the median and minimum of the appends it times (whole: parse +
@@ -10,8 +10,12 @@
 //! - **parse** — `set_str` over the whole document, which is what the
 //!   editor does on every keystroke;
 //! - **measure** — the first layout after the parse minus the place-only
-//!   layout below: the memo keys the whole text (`RichText`'s `fold`), so
-//!   an append re-measures every word through `FontStack`;
+//!   layout below. Until T87.6 the memo keyed the whole text (`RichText`'s
+//!   `fold`), so an append re-measured every word through `FontStack` —
+//!   88% of the append, and K87 fired on it. Since T87.6 a miss of that
+//!   fold re-measures only the words whose content key changed
+//!   (`RichText::remeasure`), so what is left here is the key comparison
+//!   and the one word the append touched;
 //! - **place** — a second layout of the same text, memo warm: the line
 //!   breaker, plus the fold of the whole text that decides the memo is
 //!   warm.

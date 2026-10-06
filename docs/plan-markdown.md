@@ -602,6 +602,32 @@ Appendix rows for the assembler:
   `docs/results-markdown.md` T87.5; the reopen condition is in the
   `rich.rs` header and `book/src/gaps.md`.
 
+- **T87.6 — K87 fired, and the build is width reuse, not a re-parse.**
+  Eight runs a side under `just bench-lock` put the append at
+  3.215–3.239 ms, measure 2.72–2.75 of it and parse 0.29–0.30
+  (`docs/results-markdown.md` T87.6). The task's text offers "block-level
+  re-parse from the last complete block, or width reuse keyed by word
+  content"; the rule says build the *dominant* part, and a re-parse can
+  remove at most the 0.30 ms of parse, leaving about 2.9 ms. So the build
+  is `RichText::remeasure`: per-word content keys, the common prefix and
+  suffix keep their widths, the middle is measured. 0.56–0.62 ms after.
+- **T87.6 — the gate compares what a reused width feeds, and its
+  injection is replaced.** The parse is unchanged, so "spans after an
+  incremental append equal a full parse's" would hold under any reuse
+  bug; `append_matches_full_parse` compares the spans **and** every
+  `placed` entry as `f32` bits and the line count against a fresh
+  `Markdown`, over the 64 KB fixture and ten edits, and asserts first
+  that the append measured under 1% of the runs a full measure does. The
+  plan's injection (re-parse from the append's own line) names a
+  mechanism that was not built; the two used break the one that was:
+  reuse by index rather than content (red on the second edit, a word
+  gaining a trailing space), and a key without the weight (red on "bold
+  a word").
+- **T87.6 — the weight injection stayed green under the pinned face.**
+  `DejaVuSans` alone has no bold, so a bold word measured as a regular
+  one; the gate measures under the system stack, as the bench does, and
+  asserts its bold differs before the edits run.
+
 **What the review found (M87).**
 
 - C17 → adopted: the store grows (T87.1), the arm asserts spans =
