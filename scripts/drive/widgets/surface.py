@@ -173,6 +173,11 @@ TOAST = ("Toast", "#d_toast_b", [
         subject="#d_toast_a",
         name="its × closes it",
         needs="the floating toast shown, with a ×",
+        # Shown afresh in setup: the first action's toast lives 3000 ms,
+        # and the scale-2 leg's full-repaint check of the action between
+        # can spend that, so the × was clicked on a toast already gone
+        # (CI at cad8edc: "0 of 0 in the frame").
+        setup=_show,
         do=lambda c: (c.c.rpc("input.click", x=_box(c, "#d_toast_a")[2] - 6,
                               y=(_box(c, "#d_toast_a")[1] + _box(c, "#d_toast_a")[3]) / 2)),
         expect=lambda c: (_shown_w(c) == 0.0, f"width after the × {_shown_w(c):.0f}"),
