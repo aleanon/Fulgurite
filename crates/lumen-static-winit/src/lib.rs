@@ -298,20 +298,33 @@ fn suspend_backend(images: &mut Option<Box<dyn lumen_static::ImageSource>>, mut 
 /// GPU constructor answers `None` (and says why when the GPU was asked
 /// for), so a factory still runs in a build with no GPU code at all.
 ///
+/// **The GPU shares one context between windows** (M89b/T89.10): `share`
+/// is [`Win`]'s `Weak` to it, upgraded for a second window's surface and
+/// set by the first. A program's own factory is not given it: a factory
+/// backend makes its own device (M83/T83.2), once per window and per
+/// resume.
+///
 /// Every constructor is handed the same [`BackendTarget`], which
 /// `resumed_impl` builds from the window once (M83/T83.1); the GPU's is
 /// told `accept_cpu` by [`choose_backend`].
-fn pick_backend(target: &BackendTarget, prefer: Prefer, custom: Option<&mut BackendFactory>) -> Box<dyn Backend> {
+fn pick_backend(
+    target: &BackendTarget,
+    prefer: Prefer,
+    custom: Option<&mut BackendFactory>,
+    share: &mut GpuShare,
+) -> Box<dyn Backend> {
     let custom = |_accept_cpu: bool| custom.and_then(|f| f(target));
     #[cfg(feature = "gpu")]
     let gpu = |accept_cpu: bool| {
-        let g = gpu::GpuBackend::new(&BackendTarget { accept_cpu, ..target.clone() })
+        let g = gpu::GpuBackend::shared(&BackendTarget { accept_cpu, ..target.clone() }, share)
             .map(|g| Box::new(g) as Box<dyn Backend>);
         if g.is_none() {
             eprintln!("no usable GPU adapter — falling back to the software canvas");
         }
         g
     };
+    #[cfg(not(feature = "gpu"))]
+    let _ = share;
     #[cfg(not(feature = "gpu"))]
     let gpu = |accept_cpu: bool| {
         // `accept_cpu` is `prefer == Prefer::Gpu`: the GPU was asked for.
@@ -322,6 +335,13 @@ fn pick_backend(target: &BackendTarget, prefer: Prefer, custom: Option<&mut Back
     };
     choose_backend(prefer, custom, gpu, || Box::new(Software::new(target)))
 }
+
+/// What [`Win`] keeps to share one GPU context between its windows
+/// (M89b/T89.10): a `Weak` to it with the `gpu` feature, nothing without.
+#[cfg(feature = "gpu")]
+type GpuShare = std::rc::Weak<lumen_static_wgpu::GpuContext>;
+#[cfg(not(feature = "gpu"))]
+type GpuShare = ();
 
 /// Which backend `prefer` yields — [`pick_backend`]'s decision, with the
 /// three constructors passed in so it can be tested without a window.
@@ -653,6 +673,13 @@ struct Win {
     /// into the primary slot by [`Win::new`].
     config: Config,
     clipboard: Clipboard,
+    /// **The GPU context every window's backend shares** — M89b/T89.10
+    /// (`docs/plan-windows.md`, "M89b: one wgpu device, a surface per
+    /// window"). A `Weak`, so the context lives exactly as long as some
+    /// window's backend does: `pick_backend` adds a surface to it while one
+    /// is alive and makes a new one when none is — the first window, and
+    /// the first after a suspend dropped them all.
+    gpu_share: GpuShare,
     /// **A test hook, debug builds only** — M47/T47.7. With
     /// `LUMEN_TEST_RESUME=<ms>` set, the loop runs its own `suspended`
     /// and `resumed` once, `<ms>` after it starts, so a live drive can
@@ -722,6 +749,7 @@ impl Win {
             slots: vec![primary],
             config,
             clipboard: Clipboard::new(),
+            gpu_share: GpuShare::default(),
             #[cfg(debug_assertions)]
             test_resume: std::env::var("LUMEN_TEST_RESUME")
                 .ok()
@@ -2195,7 +2223,9 @@ impl Win {
             accept_cpu: prefer == Prefer::Gpu,
         };
         let custom = self.config.backend_with.as_mut();
-        let backend = resume_backend(&mut slot.images, slot.session.shaders(), || pick_backend(&target, prefer, custom));
+        let share = &mut self.gpu_share;
+        let backend =
+            resume_backend(&mut slot.images, slot.session.shaders(), || pick_backend(&target, prefer, custom, share));
         eprintln!("lumen-static: {}", backend.name());
         slot.backend = Some(backend);
         // Tell the platform this window accepts composed input, or an

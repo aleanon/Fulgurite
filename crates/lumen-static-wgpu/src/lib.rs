@@ -61,7 +61,9 @@ pub use custom::ShaderStats;
 /// without a second, possibly different, `wgpu` in its manifest.
 pub use wgpu;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use lumen_static::display::{Cmd, Color, DisplayList, ImageId, ImageSource, Renderer, Stops};
 use lumen_static_shell::image::{ImageChain, ImageOrigin};
@@ -255,7 +257,21 @@ fn snap_out(r: Rect) -> Rect {
 
 /// A GPU device, a target texture, and everything needed to draw a
 /// display list into it.
+///
+/// **One surface on a [`GpuContext`]** since M89b/T89.10: the device is
+/// the context's, shared by `Rc` with every other window's `Gpu`
+/// ([`Gpu::for_window_in`]); the surface, its configuration, the target,
+/// the scratch targets, the bind groups, the instance buffers, the glyph
+/// atlas and the image atlas with its `ImageSource` are this one's. A
+/// headless renderer and [`Gpu::for_window`] open a context of their own.
 pub struct Gpu {
+    /// **The device this surface draws with, shared** — M89b/T89.10. Every
+    /// handle below that names a device object (`device`, `queue`, the
+    /// shapes and blit pipelines, the layouts, the samplers) is a clone of
+    /// the context's — wgpu's handles are reference-counted — kept here so
+    /// a frame does not reach through the `Rc` for each; this field is what
+    /// keeps the context alive while the surface is.
+    ctx: Rc<GpuContext>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     adapter_name: String,
@@ -544,60 +560,49 @@ enum Overflow {
     Image,
 }
 
-impl Gpu {
-    /// A renderer with no window: draws into a texture, read back with
-    /// [`Gpu::read_rgba`].
-    ///
-    /// This is what the tests use, and it is why the GPU path can be
-    /// held to the software path's pixels without a display.
-    ///
-    /// **Any adapter, a CPU rasteriser included** (M51/T51.2): parity on
-    /// a machine whose only adapter is llvmpipe is still parity, because
-    /// the atlas, the quads and the damage logic are CPU-side code.
-    pub fn headless(width: u32, height: u32) -> Option<Gpu> {
-        Self::build(width, height, None, true)
-    }
+/// **One wgpu device, shared by every window's surface** — M89b/T89.10
+/// (`docs/plan-windows.md`, "M89b: one wgpu device, a surface per window").
+///
+/// The instance, the adapter, the device and its queue, the adapter's
+/// name, the pipeline and layouts that do not depend on a surface's format,
+/// and the samplers. A [`Gpu`] holds it by `Rc` and adds a surface; the
+/// window layer keeps a `Weak` and makes a new context when none is alive,
+/// so a second window costs a surface rather than a second device:
+/// +1.0 MB resident over the software canvas instead of +17.5
+/// (`docs/results-windows.md` T89.10; `docs/results-gpu.md` §5).
+///
+/// **A pipeline built against a surface's format is not shared blindly**
+/// (second review P11): each surface picks its format from its own
+/// capabilities, and the blit pipeline that writes it is cached here keyed
+/// by that format, so a second surface with another format builds its own.
+/// The shapes pipeline writes the target, whose format is fixed
+/// ([`TARGET_FORMAT`]), and is shared.
+///
+/// Not `Send`: it is shared by `Rc`, on the one thread a window loop runs.
+pub struct GpuContext {
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    device_type: wgpu::DeviceType,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    adapter_name: String,
+    pipeline: wgpu::RenderPipeline,
+    blit_shader: wgpu::ShaderModule,
+    /// The blit pipelines made so far, by the surface format each targets.
+    blits: RefCell<Vec<(wgpu::TextureFormat, wgpu::RenderPipeline)>>,
+    bind_layout: wgpu::BindGroupLayout,
+    blit_layout: wgpu::BindGroupLayout,
+    src_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    linear: wgpu::Sampler,
+    /// The largest glyph atlas this device can hold.
+    max_atlas: u32,
+}
 
-    /// [`Gpu::headless`], refusing a CPU adapter unless `accept_cpu` —
-    /// the window's rule without a window, for the test that proves it.
-    #[doc(hidden)]
-    pub fn headless_accepting(width: u32, height: u32, accept_cpu: bool) -> Option<Gpu> {
-        Self::build(width, height, None, accept_cpu)
-    }
-
-    /// A renderer that owns a swapchain on `window`.
-    ///
-    /// `window` must be `Send + Sync` and outlive the renderer, which is
-    /// what wgpu's safe surface constructor asks for; `lumen-static-winit`
-    /// holds its window in an `Arc` for exactly this.
-    ///
-    /// `accept_cpu`: whether a CPU rasteriser counts as an adapter
-    /// ([`accept_adapter`]). `lumen-static-winit` passes it for
-    /// `Prefer::Gpu` only, so `Prefer::Auto` on a Mesa-only machine gets
-    /// `None` and keeps the software canvas.
-    pub fn for_window<W>(window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
-    where
-        W: wgpu::DisplayAndWindowHandle + 'static,
-    {
-        Self::build(width, height, Some(Box::new(window)), accept_cpu)
-    }
-
-    fn build(
-        width: u32,
-        height: u32,
-        window: Option<Box<dyn wgpu::DisplayAndWindowHandle>>,
-        accept_cpu: bool,
-    ) -> Option<Gpu> {
-        let (width, height) = (width.max(1), height.max(1));
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-
-        let surface = match window {
-            Some(w) => {
-                Some(instance.create_surface(wgpu::SurfaceTarget::DisplayAndWindow(w)).ok()?)
-            }
-            None => None,
-        };
-
+impl GpuContext {
+    /// The adapter, the device and the shared objects, on `instance` —
+    /// compatible with `surface` when there is one.
+    fn open(instance: wgpu::Instance, surface: Option<&wgpu::Surface<'static>>, accept_cpu: bool) -> Option<GpuContext> {
         // `None` here is the whole CPU-fallback story: no adapter, no
         // GPU renderer, and the caller keeps its software canvas. A
         // machine with no driver, a container with no `/dev/dri`, a
@@ -611,7 +616,7 @@ impl Gpu {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             force_fallback_adapter: false,
-            compatible_surface: surface.as_ref(),
+            compatible_surface: surface,
             apply_limit_buckets: false,
         }))
         .ok()?;
@@ -639,39 +644,6 @@ impl Gpu {
         // an adapter for parity and not evidence about a discrete GPU, so
         // every gate's first line must say which kind it ran on.
         let adapter_name = format!("{} ({:?}, {:?})", info.name, info.backend, info.device_type);
-
-        // `get_default_config` and then override the format: a
-        // configuration built by hand goes stale every time wgpu adds a
-        // field, and this one has to be rebuilt on every resize.
-        let mut config = match &surface {
-            Some(s) => {
-                let mut c = s.get_default_config(&adapter, width, height)?;
-                let caps = s.get_capabilities(&adapter);
-                // Prefer a **non-sRGB** format, matching the target: the
-                // blit is a copy, and an sRGB surface would re-encode
-                // colours the software arm leaves alone.
-                if let Some(f) = caps.formats.iter().copied().find(|f| !f.is_srgb()) {
-                    c.format = f;
-                }
-                // Vsync. A UI that renders faster than the display
-                // refreshes is spending power on frames nobody sees, and
-                // the frame loop is already "redraw when something
-                // changed".
-                c.present_mode = wgpu::PresentMode::AutoVsync;
-                s.configure(&device, &c);
-                c
-            }
-            None => {
-                let mut c = default_config(width, height);
-                c.format = TARGET_FORMAT;
-                c
-            }
-        };
-        config.width = width;
-        config.height = height;
-        // The blit pipeline is built against whatever the surface
-        // accepted, which is why the configuration is settled first.
-        let surface_format = config.format;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("lumen-static shapes"),
@@ -762,32 +734,6 @@ impl Gpu {
             cache: None,
         });
 
-        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("lumen-static blit"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[Some(&blit_layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: &blit_shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &blit_shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(surface_format.into())],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
         #[allow(unused_mut)]
         let mut max_atlas = device.limits().max_texture_dimension_2d;
         // **A fault switch, debug builds only** — M51/T51.1, like
@@ -799,6 +745,218 @@ impl Gpu {
         if let Some(n) = std::env::var("LUMEN_GPU_ATLAS_MAX").ok().and_then(|v| v.parse::<u32>().ok()) {
             max_atlas = max_atlas.min(n.max(1));
         }
+
+        Some(GpuContext {
+            instance,
+            adapter,
+            device_type: info.device_type,
+            device,
+            queue,
+            adapter_name,
+            pipeline,
+            blit_shader,
+            blits: RefCell::new(Vec::new()),
+            bind_layout,
+            blit_layout,
+            src_layout,
+            sampler,
+            linear,
+            max_atlas,
+        })
+    }
+
+    /// Which device this is — the name every surface on it reports.
+    pub fn adapter(&self) -> &str {
+        &self.adapter_name
+    }
+
+    /// The surface formats blit pipelines have been built for, in the order
+    /// they were first asked for — one per distinct format, however many
+    /// surfaces share it (second review P11).
+    pub fn blit_formats(&self) -> Vec<wgpu::TextureFormat> {
+        self.blits.borrow().iter().map(|(f, _)| *f).collect()
+    }
+
+    /// The blit pipeline writing `format`, built on first use.
+    fn blit_for(&self, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
+        if let Some((_, p)) = self.blits.borrow().iter().find(|(f, _)| *f == format) {
+            return p.clone();
+        }
+        let device = &self.device;
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("lumen-static blit"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&self.blit_layout)],
+                immediate_size: 0,
+            })),
+            vertex: wgpu::VertexState {
+                module: &self.blit_shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &self.blit_shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(format.into())],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.blits.borrow_mut().push((format, pipeline.clone()));
+        pipeline
+    }
+}
+
+impl Gpu {
+    /// A renderer with no window: draws into a texture, read back with
+    /// [`Gpu::read_rgba`].
+    ///
+    /// This is what the tests use, and it is why the GPU path can be
+    /// held to the software path's pixels without a display.
+    ///
+    /// **Any adapter, a CPU rasteriser included** (M51/T51.2): parity on
+    /// a machine whose only adapter is llvmpipe is still parity, because
+    /// the atlas, the quads and the damage logic are CPU-side code.
+    pub fn headless(width: u32, height: u32) -> Option<Gpu> {
+        Self::build(width, height, None, true)
+    }
+
+    /// [`Gpu::headless`], refusing a CPU adapter unless `accept_cpu` —
+    /// the window's rule without a window, for the test that proves it.
+    #[doc(hidden)]
+    pub fn headless_accepting(width: u32, height: u32, accept_cpu: bool) -> Option<Gpu> {
+        Self::build(width, height, None, accept_cpu)
+    }
+
+    /// A renderer that owns a swapchain on `window`.
+    ///
+    /// `window` must be `Send + Sync` and outlive the renderer, which is
+    /// what wgpu's safe surface constructor asks for; `lumen-static-winit`
+    /// holds its window in an `Arc` for exactly this.
+    ///
+    /// `accept_cpu`: whether a CPU rasteriser counts as an adapter
+    /// ([`accept_adapter`]). `lumen-static-winit` passes it for
+    /// `Prefer::Gpu` only, so `Prefer::Auto` on a Mesa-only machine gets
+    /// `None` and keeps the software canvas.
+    pub fn for_window<W>(window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
+    where
+        W: wgpu::DisplayAndWindowHandle + 'static,
+    {
+        Self::build(width, height, Some(Box::new(window)), accept_cpu)
+    }
+
+    /// [`Gpu::for_window`] and [`Gpu::headless`]: a new context, then one
+    /// surface on it (or none).
+    fn build(
+        width: u32,
+        height: u32,
+        window: Option<Box<dyn wgpu::DisplayAndWindowHandle>>,
+        accept_cpu: bool,
+    ) -> Option<Gpu> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = match window {
+            Some(w) => Some(instance.create_surface(wgpu::SurfaceTarget::DisplayAndWindow(w)).ok()?),
+            None => None,
+        };
+        let ctx = Rc::new(GpuContext::open(instance, surface.as_ref(), accept_cpu)?);
+        Some(Self::on(ctx, surface, width, height))
+    }
+
+    /// **A surface on a context that already exists** — M89b/T89.10. What a
+    /// second window does: the device, the queue, the shapes pipeline, the
+    /// layouts and the samplers are `ctx`'s; the surface, its configuration,
+    /// the target, the scratch, the bind groups, the instance buffers and
+    /// both atlases are this window's own. The image atlas especially:
+    /// two programs' `ImageId(0)` are different images (P25), and the atlas
+    /// keys by id.
+    ///
+    /// **A surface `ctx`'s adapter cannot present to gets a context of its
+    /// own**, with one line on stderr, which is [`Gpu::for_window`]: `window`
+    /// is cloned for that, because the first surface made from it is
+    /// dropped. `None` when the context's adapter is a CPU rasteriser and
+    /// `accept_cpu` is false ([`accept_adapter`]), as for a new context.
+    pub fn for_window_in<W>(ctx: &Rc<GpuContext>, window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
+    where
+        W: wgpu::DisplayAndWindowHandle + Clone + 'static,
+    {
+        if let Err(why) = accept_adapter(ctx.device_type, accept_cpu) {
+            eprintln!("lumen-static: not using {}: {why}", ctx.adapter_name);
+            return None;
+        }
+        let surface = ctx
+            .instance
+            .create_surface(wgpu::SurfaceTarget::DisplayAndWindow(Box::new(window.clone())))
+            .ok()?;
+        if !ctx.adapter.is_surface_supported(&surface) {
+            eprintln!(
+                "lumen-static: {} cannot present to this window; it gets a GPU context of its own",
+                ctx.adapter_name
+            );
+            drop(surface);
+            return Self::for_window(window, width, height, accept_cpu);
+        }
+        Some(Self::on(ctx.clone(), Some(surface), width, height))
+    }
+
+    /// The context this surface draws with — for a window layer that
+    /// shares it with the next window (`Rc::downgrade`).
+    pub fn context(&self) -> &Rc<GpuContext> {
+        &self.ctx
+    }
+
+    /// The format the surface was configured with, which the blit pipeline
+    /// targets — [`TARGET_FORMAT`]'s `Rgba8Unorm` for a headless renderer.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.config.format
+    }
+
+    /// One surface's state on `ctx`: its configuration (from **its own**
+    /// capabilities), the blit pipeline for its format (the context's cache),
+    /// and everything per window.
+    fn on(ctx: Rc<GpuContext>, surface: Option<wgpu::Surface<'static>>, width: u32, height: u32) -> Gpu {
+        let (width, height) = (width.max(1), height.max(1));
+        let device = ctx.device.clone();
+        // `get_default_config` and then override the format: a
+        // configuration built by hand goes stale every time wgpu adds a
+        // field, and this one has to be rebuilt on every resize.
+        let default = surface.as_ref().and_then(|s| s.get_default_config(&ctx.adapter, width, height));
+        let mut config = match (&surface, default) {
+            (Some(s), Some(mut c)) => {
+                let caps = s.get_capabilities(&ctx.adapter);
+                // Prefer a **non-sRGB** format, matching the target: the
+                // blit is a copy, and an sRGB surface would re-encode
+                // colours the software arm leaves alone.
+                if let Some(f) = caps.formats.iter().copied().find(|f| !f.is_srgb()) {
+                    c.format = f;
+                }
+                // Vsync. A UI that renders faster than the display
+                // refreshes is spending power on frames nobody sees, and
+                // the frame loop is already "redraw when something
+                // changed".
+                c.present_mode = wgpu::PresentMode::AutoVsync;
+                s.configure(&device, &c);
+                c
+            }
+            _ => {
+                let mut c = default_config(width, height);
+                c.format = TARGET_FORMAT;
+                c
+            }
+        };
+        config.width = width;
+        config.height = height;
+        // The blit pipeline is built against whatever the surface
+        // accepted, which is why the configuration is settled first —
+        // and **taken from the context's cache by that format** (second
+        // review P11): a second surface with another format gets its own.
+        let blit_pipeline = ctx.blit_for(config.format);
+        let max_atlas = ctx.max_atlas;
         let glyph_start = GLYPH_ATLAS.min(max_atlas);
         let (target, target_view) = make_target(&device, width, height);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
@@ -817,28 +975,28 @@ impl Gpu {
         let image_tex = make_atlas_texture(&device, 1, wgpu::TextureFormat::Rgba8Unorm);
 
         let bind = make_bind(
-            &device, &bind_layout, &globals, &glyph_tex, &image_tex, &sampler, &grads, &mats,
+            &device, &ctx.bind_layout, &globals, &glyph_tex, &image_tex, &ctx.sampler, &grads, &mats,
         );
-        let blit_bind = make_blit_bind(&device, &blit_layout, &target_view, &sampler);
+        let blit_bind = make_blit_bind(&device, &ctx.blit_layout, &target_view, &ctx.sampler);
         let src_binds =
-            make_src_binds(&device, &src_layout, &target_view, [&placeholder, &placeholder], &linear);
+            make_src_binds(&device, &ctx.src_layout, &target_view, [&placeholder, &placeholder], &ctx.linear);
 
-        Some(Gpu {
+        Gpu {
             device,
-            queue,
-            adapter_name,
+            queue: ctx.queue.clone(),
+            adapter_name: ctx.adapter_name.clone(),
             surface,
             config,
             target,
             target_view,
             size: (width, height),
-            pipeline,
+            pipeline: ctx.pipeline.clone(),
             blit_pipeline,
-            bind_layout,
-            blit_layout,
+            bind_layout: ctx.bind_layout.clone(),
+            blit_layout: ctx.blit_layout.clone(),
             bind,
             blit_bind,
-            sampler,
+            sampler: ctx.sampler.clone(),
             globals,
             quads,
             quad_cap: 256,
@@ -849,8 +1007,8 @@ impl Gpu {
             scratch: None,
             placeholder,
             src_binds,
-            src_layout,
-            linear,
+            src_layout: ctx.src_layout.clone(),
+            linear: ctx.linear.clone(),
             glyph_tex,
             glyph_atlas: Atlas::new(glyph_start),
             image_tex,
@@ -867,7 +1025,8 @@ impl Gpu {
             frame: FrameScratch::default(),
             #[cfg(feature = "shader")]
             shaders: custom::Shaders::default(),
-        })
+            ctx,
+        }
     }
 
     /// Which device this ended up on — for a startup line, and for a

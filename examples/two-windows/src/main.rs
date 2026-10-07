@@ -23,6 +23,11 @@
 //! being hashed. `#field` is a text field, whose caret is where *this*
 //! window's input method opens.
 //!
+//! **Each program has its own images** (M89b/T89.10): both trees show
+//! `#swatch`, `ImageId(0)`, and each program's store answers id 0 with a
+//! different solid colour — red for the list, blue for the detail. On the
+//! GPU the two windows share one device and must not share an image atlas.
+//!
 //! The detail also lays its right-to-left label out `Shaping::Complex`
 //! while the list stays `Basic`, so each window must render with its own
 //! program's stack; and it sets an agent address that the window ignores,
@@ -37,6 +42,40 @@ use lumen_static_widgets::prelude::*;
 use lumen_static_winit::Run;
 
 const PAGE: Color = Color(0xf4, 0xf5, 0xf7, 0xff);
+
+// ---- the images: one store per program (M89b/T89.10) ------------------
+
+/// **A program's images: `ImageId(0)` is one solid colour.** Each program
+/// hands the window its own store (`Program::images`), and both use id 0:
+/// the GPU windows share one device but not an image atlas, because two
+/// programs' `ImageId(0)` are different images (P25). The drive reads the
+/// pixel at each window's `#swatch` centre and wants its own colour.
+pub struct Swatch {
+    px: Vec<u8>,
+}
+
+/// The swatch's edge, in image pixels.
+pub const SWATCH: u32 = 16;
+/// The list's swatch colour and the detail's.
+pub const LIST_SWATCH: [u8; 4] = [0xd0, 0x30, 0x30, 0xff];
+pub const DETAIL_SWATCH: [u8; 4] = [0x20, 0x70, 0xd0, 0xff];
+
+impl Swatch {
+    pub fn new(rgba: [u8; 4]) -> Self {
+        Swatch { px: rgba.repeat((SWATCH * SWATCH) as usize) }
+    }
+}
+
+impl lumen_static::ImageSource for Swatch {
+    fn image(&self, id: lumen_static::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
+        (id == lumen_static::display::ImageId(0)).then_some((SWATCH, SWATCH, &self.px[..]))
+    }
+}
+
+/// The `#swatch` widget both trees carry: id 0, drawn 48 × 48.
+fn swatch() -> lumen_static_widgets::Image {
+    lumen_static_widgets::Image::new(lumen_static::display::ImageId(0), lumen_static::Size { w: 48.0, h: 48.0 })
+}
 
 // ---- the list: program 0 ----------------------------------------------
 
@@ -63,6 +102,9 @@ pub struct ListUi {
     pub bump: Button<List>,
     #[widget_id("send")]
     pub send: Button<List>,
+    /// `ImageId(0)` from the list's own `ImageSource` (M89b/T89.10).
+    #[widget_id("swatch")]
+    pub swatch: lumen_static_widgets::Image,
 }
 
 /// The list's state. Unsplit (`State = Self`), so an answer's `apply`
@@ -166,6 +208,7 @@ fn list() -> List {
         l.count += 1;
         l.ui.count.set(format!("{}", l.count));
     };
+    l.ui.swatch = swatch();
     l.ui.send.label = "send";
     l.ui.send.on_click = |l, _| {
         l.sent += 1;
@@ -205,6 +248,10 @@ pub struct DetailUi {
     /// Arabic, which joins: shaped and unshaped runs differ in width.
     #[widget_id("rtl")]
     pub rtl: Label,
+    /// `ImageId(0)` from the detail's own `ImageSource` — the same id as
+    /// the list's, a different image (M89b/T89.10).
+    #[widget_id("swatch")]
+    pub swatch: lumen_static_widgets::Image,
 }
 
 /// `Reloadable` because a window program is one in a `reload` build
@@ -307,6 +354,7 @@ fn detail_state() -> Detail {
     d.ui.panic.label = "panic";
     d.ui.panic.on_click = |_, _| panic!("the detail window panicked on purpose");
     d.ui.rtl.set("مرحبا بالعالم");
+    d.ui.swatch = swatch();
     d
 }
 
@@ -339,6 +387,7 @@ pub fn detail() -> Program<Detail> {
         .page(PAGE)
         .on_key(detail_keys)
         .shaping(lumen_static_shell::text::Shaping::Complex)
+        .images(Swatch::new(DETAIL_SWATCH))
         .agent("127.0.0.1:7999")
 }
 
@@ -359,6 +408,7 @@ pub fn program() -> Program<List> {
         .size(340, 440)
         .page(PAGE)
         .accessible(cfg!(feature = "a11y"))
+        .images(Swatch::new(LIST_SWATCH))
         .windows(windows)
 }
 // ANCHOR_END: windows

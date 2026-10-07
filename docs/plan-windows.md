@@ -668,6 +668,20 @@ feature, so K2 is not engaged.
   `VmRSS` delta is ≥ 50% of T89.9's separate-context delta (median of
   three, `docs/results-gpu.md` §5 method). **Fires →** not shipped,
   because sharing did not buy what it costs in code. Recorded.
+  - **Amended by the owner, 2026-10-07: K89b is judged on the second
+    GPU window's GPU share** — its GPU `VmRSS` delta less the software
+    canvas's delta for the same window, against T89.9's separate-context
+    share (17.5 MB) — **not on the raw delta above.** The text above is
+    kept as written. Reason: the raw ratio is bounded below by the
+    fallback fonts both backends pay (74.5 / 91.9 MB = 81%), so it could
+    not tell a shared context from a separate one — a bound computed
+    from the wrong quantity, recorded at T89.9 before T89.10 measured.
+    It fired on that quantity at T89.10 and its response was followed;
+    re-judged, the share read 0.9 MB (5%) on the side branch and 1.0 MB
+    (6%) on the ported build, and T89.10 shipped
+    (`docs/results-windows.md` T89.10). `just windows-rss` prints both
+    ratios beside the bound. This is the owner's decision, not a re-read
+    by the task that measured it.
 - **K89c** (M89a). With one window, `just idle-count` reads more frames
   than T89.0's baseline, or `just motion-present` exceeds 2 presents
   per 200 motions. **Fires →** T89.1 stops and finds the per-slot state
@@ -1125,3 +1139,20 @@ the first review's findings of the same name.
   sharing took a second window from 17.5 MB to 0.9 MB, 5%. Re-judging
   K89b on that share, and shipping from the side branch, is an owner
   decision, not this task's (`docs/results-windows.md` T89.10).
+- **T89.10, shipped on the owner's decision (2026-10-07).** K89b is
+  judged on the GPU share (its amendment, "Kill rules"), and the side
+  branch's `9cc2e22` was re-applied onto the M90a tree. It applied
+  without a conflict: M90a's `Win` changes (menu state after every
+  frame, the tray seam, `Event::Menu`, accelerators) do not touch
+  `pick_backend` or `resumed_impl`'s backend line. Re-measured there:
+  K89a 0 / 0 differing pixels, K89b's share 1.0 MB of 17.5 (6%), raw
+  82%. `just windows-rss` now prints both ratios against T89.9's
+  separate-context arm rather than half of its own medians.
+- **T89.10, a shared `target` cannot make the readbacks equal.** The
+  plan's second injection predicts the two windows' `xwd` readbacks
+  are equal; `examples/two-windows`' windows are 340 × 440 and 300 ×
+  400, so a shared target shows **the same frame stretched to each
+  window**, never byte-equal ones. The leg still goes red on it, by
+  the mechanism: after the round trip window 1 presents the detail's
+  frame, its `#swatch` reads the detail's blue, and 16.4% of its pixels
+  differ (`docs/results-windows.md` T89.10).

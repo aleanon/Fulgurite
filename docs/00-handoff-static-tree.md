@@ -174,6 +174,20 @@ The four properties that produce the performance, in rough order of importance:
    which marks the whole tree under `Boundaries`; that price is recorded
    there, and M84's `App::tick_marked` is the reopen.
 
+   **DECIDED 2026-10-07 (M89b/T89.10, shipped on owner decision): the
+   windows share one wgpu device, with a surface each.**
+   `lumen_static_wgpu::GpuContext` (instance, adapter, device, queue, the
+   shapes pipeline, layouts, samplers, and blit pipelines cached by
+   surface format) is shared by `Rc`; a per-surface `Gpu` keeps its
+   surface, target, scratch, buffers and both atlases, so two programs'
+   `ImageId(0)` stay different images. The window holds a `Weak` and
+   makes a context when none is alive (the first window, and the first
+   after a suspend); a factory backend from `Program::backend_with` makes
+   its own. A second GPU window's own cost fell from 17.5 MB to 1.0 MB
+   (`docs/results-windows.md` T89.10; `docs/results-gpu.md` §5). K89b
+   fired on the raw delta and was re-judged by the owner on this share
+   (`docs/plan-windows.md`, "Kill rules").
+
 Plus two implementation details that matter as much as the architecture: flat
 contiguous node storage addressed by `u32` handles rather than pointer chasing,
 and pipelining the two threads so frame N builds while frame N−1 rasterizes

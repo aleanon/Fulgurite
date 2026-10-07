@@ -9,10 +9,12 @@
 # - the first GPU window over the software one: what opening a context
 #   costs (§5's 174 MB, re-read here on this example);
 # - the second window over the first, on each backend: what one more
-#   window costs. Every GPU window makes a context of its own: K89b
-#   (`docs/plan-windows.md`) compared a shared second window with this
-#   separate-context delta at T89.10, fired on the raw delta, and the
-#   sharing was not shipped (`docs/results-windows.md` T89.10).
+#   window costs. Since T89.10 the GPU windows share one context, and
+#   K89b (`docs/plan-windows.md`) compares this delta with T89.9's
+#   separate-context arm, printed both ways: the raw `VmRSS` delta (K89b
+#   as first written) and the GPU share (GPU delta less the software
+#   delta of the same launches), which is the quantity the owner judged
+#   K89b on, 2026-10-07 (`docs/results-windows.md` T89.10).
 #
 # The GPU legs need a real adapter, so this runs on the user's display,
 # off the monitor they read and without focus (scripts/drive_window.sh);
@@ -66,7 +68,16 @@ print(f"windows-rss: first GPU window over software {mb(g[0] - sw[0]):.1f} MB; "
 # The second window's delta holds what its own program costs on either
 # backend -- two-windows' detail lays Arabic out, which loads fallback
 # faces -- so the GPU's share of it is the difference of the two medians.
-print(f"windows-rss: the second window's GPU share (gpu delta - software delta) "
-      f"{mb(g[2] - sw[2]):.1f} MB; K89b's half of each: {mb(g[2]) / 2:.1f} MB raw, "
-      f"{mb(g[2] - sw[2]) / 2:.1f} MB GPU share")
+share = g[2] - sw[2]
+print(f"windows-rss: the second window's GPU share (gpu delta - software delta) {mb(share):.1f} MB")
+# K89b: against T89.9's separate-context arm (docs/results-windows.md
+# T89.9, median of three: GPU +91.9 MB, of which +17.5 MB the GPU's share).
+# Judged on the GPU share (owner, 2026-10-07); the raw ratio is printed
+# beside it, and cannot fall below 74.5 / 91.9 = 81% (the fonts both
+# backends pay).
+SEP_RAW, SEP_SHARE = 91.9, 17.5
+raw_ratio, share_ratio = mb(g[2]) / SEP_RAW, mb(share) / SEP_SHARE
+print(f"windows-rss: K89b raw {mb(g[2]):.1f} / {SEP_RAW} MB = {raw_ratio:.0%} (bound < 50%, not judged); "
+      f"GPU share {mb(share):.1f} / {SEP_SHARE} MB = {share_ratio:.0%} (bound < 50%: "
+      f"{'holds' if share_ratio < 0.5 else 'FIRES'})")
 PY

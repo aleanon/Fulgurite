@@ -15,11 +15,18 @@ use std::time::Instant;
 use lumen_static::Color;
 use lumen_static_shell::text::FontStack;
 use lumen_static_shell::session::FrameSource;
-use lumen_static_wgpu::Gpu;
+use lumen_static_wgpu::{Gpu, GpuContext};
 
 use crate::backend::{Backend, BackendTarget, Frame};
 
 /// A window drawn by `lumen-static-wgpu`.
+///
+/// **One surface on a shared device** since M89b/T89.10: the window layer
+/// builds every GPU window through [`GpuBackend::shared`], so a second
+/// window adds a surface to the first one's `GpuContext` rather than
+/// opening a second device — +1.0 MB resident over the software canvas
+/// instead of +17.5 (`docs/results-windows.md` T89.10). Each backend still
+/// owns its target, its atlases and its images.
 pub struct GpuBackend {
     gpu: Gpu,
     name: String,
@@ -52,6 +59,10 @@ impl GpuBackend {
     /// `target.accept_cpu`: whether a CPU rasteriser such as llvmpipe
     /// counts as an adapter (M51/T51.2). [`crate::choose_backend`] passes
     /// it for `Prefer::Gpu` only.
+    ///
+    /// **A device of its own**, which the window no longer does for its
+    /// windows ([`GpuBackend::shared`], M89b/T89.10); kept for a caller
+    /// that wants one surface on one device and nothing shared.
     pub fn new(target: &BackendTarget) -> Option<Self> {
         let (w, h) = (target.width.max(1), target.height.max(1));
         let mut gpu = Gpu::for_window(target.window.clone(), w, h, target.accept_cpu)?;
@@ -59,6 +70,48 @@ impl GpuBackend {
             gpu.set_font(f);
         }
         let name = format!("gpu ({})", gpu.adapter());
+        Some(GpuBackend {
+            gpu,
+            name,
+            masks_logged: false,
+            shot: Vec::new(),
+            fresh: true,
+        })
+    }
+
+    /// **A window's backend on the context its other windows share** —
+    /// M89b/T89.10 (`docs/plan-windows.md`, "M89b: one wgpu device, a
+    /// surface per window"). `share` is the window layer's `Weak` to it:
+    /// while some window's backend keeps the context alive this adds a
+    /// surface to it ([`Gpu::for_window_in`]), and when none does it makes
+    /// one ([`Gpu::for_window`]) and points `share` at it. A suspend drops
+    /// every backend and so the context; the first window resumed makes
+    /// the next one.
+    ///
+    /// Its [`Backend::name`], the window's stderr line, says `shared`, how
+    /// many surfaces the context holds counting this one, and the format
+    /// this surface was configured with (second review P11): `gpu (NVIDIA
+    /// GeForce RTX 4070 (Vulkan, DiscreteGpu)), shared context (2
+    /// surfaces), surface Bgra8Unorm`. The image atlas and its
+    /// `ImageSource` stay this surface's: two programs' `ImageId(0)` are
+    /// different images (P25).
+    pub fn shared(target: &BackendTarget, share: &mut std::rc::Weak<GpuContext>) -> Option<Self> {
+        let (w, h) = (target.width.max(1), target.height.max(1));
+        let mut gpu = match share.upgrade() {
+            Some(ctx) => Gpu::for_window_in(&ctx, target.window.clone(), w, h, target.accept_cpu)?,
+            None => Gpu::for_window(target.window.clone(), w, h, target.accept_cpu)?,
+        };
+        *share = std::rc::Rc::downgrade(gpu.context());
+        if let Some(f) = target.font.clone() {
+            gpu.set_font(f);
+        }
+        let surfaces = std::rc::Rc::strong_count(gpu.context());
+        let name = format!(
+            "gpu ({}), shared context ({surfaces} surface{}), surface {:?}",
+            gpu.adapter(),
+            if surfaces == 1 { "" } else { "s" },
+            gpu.surface_format()
+        );
         Some(GpuBackend {
             gpu,
             name,

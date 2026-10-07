@@ -441,15 +441,23 @@ method `docs/results-competitive.md` §3 uses.
 > **+3.87 MB**, not +6.97 — the old figure overstated it by 1.8×. The
 > crate count and the RSS rows were never affected.
 
-**A second window, measured — M89b/T89.10.** On `examples/two-windows`
+**A second window, measured — M89b/T89.9–T89.10.** On `examples/two-windows`
 (release, `just windows-rss`, median of three, this section's method per
-window), a second GPU window with a context of its own costs 17.5 MB
-more than the same window on the software canvas; sharing one context
-between the windows took that to 0.9 MB. The sharing is **not shipped**:
-K89b, judged on the whole second-window delta, fired (82% of the
-separate-context delta against a 50% bound), because 74.5 MB of that
-delta is the window's own fonts on either backend. The rows and the
-reasoning are `docs/results-windows.md` T89.9–T89.10.
+window), what the second window adds to `VmRSS`:
+
+| second window | `VmRSS` delta | over the software canvas (the GPU's share) |
+|---|---:|---:|
+| software canvas | +74.5 MB | — |
+| GPU, a context per window (T89.9) | +91.9 MB | +17.5 MB |
+| **GPU, one context shared** (T89.10, shipped) | **+75.4 MB** | **+1.0 MB** |
+
+**The shared row is what ships** since T89.10, on the owner's decision
+of 2026-10-07 to judge K89b on the GPU's share (6% of the separate
+context's, bound 50%) rather than on the whole delta (82%): 74.5 MB of
+either delta is the detail program's fallback fonts, which the software
+canvas pays identically, so the whole-delta ratio could not fall below
+81%. The rows and the reasoning are `docs/results-windows.md`
+T89.9–T89.10.
 
 **The price is the context, not the code.** Compiling the GPU backend in
 and not using it costs 0.6 MB resident. Opening an adapter costs 174 MB,

@@ -13,13 +13,16 @@ i9-13900KF. Created by T89.0 (2026-10-06).*
   window at all (T89.6); and hot reload swaps every window's session from
   the new build or none (T89.7). Each section below owns its figures; the
   baselines are T89.0's.
-- **M89b DONE, with K89b fired and the shared context not shipped**
+- **M89b DONE; the shared context ships on the owner's decision**
   (T89.9–T89.10). T89.9's gates ship: the `two-windows-gpu` resume leg
-  and per-window `VmRSS`. T89.10's `GpuContext` held K89a, but K89b fired
-  on its quantity as written, so every window keeps a context of its own
-  and the implementation stays on `t89.10-shared-gpu-context`
-  (`9cc2e22`). On the GPU share alone it held (T89.10's table); whether to
-  re-judge K89b on that quantity is the owner's decision, not taken here.
+  and per-window `VmRSS`. T89.10's `GpuContext` held K89a and, as first
+  written, fired K89b on the raw second-window delta (82%), so it was
+  held off the branch. On 2026-10-07 the owner judged K89b on the second
+  window's GPU share instead — the raw ratio is bounded below by the
+  fallback fonts both backends pay (74.5 / 91.9 = 81%) — and on that
+  quantity sharing took the second window from 17.5 MB to 1.0 MB (6%,
+  bound 50%), so it ships, re-measured on the ported build (T89.10's
+  section).
 - **Closing CI.** Three runs failed before `1faf792`, none on a defect in
   M89's code: `a796eb7` on a rustc SIGILL in LLVM (not re-run);
   `6cd1e0d` on two script defects, fixed in `cce0f65` (`windows_rss.sh`
@@ -285,7 +288,7 @@ private display; T89.7 names none).
 
 Read on the user's display (`:0`, the RTX 4070: Xephyr has no adapter),
 off the monitor being read and without focus (`scripts/drive_window.sh`).
-Every GPU window still makes a context of its own; T89.10 shares one, and
+At T89.9 every GPU window still made a context of its own; T89.10 shares one, and
 K89a and K89b (`docs/plan-windows.md`, "Kill rules") are judged against
 these rows.
 
@@ -348,7 +351,48 @@ Raw launches, kB (one → two): GPU 236,268 → 328,600, 202,500 → 296,624,
   a shared context from a separate one (`docs/plan-windows.md`, What
   building found).
 
-## T89.10 — one GPU context shared by the windows: K89b fired, not shipped (2026-10-06)
+## T89.10 — one GPU context shared by the windows: shipped on owner decision (2026-10-07)
+
+**Shipped 2026-10-07**, ported from the side branch onto the M90a tree
+(`9cc2e22` re-applied on `a8f5b2c`), after the owner judged K89b on the
+second window's **GPU share** rather than its raw `VmRSS` delta (`docs/plan-windows.md`,
+"Kill rules", K89b's amendment). The raw ratio is bounded below by the
+fallback fonts both backends pay (74.5 / 91.9 = 81%), a bound computed
+from the wrong quantity. Every gate below was re-run on the ported build,
+on `:0`, the RTX 4070.
+
+**K89a and K89b on the ported build:**
+
+| kill rule | quantity | read | bound | verdict |
+|---|---|---|---|---|
+| K89a | window 1 / window 2 differing pixels across the `two-windows-gpu` round trip | **0** / 149,600, **0** / 120,000 | 0.1% each | holds |
+| K89a | panics across the leg | 0 | 0 | holds |
+| K89b (as judged) | second GPU window's GPU share, against T89.9's 17.5 MB | **1.0 MB = 6%** | < 50% | **holds** |
+| K89b (as first written, printed) | second GPU window's raw `VmRSS` delta, against T89.9's 91.9 MB | 75.4 MB = 82% | < 50% | not judged |
+
+`just windows-rss` on the ported build, median of three: software 29.7
+→ 104.1 MB (+74.4), shared GPU 195.0 → 270.5 MB (+75.4); raw launches,
+kB (one → two): GPU 199,744 → 276,944, 199,724 → 276,984, 199,604 →
+276,796; software 30,456 → 106,640, 30,400 → 106,636, 30,384 → 106,596.
+The script prints both ratios beside their bound.
+
+**The other T89.10 gates, red and green:**
+
+| gate | green (shipped) | red (injection) |
+|---|---|---|
+| each program's `ImageId(0)` at its `#swatch` centre | list (208, 48, 48), detail (32, 112, 208), before and after the round trip | **image atlas moved into `GpuContext`**: window 2 shows (208, 48, 48), the list's red, before and after — "it is the other window's" |
+| the two windows' targets are their own | 0 / 0 differing pixels | **one `target` texture shared**: window 1 presents the detail's frame after the round trip, stretched to its size — its `#swatch` reads the detail's blue and 24,508 / 149,600 px (16.4%) differ |
+| the backend lines say `shared` and the surface format | `shared context (1 surface)`, `(2 surfaces)`, the same after the resume; every surface Bgra8Unorm | `pick_backend` back to a context per window: all four lines lack it, and window 2's is not the second surface |
+| `just gpu-parity` | unchanged: worst channel delta 1, 0 px over 8 (320 × 160); PaintBox and VectorText worst 3, 0 px over 8; drops 0 / 2 / 20 and the atlas cap as before | — |
+
+The shared-`target` injection could not make the two readbacks **equal**,
+as the plan predicted: the windows differ in size (340 × 440 and 300 ×
+400), so a shared target shows the same frame scaled to each window
+(`docs/plan-windows.md`, What building found).
+
+### The first measurement, on the side branch (2026-10-06)
+
+Kept as it was recorded when K89b fired on its first-written quantity.
 
 `GpuContext` shared by `Rc` with a surface per window was built and
 measured, and **K89b fired on its quantity as written**. Following its
@@ -391,6 +435,6 @@ Raw launches, kB (one → two): shared GPU 202,436 → 279,624, 202,264 →
   rule that is re-read after it fires is not one. Whether K89b should be
   judged on the GPU share — and the sharing shipped from the side branch —
   is the owner's call (`docs/plan-windows.md`, What building found).
-- Not run on the shared build, because it is not shipped: `just
-  gpu-parity`, and the plan's two injections (the image atlas in
-  `GpuContext`; one shared `target`).
+- Not run on the shared build then, because it was not shipped: `just
+  gpu-parity`, and the plan's two injections. They were run when it
+  shipped (above).
