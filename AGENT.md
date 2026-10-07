@@ -712,6 +712,15 @@ found" section rather than silently replacing itself.
     from the commit it tests (`git show <sha>:scripts/ci.sh`): the
     first run at 6984df0 died when a later commit edited `ci.sh`
     under it.
+    **M88, M89a and M89b DONE**, `just ci-verify 1faf792` green (29
+    steps, 0 failed, 0 skipped). M88 (T88.0-T88.5) and M89a
+    (T89.0-T89.7) shipped as planned; **M89b closed with K89b fired**:
+    T89.9's resume leg and per-window RSS ship, T89.10's shared GPU
+    context does not and is kept on `t89.10-shared-gpu-context`
+    (`9cc2e22`) pending the owner's call on judging K89b by the GPU
+    share (`docs/results-windows.md`, Summary). The runs at `a796eb7`,
+    `6cd1e0d` and `cad8edc` failed on a compiler SIGILL, two script
+    defects (`cce0f65`) and a Toast drive race (`f3deb9a`).
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times

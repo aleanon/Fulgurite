@@ -3,6 +3,31 @@
 *M89, `docs/plan-windows.md`. Owns every figure that plan cites. Machine:
 i9-13900KF. Created by T89.0 (2026-10-06).*
 
+## Summary — M89a and M89b close (T89.8, T89.11; `just ci-verify 1faf792` green)
+
+- **M89a DONE** (T89.0–T89.7). One window became slot 1 of a window
+  table (T89.1); the agent names windows (T89.2); a program opens and
+  closes windows, and closing the last one is not quitting (T89.3);
+  windows exchange data by key (T89.4) and answer per-window requests in
+  the window that asked (T89.5); `daemon(boot)` runs a program with no
+  window at all (T89.6); and hot reload swaps every window's session from
+  the new build or none (T89.7). Each section below owns its figures; the
+  baselines are T89.0's.
+- **M89b DONE, with K89b fired and the shared context not shipped**
+  (T89.9–T89.10). T89.9's gates ship: the `two-windows-gpu` resume leg
+  and per-window `VmRSS`. T89.10's `GpuContext` held K89a, but K89b fired
+  on its quantity as written, so every window keeps a context of its own
+  and the implementation stays on `t89.10-shared-gpu-context`
+  (`9cc2e22`). On the GPU share alone it held (T89.10's table); whether to
+  re-judge K89b on that quantity is the owner's decision, not taken here.
+- **Closing CI.** Three runs failed before `1faf792`, none on a defect in
+  M89's code: `a796eb7` on a rustc SIGILL in LLVM (not re-run);
+  `6cd1e0d` on two script defects, fixed in `cce0f65` (`windows_rss.sh`
+  missing from `just live`'s list, and the quit-panic plant matching
+  T89.3's earlier `self.quit = true`); and `cad8edc` on a drive race,
+  fixed in `f3deb9a` (the Toast's 3000 ms life spent by the scale-2 leg
+  before its × was clicked).
+
 ## T89.0 — the baselines (2026-10-06, at `a796eb7`)
 
 What a one-window build reads before `Win` becomes a set of slots. K89c
