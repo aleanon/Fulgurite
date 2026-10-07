@@ -380,6 +380,43 @@ pub trait Session: FrameSource {
     /// for the call: the pixels or the text are copied by whoever keeps
     /// them.
     fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>);
+    /// **The program's tray, as owned data** — M90/T90.6
+    /// (`docs/plan-desktop-integration.md`, "Model and state cross by
+    /// data"): the labels, ids, tooltip and icon of the spec
+    /// `Program::tray` installed in this session's host, copied out, with
+    /// a content hash ([`TrayModel`](crate::tray::TrayModel)). `None` when
+    /// the program declared no tray.
+    ///
+    /// **When the window asks**: at start and after every swap; it
+    /// rebuilds its tray only when the hash differs, so a swap that
+    /// changed a label or the icon reaches the tray and one that changed
+    /// neither costs nothing. Nothing in the answer points into the
+    /// session, so a hot library may be swapped out after the call
+    /// returns.
+    ///
+    /// **Caught** as [`Session::copy`] is: it reads the installed spec and
+    /// runs no application code, so the catch only keeps the seam's rule
+    /// that nothing unwinds across it. **Required**: `Hot` forwards it or
+    /// does not compile.
+    fn tray_model(&self) -> Option<crate::tray::TrayModel>;
+    /// **The tray's enabled entries, when they changed** — M90/T90.6:
+    /// the spec's `enabled` function asked with the state now, answered
+    /// `Some` only when the mask differs from the one this session last
+    /// answered — so the **first** ask after a session starts (at launch,
+    /// after a swap) is `Some`, and a window that applies every `Some` to
+    /// its tray is always current. `None` without a tray, while a panic is
+    /// shown, and when the mask is unchanged.
+    ///
+    /// **When the window asks**: after each frame and after each
+    /// windowless pump, and after an agent request that pumped one.
+    ///
+    /// **Guarded**, through the host's guard and not a catch: `enabled` is
+    /// application code, and a panic in it must *record* the failure so
+    /// M36's screen goes up and `app.failure` names the site — a catch
+    /// answers a fallback and records nothing (M80/T80.5's finding). The
+    /// changed-since-last-asked compare is outside the guard, in the
+    /// session. **Required**: `Hot` forwards it or does not compile.
+    fn menu_state(&mut self) -> Option<lumen_static::menu::MenuMask>;
 }
 
 /// An accessibility tree crossing the session seam — M54/T54.2. Holds
@@ -624,6 +661,9 @@ pub struct Local<A: App, P: RecoverPolicy, I: Invalidation = DefaultInval> {
     /// since the previous one, and an input's damage is not lost to the
     /// present inside its request.
     unjournaled_px: Option<u64>,
+    /// The tray mask [`Session::menu_state`] last answered — M90/T90.6.
+    /// `None` until it is first asked, so the first answer is `Some`.
+    menu_shown: Option<lumen_static::menu::MenuMask>,
     #[cfg(feature = "live-agent")]
     agent: lumen_static_agent::Agent,
 }
@@ -682,6 +722,7 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Local<A, P, I> {
             reissued: crate::Reissued::default(),
             animating: false,
             unjournaled_px: None,
+            menu_shown: None,
             #[cfg(feature = "live-agent")]
             agent,
         }
@@ -1162,6 +1203,27 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
         // Guarded (M36): `App::answered` and `App::apply` run here, the
         // entry `frame` uses, so a panic in either raises the screen.
         let _ = self.guarded(|h, _| h.answer(tag, a));
+    }
+
+    fn tray_model(&self) -> Option<crate::tray::TrayModel> {
+        self.caught(None, |h| h.tray_model())
+    }
+
+    fn menu_state(&mut self) -> Option<lumen_static::menu::MenuMask> {
+        // No tray: no guarded entry at all, so a program without one pays
+        // a field test per frame.
+        if !self.host.has_tray() {
+            return None;
+        }
+        // Guarded (M36): `enabled` is application code. A failed host
+        // answers `None` without asking.
+        let now = self.guarded(|h, _| h.tray_enabled()).flatten()?;
+        // The compare is the session's, outside the guard.
+        if self.menu_shown == Some(now) {
+            return None;
+        }
+        self.menu_shown = Some(now);
+        Some(now)
     }
 }
 

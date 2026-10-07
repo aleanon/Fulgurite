@@ -65,6 +65,10 @@ pub mod software;
 pub mod svg;
 #[cfg(feature = "truetype")]
 pub mod text;
+// M90/T90.6: a program's tray, declared as data (`TraySpec`), and what a
+// window is handed of it across the session seam (`TrayModel`). A line
+// comment, as `image`'s is: an outer doc joins the module's own.
+pub mod tray;
 // M84/T84.8: a video's producer -- `VideoFeed`, the subscription job that
 // paces it, and behind `image` the reference `GifFeed`. A line comment,
 // as `image`'s is: an outer doc joins the module's own and breaks its links.
@@ -427,6 +431,10 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// [`program::Program::menu`]'s sections and enabled function —
     /// M90/T90.5: the accelerator table. `None` means no key is matched.
     menu: Option<program::ProgramMenu<A>>,
+    /// [`program::Program::tray`]'s spec — M90/T90.6. Read by
+    /// [`Host::tray_model`] and [`Host::tray_enabled`], which is what the
+    /// session's `tray_model` and `menu_state` ask. `None` means no tray.
+    tray: Option<tray::TraySpec<A>>,
     /// The key hook answered [`program::KeyOutcome::Quit`] — M60/T60.1.
     quit: bool,
     /// What the last frame had marked when it cleared — M29/T29.3.
@@ -500,6 +508,38 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// against a key press no widget consumed, before the key hook.
     pub fn set_menu(&mut self, menu: program::ProgramMenu<A>) {
         self.menu = Some(menu);
+    }
+
+    /// The program's tray — M90/T90.6, installed by
+    /// [`program::Program::tray`], so a hot swap's new session carries the
+    /// new build's spec.
+    pub fn set_tray(&mut self, spec: tray::TraySpec<A>) {
+        self.tray = Some(spec);
+    }
+
+    /// Whether a tray spec is installed — M90/T90.6. Reads a field and
+    /// runs no application code, so a session can skip the guarded
+    /// [`Host::tray_enabled`] for a program with no tray.
+    pub fn has_tray(&self) -> bool {
+        self.tray.is_some()
+    }
+
+    /// **The tray, as owned data** — M90/T90.6
+    /// ([`tray::TraySpec::model`]): its labels, tooltip and icon copied
+    /// out, with their content hash. `None` without a tray. Reads the
+    /// installed spec only; no application code runs.
+    pub fn tray_model(&self) -> Option<tray::TrayModel> {
+        self.tray.as_ref().map(tray::TraySpec::model)
+    }
+
+    /// **Which tray entries are enabled, now** — M90/T90.6: the spec's
+    /// `enabled` function, called with the state. **Application code**,
+    /// so a session asks it guarded (`Session::menu_state`). `&mut`
+    /// because the state is reached through `App::state_mut`, as the
+    /// accelerators reach `Program::menu`'s. `None` without a tray.
+    pub fn tray_enabled(&mut self) -> Option<lumen_static::menu::MenuMask> {
+        let spec = self.tray?;
+        Some((spec.enabled)(self.app.state_mut()))
     }
 
     /// Whether the key hook asked to close — M60/T60.1. The window it
@@ -973,6 +1013,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet_key: None,
             on_key: None,
             on_menu: None,
+            tray: None,
             menu: None,
             quit: false,
             held: Vec::new(),

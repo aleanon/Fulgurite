@@ -151,6 +151,28 @@ copied to `lib<app>-hot-<N>.so`, and the swap is scheduled for the next
 frame boundary. Builds are coalesced: a save during a build queues
 exactly one more.
 
+### 2.7 Which side of the seam a setting is on
+
+*(Added 2026-10-07 by M90/T90.6, `docs/plan-desktop-integration.md`
+"Which side of the seam each setting is on", review A5.)* A setting
+the **host** consumes is installed by `Program::host()`, so the new
+build's session carries it after a swap and the loader holds nothing of
+the library's (`docs/events-decision.md` rule 3). A setting the
+**window** consumes is read once from the static binary's `Config` and
+is not reloadable. The session-carried state the window re-reads after
+a swap goes through required `Session` methods, which `Hot` forwards or
+does not compile:
+
+| setting | consumed by | on a hot swap |
+|---|---|---|
+| `Program::on_key`, `Program::on_menu`, `Program::menu` (hooks, accelerators, mask fn) | `Host`, via `Program::host()` | re-installed: new session |
+| `Program::shaping` | the session's measurer; the window reads `Session::shaping` | re-read; `Backend::set_font` when it changed |
+| `Program::shaders` | `Host`; the window reads `Session::shaders` | re-read; `Backend::set_shaders` |
+| `MenuBar`, `ContextMenu` entries | the tree | new build's tree |
+| `TraySpec` content (labels, icon, tooltip, mask fn) | `Host`; the window reads `Session::tray_model` and `Session::menu_state` | re-read; the tray is rebuilt when the model's hash differs, and the new session's first `menu_state` is `Some` |
+| whether a tray exists at all | the window, from the static binary's `Config`, once | **not reloadable**: a build that adds a tray needs a restart |
+| the window's size, page, backend and image store | the window, from the loader's table, once | not reloadable |
+
 ## T37.0 — the boundary, measured
 
 > **DONE 2026-09-24 — pointers, behind a stamp.** A real byte encoding

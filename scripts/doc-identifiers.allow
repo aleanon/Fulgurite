@@ -148,8 +148,6 @@ MAX_SPANS                      # removed by M87/T87.1 (the span store grows); do
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 GpuContext                     # proposed by M89
 RegisteredStatusNotifierItems  # proposed by M90
-TrayModel                      # proposed by M90
-TraySpec                       # proposed by M90
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
 Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it

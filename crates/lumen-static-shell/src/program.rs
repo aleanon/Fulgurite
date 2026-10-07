@@ -326,6 +326,8 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     on_menu: Option<MenuHook<A>>,
     /// [`Program::menu`]'s sections and enabled function.
     menu: Option<ProgramMenu<A>>,
+    /// [`Program::tray`]'s spec — M90/T90.6.
+    tray: Option<crate::tray::TraySpec<A>>,
     /// Where [`Program::live_lss`] reads the sheet from, when it came
     /// from a `.lss` (M61/T61.5).
     lss: Option<LssSource<A>>,
@@ -409,6 +411,7 @@ where
         on_key: None,
         on_menu: None,
         menu: None,
+        tray: None,
         lss: None,
         width: 640,
         height: 480,
@@ -486,6 +489,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             on_key: self.on_key,
             on_menu: self.on_menu,
             menu: self.menu,
+            tray: self.tray,
             lss: self.lss,
             width: self.width,
             height: self.height,
@@ -714,6 +718,36 @@ impl<A: App, I: Invalidation> Program<A, I> {
             sections.len()
         );
         self.menu = Some(ProgramMenu { sections, enabled });
+        self
+    }
+
+    /// **The program's tray: its icon, tooltip and entries, and which are
+    /// enabled** — M90/T90.6 (`docs/plan-desktop-integration.md`, "Model
+    /// and state cross by data").
+    ///
+    /// Data, declared once ([`TraySpec`](crate::tray::TraySpec)). A chosen
+    /// entry reaches [`Program::on_menu`] as its id, posted as
+    /// [`Event::Menu`](lumen_static::Event::Menu), like every other menu
+    /// activation; `enabled` is called **in the host**, with the state, so
+    /// no `fn` of the application's reaches the window.
+    ///
+    /// **Installed by [`Program::host`]**, as `menu` and `on_menu` are, so
+    /// a hot swap's new session carries the new build's spec, and the
+    /// window, which reads it only as `Session::tray_model`, rebuilds its
+    /// tray when the model's hash changed. **Whether a tray exists at all
+    /// is the window's**, decided once from the static binary: a build
+    /// that adds a tray needs a restart (`docs/plan-window-reload.md`
+    /// §2.7). The window that shows it is `lumen-static-winit`'s, from
+    /// M90/T90.7 (`docs/plan-desktop-integration.md`).
+    ///
+    /// # Panics
+    ///
+    /// With more than [`MAX_ENTRIES`](lumen_static::menu::MAX_ENTRIES)
+    /// (64) entries, or an icon whose byte count is not `width × height ×
+    /// 4`, naming the numbers.
+    pub fn tray(mut self, spec: crate::tray::TraySpec<A>) -> Self {
+        crate::tray::check(&spec);
+        self.tray = Some(spec);
         self
     }
 
@@ -957,6 +991,9 @@ impl<A: App, I: Invalidation> Program<A, I> {
         }
         if let Some(menu) = self.menu {
             host.set_menu(menu);
+        }
+        if let Some(spec) = self.tray {
+            host.set_tray(spec);
         }
         if let Some(root) = self.source_root {
             host.set_source_root(root);

@@ -3,7 +3,7 @@
 //!
 //! Every site in `panic_app::SITES` — seven at M36, the caret at M80/T80.5,
 //! `App::wake_in_ms` at M84/T84.3, `App::images` at M84/T84.6,
-//! `App::answered` at M88/T88.3 — run through
+//! `App::answered` at M88/T88.3, the tray's `enabled` at M90/T90.6 — run through
 //! the unguarded headless binary.
 //!
 //! The defect, shown, before anything recovers from it: the binary runs

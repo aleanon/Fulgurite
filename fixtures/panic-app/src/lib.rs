@@ -1,14 +1,16 @@
 //! **An application that panics where you ask it to** — M36/T36.0
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! Eleven sites, each a place a frame runs application code — the eighth,
+//! Twelve sites, each a place a frame runs application code — the eighth,
 //! a focused field's `caret_rect`, is asked after the frame, by the
 //! window placing its IME area (M80/T80.5), the ninth,
 //! `App::wake_in_ms`, by the window computing its next deadline
 //! (M84/T84.3), and the tenth, `App::images`, by the renderer reading the
 //! application's store — asked first inside the frame's guarded entry
 //! (M84/T84.6), and the eleventh, `App::answered`, by the window answering
-//! a screenshot request after the click that pushed it (M88/T88.3). Each panic
+//! a screenshot request after the click that pushed it (M88/T88.3), and the
+//! twelfth, the tray spec's `enabled` function, by the window asking
+//! `Session::menu_state` after a frame (M90/T90.6). Each panic
 //! line carries a `// SITE n` marker, and [`site_line`] finds it by
 //! scanning this file's own source — so a test compares a report's line
 //! with the real one and nobody copies a number. (The first version
@@ -25,7 +27,7 @@ use lumen_static::{Constraints, NodeState, Painter};
 use lumen_static_widgets::prelude::*;
 
 /// Where each site's panic is raised.
-pub const SITES: [(u8, &str); 11] = [
+pub const SITES: [(u8, &str); 12] = [
     (1, "a click handler"),
     (2, "an applied message"),
     (3, "update (a binding's source)"),
@@ -37,6 +39,7 @@ pub const SITES: [(u8, &str); 11] = [
     (9, "App::wake_in_ms (the window's next deadline)"),
     (10, "App::images (the store the renderer reads)"),
     (11, "App::answered (a screenshot request's answer)"),
+    (12, "a tray's enabled fn (Session::menu_state)"),
 ];
 
 /// The node a site's session presses: `#fuse` for site 8, whose panic
@@ -175,6 +178,8 @@ pub struct Arms {
     pub a10: Button<Fx>,
     #[widget_id("arm11")]
     pub a11: Button<Fx>,
+    #[widget_id("arm12")]
+    pub a12: Button<Fx>,
 }
 
 /// A 120 ms timer and its count — M47/T47.1's panic-path step: a retry
@@ -240,14 +245,18 @@ pub struct Fx {
     /// Site 11's queue (M88/T88.3): `#go` armed with 11 pushes a
     /// screenshot request tagged [`SITE_ANSWERED`], whose answer panics.
     pub requests: lumen_static::request::Requests,
+    /// Site 12's arm (M90/T90.6): a `Cell`, because the tray's `enabled`
+    /// takes `&State`. `update` sets it and [`menu_enabled`] disarms it as
+    /// it fires, as `Fuse` does for site 8.
+    pub menu_arm: core::cell::Cell<bool>,
 }
 
 /// The tag site 11's request carries; `answered` panics on it.
 pub const SITE_ANSWERED: u64 = 11;
 
 /// The trigger for `bad_job`: a job's panic, which is the spawner's and
-/// not a site. 12 since M88/T88.3 gave 11 to `App::answered`.
-pub const JOB_PANIC: u8 = 12;
+/// not a site. 13 since M90/T90.6 gave 12 to the tray's `enabled`.
+pub const JOB_PANIC: u8 = 13;
 
 /// The timer's descriptor kind and key, and so the message it lands as.
 pub const TICK: u8 = 9;
@@ -264,8 +273,9 @@ fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
     let _ = tx.send(d.payload as u8);
 }
 
-/// A job that panics — trigger 12 (8 until M80/T80.5, 10 until
-/// M84/T84.6 and 11 until M88/T88.3 gave those numbers to sites). M28's spawner catches it as
+/// A job that panics — trigger 13 (8 until M80/T80.5, 10 until
+/// M84/T84.6, 11 until M88/T88.3 and 12 until M90/T90.6 gave those
+/// numbers to sites). M28's spawner catches it as
 /// `Failure::Panicked`; the frame guard must not report it (M36/T36.1).
 fn bad_job(_: Descriptor, _: &lumen_static::inbox::Sender<u8>) {
     panic!("a job's panic, which the spawner owns");
@@ -384,6 +394,12 @@ impl App for Fx {
             self.images_arm.set(true);
             self.fire();
         }
+        // Site 12: arm the tray's `enabled`, which disarms itself when it
+        // fires.
+        if self.armed == 12 {
+            self.menu_arm.set(true);
+            self.fire();
+        }
         let text = format!("{shown}");
         let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
         let b = lumen_static::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
@@ -398,7 +414,7 @@ pub fn build() -> Fx {
     f.ui.go.label = "go";
     f.ui.go.on_click = on_go;
     type Arm<'a> = (&'a mut Button<Fx>, &'static str, fn(&mut Fx, &EventCtx));
-    let arms: [Arm<'_>; 11] = [
+    let arms: [Arm<'_>; 12] = [
         (&mut f.ui.arms.a1, "1", |s, _| s.armed = 1),
         (&mut f.ui.arms.a2, "2", |s, _| s.armed = 2),
         (&mut f.ui.arms.a3, "3", |s, _| s.armed = 3),
@@ -410,6 +426,7 @@ pub fn build() -> Fx {
         (&mut f.ui.arms.a9, "9", |s, _| s.armed = 9),
         (&mut f.ui.arms.a10, "10", |s, _| s.armed = 10),
         (&mut f.ui.arms.a11, "11", |s, _| s.armed = 11),
+        (&mut f.ui.arms.a12, "12", |s, _| s.armed = 12),
     ];
     for (b, label, h) in arms {
         b.label = label;
@@ -424,6 +441,25 @@ pub fn build() -> Fx {
     };
     f
 }
+
+/// Which of the tray's entries are enabled — site 12's function
+/// (M90/T90.6). Asked by `Session::menu_state` after every frame, through
+/// the session's guard; panics once when armed.
+pub fn menu_enabled(s: &Fx) -> lumen_static::menu::MenuMask {
+    if s.menu_arm.replace(false) {
+        panic!("site 12: a tray's enabled fn"); // SITE 12
+    }
+    lumen_static::menu::MenuMask::ALL
+}
+
+/// The fixture's tray (M90/T90.6): one entry and a 1 × 1 icon. Only its
+/// `enabled` function matters here — site 12.
+pub const TRAY: lumen_static_shell::tray::TraySpec<Fx> = lumen_static_shell::tray::TraySpec {
+    icon: (1, 1, &[0x1b, 0x1f, 0x2a, 0xff]),
+    tooltip: "panic-app",
+    menu: &[lumen_static::menu::MenuEntry::new("Open", 1)],
+    enabled: menu_enabled,
+};
 
 /// The window mode's application: one-shot sites.
 pub fn build_window() -> Fx {

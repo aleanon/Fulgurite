@@ -10,7 +10,10 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--window") {
         use lumen_static_winit::{application, Run};
         // The endpoint is `LUMEN_AGENT_ADDR`, read by the window (M48/T48.11).
-        let program = application(panic_app::build_window).title("panic-app").size(480, 220);
+        // M90/T90.6: a tray, so the window asks its `enabled` after every
+        // frame (site 12); 540 px wide since then, so the twelfth arm button
+        // is laid out inside the window (site 11's was not at 420 px).
+        let program = application(panic_app::build_window).title("panic-app").size(540, 220).tray(panic_app::TRAY);
         // M55/T55.4: the strategy is this application's choice.
         #[cfg(feature = "everything")]
         let program = program.invalidation::<lumen_static::Everything>();
@@ -19,6 +22,7 @@ fn main() {
     let site: u8 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     let mut h: Host<panic_app::Fx> = Host::new(build(), 300, 200);
     h.set_spawner(Box::new(Immediate));
+    h.set_tray(panic_app::TRAY);
     h.pump();
     h.pump();
     h.app.armed = site;
@@ -40,6 +44,8 @@ fn main() {
         for o in h.take_requests() {
             h.answer(o.request.tag().expect("every request here carries a tag"), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
         }
+        // And the tray's enabled entries (M90/T90.6): site 12.
+        let _ = h.tray_enabled();
     }
     println!("no panic");
 }

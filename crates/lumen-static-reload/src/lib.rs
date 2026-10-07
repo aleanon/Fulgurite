@@ -929,6 +929,15 @@ pub mod hot {
         fn answer(&mut self, tag: u64, a: lumen_static::request::Answer<'_>) {
             self.m().answer(tag, a)
         }
+        // M90/T90.6: the tray's seam. The model is owned data and the
+        // mask is asked of the session loaded now, so a swap's new build
+        // answers both.
+        fn tray_model(&self) -> Option<lumen_static_shell::tray::TrayModel> {
+            self.s().tray_model()
+        }
+        fn menu_state(&mut self) -> Option<lumen_static::menu::MenuMask> {
+            self.m().menu_state()
+        }
     }
 }
 

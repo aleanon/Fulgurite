@@ -1119,3 +1119,44 @@ T90.0; everything else cites it.
   pump; `crates/lumen-static-shell/tests/agent_hooks.rs` gates it (Ctrl+K
   through the accelerator `true`, Ctrl+J `false`; red under the single
   pump, "the modifier event's answer leaked into the key's").
+- **T90.6, `Host::reload` cannot exhibit a spec that differs.** It rebuilds
+  the application through the boot the host keeps and keeps every hook
+  `Program::host()` installed, and the spec is not in the boot, so no boot
+  can make it differ: the gate the plan words could not go red under any
+  injection to the spec. The path where a spec changes is a new build's
+  `Program::host()`, which is the swap's: the gate boots v1 and v2 through
+  `hot::boot` with v1's saved state (what `export_program!`'s entry does)
+  and reads the new labels and a different hash; the same build through
+  `hot::boot` and `Host::reload` both read an equal hash, the accept leg
+  (`crates/lumen-static-shell/tests/tray_seam.rs`).
+- **T90.6, `menu_state` is guarded, not caught.** `caught` hands its closure
+  `&Host`, and `App` reaches the state only through `state_mut`, so the
+  `enabled` fn cannot be called through it; and a catch answers its
+  fallback and records nothing, so the plan's own panic-drive leg (M36's
+  screen and the site's location) could not have passed — T80.5's and
+  T84.3's finding again. `Local::menu_state` asks `Host::tray_enabled`
+  through the host's guard; the changed-since-last-asked compare stays
+  outside it, in the session. `tray_model` is caught as planned: it copies
+  the installed spec and runs no application code.
+- **T90.6, the first `menu_state` is `Some`.** Nothing has been handed out
+  when a session starts, so the first ask answers the mask, and a window
+  applies every `Some` to its tray; a swapped-in session's first ask is
+  `Some` again, which re-applies it to the rebuilt tray. The ten-frame gate
+  asks once before its ten frames, and that first answer is printed.
+- **T90.6, the window already asks `menu_state`.** `just panic-drive`'s
+  site 12 needs a caller, and only `Win` is one: it asks after each of a
+  window's frames (presented or skipped, since a mask can change on a frame
+  that draws nothing), after an agent request that pumped one, and after
+  each windowless pump, and drops the answer until T90.7 hands it to the
+  tray. A session with no tray answers `None` before entering the guard.
+  An `enabled` that panicked asks for the frame that draws M36's screen,
+  as `place_ime` does for a caret.
+- **T90.6, panic-app's site 12 took trigger 12 from the job's panic**
+  (`JOB_PANIC` 13, as M88 moved it to 12), and its window is 540 px wide so
+  the twelfth arm button is laid out inside it (headless, at 480 px it was
+  squeezed to 24 px against the window's edge). `--expect-panics` 12 → 13.
+- **T90.6, `Program::tray` refuses what a tray cannot represent**, by a
+  sentence naming the numbers, as `Program::menu` does: more than 64
+  entries, and an icon whose byte count is not `width × height × 4`. A
+  tray's menu is one flat `&'static [MenuEntry]`; the model carries each
+  entry's label and id, not its accelerator, which a tray does not show.

@@ -1,7 +1,7 @@
 //! **Capture and host recovery, headless** — M36/T36.1
 //! (`docs/plan-panic-recovery.md`).
 //!
-//! For each of the eleven sites: the guarded entry catches the panic; the
+//! For each of the twelve sites: the guarded entry catches the panic; the
 //! report's location is the site's marker line (site 7: inside the
 //! framework, with the *application* frame at the fixture's calling
 //! line); the retried frame is full damage and byte-identical to a host
@@ -18,6 +18,7 @@ fn host() -> Host<Fx> {
     let mut h: Host<Fx> = Host::new(build(), 300, 200);
     h.set_source_root("fixtures/panic-app");
     h.set_spawner(Box::new(Immediate));
+    h.set_tray(panic_app::TRAY);
     h.pump();
     h.pump();
     h
@@ -66,6 +67,11 @@ fn session(h: &mut Host<Fx>, site: u8) {
             }
         });
         if answered.is_none() {
+            return;
+        }
+        // And the tray's enabled entries, guarded as `Local::menu_state`
+        // asks them (M90/T90.6): site 12.
+        if h.guard(|h| h.tray_enabled()).is_none() {
             return;
         }
     }

@@ -293,6 +293,12 @@ required-features = ["shader"]
 name = "shader_table"
 required-features = ["shader", "truetype"]
 
+# M90/T90.6: the tray's seam through `Local` and `hot::boot` -- a
+# session needs `truetype`, the swap's path `reload`.
+[[test]]
+name = "tray_seam"
+required-features = ["truetype", "reload"]
+
 # M84/T84.0(a): an `Offscreen` presents the host's frames, and `session`
 # is behind `truetype`.
 [[test]]

@@ -942,6 +942,7 @@ impl Win {
         let Some(i) = self.slot_keyed(key) else { return };
         let slot = &mut self.slots[i];
         slot.place_ime(&window);
+        slot.ask_menu_state();
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
         // §2.1). A constant one compares equal every time.
@@ -1113,6 +1114,9 @@ impl Win {
         // Nothing presents this frame: drop its damage rather than let it
         // accumulate for a present that never comes.
         let _ = slot.session.take_damage_for_age(1);
+        // The tray's state after each windowless pump (M90/T90.6); a panic
+        // in `enabled` is read below as the failure state it raised.
+        slot.ask_menu_state();
         slot.wait = if slot.session.failed() {
             slot.last_frame = None;
             ControlFlow::Wait
@@ -1467,6 +1471,27 @@ impl WindowSlot {
                 );
             }
             self.ime_area = area;
+        }
+    }
+
+    /// **The tray's enabled entries, asked after a frame** — M90/T90.6
+    /// (`Session::menu_state`): after each of a window's frames, after an
+    /// agent request that pumped one, and after each windowless pump. The
+    /// session answers `None` at once for a program with no tray, so this
+    /// is a field test for every other program.
+    ///
+    /// **The answer is dropped until the window has a tray to give it**
+    /// (M90/T90.7, `docs/plan-desktop-integration.md`); the call is here now because
+    /// it runs the application's `enabled` function, and where a window
+    /// runs application code is where M36's screen must be able to come
+    /// from — `just panic-drive` site 12. An `enabled` that panicked raised
+    /// the screen inside the session; this asks for the frame that draws
+    /// it, as [`WindowSlot::place_ime`] does for a caret.
+    fn ask_menu_state(&mut self) {
+        let _changed = self.session.menu_state();
+        if self.session.failed() && self.window.is_some() {
+            self.ime_area = None;
+            self.ask_redraw();
         }
     }
 }
@@ -1948,6 +1973,7 @@ impl Win {
                 slot.ime_area = None;
             } else {
                 slot.place_ime(&window);
+                slot.ask_menu_state();
             }
         }
         // **Window requests, before the reply** (M89/T89.3, second review

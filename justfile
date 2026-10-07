@@ -123,6 +123,10 @@ dev-shape:
     # M83/T83.4: `Program::shaders` reaches `Program::host()` and
     # `Session::shaders`.
     cargo test -q -p lumen-static-shell --features truetype,shader --test shader_table
+    # M90/T90.6: the tray's seam -- `Session::tray_model` across a swap
+    # (`hot::boot`, behind `reload`) and `Session::menu_state`, with the
+    # features named rather than left to `--workspace`'s unification.
+    cargo test -q -p lumen-static-shell --features truetype,reload --test tray_seam
     # M83/T83.6: `ShaderView` -- its role row in a build that has it (the
     # `a11y`-alone run above excuses it through FEATURE_GATED), and its
     # damage gates through a `Host` and the journal, behind the agent's

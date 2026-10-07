@@ -658,6 +658,17 @@ consumed as a paste only when the focused node took it
 (`Session::paste` answers `Option<usize>`). `docs/results-desktop-integration.md`
 T90.5 has the gates.
 
+**DECIDED 2026-10-07 (M90/T90.6): a tray crosses the seam as data.**
+`Program::tray(TraySpec)` declares the icon (RGBA pixels), tooltip,
+entries and an `enabled` fn of state, installed by `Program::host()` so a
+swap carries the new build's spec. The window reads two owned answers
+through required `Session` methods: `tray_model` (the content copied out,
+with a hash it rebuilds on) and `menu_state` (the enabled mask, `Some` only
+when it changed since last asked, asked through the host's guard). No `fn`
+of the application's reaches the window; whether a tray exists at all is
+the window's and not reloadable (`docs/plan-window-reload.md` §2.7).
+`docs/results-desktop-integration.md` T90.6 has the gates.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind

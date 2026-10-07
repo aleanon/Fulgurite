@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 # M36 (docs/plan-panic-recovery.md): an application that can panic at each
-# of the sites a frame runs application code (ten since M84/T84.6), chosen by number. The
+# of the sites a frame runs application code (twelve since M90/T90.6), chosen by number. The
 # library is what the headless tests drive; the binary is what T36.0 runs
 # as a subprocess to record that today each site kills the process.
 [dependencies]

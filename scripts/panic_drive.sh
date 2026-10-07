@@ -25,12 +25,12 @@ for strategy in everything boundaries; do
         expect=(--expect-strategy Everything --expect-features reload)
     fi
     cargo build --release -q -p panic-app --features "$feats"
-    # Twelve panics, all provoked: the eleven sites (site 8 since M80/T80.5,
+    # Thirteen panics, all provoked: the twelve sites (site 8 since M80/T80.5,
     # site 9 -- App::wake_in_ms -- since M84/T84.3, site 10 -- App::images
-    # -- since M84/T84.6, site 11 -- App::answered -- since M88/T88.3), and
-    # site 1 again for the timer step. Exact, so a thirteenth is a failure
-    # (M42/T42.3).
-    $LAUNCH --leg "$strategy" --exe target/release/panic-app --arg=--window "${expect[@]}" --expect-panics 12 \
+    # -- since M84/T84.6, site 11 -- App::answered -- since M88/T88.3, site
+    # 12 -- a tray's enabled fn -- since M90/T90.6), and site 1 again for
+    # the timer step. Exact, so a fourteenth is a failure (M42/T42.3).
+    $LAUNCH --leg "$strategy" --exe target/release/panic-app --arg=--window "${expect[@]}" --expect-panics 13 \
         -- python3 scripts/panic_drive.py {port} "$strategy"
 done
 

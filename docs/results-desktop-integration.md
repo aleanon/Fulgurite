@@ -521,3 +521,54 @@ had finished, eight runs a side, every run quiet. min / median / max µs:
 K90b does not fire: the accelerator test sits at its call site
 (`self.menu.is_some()`), reached only by an event nothing consumed, and
 none of these rows installs a menu.
+
+## T90.6 — the tray's seam: `TraySpec`, `TrayModel`, `Session::tray_model`, `Session::menu_state` (2026-10-07, on `2116011`)
+
+A program declares its tray as data, `Program::tray(TraySpec)`, installed
+by `Program::host()`; the window reads it only as two owned answers across
+the session seam, `Session::tray_model` (labels, ids, tooltip and icon
+copied out, with a content hash) and `Session::menu_state` (the enabled
+mask, `Some` only when it changed since last asked, asked through the
+host's guard). Both are required, and `impl Session for Hot` forwards
+them. The `tray` feature that shows it is T90.7.
+
+### Gates (`crates/lumen-static-shell/tests/tray_seam.rs` unless named)
+
+A 240 × 120 window: one button that flips whether "Quit" (bit 1) is
+enabled, kept across a swap.
+
+| gate | measured | bound / accept |
+|---|---|---|
+| the first `menu_state` of a session | `Some(0x…fffd)` (Quit off) | the mask is handed out |
+| ten frames, one flip at frame 4 | flips 1; `Some` answers **1**, at frame 4, `0x…ffff` | exactly 1 |
+| accept: a second flip | flips 2; a second `Some(0x…fffd)` | a second `Some` |
+| no tray | `tray_model` `None`, `menu_state` `None` | both `None` |
+| a swap v1 → v2 (`hot::boot` with v1's saved state), labels `Open, Quit` → `Open, Quit now` | v2's labels `["Open", "Quit now"]`; hash `0xb05484602653afc3` → `0xc17b92699f367bf3`; v2's first `menu_state` `Some` | new labels, different hash |
+| accept: v1 → v1 through `hot::boot`, and `Host::reload` | hash `0xb05484602653afc3` both | equal |
+| `Program::tray` with 65 entries; a 2 × 2 icon of 12 B | "a tray's menu holds at most 64 entries (one bit each of its MenuMask); this one has 65"; "a tray icon of 2 x 2 is 16 bytes of RGBA; this one has 12" | refused by name; accept: 64 entries |
+| `impl Session for Hot` without the `menu_state` forward | E0046 "not all trait items implemented, missing: `menu_state`" | the forwarding gate (S1) |
+| `fixtures/panic-app` `tests/recover.rs`, `tests/dies.rs`: site 12, the tray's `enabled` | caught at `fixtures/panic-app/src/lib.rs:450`, retried byte-identical; unguarded, the process dies there | 12 sites |
+| **live**, `just panic-drive` on a private Xephyr display, both strategies | site 12 `lib.rs:450`, screen drawn, input refused, retried; "13 panics (expected 13)", exit 0; the release without `reload` still dies (101) | M36's screen and a clean retry |
+
+The plan's reload gate is driven through `hot::boot`, not `Host::reload`,
+which rebuilds through the same boot and keeps the installed spec, so it
+can only be the accept leg (`docs/plan-desktop-integration.md`, "What
+building found", T90.6).
+
+### Injections (red, by name)
+
+| injection | what went red |
+|---|---|
+| (1) `menu_state` answers `Some` on every call | "menu_state answered Some 10 times over ten frames with one change" |
+| (2) the model hash ignores labels | "two specs with different labels hashed equal": `9126699204043785620` both |
+| `Program::tray`'s limit off by one | "Program::tray accepted 65 entries" |
+| `Program::tray`'s icon check off | "Program::tray accepted a short icon" |
+| the panic guard: `Local::menu_state` calls `enabled` outside the guard | `just panic-drive [everything]`: site 12 panicked in `Win::answer_agent` → `Local::menu_state` → `panic_app::menu_enabled`; "the app died during the drive: child exited 101", "12 panics, expected 13" |
+
+### Firmware
+
+`just firmware-delta 2116011 firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0`: every binary +0 `.text` and +0
+`.rodata` (`firmware` 31,306, `firmware_interactive` 64,168,
+`firmware_bind` 34,678, `firmware_cascade` 33,398). No core code changed:
+the tray is the shell's.
