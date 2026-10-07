@@ -3,6 +3,31 @@
 *M90, `docs/plan-desktop-integration.md`. Owns every figure that plan
 cites. Machine: i9-13900KF. Created by T90.0 (2026-10-06).*
 
+## Summary — M90a closes (`just ci-verify ac98b18` green)
+
+- **M90a DONE** (T90.0–T90.5). A secondary press is one
+  `Event::ContextRequest` and its release reaches nothing (T90.2); the
+  keyboard, a held touch and assistive technology ask through the same
+  event (T90.3); a context menu is data and a choice is an id
+  (`ContextMenu<W>`, `CommandList`, `Program::on_menu`, T90.4); and the
+  menu bar is drawn by the framework from the same data, with
+  accelerators matched by the host before `on_key` (T90.5, owner decision
+  D2). Each section below owns its figures; K90a and K90b held on every
+  task (T90.4's first K90b reading fired by 0.005 µs and its written
+  response was applied, then re-measured inside the spread).
+- **M90b open.** T90.6's seam is committed (`8747678`). **T90.7 stopped
+  on K90c**: `ksni` adds +3.29 MB stripped against a 3 MB bound (crates
+  +55 against +71), and K90c's written fallback (`tray-icon` on a GTK
+  thread) reverses owner decision D2, so it waits for the owner. The
+  working `ksni` patch is kept outside the tree.
+- **Closing CI.** Two runs failed before `ac98b18`, neither on M90's
+  behaviour: `2116011` on `book` (T90.5 put the menu inside the anchor
+  `book/src/hot-reload.md` compiles; fixed in `89e3f7d`), and `89e3f7d`
+  on `selftest-build` (a port race in `a_bind_on_a_free_port_serves`, and
+  a plant whose cargo error was discarded; fixed in `ac98b18`). `cad8edc`'s
+  run, before M90a's last two tasks, failed on a Toast drive race fixed
+  in `f3deb9a`.
+
 ## T90.0 — the pins and the baselines (2026-10-06, at `6cd1e0d`)
 
 What a build does with a secondary button, a long hold, the Menu key and

@@ -721,6 +721,13 @@ found" section rather than silently replacing itself.
     share (`docs/results-windows.md`, Summary). The runs at `a796eb7`,
     `6cd1e0d` and `cad8edc` failed on a compiler SIGILL, two script
     defects (`cce0f65`) and a Toast drive race (`f3deb9a`).
+    **M90a DONE** (T90.0-T90.5), `just ci-verify ac98b18` green (29
+    steps, 0 failed, 0 skipped): context menus, the drawn menu bar (D2)
+    and accelerators. **M90b is open**: T90.6's tray seam is in
+    (`8747678`); **T90.7 stopped on K90c** (`ksni` +3.29 MB against
+    3 MB) because its written fallback, `tray-icon` on a GTK thread,
+    reverses D2 -- the owner's call (`docs/results-desktop-integration.md`,
+    Summary).
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times
