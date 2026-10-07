@@ -872,7 +872,10 @@ impl Agent {
             // `Event::Action` the window's platform adapter does
             // (`Host::action`), dispatched from the node like a key.
             // `action`: default (the default), increment, decrement,
-            // setValue (with `value`), expand, collapse, focus. A repeater
+            // setValue (with `value`), expand, collapse, focus, and
+            // contextMenu (M90/T90.4: AccessKit's `ShowContextMenu`, which
+            // no AT-SPI call can produce today, so a drive sends it here,
+            // where the adapter's request would enter). A repeater
             // row's node has no table index and takes only `default`, as
             // a click at its centre (`docs/plan-a11y-platform.md` §2.4).
             "input.invokeAction" => {
@@ -2759,11 +2762,13 @@ fn action_param(params: &Value) -> Result<lumen_static::Action, (i64, String, Va
         "expand" => Action::Expand,
         "collapse" => Action::Collapse,
         "focus" => Action::Focus,
+        // M90/T90.4: a reader's "show context menu".
+        "contextMenu" => Action::ContextMenu,
         "setValue" => Action::SetValue(coord(f64_param(params, "value")?, "value")?),
         other => {
             return Err((
                 INVALID_PARAMS,
-                format!("unknown action `{other}`: default, increment, decrement, setValue, expand, collapse, focus"),
+                format!("unknown action `{other}`: default, increment, decrement, setValue, expand, collapse, focus, contextMenu"),
                 Value::Null,
             ))
         }

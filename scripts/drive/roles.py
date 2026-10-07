@@ -19,6 +19,9 @@ ROLES = {
     # A menu, not a combo box, since M57/B23: it runs a command and has
     # no value.
     "Menu": "Menu",
+    # M90/T90.4: a wrapper that claims a context menu (`ShowContextMenu`);
+    # the button it wraps speaks, and its rows are a `Menu`.
+    "ContextMenu": "GenericContainer",
     "Pagination": "ListBox",
     "Tree": "Tree",
     "DataGrid": "Grid",

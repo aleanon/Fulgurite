@@ -72,6 +72,12 @@ pub enum KeyOutcome {
 /// modifiers held with the key.
 pub type KeyHook<A> = fn(&mut <A as App>::State, Key, Mods) -> KeyOutcome;
 
+/// An application's hook for a chosen menu entry — [`Program::on_menu`],
+/// M90/T90.4. It gets the state and the entry's
+/// [`MenuEntry::id`](lumen_static::menu::MenuEntry::id), and answers a
+/// [`KeyOutcome`] read as the key hook's is.
+pub type MenuHook<A> = fn(&mut <A as App>::State, u32) -> KeyOutcome;
+
 /// A stylesheet key, type-erased: whether its value changed since it was
 /// last asked — [`Program::style_by`], M60/T60.2. The first call answers
 /// `true`, and records the value.
@@ -297,6 +303,8 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     sheet_key: Option<SheetKeyMaker<A>>,
     /// [`Program::on_key`]'s hook.
     on_key: Option<KeyHook<A>>,
+    /// [`Program::on_menu`]'s hook.
+    on_menu: Option<MenuHook<A>>,
     /// Where [`Program::live_lss`] reads the sheet from, when it came
     /// from a `.lss` (M61/T61.5).
     lss: Option<LssSource<A>>,
@@ -378,6 +386,7 @@ where
         sheet: None,
         sheet_key: None,
         on_key: None,
+        on_menu: None,
         lss: None,
         width: 640,
         height: 480,
@@ -453,6 +462,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             sheet: self.sheet,
             sheet_key: self.sheet_key,
             on_key: self.on_key,
+            on_menu: self.on_menu,
             lss: self.lss,
             width: self.width,
             height: self.height,
@@ -607,6 +617,32 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// a [`KeyOutcome`].
     pub fn on_key(mut self, hook: KeyHook<A>) -> Self {
         self.on_key = Some(hook);
+        self
+    }
+
+    /// **A chosen menu entry** goes to `hook` — M90/T90.4
+    /// (`docs/plan-desktop-integration.md`, "A menu is data, and every
+    /// activation is one hook"), with the entry's
+    /// [`MenuEntry::id`](lumen_static::menu::MenuEntry::id).
+    ///
+    /// Both routes end here: a drawn menu's row (a `ContextMenu`'s
+    /// `CommandList`), taken from the node that consumed the release or
+    /// the Enter that chose it, and a native activation posted as
+    /// [`Event::Menu`](lumen_static::Event::Menu) — the one input queue,
+    /// so a recorded session replays it. The window, a headless `host()`
+    /// and the agent reach it through the one pump. What it returns is a
+    /// [`KeyOutcome`]: `Handled` marks as a handled event marks, and
+    /// `Quit` closes the window the session runs in — **from a daemon's
+    /// windowless session, key 0, it closes nothing**; a hook that means
+    /// to end the process pushes `Request::Quit`.
+    ///
+    /// **Installed by [`Program::host`], as `on_key` is**, so a hot
+    /// swap's new session carries the new build's hook and the loader
+    /// holds no `fn` of the library's. Without it no node is ever asked
+    /// for a choice, so an application with no menus pays nothing per
+    /// event (K90b).
+    pub fn on_menu(mut self, hook: MenuHook<A>) -> Self {
+        self.on_menu = Some(hook);
         self
     }
 
@@ -844,6 +880,9 @@ impl<A: App, I: Invalidation> Program<A, I> {
         }
         if let Some(hook) = self.on_key {
             host.set_on_key(hook);
+        }
+        if let Some(hook) = self.on_menu {
+            host.set_on_menu(hook);
         }
         if let Some(root) = self.source_root {
             host.set_source_root(root);

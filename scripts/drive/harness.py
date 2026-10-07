@@ -549,12 +549,27 @@ def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
 #: **The secondary-button leg's record** — M90/T90.2. Every inventory
 #: action whose `do` clicks is filed under `checked` (the same click,
 #: with `button: "right"`, answered `handled: false` and left the
-#: widget's pixels as they were) or `overlay_open` (not sent: a popup was
+#: widget's pixels as they were), `overlay_open` (not sent: a popup was
 #: open, and a right press outside an open popup dismisses it, which
-#: `crates/lumen-static/tests/context_request.rs` gates headlessly).
+#: `crates/lumen-static/tests/context_request.rs` gates headlessly), or
+#: — M90/T90.4, for an entry `secondary.context` names — `opened` (the
+#: right click landed inside the widget and opened its context menu,
+#: `handled: true`, and Escape restored its pixels).
 #: `run.py` compares both lists with `expected.json`'s `secondary`, so a
 #: leg that silently skipped an action fails.
-SECONDARY: dict[str, list[str]] = {"checked": [], "overlay_open": []}
+SECONDARY: dict[str, list[str]] = {"checked": [], "overlay_open": [], "opened": []}
+
+
+def _context_entries() -> set[str]:
+    """The inventory entries whose own clicks a right click should answer
+    with a context menu — M90/T90.4, `expected.json`'s
+    `secondary.context`. Read from the manifest, not inferred: a leg that
+    decided for itself which widgets may act on a right click would pass
+    any widget that started to."""
+    import json
+    from pathlib import Path
+    m = json.loads((Path(__file__).resolve().parent / "expected.json").read_text())
+    return set(m.get("secondary", {}).get("context", []))
 
 
 def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action: str,
@@ -576,6 +591,8 @@ def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action:
         return [f"      secondary: not sent, {n} overlay(s) open (a right press there dismisses them)"]
     out = []
     last = None
+    context = widget in _context_entries()
+    opened = False
     for p in clicks:
         at = p["at"]
         loc = {"x": at[0], "y": at[1]}
@@ -583,6 +600,30 @@ def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action:
         time.sleep(0.7)
         h0 = _settled_hash(c, rect)
         extra = {"clicks": p["clicks"]} if p.get("clicks", 1) != 1 else {}
+        inside = rect[0] <= at[0] < rect[2] and rect[1] <= at[1] < rect[3]
+        if context and inside:
+            # **This entry answers a right click** (M90/T90.4): the same
+            # click opens its context menu -- `handled` true, one overlay
+            # open -- and Escape puts the widget's pixels back.
+            r = rpc("input.click", button="right", **loc, **extra)
+            n_open = c.rpc("app.diagnostics").get("open_overlays")
+            c.key("Escape", True)
+            c.key("Escape", False)
+            h1 = _settled_hash(c, rect)
+            n_after = c.rpc("app.diagnostics").get("open_overlays")
+            same = h0.get("hash") == h1.get("hash")
+            out.append(f"      secondary: right click at ({at[0]:.0f}, {at[1]:.0f}) handled "
+                       f"{r.get('handled')} (want true: a context menu), echo {r.get('button')!r}, "
+                       f"open overlays {n_open} (want 1), after Escape {n_after} (want 0), "
+                       f"{h0.get('pixels')} px {'restored' if same else 'CHANGED'}")
+            if not r.get("handled") or r.get("button") != "right" or n_open != 1 or n_after != 0 or not same:
+                raise Failed(f"{name}: a right click on a context-menu entry did not open its menu "
+                             f"and close on Escape -- handled {r.get('handled')}, overlays {n_open} -> "
+                             f"{n_after}, pixels {'restored' if same else 'changed'} (injection: "
+                             f"ContextMenu::on_event ignores Event::ContextRequest)")
+            opened = True
+            last = loc
+            continue
         r = rpc("input.click", button="right", **loc, **extra)
         h1 = _settled_hash(c, rect)
         same = h0.get("hash") == h1.get("hash")
@@ -597,7 +638,7 @@ def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action:
         last = loc
     if last is not None:
         rpc("input.hover", **last)
-    SECONDARY["checked"].append(name)
+    SECONDARY["opened" if opened else "checked"].append(name)
     return out
 
 

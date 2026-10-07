@@ -22,13 +22,14 @@
   "M87/T87.2 added Markdown's static quote check: in both palettes the demo's least contrasting run is a quote word, at AA or better, and its colour differs between the two (the quote colour follows the palette).",
   "M87/T87.3 added LinkedMarkdown: a click on the `~=changelog` Link child runs the handler with that link, and the readout names its target; a press on the plain first word runs nothing (the isolate).",
   "M87/T87.4 added LinkedMarkdown's static image check: the demo's `![..](spin)` is one Image child inside the paragraph, labelled with its alt text, and at least 5% of its box is off the page fill in the screenshot.",
-  "M90/T90.2 added `secondary`: every action whose `do` sends a left input.click, filed by the secondary-button leg as `checked` (the same click with button right answered handled false and left the widget's pixels unchanged) or `overlay_open` (not sent: a popup was open, and a right press outside an open one dismisses it, gated headlessly in crates/lumen-static/tests/context_request.rs)."
+  "M90/T90.2 added `secondary`: every action whose `do` sends a left input.click, filed by the secondary-button leg as `checked` (the same click with button right answered handled false and left the widget's pixels unchanged) or `overlay_open` (not sent: a popup was open, and a right press outside an open one dismisses it, gated headlessly in crates/lumen-static/tests/context_request.rs).",
+  "M90/T90.4 added ContextMenu (scripts/drive/widgets/menus.py), and the secondary leg's `opened` list: an action of an entry `secondary.context` names whose replayed right click lands inside the widget must open its context menu (handled true, one overlay) and Escape must restore its pixels."
  ],
  "counts": {
-  "entries": 53,
-  "actions": 166,
-  "landed_checked": 128,
-  "isolated": 70
+  "entries": 54,
+  "actions": 176,
+  "landed_checked": 136,
+  "isolated": 73
  },
  "entries": {
   "Selectable": [
@@ -50,6 +51,18 @@
    "it shows its commands with no trigger",
    "choosing a command runs it and closes the menu",
    "its button opens it again"
+  ],
+  "ContextMenu": [
+   "a left click presses the button and opens no menu",
+   "a release on the disabled Paste runs nothing and keeps the menu open",
+   "a right click opens the menu at the press",
+   "Shift+F10 on the focused button opens the menu under it",
+   "the Menu key opens it too",
+   "a reader's contextMenu action opens it",
+   "a click on Cut runs it and closes the menu",
+   "Down, Down and Enter choose Copy",
+   "a click outside dismisses it",
+   "Escape dismisses it"
   ],
   "Pagination": [
    "the next arrow steps one page",
@@ -310,6 +323,8 @@
   "Menu/it shows its commands with no trigger",
   "Menu/choosing a command runs it and closes the menu",
   "Menu/its button opens it again",
+  "ContextMenu/a left click presses the button and opens no menu",
+  "ContextMenu/a release on the disabled Paste runs nothing and keeps the menu open",
   "Tree/pressing a leaf selects it and folds nothing",
   "DataGrid/it shows its columns over virtualized rows",
   "SearchField/the magnifier is left of the text and inside the pill",
@@ -430,7 +445,9 @@
    "Video/a press at 75% of the track seeks there",
    "Video/a press on the picture changes nothing",
    "Video/pause holds the picture",
-   "Video/play advances the picture"
+   "Video/play advances the picture",
+   "ContextMenu/a click on Cut runs it and closes the menu",
+   "ContextMenu/a click outside dismisses it"
   ],
   "overlay_open": [
    "ColorPicker/a press opens the popup",
@@ -451,7 +468,14 @@
    "Sheet/the control on the panel still reaches the application",
    "TimePicker/a press opens the popup",
    "TimePicker/an hour sets the hour and keeps the clock open",
-   "Toast/Save shows a toast below the stage, centred on the window"
+   "Toast/Save shows a toast below the stage, centred on the window",
+   "ContextMenu/a release on the disabled Paste runs nothing and keeps the menu open"
+  ],
+  "opened": [
+   "ContextMenu/a left click presses the button and opens no menu"
+  ],
+  "context": [
+   "ContextMenu"
   ]
  }
 }

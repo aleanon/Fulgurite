@@ -112,6 +112,11 @@ const ROWS: &[Row] = &[
     row("Pin", "Pin", Role::GenericContainer, false),
     // M85/T85.4: a box told when it enters the view; the child speaks.
     row("Pop", "Pop", Role::GenericContainer, false),
+    // M90/T90.4: a wrapper that claims a context menu; its content
+    // speaks, and it publishes `ShowContextMenu`.
+    row("ContextMenu", "ContextMenu", Role::GenericContainer, false),
+    // M90/T90.4: a context menu's rows, its labels as the value.
+    row("CommandList", "CommandList", Role::Menu, false),
     row("Toast", "Toast", Role::Status, false),
     row("Tooltip", "Tooltip", Role::Group, false),
     row("Modal", "Veil", Role::Dialog, false),
@@ -168,10 +173,11 @@ fn feature_on(feature: &str) -> bool {
 /// divider, which is decoration (M48/T48.6 decided it and
 /// `lumen-static-agent/tests/tree_fields.rs` allows it by name), a
 /// pin, which only offsets its child (M85/T85.2), and a pop, which only
-/// hears when its child enters the view (M85/T85.4).
+/// hears when its child enters the view (M85/T85.4), and a context
+/// menu's wrapper, whose content speaks (M90/T90.4).
 const GENERIC_BOUND: &[&str] = &[
     "Fixed", "Spacer", "Popup", "Glass", "Skeleton", "Pad", "PullToRefresh", "Divider", "Pin",
-    "Pop",
+    "Pop", "ContextMenu",
 ];
 
 /// Lay the tree out and emit it; every node keyed by its author id.
@@ -322,6 +328,8 @@ fn core_action(a: lumen_static::observe::accesskit::Action) -> Option<lumen_stat
         Ak::Expand => Action::Expand,
         Ak::Collapse => Action::Collapse,
         Ak::Focus => Action::Focus,
+        // M90/T90.4: a context menu's claim is checked like the rest.
+        Ak::ShowContextMenu => Action::ContextMenu,
         _ => return None,
     })
 }
@@ -337,7 +345,8 @@ fn core_action(a: lumen_static::observe::accesskit::Action) -> Option<lumen_stat
 #[test]
 fn every_published_action_is_handled() {
     use lumen_static::observe::accesskit::Action as Ak;
-    const ALL: [Ak; 7] = [Ak::Click, Ak::Increment, Ak::Decrement, Ak::SetValue, Ak::Expand, Ak::Collapse, Ak::Focus];
+    const ALL: [Ak; 8] =
+        [Ak::Click, Ak::Increment, Ak::Decrement, Ak::SetValue, Ak::Expand, Ak::Collapse, Ak::Focus, Ak::ShowContextMenu];
     let table = <Ui as Widget>::SUB_TABLE;
     let (mut total_p, mut total_h) = (0, 0);
     let mut bad = Vec::new();

@@ -421,6 +421,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     sheet_key: Option<Box<dyn program::SheetKey<A>>>,
     /// [`program::Program::on_key`]'s hook — M60/T60.1.
     on_key: Option<program::KeyHook<A>>,
+    /// [`program::Program::on_menu`]'s hook — M90/T90.4. `None` means no
+    /// node is ever asked [`Node::take_menu`].
+    on_menu: Option<program::MenuHook<A>>,
     /// The key hook answered [`program::KeyOutcome::Quit`] — M60/T60.1.
     quit: bool,
     /// What the last frame had marked when it cleared — M29/T29.3.
@@ -479,6 +482,14 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// installed by [`program::Program::on_key`].
     pub fn set_on_key(&mut self, hook: program::KeyHook<A>) {
         self.on_key = Some(hook);
+    }
+
+    /// The hook a chosen menu entry runs — M90/T90.4, installed by
+    /// [`program::Program::on_menu`]. Until one is installed no node is
+    /// asked [`Node::take_menu`]
+    /// and an [`Event::Menu`] goes nowhere.
+    pub fn set_on_menu(&mut self, hook: program::MenuHook<A>) {
+        self.on_menu = Some(hook);
     }
 
     /// Whether the key hook asked to close — M60/T60.1. The window it
@@ -951,6 +962,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             boot: None,
             sheet_key: None,
             on_key: None,
+            on_menu: None,
             quit: false,
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
@@ -1928,6 +1940,58 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         }
     }
 
+    /// **A menu entry chosen by the event just dispatched** — M90/T90.4
+    /// (`docs/plan-desktop-integration.md`, "A menu is data"). Each node
+    /// that consumed an event this pump is asked
+    /// [`Node::take_menu`] by its
+    /// table index — the consuming node itself, the row list, so no
+    /// wrapper forwards it — and a chosen id runs [`Host::menu_hook`].
+    /// Every node consumed so far this pump, not only this event's: the
+    /// set de-duplicates, so a list that took a hover earlier in the pump
+    /// and the release now appears once, before this event's slice. A take
+    /// is take-once, so asking again is free of effect. On overflow the
+    /// whole table is walked once. **Nothing is asked without a hook**,
+    /// which is what K90b measures. Whether a hook handled a choice.
+    fn take_menus(&mut self, consumed: &pass::Consumed) -> bool {
+        if self.on_menu.is_none() {
+            return false;
+        }
+        let mut handled = false;
+        if consumed.overflowed() {
+            for n in 0..<A::Tree as Widget>::NODE_COUNT {
+                if let Some(id) = lumen_static::widget::Node::node_mut(self.app.tree_mut(), n).take_menu() {
+                    handled |= self.menu_hook(id);
+                }
+            }
+        } else {
+            for &n in consumed.nodes() {
+                if let Some(id) = lumen_static::widget::Node::node_mut(self.app.tree_mut(), n as usize).take_menu() {
+                    handled |= self.menu_hook(id);
+                }
+            }
+        }
+        handled
+    }
+
+    /// Run the program's menu hook ([`program::Program::on_menu`]) for
+    /// entry `id` — M90/T90.4. Both routes end here: a drawn row's choice
+    /// ([`Host::take_menus`]) and a native activation posted as
+    /// [`Event::Menu`]. What the hook answers is a
+    /// [`program::KeyOutcome`], read as [`Host::key_hook`] reads it:
+    /// `Handled` is marked as a handled event is, `Quit` sets
+    /// [`Host::quit_requested`]. `false` with no hook.
+    fn menu_hook(&mut self, id: u32) -> bool {
+        let Some(hook) = self.on_menu else { return false };
+        match hook(self.app.state_mut(), id) {
+            program::KeyOutcome::Ignored => false,
+            program::KeyOutcome::Handled => true,
+            program::KeyOutcome::Quit => {
+                self.quit = true;
+                true
+            }
+        }
+    }
+
     /// Mark what a handled event may have changed — the rule below, used
     /// by the pump and by a paste's typing fallback alike.
     fn mark_handled(&mut self, consumed: &pass::Consumed) {
@@ -1984,8 +2048,20 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         // record above does not do; closing hands it back either way.
         self.settle_overlay_focus();
         while let Some(ev) = self.queue.pop() {
+            // **A native menu activation is the application's** —
+            // M90/T90.4: addressed to the menu hook, not to a node.
+            if let Event::Menu { id } = ev {
+                handled |= self.menu_hook(id);
+                continue;
+            }
             let took_before = consumed.nodes().len();
             let took = self.dispatch_now(&ev, &mut consumed);
+            // A drawn menu's choice, from the node that consumed it — asked
+            // only with a hook installed (K90b: the test is here, at the
+            // call, so a program with no menus never makes the call).
+            if took && self.on_menu.is_some() {
+                handled |= self.take_menus(&consumed);
+            }
             // **A key press nothing took is the application's** —
             // M60/T60.1 (`docs/plan-tally-slim.md` §2.1). Here, in the one
             // pump the window, `host()` and the agent share, so there is no
@@ -2005,7 +2081,11 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 self.long_press.feed(&ev);
             }
             for synth in promote_touch(&mut self.primary_touch, &mut self.touch_spent, &ev).into_iter().flatten() {
-                handled |= self.dispatch_now(&synth, &mut consumed);
+                let took = self.dispatch_now(&synth, &mut consumed);
+                handled |= took;
+                if took && self.on_menu.is_some() {
+                    handled |= self.take_menus(&consumed);
+                }
             }
             // A move restarts the wait for hover intent on whatever the
             // pointer is over now; nothing under it, nothing to wait for.

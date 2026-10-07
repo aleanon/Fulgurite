@@ -85,15 +85,28 @@ def check_manifest(entries) -> list[str]:
     # M90/T90.2: the secondary-button leg's two lists name real actions,
     # and no action is in both.
     sec = m.get("secondary", {})
-    for k in ("checked", "overlay_open"):
+    for k in ("checked", "overlay_open", "opened"):
         if k not in sec:
             bad.append(f"secondary.{k}: missing from scripts/drive/expected.json")
         for name in sec.get(k, []):
             w, _, act = name.partition("/")
             if act not in have.get(w, []):
                 bad.append(f"secondary.{k}: {name!r} names no inventory action")
-    for name in set(sec.get("checked", [])) & set(sec.get("overlay_open", [])):
-        bad.append(f"secondary: {name!r} is both checked and overlay_open")
+    lists = [("checked", "overlay_open"), ("checked", "opened"), ("overlay_open", "opened")]
+    for a_, b_ in lists:
+        for name in set(sec.get(a_, [])) & set(sec.get(b_, [])):
+            bad.append(f"secondary: {name!r} is both {a_} and {b_}")
+    # M90/T90.4: an action may be `opened` only on an entry the manifest
+    # says answers a right click, and such an entry must have one.
+    ctx = set(sec.get("context", []))
+    for name in sec.get("opened", []):
+        if name.partition("/")[0] not in ctx:
+            bad.append(f"secondary.opened: {name!r} is on an entry secondary.context does not name")
+    for w in ctx:
+        if w not in have:
+            bad.append(f"secondary.context: {w!r} names no inventory entry")
+        elif not any(n.partition("/")[0] == w for n in sec.get("opened", [])):
+            bad.append(f"secondary.context: {w!r} has no action in secondary.opened")
     got = counts(entries)
     print(f"inventories: {got['entries']} entries / {got['actions']} actions "
           f"(manifest {m['counts']['entries']}/{m['counts']['actions']}); "
@@ -211,7 +224,7 @@ def main() -> int:
     import harness  # noqa: E402
     driven = {e[0] for e in entries}
     sec = json.loads((HERE / "expected.json").read_text())["secondary"]
-    for k in ("checked", "overlay_open"):
+    for k in ("checked", "overlay_open", "opened"):
         want = sorted(x for x in sec[k] if x.partition("/")[0] in driven)
         got = sorted(harness.SECONDARY[k])
         print(f"secondary-button leg [{strategy}]: {k} {len(got)} (manifest {len(want)})")

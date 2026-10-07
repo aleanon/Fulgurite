@@ -167,6 +167,8 @@ pub mod hit;
 pub mod i18n;
 pub mod inline;
 pub mod invalidate;
+// M90/T90.4: a menu's tables -- data, no code.
+pub mod menu;
 // `mpsc`, so `std` (M13/T13.1). Deferred work handed back to the frame
 // loop from another thread is not an embedded concern.
 #[cfg(feature = "std")]

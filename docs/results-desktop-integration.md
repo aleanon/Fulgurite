@@ -287,3 +287,123 @@ disagree about one quantity are a fact about the arms). The shipped
 build keeps the key test on the key path and marks `request_context`
 `#[cold]`, which is what it is, and reads inside every spread. K90b does
 not fire on it.
+
+## T90.4 — `ContextMenu<W>`, `CommandList`, `Anchor::At` and `Program::on_menu` (2026-10-07, on `cad8edc`)
+
+A menu is data (`lumen_static::menu`: `MenuEntry`, `Accel`,
+`MenuSection`, `MenuMask`); a choice is its id, taken once from the node
+that consumed the release or the Enter (`Node::take_menu`, asked only
+with a hook installed) or posted natively as `Event::Menu { id }`, and
+both end in `Program::on_menu`. `ContextMenu<W>` consumes the
+`ContextRequest` that bubbles to it and opens its `CommandList` at the
+point (`Anchor::At`).
+
+### Gates (`crates/lumen-static-shell/tests/context_menu.rs` unless named)
+
+Identical under `Everything` and `Boundaries<256>`. A 360 × 420 window; the
+wrapper is `[0, 16, 360, 136]`, under a label.
+
+| gate | measured | bound / accept |
+|---|---|---|
+| a right press at `(40, 46)` inside the wrapper | handled true, open, the list's top-left `(40, 46)` | the press point |
+| a release on row 1 (Copy) | handled true, `on_menu` `[20]` once, closed | `ENTRIES[1].id`, once |
+| a right press at `(350, 46)` | the list `[140, 46, 360, 178]` | inside 0..360 × 0..420; x = 360 − 220 |
+| Down, Down, Enter | focus on the list (index 5) once open; `on_menu` `[20]` | the keyboard chooses |
+| a release on the disabled row 2 (Paste) | handled true, `on_menu` `[]`, still open | 0 calls, open; accept: row 3 → `[40]` |
+| no `on_menu`: a click the area consumes | `take_menu` asked **0** times | 0; accept: with the hook, asked 1 |
+| `Event::Menu { id: 77 }` | handled true, `on_menu` `[77]`; with no hook handled false | the same hook |
+| the frame that opens the menu | 1 region `[28, 108.2, 272, 264.2]` = the list's ink (`display::shadow_ink`); 38,064 px² against list ink + wrapper 74,481 px² = **0.51×**; outside both **0 px²** | ≤ 1.00×; 0 px² |
+| `size_of::<Event>()` | 16 | 16 (K1) |
+| `crates/lumen-static-widgets/tests/a11y_roles.rs` | `ContextMenu` `GenericContainer` publishing `ShowContextMenu`, handled 1 of 1; `CommandList` `Menu`; 72 rows over 56 impls (55 covered, `ShaderView` excused); all rows published 54, handled 54 | every published action handled |
+| `crates/lumen-static-agent/tests/actions.rs` | `input.invokeAction` `contextMenu` on the wrapper: handled true, open false → true; `contextmenu` refused naming the list | both directions |
+
+### Injections (red, by name)
+
+| injection | what went red |
+|---|---|
+| (1) the host asks `take_menu` of the consumer's grandparent (the wrapper) | "on_menu did not run once with the row's id", `[]`; the disabled gate's accept `[]`; "with a hook the consuming node was not asked" |
+| (2) `Popup::place` ignores `Anchor::At` (its parent's origin) | "list at (0, 16) ... the list's top-left is not the press point" |
+| (3) `CommandList::choose` ignores the mask | "release on disabled row 2 (Paste): handled true, on_menu [30], open false ... a disabled entry ran the hook" |
+| (4, added) the wrapper paints a window-sized scrim while open | "1 region [0, 0, 360, 420] ... 151200 px² ... = 2.03x, outside both 76719 px²" |
+| the role rows deleted | "Node impls with no row in the table: [CommandList, ContextMenu]" |
+| `ContextMenu::on_event` ignores the request (role table) | "ContextMenu: handled 0 / published 1 -- not handled: [ShowContextMenu]" |
+| the agent's `contextMenu` arm dropped | handled `null`, "unknown action `contextMenu`" |
+
+### The live leg (`just widget-drive ContextMenu`, `scripts/drive/widgets/menus.py`)
+
+A private Xephyr display, all six legs (`Everything`, `Boundaries<256>`,
+`+oracle`, `+scale2` with the full-repaint check, and both strategies with
+`shaping`): each "1 widgets, 10 actions, 5 without an isolate, 0 failed";
+parity 1 of 1 byte-identical with no agent; the oracle compared 813 frames,
+none diverged; the keyboard pass reached `#d_context_a >
+#context-menu-content` in 1 Tab and Shift+F10, Down, Enter chose Cut
+(`chose: nothing yet` → `chose: Cut (id 1)`); app exit 0. The secondary
+leg: `checked 2 (manifest 2)`, `overlay_open 1 (manifest 1)`, `opened 1
+(manifest 1)` — the replayed right click on the button handled true, one
+overlay open, 0 after Escape, its 5,600 px restored. From the `Everything`
+leg:
+
+| action | measured | bound |
+|---|---|---|
+| a right click opens the menu at the press | the list at `(638, 429)`, want `(638, 429)`; damage 29,040 px² = 1.00× the list | 1 px; 4.0× |
+| Shift+F10 / the Menu key on the focused button | the list at `(615, 449)`, want `(614, 449)` (the button's bottom-left, fractional) | 1 px |
+| a reader's `contextMenu` action | the list 132 px tall | open |
+| a click on Cut | `chose: Cut (id 1)`, closed; damage 1.41× | 4.0× |
+| Down, Down and Enter | `chose: Copy (id 2)`, closed | — |
+| a click outside / Escape | closed (overlays 0) | — |
+
+Live injections, the `Boundaries` leg alone: `ContextMenu::on_event`
+ignoring the request — "a right click on a context-menu entry did not open
+its menu and close on Escape -- handled False, overlays 0 -> 0", the
+keyboard pass "readout 'chose: nothing yet' -> 'chose: nothing yet'",
+`opened 0 (manifest 1)`, 5 failed; T90.3's injection (4), `parse_key`
+without its `"F<n>"` arm — "input.key ... unknown key `F10`", 3 failed.
+
+**No AT-SPI leg**: AccessKit's AT-SPI adapter (0.20.0) offers only
+`click`, so nothing on the bus can ask for `ShowContextMenu`; the live
+route is the agent's `contextMenu`, which enters where the adapter's
+request would (`docs/plan-desktop-integration.md`, "What building found").
+
+### Firmware (K90a)
+
+`just firmware-delta cad8edc firmware=0 firmware_interactive=256`:
+`firmware` +0, `firmware_interactive` **+12** (64,156 → 64,168),
+`firmware_bind` +0, `firmware_cascade` +0, `.rodata` +0 on all four. The 12
+B are `pass::dispatch` (5,396 → 5,408 by `nm`), its `match` over `Event`
+re-laid for `Event::Menu`; no menu code links. K90a does not fire.
+
+### K90b (`benches --bin invalidation`, `benches-competitive/arms/frame`)
+
+The parent's binaries (`cad8edc`) against this task's, interleaved under
+`scripts/bench_lock.sh`, after the reference machine's CI run had
+finished, every run quiet. First set, eight runs a side, min / median /
+max µs:
+
+| row | parent | T90.4 | reading |
+|---|---|---|---|
+| `dispatch, one PointerMove` | 0.030 / 0.035 / 0.050 | 0.030 / **0.040** / 0.050 | inside |
+| `dispatch, one PointerMove (tiny)` | 0.020 / 0.025 / 0.040 | 0.020 / **0.020** / 0.040 | inside |
+| `dispatch, left press+release` | 0.061 / 0.065 / 0.084 | 0.058 / **0.064** / 0.090 | inside |
+| `dispatch, right press+release` | 0.062 / 0.064 / 0.082 | 0.058 / **0.063** / 0.084 | inside |
+| `pump_with, one consumed click` | 10.090 / 11.040 / 11.140 | 10.590 / **11.145** / 11.180 | **0.005 over the max** |
+| `idle (floor)` | 57.1 / 63.3 / 64.6 | 53.9 / **63.2** / 65.1 | inside |
+
+**The consumed-click row read 0.005 µs past the parent's max, so K90b's
+written response was applied**: the per-event work that row can see is
+the host's call into the menu take, which already returned at once without
+a hook; the hook test moved to the call site (`took &&
+self.on_menu.is_some()`), so a program with no menus makes no call at all.
+Remeasured, twelve runs a side interleaved, all quiet:
+
+| row | parent | T90.4 (gated at the call) | reading |
+|---|---|---|---|
+| `dispatch, one PointerMove` | 0.030 / 0.030 / 0.050 | 0.030 / **0.040** / 0.060 | inside |
+| `dispatch, one PointerMove (tiny)` | 0.020 / 0.030 / 0.040 | 0.020 / **0.020** / 0.040 | inside |
+| `dispatch, left press+release` | 0.062 / 0.064 / 0.095 | 0.061 / **0.064** / 0.106 | inside |
+| `dispatch, right press+release` | 0.062 / 0.065 / 0.096 | 0.061 / **0.062** / 0.099 | inside |
+| `pump_with, one consumed click` | 10.490 / 11.015 / 11.150 | 10.610 / **11.145** / 11.280 | inside (at the edge) |
+
+K90b does not fire on the shipped build. The consumed-click median sits
+about 0.13 µs (1.2%) above the parent's in both sets, inside its spread:
+what is left on that path without a hook is one discriminant test
+(`Event::Menu`) per drained event and the `on_menu` test per consumed one.

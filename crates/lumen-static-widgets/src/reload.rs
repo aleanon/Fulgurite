@@ -509,6 +509,9 @@ stateless! {
     // on the text and the measurer, so a swap re-measures by itself.
     [S: TextStorage] crate::vector::VectorText<S>,
     [] crate::choose::OptionList,
+    // M90/T90.4: its entries are code; the keyboard's row is a gesture in
+    // flight.
+    [] crate::menu::CommandList,
     [] crate::image::Image,
     // M83/T83.6: its id, bytes and fallback are code, or a binding's whose
     // source is kept state.
@@ -538,5 +541,7 @@ wraps! {
     [W: Widget + Reloadable] crate::surface::Card<W>, content, "Card",
     [W: Widget + Reloadable] crate::glass::Glass<W>, content, "Glass",
     [W: Widget + Reloadable] crate::nav::PullToRefresh<W>, content, "PullToRefresh",
+    // M90/T90.4: whether its menu is open is a gesture in flight.
+    [W: Widget + Reloadable] crate::menu::ContextMenu<W>, content, "ContextMenu",
     [W: Widget + Reloadable, S: TextStorage] crate::surface::Tooltip<W, S>, content, "Tooltip",
 }

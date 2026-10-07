@@ -331,6 +331,10 @@ pub struct Store {
     /// The menu demo's reopen request, and the last command it ran (C3).
     menu_open: bool,
     command: Option<usize>,
+    /// The context menu demo's last chosen id, from `on_menu` (M90/T90.4).
+    context: Option<u32>,
+    /// Whether it has cut or copied, which enables its Paste.
+    clipped: bool,
     /// The chip demo's selected tags, a bit each, and its × presses (B2).
     tags: u8,
     removed: u32,
@@ -503,6 +507,15 @@ fn refresh(s: &mut Show) -> bool {
         }
         if let Some(k) = d.a.take_chosen() {
             s.store.command = Some(k);
+            changed = true;
+        }
+    }
+    // **A context menu's enabled entries are state** (M90/T90.4): Paste
+    // once something was cut or copied. Compared first, as above.
+    if let Demo::ContextMenu(d) = &mut s.ui.main.stage.row.demo {
+        let want = lumen_static::menu::MenuMask::ALL.with(2, s.store.clipped);
+        if d.a.enabled != want {
+            d.a.enabled = want;
             changed = true;
         }
     }
@@ -1212,6 +1225,8 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         // height or a one-line ellipsis on the demo's label — style fields
         // restyled at run time, which is what `Program::style_by` is for.
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
+        // M90/T90.4: the context menu demo's choice, by id.
+        .on_menu(on_menu)
         .shaping(SHAPING)
         // M84/T84.3: the Image demo's GIF, decoded once (`catalog::SPIN`).
         .images(catalog::images());
@@ -1219,6 +1234,15 @@ fn program(entry: usize, open: bool) -> Program<Show> {
     #[cfg(feature = "shader")]
     let p = p.shaders(&catalog::SHADERS);
     p
+}
+
+/// **A chosen menu entry** — `Program::on_menu` (M90/T90.4): the
+/// context menu demo's command, recorded by id for the readout. A seed
+/// clears it, so the demo opens on "nothing yet".
+fn on_menu(s: &mut Store, id: u32) -> lumen_static_winit::KeyOutcome {
+    s.context = Some(id);
+    s.clipped |= matches!(id, 1 | 2);
+    lumen_static_winit::KeyOutcome::Handled
 }
 
 /// **The fill table** — M82/T82.3 (`docs/plan-paint-vocabulary.md`).

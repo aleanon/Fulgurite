@@ -45,6 +45,15 @@ pub enum Anchor {
     /// the parent is does not matter; with no known window it falls back
     /// to `Below`.
     WindowBottom,
+    /// **At a window point**, top-left there, in logical px — M90/T90.4: a
+    /// context menu opens where it was asked for (`Event::ContextRequest`'s
+    /// point), not against its parent. Where the parent is does not
+    /// matter. Kept on the window by the same clamp as every other anchor,
+    /// so near the right or bottom edge it moves in rather than running
+    /// off. Integer pixels keep this enum's `Eq` (a context menu needs no
+    /// sub-pixel placement); no in-tree code compares an `Anchor` with
+    /// `==`.
+    At { x: i32, y: i32 },
 }
 
 /// A subtree painted in the overlay phase.
@@ -228,6 +237,7 @@ impl<W: Widget> Node for Popup<W> {
                 y: self.viewport.h - self.measured.h - 24.0,
             },
             Anchor::WindowBottom => at,
+            Anchor::At { x, y } => Point { x: x as f32, y: y as f32 },
         };
         // **Kept on the window** — M57/A18. `Below` flips above its
         // trigger when it would cross the bottom edge and there is more

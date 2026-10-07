@@ -133,6 +133,7 @@ DPickList { width: shrink; }
 DSelect { width: shrink; }
 DCombobox { width: shrink; }
 DMenu { width: shrink; }
+DContextMenu { width: shrink; }
 DVectorText { width: shrink; }
 DColorPicker { width: shrink; }
 DDatePicker { width: shrink; }

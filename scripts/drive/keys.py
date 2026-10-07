@@ -68,6 +68,11 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     "Combobox": ("#d_combobox_a > #chooser-trigger",
                  [KeyAction("Down, Down, Enter chooses", ["Down", "Down", "Enter"])]),
     "Menu": ("#d_menu_open", [KeyAction("Enter opens the menu", ["Enter"], "menu")]),
+    # M90/T90.4: Tab reaches the wrapped button; Shift+F10 opens its menu,
+    # which takes focus, and Down then Enter chooses Cut -- the readout
+    # names it.
+    "ContextMenu": ("#d_context_a > #context-menu-content",
+                    [KeyAction("Shift+F10, Down, Enter chooses Cut", [("F10", ["shift"]), "Down", "Enter"])]),
     "NumberInput": ("#d_number_a", [KeyAction("Up steps the number", ["Up"])]),
     "RangeSlider": ("#d_range_a", [KeyAction("Right moves a handle", ["Right"])]),
     "SearchField": ("#d_search_a > #search-field",

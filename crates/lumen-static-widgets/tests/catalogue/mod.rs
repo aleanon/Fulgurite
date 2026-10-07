@@ -80,6 +80,12 @@ pub struct Ui {
     pub combobox: Combobox,
     #[widget_id("Menu")]
     pub menu: Menu,
+    // M90/T90.4: a context menu around a label (closed), and a command
+    // list on its own, so its rows are drawn and read.
+    #[widget_id("ContextMenu")]
+    pub context: ContextMenu<Label<String>>,
+    #[widget_id("CommandList")]
+    pub commands: CommandList,
     #[widget_id("ProgressBar")]
     pub progress: ProgressBar,
     #[widget_id("Spinner")]
@@ -186,6 +192,13 @@ pub struct Ui {
     pub shader: lumen_static_widgets::ShaderView<16>,
 }
 
+/// What the catalogue's context menu and command list offer.
+const COMMANDS: [lumen_static::menu::MenuEntry; 3] = [
+    lumen_static::menu::MenuEntry::new("Cut", 1),
+    lumen_static::menu::MenuEntry::new("Copy", 2),
+    lumen_static::menu::MenuEntry::new("Paste", 3),
+];
+
 fn bind_row(l: &mut Label<String>, i: usize) {
     l.set(format!("row {i}"));
 }
@@ -241,6 +254,8 @@ pub fn build() -> Ui {
     ui.picklist.set_label("Fruit");
     ui.combobox.set_label("City");
     ui.menu.set_label("Actions");
+    ui.context = ContextMenu::new(Label::new("right-click me".into()), &COMMANDS);
+    ui.commands = CommandList::new(&COMMANDS);
     ui.color.set_label("Colour");
     ui.date.set_label("Date");
     ui.time.set_label("Time");

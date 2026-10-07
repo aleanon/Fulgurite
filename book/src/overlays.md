@@ -157,6 +157,59 @@ it closes — by Escape, by a press outside, by Tab, or by its application
 — focus goes back there, or to the overlay's owner if that node is gone.
 Before this, Escape cleared focus and Tab over a tooltip lost it.
 
+## Context menus
+
+Every way of asking for a context menu — a right press, Shift+F10 or the
+Menu key on a focused control, a touch held still, a screen reader's
+"show context menu" — reaches the tree as one `Event::ContextRequest` at
+a window point, bubbling from the node under it ([Events](events.md),
+[Gestures](gestures.md)). So the widget answers that one event.
+`ContextMenu<W>` wraps a subtree, consumes the request that bubbles to
+it, and opens a `Popup<CommandList>` with its top-left **at the point**
+— `Anchor::At { x, y }`, which `Popup::place` keeps on the window as it
+keeps every other anchor.
+
+The menu is **data**: a `&'static [MenuEntry]`, each a label, an `id`
+and an optional shortcut, and a `MenuMask` saying which are enabled. The
+showcase's entry, whose Paste is enabled once something was cut or
+copied:
+
+```text
+{{#include ../../examples/showcase/src/catalog.rs:context_menu}}
+```
+
+A chosen row is its entry's `id`, and it reaches the application through
+**one hook**, `Program::on_menu`:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:entries}}
+```
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:program}}
+```
+
+The host asks for the choice — `Node::take_menu`, take-once — of the node
+that **consumed** the release or the Enter: the `CommandList` itself, by
+table index. Not of the wrapper: asking the wrapper would need it to
+forward the question, and a forwarded provided method is the trap
+`Deferring` fell into. And only when a hook is installed, so an
+application with no menus is never asked anything. A native menu's
+activation — the tray's — is posted as `Event::Menu { id }` through the
+input queue and ends in the same hook.
+
+A release on a disabled row chooses nothing and leaves the menu open;
+Escape and a press outside close it through the dismissal every menu
+uses; focus moves into the list when it opens and back when it closes.
+The gate opens it, clamps it at the window's edge, and chooses by pointer
+and by keyboard; its neighbours measure the frame that opens it, which
+damages the list's ink and nothing else
+(`docs/results-desktop-integration.md`, T90.4):
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:open_and_choose}}
+```
+
 ## What `Host` does with all this
 
 `Host::pump` paints through `paint_overlaid` and routes input through

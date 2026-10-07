@@ -988,3 +988,63 @@ T90.0; everything else cites it.
 - **T90.3, the agent's `"F<n>"` parse is digits only and 1–12**, so
   `"F0"`, `"F13"` and `"F1x"` are unknown keys, refused naming the value;
   `"F"` alone is still the character.
+- **T90.4, `just a11y-drive --context` cannot be built: no AT-SPI call
+  produces `ShowContextMenu`.** AccessKit's AT-SPI adapter in the lock
+  (`accesskit_atspi_common` 0.20.0, `src/node.rs`: `n_actions` is 1 for a
+  clickable node and 0 otherwise, `do_action` sends only `Action::Click`)
+  exposes no context-menu action, so the adapter can never hand the window
+  the request the gate would have sent, and an AT-SPI menu-node count
+  could not move. Replaced, not skipped: the agent's `input.invokeAction`
+  takes `contextMenu`, which queues the same `Event::Action` the adapter's
+  `ActionRequested` becomes (`a11y::action_of` already maps
+  `ShowContextMenu` to `Action::ContextMenu`, T90.3), and `menus.py`'s
+  "a reader's contextMenu action opens it" drives it live under both
+  strategies; the role table's `every_published_action_is_handled` now
+  dispatches `ShowContextMenu` too, so the wrapper's claim is checked like
+  every other published action. Reopen the AT-SPI leg when AccessKit's
+  adapter maps an AT-SPI action onto `ShowContextMenu`.
+- **T90.4, the damage gate needed the list outside the wrapper.** The
+  first fixture opened the menu inside a 360 × 240 wrapper, so "inside the
+  list or the wrapper" held for any damage the size of the list, and the
+  one region (the list's shadow, which drops 0.35 × its spread) fell
+  outside the list's box and was credited to the wrapper at 0.44×. The
+  shipped fixture opens the menu near the wrapper's bottom so the list
+  hangs out of it, takes the list's box as its ink
+  (`display::shadow_ink`, what retention damages), and bounds the damage
+  that neither covers at 0 px² beside the 1.00× ratio. Injection (4,
+  added): the wrapper paints a window-sized scrim while open — 76,719 px²
+  outside, 2.03×.
+- **T90.4, "the list node is in `consumed`" is read through the hook.**
+  `Host` publishes no consumed set, so the gate's evidence is the hook
+  running once with the row's id, which the host can only learn by asking
+  the node that consumed the release; injection (1) (ask the consumer's
+  grandparent, the wrapper) reads `on_menu` `[]`.
+- **T90.4, the host asks every node consumed so far this pump, not only
+  this event's slice.** `Consumed` de-duplicates, so a list that took a
+  `Hover` earlier in the same pump is not in the release's slice; a take
+  is take-once, so asking again has no effect.
+- **T90.4, a release on a disabled row is consumed.** The menu's panel owns
+  its releases: a disabled row (or the padding) chooses nothing and the
+  list stays open, but the release does not fall through to what is under
+  the menu.
+- **T90.4, the secondary leg's `handled: true` is per click, from the
+  manifest.** `expected.json`'s `secondary.context` names the entries whose
+  replayed right click must open their menu when it lands inside the
+  widget (handled true, one overlay, Escape restores the pixels), filed in
+  a third list, `opened`. Only clicks inside the wrapper are; the inventory
+  opens its menu near the button's bottom edge so the rows hang below it
+  and their replays are ordinary `checked` ones, and a static "a left click
+  presses the button and opens no menu" puts one click inside.
+- **T90.4 cost `firmware_interactive` +12 B, in `pass::dispatch`.** The
+  `menu` module is data and every menu routine is behind `std`, as
+  decided; the bytes are the `match` over `Event` re-laid for its new
+  variant, `Event::Menu` (5,396 → 5,408 B by `nm`). Inside K90a's 256 B.
+- **T90.4, `CommandList` refuses more than 64 entries itself**, naming the
+  count, since a drawn menu never passes through `Program::menu`; and the
+  wrapped content carries a part id (`#context-menu-content`), so the
+  keyboard pass and the drive address the control the menu belongs to.
+- **T90.4, K90b's consumed-click row read 0.005 µs past the parent's max
+  on the first eight-run set**, and the written response was applied: the
+  hook test moved from inside `Host::take_menus` to its call sites, so a
+  program with no menus makes no call. Twelve interleaved runs then read
+  inside every spread (`docs/results-desktop-integration.md` T90.4).

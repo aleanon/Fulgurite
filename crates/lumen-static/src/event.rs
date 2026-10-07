@@ -383,6 +383,20 @@ pub enum Event {
     /// `docs/plan-desktop-integration.md`. `Event` stays 16 B
     /// (`tests/modifiers.rs`).
     ContextRequest { x: f32, y: f32 },
+    /// **A menu entry was chosen natively** — M90/T90.4
+    /// (`docs/plan-desktop-integration.md`, "A menu is data"). `id` is the
+    /// chosen [`MenuEntry::id`](crate::menu::MenuEntry::id).
+    ///
+    /// Posted by a host for an activation that happened outside the tree
+    /// — the tray today, a native menu bar when that half reopens — so it
+    /// travels the one input queue and a recorded session replays it. The
+    /// host's pump hands it to the program's menu hook (`Program::on_menu`)
+    /// and to no node: it is addressed to the application, not to a
+    /// widget. A **drawn** menu's choice never becomes this event; the
+    /// host takes it from the row list that consumed the release
+    /// ([`Node::take_menu`](crate::widget::Node::take_menu)), and both end
+    /// in the same hook. `Event` stays 16 B (`tests/modifiers.rs`).
+    Menu { id: u32 },
 }
 
 /// What an assistive technology asked a node to do — M54/T54.4.
@@ -469,7 +483,8 @@ impl Event {
             | Event::Leave
             | Event::ScrollEnd
             | Event::Linger
-            | Event::Visibility { .. } => None,
+            | Event::Visibility { .. }
+            | Event::Menu { .. } => None,
         }
     }
 }

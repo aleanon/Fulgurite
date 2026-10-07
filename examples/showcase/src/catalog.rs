@@ -300,6 +300,19 @@ pub(crate) const FRUIT: [&str; 6] =
     ["Apple", "Banana", "Cherry", "Damson", "Elderberry", "apricot"];
 const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
 
+/// What M90/T90.4's context menu offers: data, with the ids `on_menu`
+/// hears. Paste is enabled once Cut or Copy has run (`refresh`).
+pub(crate) const CONTEXT: [lumen_static::menu::MenuEntry; 4] = {
+    use lumen_static::menu::MenuEntry;
+    use lumen_static::{Key, Mods};
+    [
+        MenuEntry::new("Cut", 1).accel(Key::Char('x'), Mods::CTRL),
+        MenuEntry::new("Copy", 2).accel(Key::Char('c'), Mods::CTRL),
+        MenuEntry::new("Paste", 3).accel(Key::Char('v'), Mods::CTRL),
+        MenuEntry::new("Delete", 4).accel(Key::Delete, Mods::NONE),
+    ]
+};
+
 /// A `Menu` is seeded **open**, because it has no trigger and a closed
 /// one shows nothing at all.
 ///
@@ -657,6 +670,21 @@ pub static CATALOG: &[Entry] = &[
             open: { let mut b = btn("Commands"); b.on_click = |s: &mut Store, _: &EventCtx| s.menu_open = true; b },
             a: opened(Menu::new(&COMMANDS)) })),
         |s| format!("ran: {}", s.store.command.map_or("nothing yet", |k| COMMANDS[k]))),
+    // ANCHOR: context_menu
+    // M90/T90.4: the menu is data and a choice is its id, which the
+    // program's `on_menu` hook records (`main.rs`); the readout names it.
+    entry!("Choice", "ContextMenu", "Right-click it, or focus it and press Shift+F10.",
+        false,
+        |s| {
+            s.store.context = None;
+            s.store.clipped = false;
+            on(s, Demo::ContextMenu(DContextMenu { a: ContextMenu::new(btn("Right-click me"), &CONTEXT) }))
+        },
+        |s| match s.store.context {
+            Some(id) => format!("chose: {} (id {id})", CONTEXT.iter().find(|e| e.id == id).map_or("?", |e| e.label)),
+            None => "chose: nothing yet".into(),
+        }),
+    // ANCHOR_END: context_menu
     entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
         false,
         |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),

@@ -334,6 +334,30 @@ pub trait Node {
         None
     }
 
+    /// **The menu entry this node just chose, taken once** — M90/T90.4
+    /// (`docs/plan-desktop-integration.md`, "A menu is data"): the chosen
+    /// [`MenuEntry::id`](crate::menu::MenuEntry::id), or `None`.
+    ///
+    /// A drawn menu's row list answers it after the release or the Enter
+    /// that chose a row; taking clears it, so one choice runs the
+    /// application's hook once — the shape of `Chooser::take_chosen`. The
+    /// host asks it of each node that **consumed** the event, by table
+    /// index, right after that event — the row list itself, a leaf — so
+    /// no wrapper forwards it and the provided-method trap (a default
+    /// that acts on the wrapper instead) does not apply. On a `Consumed`
+    /// overflow the host walks the table once instead. **Asked only when
+    /// the program installed a menu hook** (`Program::on_menu`), so an
+    /// application without one pays nothing per event (K90b).
+    ///
+    /// `None` by default, the documented degraded answer of a query hook,
+    /// like [`dismiss`](Node::dismiss)'s `false`. Behind `std`, as
+    /// [`take_action`](Node::take_action) is, so the firmware's vtables do
+    /// not grow.
+    #[cfg(feature = "std")]
+    fn take_menu(&mut self) -> Option<u32> {
+        None
+    }
+
     /// How far this node's content is scrolled from its top, for a node
     /// that scrolls; `None` for one that does not — M57/B40.
     ///

@@ -14,7 +14,7 @@
 
 use lumen_static::{pass, Constraints, Event, InputQueue, NodeState, StaticTree, Widget};
 use lumen_static_agent::{Agent, AgentHost, TreeRef};
-use lumen_static_widgets::{Glass, Slider};
+use lumen_static_widgets::{ContextMenu, Glass, Label, Slider};
 use serde_json::{json, Value};
 
 #[derive(StaticTree, Default)]
@@ -24,7 +24,13 @@ struct Ui {
     bare: Slider,
     #[widget_id("glass")]
     glass: Glass<Slider>,
+    #[widget_id("ctx")]
+    ctx: ContextMenu<Label<String>>,
 }
+
+/// M90/T90.4: what the context menu offers.
+const ENTRIES: [lumen_static::menu::MenuEntry; 2] =
+    [lumen_static::menu::MenuEntry::new("Cut", 1), lumen_static::menu::MenuEntry::new("Copy", 2)];
 
 #[derive(lumen_static::App, Default)]
 struct App {
@@ -48,6 +54,7 @@ impl Host {
         let mut app = App::default();
         app.ui.bare = Slider::new(0.25);
         app.ui.glass.content = Slider::new(0.25);
+        app.ui.ctx = ContextMenu::new(Label::new("menu here".into()), &ENTRIES);
         let styles = pass::default_styles(&app.ui);
         let mut h = Host {
             app,
@@ -124,4 +131,21 @@ fn set_value_and_decrement_and_an_unknown_action() {
     assert!((h.app.ui.bare.value() - (0.8 - h.app.ui.bare.step)).abs() < 1e-6);
     let r = invoke(&mut h, "#bare", "juggle");
     assert!(r.get("error").is_some(), "an unknown action was accepted: {r}");
+}
+
+/// **`contextMenu` is a reader's "show context menu"** — M90/T90.4. The
+/// AT-SPI adapter offers only `click`, so this is the route a drive has to
+/// `Action::ContextMenu`: it asks at the wrapper's centre, and the wrapper
+/// opens its menu. A misspelt name is refused with the list.
+#[test]
+fn context_menu_opens_a_context_menu() {
+    let mut h = Host::new();
+    let before = h.app.ui.ctx.is_open();
+    let r = invoke(&mut h, "#ctx", "contextMenu");
+    println!("contextMenu on #ctx: open {before} -> {} (want true), reply {r}", h.app.ui.ctx.is_open());
+    assert_eq!(r["result"]["handled"], true, "{r}");
+    assert!(!before && h.app.ui.ctx.is_open(), "the action did not open the menu");
+    let r = invoke(&mut h, "#ctx", "contextmenu");
+    println!("contextmenu (misspelt): {r}");
+    assert!(r["error"]["message"].as_str().is_some_and(|m| m.contains("contextMenu")), "a misspelt action was accepted: {r}");
 }

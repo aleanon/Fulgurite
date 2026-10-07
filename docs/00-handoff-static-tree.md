@@ -631,6 +631,20 @@ activate and a right press acted in pass 1 on every widget matching
 supported; `docs/plan-desktop-integration.md` (Decisions) has the reopen
 condition, `docs/results-desktop-integration.md` T90.2 the gates.
 
+**DECIDED 2026-10-07 (M90/T90.4): a menu is data, and a choice is an
+id.** A menu's entries are `&'static [MenuEntry]` (`lumen_static::menu`)
+and which are enabled is a `MenuMask` of state; a chosen entry is its
+`u32` id, which reaches the application through one hook,
+`Program::on_menu`, installed by `Program::host()` as `on_key` is, so a
+swap carries the new build's hook and the loader holds no library `fn`.
+A drawn menu's choice is taken once (`Node::take_menu`) from the node
+that consumed the release or the Enter — the row list, by table index,
+so no wrapper forwards it — and only when a hook is installed; a native
+activation is `Event::Menu { id }` through the input queue, so a
+recorded session replays it. `ContextMenu<W>` opens its `CommandList`
+at the request's point (`Anchor::At`). `docs/results-desktop-integration.md`
+T90.4 has the gates.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind

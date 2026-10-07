@@ -136,9 +136,11 @@ right press presses nothing: it is one context request at its point
 (M90/T90.2); `app.diagnostics`'s `open_overlays` says whether a press
 would dismiss a popup first. `input.invokeAction`
 takes `action` (`default`, `increment`, `decrement`, `setValue` with
-`value`, `expand`, `collapse`, `focus`) and queues the `Event::Action` a
-screen reader's request becomes, answering `handled` — M54/T54.4; it is
-no longer a click at the centre. `ui.contrast {selector}` measures the
+`value`, `expand`, `collapse`, `focus`, and `contextMenu` since
+M90/T90.4) and queues the `Event::Action` a screen reader's request
+becomes, answering `handled` — M54/T54.4; it is no longer a click at the
+centre. `contextMenu` is the one route a drive has to a reader's "show
+context menu": AccessKit's AT-SPI adapter offers only `click`. `ui.contrast {selector}` measures the
 painted text inside a node's box against the fill under each run (the
 display list, not pixels) and answers `measured`, `unmeasured` and the
 `min` run — `just widget-drive` asserts it at 3:1 after every action.
