@@ -137,6 +137,10 @@ carries across. The application needs three things.
 # #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
 # fn boot() -> Counter { Counter { ui: Ui::default(), tally: Tally::default() } }
 # fn windows(_: u16) -> Option<Box<dyn lumen_static_shell::program::OpenProgram>> { None }
+# const TOOLS: [lumen_static::menu::MenuEntry; 1] = [lumen_static::menu::MenuEntry::new("Bump", 1)];
+# const MENU: [lumen_static::menu::MenuSection; 1] = [lumen_static::menu::MenuSection { title: "Tools", entries: &TOOLS }];
+# fn menu_enabled(_: &Tally) -> lumen_static::menu::MenuMask { lumen_static::menu::MenuMask::ALL }
+# fn on_menu(_: &mut Tally, _id: u32) -> lumen_static_shell::program::KeyOutcome { lumen_static_shell::program::KeyOutcome::Handled }
 # fn main() { let p = program(); assert_eq!(p.width, 320); }
 {{#include ../../fixtures/hot-window/src/lib.rs:program}}
 ```
