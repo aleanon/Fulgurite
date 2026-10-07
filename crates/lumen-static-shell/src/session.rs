@@ -204,8 +204,14 @@ pub trait Session: FrameSource {
     /// on when nothing does (M45/T45.9).
     fn has_focus(&self) -> bool;
     /// Paste into the focused node as one edit; the characters it kept
-    /// (`Host::paste_with`, M45/T45.7). 0 when a panic was caught.
-    fn paste(&mut self, text: &str) -> usize;
+    /// (`Host::paste_with`, M45/T45.7). **`None` when the focused node did
+    /// not take the paste** (`Host::paste_taken_with`, M90/T90.5, X3): its
+    /// own paste answered `None` and it consumed none of the text typed in
+    /// its place — a `Button`, a menu bar's titles — or nothing is
+    /// focused. The window then lets the Ctrl+V go on as a key, so a menu's
+    /// Paste accelerator can answer it. `Some(0)` when a panic was caught:
+    /// the node was asked, and the key is spent.
+    fn paste(&mut self, text: &str) -> Option<usize>;
     /// An input-method step. Whether anything changed.
     fn compose(&mut self, c: Composition<'_>) -> bool;
     /// **Where the focused node's caret is**, in physical pixels
@@ -872,17 +878,19 @@ impl<A: App + 'static, P: RecoverPolicy, I: Invalidation> Session for Local<A, P
         self.host.input.focus.is_some()
     }
 
-    fn paste(&mut self, text: &str) -> usize {
+    fn paste(&mut self, text: &str) -> Option<usize> {
         // Guarded: paste runs the focused widget's editing code. With the
         // session's own measurer, which every other frame of this session
         // lays out with — M41/T41.5 (R2-F1, R10-F4). A hot library's
         // session is one of these on the far side of the loader, and the
         // reload crate's wrapper forwards to it, so it inherits this.
+        // Whether the node took it decides whether the key goes on
+        // (M90/T90.5); a caught panic spent it.
         self.guarded(|h, m| match m.as_mut() {
-            Some(m) => h.paste_with(text, m),
-            None => h.paste(text),
+            Some(m) => h.paste_taken_with(text, m),
+            None => h.paste_taken_with(text, &mut lumen_static::cx::BlockMetrics),
         })
-        .unwrap_or(0)
+        .unwrap_or(Some(0))
     }
 
     fn compose(&mut self, c: Composition<'_>) -> bool {

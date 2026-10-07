@@ -134,6 +134,7 @@ DSelect { width: shrink; }
 DCombobox { width: shrink; }
 DMenu { width: shrink; }
 DContextMenu { width: shrink; }
+DMenuBar { width: shrink; }
 DVectorText { width: shrink; }
 DColorPicker { width: shrink; }
 DDatePicker { width: shrink; }

@@ -22,6 +22,11 @@ Over the agent, against fixtures/hot-window's copy:
      repaint the region in the page colour.
   6. introduce a panic: M36's screen through app.failure, at the line.
   7. fix it: the next swap clears the screen, and the count survived.
+  7b. M90/T90.5: the program's one-entry menu (`Program::menu`) answers
+     Ctrl+K: before the edit Ctrl+K is handled and Ctrl+J is not; edit
+     `EDIT accel` to Ctrl+J, and after the swap Ctrl+J is handled and
+     Ctrl+K is not -- the accelerators are the new build's, installed by
+     `Program::host`, never a table the loader kept.
   8. focus the field: app.imeArea is non-null and inside its physical box,
      answered by the swapped-in build through `Hot`'s forward (M80/T80.5).
   9. M81/T81.4: edit the program to `.shaping(Shaping::Complex)`; after the
@@ -713,6 +718,27 @@ v = value()
 assert v == "clicks: 3", f"step 7: the kept count must survive the panic and the swap: `{v}`"
 click()
 assert value() == "clicks: 4"
+
+# ---- 7b. the accelerators a swap brings (M90/T90.5) ---------------------
+def accel(ch):
+    r = rpc("input.key", {"key": ch, "mods": ["ctrl"]})
+    assert "error" not in r, f"step 7b: input.key Ctrl+{ch.upper()}: {r['error']}"
+    return r["result"]["handled"]
+
+
+k0, j0 = accel("k"), accel("j")
+print(f"hot-window-drive: before the edit: Ctrl+K handled {k0} (want True), Ctrl+J handled {j0} (want False)")
+assert k0 and not j0, "step 7b: before the edit the menu does not answer Ctrl+K alone"
+swaps = reloads()["reloads"]
+edit("accel", 'lumen_static::menu::MenuEntry::new("Bump", 1).accel(lumen_static::Key::Char(\'j\'), lumen_static::Mods::CTRL),')
+r, lat4 = wait(lambda r: r["reloads"] >= swaps + 1 and not r["building"], "the accelerator edit's reload")
+assert r["error"] is None, f"step 7b: the accelerator edit did not build: {r['error']}"
+k1, j1 = accel("k"), accel("j")
+print(f"hot-window-drive: accelerator edit -> swapped in {lat4:.2f}s; Ctrl+J handled {j1} (want True), "
+      f"Ctrl+K handled {k1} (want False)")
+assert j1, "step 7b: after the swap Ctrl+J does not fire: the new build's accelerators were not installed"
+assert not k1, "step 7b: after the swap Ctrl+K still fires: the old build's accelerator table survived the swap"
+assert value() == "clicks: 4", f"step 7b: the swap lost the kept count: `{value()}`"
 
 # ---- 8. the IME area, from the swapped-in build (M80/T80.5) -------------
 # `Session::caret_rect` reaches the library's session through the reload

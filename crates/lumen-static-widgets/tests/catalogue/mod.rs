@@ -86,6 +86,9 @@ pub struct Ui {
     pub context: ContextMenu<Label<String>>,
     #[widget_id("CommandList")]
     pub commands: CommandList,
+    // M90/T90.5: a menu bar of two sections, closed.
+    #[widget_id("MenuBar")]
+    pub menubar: MenuBar,
     #[widget_id("ProgressBar")]
     pub progress: ProgressBar,
     #[widget_id("Spinner")]
@@ -199,6 +202,12 @@ const COMMANDS: [lumen_static::menu::MenuEntry; 3] = [
     lumen_static::menu::MenuEntry::new("Paste", 3),
 ];
 
+/// The catalogue's menu bar.
+const BAR: [lumen_static::menu::MenuSection; 2] = [
+    lumen_static::menu::MenuSection { title: "File", entries: &COMMANDS },
+    lumen_static::menu::MenuSection { title: "Edit", entries: &COMMANDS },
+];
+
 fn bind_row(l: &mut Label<String>, i: usize) {
     l.set(format!("row {i}"));
 }
@@ -256,6 +265,7 @@ pub fn build() -> Ui {
     ui.menu.set_label("Actions");
     ui.context = ContextMenu::new(Label::new("right-click me".into()), &COMMANDS);
     ui.commands = CommandList::new(&COMMANDS);
+    ui.menubar = MenuBar::new(&BAR);
     ui.color.set_label("Colour");
     ui.date.set_label("Date");
     ui.time.set_label("Time");

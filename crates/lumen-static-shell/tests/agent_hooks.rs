@@ -6,7 +6,9 @@
 //! `Session::agent`, frames presented into an `Offscreen` — which is what
 //! `ui.screenshot` reads back. An `input.key` must reach the key hook,
 //! and an `input.click` that flips the sheet's key must be recoloured in
-//! the frame that request presented.
+//! the frame that request presented. Since M90/T90.5 an `input.key` chord
+//! answers `handled` for the key alone, so an accelerator that fired and
+//! one no entry answers read differently.
 
 use lumen_static::display::Color;
 use lumen_static::event::EventCtx;
@@ -47,6 +49,10 @@ struct Keys {
     count: Count,
 }
 
+/// One entry answering Ctrl+K (M90/T90.5).
+const TOOLS: [lumen_static::menu::MenuEntry; 1] = [lumen_static::menu::MenuEntry::new("Bump", 7).accel(Key::Char('k'), Mods::CTRL)];
+const MENU: [lumen_static::menu::MenuSection; 1] = [lumen_static::menu::MenuSection { title: "Tools", entries: &TOOLS }];
+
 fn program() -> Program<Keys> {
     application(|| {
         let mut k = Keys::default();
@@ -55,6 +61,11 @@ fn program() -> Program<Keys> {
         k
     })
     .size(W, H)
+    .menu(&MENU, |_: &Count| lumen_static::menu::MenuMask::ALL)
+    .on_menu(|c: &mut Count, _: u32| {
+        c.n += 100;
+        KeyOutcome::Handled
+    })
     .on_key(|c: &mut Count, key: Key, _: Mods| {
         c.calls += 1;
         if key == Key::Up {
@@ -143,4 +154,24 @@ fn input_click_that_flips_the_key_is_recoloured_in_its_own_frame() {
     assert_eq!(s.host.app.count.n, -20, "setup: the click did not reach its handler");
     assert_eq!(before, 0, "setup: the value was already negative-coloured");
     assert!(after > 0, "the agent's click flipped the sign and its frame kept the old sheet");
+}
+
+#[test]
+fn a_chord_answers_handled_for_its_key_alone() {
+    let mut s = Local::from_program(program(), Crashing);
+    let mut screen = Offscreen::new(W, H);
+    s.frame(0.0, W, H);
+    let k = ask(&mut s, &mut screen, "input.key", r#"{"key":"k","mods":["ctrl"]}"#);
+    let after_k = s.host.app.count.n;
+    let j = ask(&mut s, &mut screen, "input.key", r#"{"key":"j","mods":["ctrl"]}"#);
+    let after_j = s.host.app.count.n;
+    println!(
+        "input.key Ctrl+K: handled {} (want true), count {after_k} (want 100); Ctrl+J: handled {} (want false), \
+         count {after_j} (want 100), key hook calls {} (want 1, the J)",
+        k["handled"], j["handled"], s.host.app.count.calls
+    );
+    assert_eq!(after_k, 100, "setup: Ctrl+K did not reach the accelerator");
+    assert_eq!(k["handled"], true, "the accelerator's chord answered handled false");
+    assert_eq!(after_j, 100, "Ctrl+J ran a menu entry");
+    assert_eq!(j["handled"], false, "a chord nothing answered reported handled: the modifier event's answer leaked into the key's");
 }

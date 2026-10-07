@@ -1,4 +1,4 @@
-"""M90/T90.4 — context menus, live.
+"""M90/T90.4 — context menus, live; M90/T90.5 — the drawn menu bar.
 
 `ContextMenu<W>` answers `Event::ContextRequest`, which every route to a
 context menu becomes (M90/T90.2, T90.3): a right click, Shift+F10 and the
@@ -232,4 +232,202 @@ CONTEXT_MENU = ("ContextMenu", "#d_context_a", [
     ),
 ])
 
-ALL = [CONTEXT_MENU]
+# ---- M90/T90.5: the menu bar ------------------------------------------
+#
+# `MenuBar` draws the same sections the showcase installs with
+# `Program::menu` (`catalog::MENU_BAR`). Each title is a `MenuItem` child
+# with its cell as bounds, so `> ~=File` addresses it; the open menu is
+# `#menu-bar-list`, which publishes its entries as a comma list. A choice
+# by row and by accelerator both reach `Program::on_menu`, which the
+# readout names. Every action starts closed or opened by a click on a
+# title (`setup`); one that starts open is not pre-hovered, since the
+# bar's centre is the Edit title and a hover there switches the open menu
+# to Edit before the action's frame is taken.
+
+FILE = "New,Open,Save"
+EDIT = "Undo,Copy,Paste"
+
+
+def _bar_list(c):
+    return c.box(f"{c.sel} > #menu-bar-list")
+
+
+def _bar_list_h(c) -> float:
+    b = _bar_list(c)
+    return b[3] - b[1]
+
+
+def _bar_shows(c) -> str:
+    return c.value(f"{c.sel} > #menu-bar-list") if _bar_list_h(c) > 0.0 else ""
+
+
+def _title(c, name):
+    return f"{c.sel} > ~={name}"
+
+
+def _bar_close(c):
+    """Escape until no overlay is open: a known closed state."""
+    for _ in range(3):
+        if _open_count(c) == 0 and _bar_list_h(c) == 0.0:
+            return
+        c.key("Escape")
+
+
+def _bar_open(c, name="File"):
+    _bar_close(c)
+    c.click(_title(c, name))
+
+
+def _bar_row(c, k):
+    b = _bar_list(c)
+    return (b[0] + 40.0, b[1] + PAD_TOP + ROW_H * k + ROW_H / 2.0)
+
+
+def _hangs_below(c, name) -> tuple[bool, str]:
+    """The open menu's entries and where it hangs, against a title's."""
+    t, b = c.box(_title(c, name)), _bar_list(c)
+    return abs(b[0] - t[0]) <= 1.0, f"list at x {b[0]:.0f}, title {name} at x {t[0]:.0f} (bound 1 px)"
+
+
+MENU_BAR = ("MenuBar", "#d_menubar_a", [
+    Action(
+        visible=True,
+        region="window",
+        name="a click on a title opens its menu below it",
+        needs="a closed bar",
+        setup=_bar_close,
+        do=lambda c: c.click(_title(c, "File")),
+        expect=lambda c: (
+            _bar_shows(c) == FILE and _hangs_below(c, "File")[0],
+            f"menu shows {_bar_shows(c)!r} (want {FILE!r}); " + _hangs_below(c, "File")[1],
+        ),
+        # Closed, and the same click just above the bar opens nothing.
+        isolate=lambda c: (_bar_close(c), c.click_outside())[0],
+        injection="make MenuBar's PointerDown arm open nothing",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="a click on Save runs it and closes the menu",
+        needs="the File menu, opened by a click on its title",
+        setup=lambda c: _bar_open(c, "File"),
+        pre_hover=False,
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
+                      c.c.rpc("input.click", x=_bar_row(c, 2)[0], y=_bar_row(c, 2)[1]))[0],
+        expect=lambda c: (
+            c.readout() == "chose: Save (id 13)" and c._r0 != c.readout() and _bar_list_h(c) == 0.0,
+            f"readout {c._r0!r} -> {c.readout()!r} (want 'chose: Save (id 13)'), list "
+            f"{_bar_list_h(c):.0f} px tall (want closed)",
+        ),
+        isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.click_outside())[0],
+        expects_lint=("W1001",),
+        injection="ask Node::take_menu of the MenuBar instead of the list that consumed the release",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="with a menu open, hovering another title switches to its menu",
+        needs="the File menu open, the pointer not yet over Edit",
+        setup=lambda c: _bar_open(c, "File"),
+        # Not pre-hovered: the bar's centre is the Edit title, and a hover
+        # there would have switched menus before the frame was taken.
+        pre_hover=False,
+        do=lambda c: c.hover(_title(c, "Edit")),
+        expect=lambda c: (
+            _bar_shows(c) == EDIT and _hangs_below(c, "Edit")[0],
+            f"menu shows {_bar_shows(c)!r} after hovering Edit (want {EDIT!r}); " + _hangs_below(c, "Edit")[1],
+        ),
+        # File open again, and the pointer just above the bar switches nothing.
+        isolate=lambda c: (_bar_open(c, "File"),
+                           c.c.rpc("input.hover", x=c.box(_title(c, "Edit"))[0] + 8.0, y=c.box()[1] - 6.0))[0],
+        injection="switch menus on Hover only while none is open",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="Right moves to the next title's menu",
+        needs="the File menu open, its list focused",
+        setup=lambda c: _bar_open(c, "File"),
+        pre_hover=False,
+        do=lambda c: c.key("Right"),
+        expect=lambda c: (
+            _bar_shows(c) == EDIT and _hangs_below(c, "Edit")[0],
+            f"menu shows {_bar_shows(c)!r} after Right (want {EDIT!r}); " + _hangs_below(c, "Edit")[1],
+        ),
+        injection="move the roving title on Right without opening its menu",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="Escape closes it and focus is back on the bar",
+        needs="the File menu, opened by a click on its title",
+        setup=lambda c: _bar_open(c, "File"),
+        pre_hover=False,
+        do=lambda c: c.key("Escape"),
+        expect=lambda c: (
+            _bar_list_h(c) == 0.0 and _open_count(c) == 0 and c.styles()["state"]["focused"],
+            f"list {_bar_list_h(c):.0f} px tall, open overlays {_open_count(c)} (want 0, 0); "
+            f"bar focused {c.styles()['state']['focused']} (want True)",
+        ),
+        expects_lint=("W1001",),
+        injection="drop FOCUSABLE from the bar's own node (focus has nowhere to come back to)",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="Down on the focused bar opens it, and Enter chooses New",
+        needs="a closed bar with focus",
+        # The menu opens and closes inside the action, below the bar, and
+        # no pointer moves: net, the strip paints what it painted, and what
+        # changed is the readout (`visible`'s region).
+        repaints=False,
+        setup=_bar_close,
+        prep=lambda c: c.c.rpc("input.invokeAction", selector=c.sel, action="focus"),
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.key("Down"), c.key("Enter"))[0],
+        expect=lambda c: (
+            c.readout() == "chose: New (id 11)" and c._r0 != c.readout() and _bar_list_h(c) == 0.0,
+            f"readout {c._r0!r} -> {c.readout()!r} after Down, Enter (want 'chose: New (id 11)'), "
+            f"list {_bar_list_h(c):.0f} px tall",
+        ),
+        expects_lint=("W1001",),
+        injection="open the menu from the keyboard without highlighting its first row",
+    ),
+    Action(
+        visible=True,
+        region="window",
+        name="Ctrl+O runs Open by its accelerator, with no menu open",
+        needs="a closed bar",
+        # The host matches the accelerator; the bar is not involved and
+        # paints nothing new. What changed is the readout.
+        repaints=False,
+        setup=_bar_close,
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.key("o", ["ctrl"]))[0],
+        expect=lambda c: (
+            c.readout() == "chose: Open (id 12)" and c._r0 != c.readout() and _bar_list_h(c) == 0.0,
+            f"readout {c._r0!r} -> {c.readout()!r} after Ctrl+O (want 'chose: Open (id 12)'), list "
+            f"{_bar_list_h(c):.0f} px tall (want closed)",
+        ),
+        # The same key without Ctrl is no accelerator.
+        isolate=lambda c: (c.__dict__.__setitem__("_r0", c.readout()), c.key("o"))[0],
+        injection="match no accelerator in Host::accelerator (the precedence over on_key is the headless gate's: the showcase installs no key hook)",
+    ),
+    # Static: nothing has run Copy, so Paste is disabled and a release on
+    # it chooses nothing.
+    Action(
+        name="a release on the disabled Paste runs nothing and keeps the menu open",
+        needs="the Edit menu open, Paste disabled (Copy not run)",
+        setup=lambda c: _bar_open(c, "Edit"),
+        pre_hover=False,
+        do=lambda c: (c.__dict__.__setitem__("_r0", c.readout()),
+                      c.c.rpc("input.click", x=_bar_row(c, 2)[0], y=_bar_row(c, 2)[1]))[0],
+        expect=lambda c: (
+            c.readout() == c._r0 and _bar_shows(c) == EDIT,
+            f"readout {c._r0!r} -> {c.readout()!r} (want unchanged), menu shows {_bar_shows(c)!r} "
+            f"(want {EDIT!r}, still open)",
+        ),
+        static=True,
+        injection="ignore the section's slice of MenuBar::enabled",
+    ),
+])
+
+ALL = [CONTEXT_MENU, MENU_BAR]

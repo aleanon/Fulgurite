@@ -407,3 +407,117 @@ K90b does not fire on the shipped build. The consumed-click median sits
 about 0.13 µs (1.2%) above the parent's in both sets, inside its spread:
 what is left on that path without a hook is one discriminant test
 (`Event::Menu`) per drained event and the `on_menu` test per consumed one.
+
+## T90.5 — `MenuBar`, `Program::menu` and accelerators (2026-10-07, on `1faf792`)
+
+The menu bar is drawn by the framework from the program's `&'static
+[MenuSection]` (owner decision D2), and `Program::menu(sections,
+enabled)` installs the same data into the host through `Program::host()`:
+a key press no widget consumed is offered to the enabled entries'
+accelerators before `Program::on_key`. In a window Ctrl+V is consumed as a
+paste only when the focused node took it (`Session::paste` answers
+`Option<usize>`, `keys::clipboard_shortcut`).
+
+### Gates (`crates/lumen-static-shell/tests/menu_bar.rs` unless named)
+
+Identical under `Everything` and `Boundaries<256>`. A 480 × 360 window:
+the bar (File: New, Save; Edit: Copy, Paste; View: Zoom) over a
+`TextInput`.
+
+| gate | measured | bound / accept |
+|---|---|---|
+| Ctrl+S, nothing focused | handled true, `on_menu` `[2]`, `on_key` **0** | once; 0 |
+| Ctrl+S with Save disabled (`enabled` clears bit 1) | `on_menu` still `[2]`, `on_key` `[(Char('s'), CTRL)]` | the key falls through once |
+| `s` typed into the focused field | text `"s"`, `on_menu` 1 (unchanged), `on_key` **0** | neither hook |
+| `Program::menu` with 65 entries over 2 sections | panics: "a program's menu holds at most 64 entries (one bit each of its MenuMask); this one has 65 across 2 sections" | refused by name; accept: 64 accepted |
+| a click on title 0 at `(30, 17)` | handled true, open `Some(0)`, `["New", "Save"]` at `(4, 34)`, focus moves into the list | open below its title |
+| Right with the menu open | open `Some(1)`, entries `["Copy", "Paste"]`, the list at x 56 = title 1's | the next title's menu |
+| Escape | open `None`, focus on the bar (index 1) | focus returns to the bar |
+| hover title 2 with title 0 open | open `Some(2)` | switches |
+| a release on File > Save | `on_menu` `[2]`, closed | once |
+| Down then Enter on the focused bar | opened `Some(0)`, `on_menu` `[1]` (New) | the keyboard opens and chooses |
+| `crates/lumen-static-winit/tests/clipboard_shortcut.rs` (X3): a `Button` focused, `"x"` on the clipboard, Edit > Paste on Ctrl+V | `keys::clipboard_shortcut` consumed **false**; the key then runs `on_menu` `[30]` | not consumed, once; accept: a focused `TextInput` — consumed true, text `"x"`, `on_menu` unchanged |
+| `crates/lumen-static-shell/tests/agent_hooks.rs`: `input.key` chords | Ctrl+K (an accelerator) handled true, count 100; Ctrl+J handled **false** | the key's own answer |
+| `crates/lumen-static-widgets/tests/a11y_roles.rs` | `MenuBar` `Role::MenuBar`, publishes `Focus`, handled 1 of 1; 73 rows over 57 impls (56 covered); all rows published 55, handled 55 | every published action handled |
+
+### Injections (red, by name)
+
+| injection | what went red |
+|---|---|
+| (1) `on_key` before the accelerators | "Ctrl+S did not run on_menu(SAVE) once": on_menu `[]`, on_key 1 |
+| the accelerator ignores `enabled` | "a disabled Save ran on_menu": `[2, 2]`, on_key `[]` |
+| (added) a typed character is not owned by a node with a caret | "typing `s` into a field reached on_key": 1 against 0 |
+| `Program::menu`'s limit off by one | "Program::menu accepted 65 entries" |
+| the bar's Left/Right move only the roving title while a menu is open | **green at first** — the gate read `open_title()`, the roving title; rewritten to read the list, it names "Right moved the title but the menu still shows another section" (`["New", "Save"]`) |
+| the bar's own node not `FOCUSABLE` | "focus did not return to the bar": focus `None` |
+| (3) `keys::clipboard_shortcut` consumes `Clip::Paste` whatever `paste` answers | "Ctrl+V on a Button was swallowed as a paste nothing took": consumed true, on_menu `[]` |
+| the role row deleted | "Node impls with no row in the table: [\"MenuBar\"]" |
+| the agent pumps `Modifiers` with the key (today's code) | "the modifier event's answer leaked into the key's": Ctrl+J handled true |
+
+### The live legs
+
+**`just widget-drive MenuBar`** (`scripts/drive/widgets/menus.py`), a
+private Xephyr display, all six legs (`Everything`, `Boundaries<256>`,
+`+oracle`, `+scale2` with the full-repaint check, and both strategies with
+`shaping`): each "1 widgets, 8 actions, 3 without an isolate, 0 failed";
+parity 1 of 1 byte-identical; the keyboard pass reached `#d_menubar_a` in
+1 Tab and Right, Down, Enter chose Undo (`chose: nothing yet` →
+`chose: Undo (id 21)`); the secondary leg `checked 1 (manifest 1)`,
+`overlay_open 2 (manifest 2)`; the oracle compared 753 frames, none
+diverged; app exit 0. After the agent's `input.key` change, the final tree
+was driven again as `just widget-drive MenuBar,ContextMenu,Selectable`
+(the entries whose drives send chords): all six legs "3 widgets, 20
+actions, 0 failed", parity 3 of 3, keyboard 4 actions 0 failed, the oracle
+1,965 frames none diverged. From the `Everything` leg:
+
+| action | measured | bound |
+|---|---|---|
+| a click on a title | the menu shows `New,Open,Save`, at x 606 = File's; damage 1.00× | 1 px; 4.0× |
+| a click on Save | `chose: Save (id 13)`, closed; damage 1.00× | — |
+| hovering Edit with File open | the menu shows `Undo,Copy,Paste` at Edit's x; damage 1.22× | 1 px; 4.0× |
+| Right | `Undo,Copy,Paste` at Edit's x | 1 px |
+| Escape | closed, overlays 0, the bar focused | — |
+| Down, Enter on the focused bar | `chose: New (id 11)` | — |
+| Ctrl+O (`input.key` with `mods`) | `chose: Open (id 12)`, no menu open; isolate: plain `o` changes nothing | — |
+| a release on the disabled Paste (static) | readout unchanged, the menu still open | — |
+
+Live injections, the `Boundaries` leg alone: the bar's press arm opening
+nothing — "a click on a title opens its menu below it ... the input did
+not reach the widget", 4 failed; the host matching no accelerator — "Ctrl+O
+runs Open by its accelerator ... readout unchanged", 2 failed. Injection
+(1) is the headless gate's alone: the showcase installs no key hook, so
+which of the two is asked first cannot show in its window.
+
+**`just hot-window-drive`, the `hot` leg** (step 7b): before the edit
+Ctrl+K handled **true**, Ctrl+J **false**; the edit to Ctrl+J swapped in
+1.24 s, then Ctrl+J **true**, Ctrl+K **false**; PASS. Injection (2), as
+`docs/plan-desktop-integration.md` "What building found" words it (the
+first table installed in the process is the one every later host gets):
+after the swap "Ctrl+J handled False (want True), Ctrl+K handled True",
+"step 7b: after the swap Ctrl+J does not fire".
+
+### Firmware
+
+`just firmware-delta 1faf792 firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0`: every binary +0 `.text` and +0
+`.rodata` (`firmware` 31,306, `firmware_interactive` 64,168,
+`firmware_bind` 34,678, `firmware_cascade` 33,398). No core code changed.
+
+### K90b (`benches --bin invalidation`, `benches-competitive/arms/frame`)
+
+The parent's binaries (`1faf792`) against this task's, interleaved under
+`scripts/bench_lock.sh` after the reference machine's CI run at `1faf792`
+had finished, eight runs a side, every run quiet. min / median / max µs:
+
+| row | parent | T90.5 | reading |
+|---|---|---|---|
+| `dispatch, one PointerMove` | 0.03 / 0.040 / 0.05 | 0.03 / **0.030** / 0.05 | inside |
+| `dispatch, one PointerMove (tiny)` | 0.02 / 0.020 / 0.04 | 0.02 / **0.020** / 0.03 | inside |
+| `dispatch, left press+release` | 0.059 / 0.062 / 0.088 | 0.058 / **0.059** / 0.075 | inside |
+| `dispatch, right press+release` | 0.059 / 0.062 / 0.089 | 0.060 / **0.061** / 0.075 | inside |
+| `pump_with, one consumed click` | 10.59 / 10.935 / 14.53 | 10.22 / **11.020** / 11.33 | inside |
+| `idle (floor)` | 56.9 / 57.45 / 63.9 | 56.8 / **63.40** / 63.7 | inside |
+
+K90b does not fire: the accelerator test sits at its call site
+(`self.menu.is_some()`), reached only by an event nothing consumed, and
+none of these rows installs a menu.

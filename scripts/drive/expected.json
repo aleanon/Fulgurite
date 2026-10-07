@@ -23,13 +23,14 @@
   "M87/T87.3 added LinkedMarkdown: a click on the `~=changelog` Link child runs the handler with that link, and the readout names its target; a press on the plain first word runs nothing (the isolate).",
   "M87/T87.4 added LinkedMarkdown's static image check: the demo's `![..](spin)` is one Image child inside the paragraph, labelled with its alt text, and at least 5% of its box is off the page fill in the screenshot.",
   "M90/T90.2 added `secondary`: every action whose `do` sends a left input.click, filed by the secondary-button leg as `checked` (the same click with button right answered handled false and left the widget's pixels unchanged) or `overlay_open` (not sent: a popup was open, and a right press outside an open one dismisses it, gated headlessly in crates/lumen-static/tests/context_request.rs).",
-  "M90/T90.4 added ContextMenu (scripts/drive/widgets/menus.py), and the secondary leg's `opened` list: an action of an entry `secondary.context` names whose replayed right click lands inside the widget must open its context menu (handled true, one overlay) and Escape must restore its pixels."
+  "M90/T90.4 added ContextMenu (scripts/drive/widgets/menus.py), and the secondary leg's `opened` list: an action of an entry `secondary.context` names whose replayed right click lands inside the widget must open its context menu (handled true, one overlay) and Escape must restore its pixels.",
+  "M90/T90.5 added MenuBar (scripts/drive/widgets/menus.py): a title opens its menu below it, a row and an accelerator (Ctrl+O) both reach Program::on_menu, hovering another title and Right switch menus, Escape returns focus to the bar, and a release on its disabled Paste is static."
  ],
  "counts": {
-  "entries": 54,
-  "actions": 176,
-  "landed_checked": 136,
-  "isolated": 73
+  "entries": 55,
+  "actions": 184,
+  "landed_checked": 143,
+  "isolated": 77
  },
  "entries": {
   "Selectable": [
@@ -63,6 +64,16 @@
    "Down, Down and Enter choose Copy",
    "a click outside dismisses it",
    "Escape dismisses it"
+  ],
+  "MenuBar": [
+   "a click on a title opens its menu below it",
+   "a click on Save runs it and closes the menu",
+   "with a menu open, hovering another title switches to its menu",
+   "Right moves to the next title's menu",
+   "Escape closes it and focus is back on the bar",
+   "Down on the focused bar opens it, and Enter chooses New",
+   "Ctrl+O runs Open by its accelerator, with no menu open",
+   "a release on the disabled Paste runs nothing and keeps the menu open"
   ],
   "Pagination": [
    "the next arrow steps one page",
@@ -325,6 +336,7 @@
   "Menu/its button opens it again",
   "ContextMenu/a left click presses the button and opens no menu",
   "ContextMenu/a release on the disabled Paste runs nothing and keeps the menu open",
+  "MenuBar/a release on the disabled Paste runs nothing and keeps the menu open",
   "Tree/pressing a leaf selects it and folds nothing",
   "DataGrid/it shows its columns over virtualized rows",
   "SearchField/the magnifier is left of the text and inside the pill",
@@ -447,7 +459,8 @@
    "Video/pause holds the picture",
    "Video/play advances the picture",
    "ContextMenu/a click on Cut runs it and closes the menu",
-   "ContextMenu/a click outside dismisses it"
+   "ContextMenu/a click outside dismisses it",
+   "MenuBar/a click on Save runs it and closes the menu"
   ],
   "overlay_open": [
    "ColorPicker/a press opens the popup",
@@ -469,7 +482,9 @@
    "TimePicker/a press opens the popup",
    "TimePicker/an hour sets the hour and keeps the clock open",
    "Toast/Save shows a toast below the stage, centred on the window",
-   "ContextMenu/a release on the disabled Paste runs nothing and keeps the menu open"
+   "ContextMenu/a release on the disabled Paste runs nothing and keeps the menu open",
+   "MenuBar/a click on a title opens its menu below it",
+   "MenuBar/a release on the disabled Paste runs nothing and keeps the menu open"
   ],
   "opened": [
    "ContextMenu/a left click presses the button and opens no menu"

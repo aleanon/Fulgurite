@@ -127,7 +127,9 @@ IME path does.
 `Left` `Right` `Up` `Down` `Home` `End` `PageUp` `PageDown` `Menu` `F1`–`F12`
 or one character (`Menu` and the F keys since M90/T90.3: Shift+F10 and the
 Menu key ask the focused node for a context menu).
-`input.key` takes `mods` (`["ctrl"]`, held for that key only) and
+`input.key` takes `mods` (`["ctrl"]`, held for that key only; `handled`
+is the key's own since M90/T90.5, so an accelerator that fired reads
+`true` and a chord nothing answered `false`) and
 `input.click` takes `clicks` (2 or 3) — M45/T45.6 — and `input.click`,
 `input.pointerDown` and `input.pointerUp` take `button` (`"left"`, the
 default, `"right"`, `"middle"`), echoed in the reply — M90/T90.1. A

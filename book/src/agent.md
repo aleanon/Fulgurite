@@ -36,7 +36,9 @@ true}`, through the same route the window's IME takes).
 M90/T90.3, so a drive can send Shift+F10 and the Menu key, which ask for a
 context menu), or a single character; anything else is refused with the
 list.
-`input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only,
+`input.key` takes `mods` (`["ctrl", "shift"]`), held for that key only
+— its reply's `handled` is the key's own, so a menu accelerator that
+fired reads `true` and a chord nothing answered `false` (M90/T90.5) —
 and `input.click` takes `clicks` (2 or 3) for a double or triple click.
 `input.click`, `input.pointerDown` and `input.pointerUp` take `button`
 (`"left"`, the default, `"right"` or `"middle"`) and echo it in the

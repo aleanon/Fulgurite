@@ -645,6 +645,19 @@ recorded session replays it. `ContextMenu<W>` opens its `CommandList`
 at the request's point (`Anchor::At`). `docs/results-desktop-integration.md`
 T90.4 has the gates.
 
+**DECIDED 2026-10-07 (M90/T90.5): the menu bar is drawn, and accelerators
+are the host's.** `MenuBar` draws the program's `&'static [MenuSection]`
+on every platform (owner decision D2; native `muda` deferred until CI
+has a macOS or Windows leg). `Program::menu(sections, enabled)` installs
+the same data into the host through `Program::host()`, so a swap carries
+the new build's table: a key press no widget consumed is offered to the
+enabled entries' accelerators before `Program::on_key`, so a key is
+handled once — by a widget, by a menu entry, or by the key hook. A typed
+character in a node with a caret is that node's. In a window, Ctrl+V is
+consumed as a paste only when the focused node took it
+(`Session::paste` answers `Option<usize>`). `docs/results-desktop-integration.md`
+T90.5 has the gates.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind

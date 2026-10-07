@@ -313,6 +313,47 @@ pub(crate) const CONTEXT: [lumen_static::menu::MenuEntry; 4] = {
     ]
 };
 
+// ANCHOR: menu_bar_data
+/// What M90/T90.5's menu bar offers — one table, read by the bar and by
+/// the program's accelerators (`Program::menu` in `main.rs`). Edit's Paste
+/// (flattened entry 5) is enabled once Copy has run.
+const BAR_FILE: [lumen_static::menu::MenuEntry; 3] = {
+    use lumen_static::menu::MenuEntry;
+    use lumen_static::{Key, Mods};
+    [
+        MenuEntry::new("New", 11).accel(Key::Char('n'), Mods::CTRL),
+        MenuEntry::new("Open", 12).accel(Key::Char('o'), Mods::CTRL),
+        MenuEntry::new("Save", 13).accel(Key::Char('s'), Mods::CTRL),
+    ]
+};
+const BAR_EDIT: [lumen_static::menu::MenuEntry; 3] = {
+    use lumen_static::menu::MenuEntry;
+    use lumen_static::{Key, Mods};
+    [
+        MenuEntry::new("Undo", 21).accel(Key::Char('z'), Mods::CTRL),
+        MenuEntry::new("Copy", 22).accel(Key::Char('c'), Mods::CTRL),
+        MenuEntry::new("Paste", 23).accel(Key::Char('v'), Mods::CTRL),
+    ]
+};
+const BAR_VIEW: [lumen_static::menu::MenuEntry; 2] = {
+    use lumen_static::menu::MenuEntry;
+    use lumen_static::Key;
+    [MenuEntry::new("Reload", 31).accel(Key::F(5), lumen_static::Mods::NONE), MenuEntry::new("Full screen", 32)]
+};
+pub(crate) const MENU_BAR: [lumen_static::menu::MenuSection; 3] = [
+    lumen_static::menu::MenuSection { title: "File", entries: &BAR_FILE },
+    lumen_static::menu::MenuSection { title: "Edit", entries: &BAR_EDIT },
+    lumen_static::menu::MenuSection { title: "View", entries: &BAR_VIEW },
+];
+/// Edit's Paste, in flattened order.
+pub(crate) const BAR_PASTE: usize = 5;
+// ANCHOR_END: menu_bar_data
+
+/// The label of the menu bar's entry `id`.
+fn bar_label(id: u32) -> &'static str {
+    MENU_BAR.iter().flat_map(|s| s.entries.iter()).find(|e| e.id == id).map_or("?", |e| e.label)
+}
+
 /// A `Menu` is seeded **open**, because it has no trigger and a closed
 /// one shows nothing at all.
 ///
@@ -685,6 +726,22 @@ pub static CATALOG: &[Entry] = &[
             None => "chose: nothing yet".into(),
         }),
     // ANCHOR_END: context_menu
+    // ANCHOR: menu_bar
+    // M90/T90.5: the bar is drawn from `MENU_BAR`, which the program also
+    // installs with `Program::menu`, so Ctrl+S works with or without the
+    // bar's menu open; both routes end in `on_menu` (`main.rs`).
+    entry!("Choice", "MenuBar", "Click a title, or press Ctrl+S.",
+        false,
+        |s| {
+            s.store.bar = None;
+            s.store.bar_clipped = false;
+            on(s, Demo::MenuBar(DMenuBar { a: MenuBar::new(&MENU_BAR) }))
+        },
+        |s| match s.store.bar {
+            Some(id) => format!("chose: {} (id {id})", bar_label(id)),
+            None => "chose: nothing yet".into(),
+        }),
+    // ANCHOR_END: menu_bar
     entry!("Fields", "NumberInput", "Arrows step it; letters are refused.",
         false,
         |s| on(s, Demo::Number(DNumberInput { a: NumberInput::new(s.store.fraction * 10.0, 0.0, 10.0, 0.5) })),

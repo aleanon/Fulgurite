@@ -22,6 +22,8 @@ ROLES = {
     # M90/T90.4: a wrapper that claims a context menu (`ShowContextMenu`);
     # the button it wraps speaks, and its rows are a `Menu`.
     "ContextMenu": "GenericContainer",
+    # M90/T90.5: the drawn menu bar; each title is a `MenuItem` child.
+    "MenuBar": "MenuBar",
     "Pagination": "ListBox",
     "Tree": "Tree",
     "DataGrid": "Grid",

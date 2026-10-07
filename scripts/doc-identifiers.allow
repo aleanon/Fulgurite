@@ -123,7 +123,6 @@ __ln_                # the derive's local-name prefix (M55/T55.1); since the loc
 Inval                # the strategy alias M55/T55.4 replaced with a type parameter; the plans that record its history cite it
 WinApp  # counter-window's own ApplicationHandler, deleted by M60 (docs/plan-tally-slim.md); docs/plan-desktop.md's M14 history names it
 
-MenuItem             # AccessKit's role names; docs/plan-widget-fixes.md A17 maps widgets onto them
 
 
 # --- M80–M90 (docs/plan-iced-roadmap.md and its eleven milestone plans):
@@ -148,7 +147,6 @@ LINKED_MARKDOWN                # built by M87/T87.3 in scripts/drive/widgets/ric
 MAX_SPANS                      # removed by M87/T87.1 (the span store grows); docs/plan-widget-parity.md and the M87 plan and gates name it historically
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 GpuContext                     # proposed by M89
-MenuBar                        # proposed by M90
 RegisteredStatusNotifierItems  # proposed by M90
 TrayModel                      # proposed by M90
 TraySpec                       # proposed by M90

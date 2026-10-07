@@ -48,7 +48,7 @@ sections below are still the 2026-09-06 survey.
 | **Vector drawing** | Lines and linear gradients shipped (`Cmd::Line`, `Cmd::Gradient`). Paths, radial and style gradients, vector text: `docs/plan-paint-vocabulary.md` (M82). |
 | **Animation** | Shipped: `Animated<T>`, `Easing`, `App::tick`, timers (M28). Built-in widget transitions: `docs/plan-transitions.md` (M86). |
 | **Overlays and z-order** | Shipped: popups, menus, tooltips, modals, toasts, nested overlays (M15, M27). Arbitrary z-order stays rejected (`docs/plan-capabilities.md`). |
-| **Menus** | `Menu` shipped (M27). Right-click context menus, a menu bar and a tray: `docs/plan-desktop-integration.md` (M90). |
+| **Menus** | `Menu` shipped (M27). Right-click context menus (`ContextMenu`, M90/T90.4) and a menu bar drawn by the framework on every platform, with accelerators (`MenuBar`, `Program::menu`, M90/T90.5), shipped; native `muda` menus deferred until CI has a macOS or Windows leg, and the Linux tray is M90b (`docs/plan-desktop-integration.md`). |
 | **Multi-window** | Not in a turnkey window (M54/T54.7 un-marked T15.10). `docs/plan-windows.md` (M89). |
 | **Drag and drop** | Within an application shipped (`Drag`); the platform half compiles behind `dnd` and is not routed by `run` (M54/T54.7). |
 | **Touch and gestures** | Shipped: touch events and recognisers (`gesture.rs`, M15; M44/T44.4). |

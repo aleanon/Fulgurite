@@ -1048,3 +1048,74 @@ T90.0; everything else cites it.
   hook test moved from inside `Host::take_menus` to its call sites, so a
   program with no menus makes no call. Twelve interleaved runs then read
   inside every spread (`docs/results-desktop-integration.md` T90.4).
+- **T90.5, the bar is one Tab stop with a roving title**, not one focusable
+  node per title. A static tree's node count is a `const` and a bar's
+  sections are a slice, so a node per title would make `MenuBar` generic
+  over its section count. WAI-ARIA's menubar pattern is a single stop with
+  roving focus, which is what the Decisions' keys describe: Left and Right
+  move the title (and, with a menu open, the menu — the list declines them
+  and they bubble to the bar), Down/Enter/Space open, Escape closes with
+  focus back on the bar. Each title is published as a `MenuItem` child with
+  its drawn cell as bounds (as `LinkedMarkdown`'s links are), so a reader
+  meets each one and the drive addresses `#d_menubar_a > ~=File`. That
+  makes AccessKit's `MenuItem` a live code token, so M22's allowlist entry
+  for it is removed (`check_doc_identifiers.sh` refuses a live name there);
+  the type is still `MenuEntry`. The menu hangs below its title through
+  `Anchor::Below`, not `Anchor::At`, so it flips and clamps as a dropdown
+  does.
+- **T90.5, a typed character in a node with a caret is that node's.** The
+  accept gate ("with a `TextInput` focused, typing `s` inserts it and calls
+  neither") went red on first run: a field takes the character's
+  `Event::Text` and declines its `Key::Char`, so that press, consumed by
+  nobody, reached the key hook — typing `s` into a field ran an
+  application's `s` shortcut, a defect of M60/T60.1's `on_key` that no gate
+  had typed into a field to see. Fixed in the host's `focus_owns`, which the
+  accelerators and the key hook share: a `Key::Char` with no Ctrl, Alt or
+  Super held is owned by a focused node whose `Node::caret_rect` answers
+  (the question the window's IME area already asks). Injection: drop that
+  clause — "typing `s` into a field reached on_key", 1 against 0.
+- **T90.5, "the focused node took the paste" includes typing.** `Session::paste`
+  answers `None` when the node's own `Node::paste` answered `None` **and**
+  the typing fallback (`Host::paste_as_typing`, for nodes with no paste of
+  their own) consumed no character — not on `Node::paste` alone, which would
+  have turned every paste into such a node into a routed key. A `Button`
+  and a `MenuBar` consume no `Text`, so they answer `None` as the plan wants.
+- **T90.5, an accelerator matches exactly.** The modifiers held must equal
+  the entry's (Ctrl+Shift+S is not Ctrl+S), a letter is compared case-blind
+  (Shift may have upper-cased it), the first entry in flattened order wins,
+  and a hook that answers `Ignored` lets the key go on to `on_key`, as a
+  disabled entry does.
+- **T90.5, the headless Right gate's first version was vacuous.** Under the
+  injection "Right moves the roving title without opening its menu" it
+  stayed green: it read `MenuBar::open_title()`, which is the roving title
+  whenever a menu is open, so a Right that moved only the title read
+  `Some(1)` with File's entries still showing. It now asserts the list's
+  entries (`["Copy", "Paste"]`) and that the list hangs below title 1, and
+  the same injection names "Right moved the title but the menu still shows
+  another section".
+- **T90.5, the showcase enables its menu only while the bar's demo is on
+  the stage.** `Program::menu` is the whole program's, so the demo's
+  Ctrl+C, Ctrl+V and Ctrl+Z would otherwise answer on every page;
+  `menu_enabled` returns `MenuMask::NONE` elsewhere, and a disabled
+  accelerator falls through as decided.
+- **T90.5, injection (2) cannot be written as the plan words it and still be
+  observed.** A table installed into `Win`'s `Config` would be matched in
+  the window's key path, which agent input never enters (`input.key` goes to
+  the session — G26's own reason no OS key is injected), so the drive could
+  not tell it from no table at all. The injection that breaks the same
+  mechanism and reaches the drive: `Program::host()` keeps the **first**
+  table it installs in the process (a process-global, which a hot library's
+  own statics are not, so it is an environment variable) and installs that
+  one in every later host — the loader-kept table, reached through the path
+  the drive uses. Under it the swap leaves Ctrl+K firing, as the plan
+  predicts.
+- **T90.5 cost the firmware nothing**: no core code changed; every binary
+  +0 under the strict form.
+- **T90.5, `input.key` with `mods` answered `handled: true` for every
+  chord.** The agent queued the `Modifiers` event and the key and pumped
+  once, and dispatch counts a `Modifiers` event as handled (it records it),
+  so the hot drive's "Ctrl+J is not handled" read `true` before any edit.
+  The agent now pumps the modifiers on their own and answers the key's
+  pump; `crates/lumen-static-shell/tests/agent_hooks.rs` gates it (Ctrl+K
+  through the accelerator `true`, Ctrl+J `false`; red under the single
+  pump, "the modifier event's answer leaked into the key's").

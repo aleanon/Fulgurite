@@ -424,6 +424,9 @@ pub struct Host<A: App, R: Retention = Incremental, I: Invalidation = lumen_stat
     /// [`program::Program::on_menu`]'s hook — M90/T90.4. `None` means no
     /// node is ever asked [`Node::take_menu`].
     on_menu: Option<program::MenuHook<A>>,
+    /// [`program::Program::menu`]'s sections and enabled function —
+    /// M90/T90.5: the accelerator table. `None` means no key is matched.
+    menu: Option<program::ProgramMenu<A>>,
     /// The key hook answered [`program::KeyOutcome::Quit`] — M60/T60.1.
     quit: bool,
     /// What the last frame had marked when it cleared — M29/T29.3.
@@ -490,6 +493,13 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// and an [`Event::Menu`] goes nowhere.
     pub fn set_on_menu(&mut self, hook: program::MenuHook<A>) {
         self.on_menu = Some(hook);
+    }
+
+    /// The program's menu — M90/T90.5, installed by
+    /// [`program::Program::menu`]: its entries' accelerators are matched
+    /// against a key press no widget consumed, before the key hook.
+    pub fn set_menu(&mut self, menu: program::ProgramMenu<A>) {
+        self.menu = Some(menu);
     }
 
     /// Whether the key hook asked to close — M60/T60.1. The window it
@@ -963,6 +973,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             sheet_key: None,
             on_key: None,
             on_menu: None,
+            menu: None,
             quit: false,
             held: Vec::new(),
             last_marks: lumen_static::invalidate::Marks::default(),
@@ -1904,9 +1915,35 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// field's edge as not consumed, and that arrow must not nudge the
     /// application.
     fn key_hook(&mut self, ev: &Event) -> bool {
-        use lumen_static::Key;
         let Some(hook) = self.on_key else { return false };
         let Event::Key { key, down: true } = *ev else { return false };
+        if self.focus_owns(key) {
+            return false;
+        }
+        match hook(self.app.state_mut(), key, self.input.mods) {
+            program::KeyOutcome::Ignored => false,
+            program::KeyOutcome::Handled => true,
+            program::KeyOutcome::Quit => {
+                self.quit = true;
+                true
+            }
+        }
+    }
+
+    /// Whether the focused node owns `key` whether or not it acted on it,
+    /// so neither the accelerators nor the key hook are offered it:
+    ///
+    /// - a navigation or editing key in a node answering
+    ///   `Node::owns_arrows` (`docs/plan-tally-slim.md` §2.1);
+    /// - **a typed character in a node with a caret** — M90/T90.5. A field
+    ///   takes the character's `Event::Text` and declines its `Key`, so the
+    ///   `Key::Char` press nobody consumed went on to the key hook: typing
+    ///   `s` into a field ran an application's `s` shortcut. A character
+    ///   with Ctrl, Alt or Super held is a shortcut, not typing, and is
+    ///   offered as before. "Has a caret" is `Node::caret_rect` answering,
+    ///   the question the window's IME area already asks.
+    fn focus_owns(&self, key: lumen_static::Key) -> bool {
+        use lumen_static::Key;
         let editing = matches!(
             key,
             Key::Up
@@ -1920,24 +1957,60 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                 | Key::Backspace
                 | Key::Delete
         );
-        if editing {
-            if let Some(f) = self.input.focus {
-                let f = f as usize;
-                if f < <A::Tree as Widget>::NODE_COUNT
-                    && lumen_static::widget::Node::node(self.app.tree(), f).owns_arrows()
-                {
-                    return false;
-                }
-            }
+        let m = self.input.mods;
+        let typing = matches!(key, Key::Char(_))
+            && !m.has(lumen_static::Mods::CTRL)
+            && !m.has(lumen_static::Mods::ALT)
+            && !m.has(lumen_static::Mods::META);
+        if !editing && !typing {
+            return false;
         }
-        match hook(self.app.state_mut(), key, self.input.mods) {
-            program::KeyOutcome::Ignored => false,
-            program::KeyOutcome::Handled => true,
-            program::KeyOutcome::Quit => {
-                self.quit = true;
-                true
-            }
+        let Some(f) = self.input.focus.map(|f| f as usize) else { return false };
+        if f >= <A::Tree as Widget>::NODE_COUNT {
+            return false;
         }
+        let node = lumen_static::widget::Node::node(self.app.tree(), f);
+        (editing && node.owns_arrows()) || (typing && node.caret_rect(&self.states, f).is_some())
+    }
+
+    /// **A key press no widget consumed, offered to the menu's
+    /// accelerators** — M90/T90.5 (`docs/plan-desktop-integration.md`,
+    /// "Accelerators are the framework's"). Before the key hook, so a key
+    /// is handled once: by a widget, by a menu entry, or by `on_key`.
+    ///
+    /// The first entry, in flattened order, whose [`Accel`] is this key with
+    /// exactly the modifiers held (a letter compared case-blind, since
+    /// Shift may have upper-cased it) is asked of the program's `enabled`
+    /// function; enabled, its id runs [`Host::menu_hook`]. Whether the hook
+    /// handled it: `false` — so the key goes on to `on_key` — for a
+    /// release, a key the focused node owns ([`Host::focus_owns`]), no
+    /// match, a **disabled** match, no hook, or a hook that answered
+    /// `Ignored`. Called only with a menu installed (the test is at the
+    /// call site, K90b).
+    ///
+    /// [`Accel`]: lumen_static::menu::Accel
+    fn accelerator(&mut self, ev: &Event) -> bool {
+        let Some(menu) = self.menu else { return false };
+        let Event::Key { key, down: true } = *ev else { return false };
+        if self.focus_owns(key) {
+            return false;
+        }
+        let fold = |k: lumen_static::Key| match k {
+            lumen_static::Key::Char(c) => lumen_static::Key::Char(c.to_ascii_lowercase()),
+            k => k,
+        };
+        let mods = self.input.mods;
+        let hit = menu
+            .sections
+            .iter()
+            .flat_map(|s| s.entries.iter())
+            .enumerate()
+            .find(|(_, e)| e.accel.is_some_and(|a| fold(a.key) == fold(key) && a.mods == mods));
+        let Some((n, e)) = hit else { return false };
+        if !(menu.enabled)(self.app.state_mut()).enabled(n) {
+            return false;
+        }
+        self.menu_hook(e.id)
     }
 
     /// **A menu entry chosen by the event just dispatched** — M90/T90.4
@@ -2067,7 +2140,10 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
             // pump the window, `host()` and the agent share, so there is no
             // second path for it to drift on. What the hook changed is
             // marked as any handled event is, by `mark_handled` below.
-            handled |= took || self.key_hook(&ev);
+            // **Then the menu's accelerators** — M90/T90.5: a key nobody
+            // took is offered to them before the key hook, and only with a
+            // menu installed (K90b: the test is here, at the call).
+            handled |= took || (self.menu.is_some() && self.accelerator(&ev)) || self.key_hook(&ev);
             // **The primary touch drives the pointer** — M44/T44.4
             // (`docs/plan-input-semantics.md` §2.4). The raw `Touch` went
             // first, so a recogniser in `lumen_static::gesture` still sees
@@ -2915,6 +2991,18 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
     /// so a stand-in's box is not served to a real frame even from a
     /// caller that pumps with the wrong one.
     pub fn paste_with(&mut self, text: &str, metrics: &mut dyn TextMeasure) -> usize {
+        self.paste_taken_with(text, metrics).unwrap_or(0)
+    }
+
+    /// [`Host::paste_with`], answering **whether the focused node took the
+    /// paste** — M90/T90.5 (`docs/plan-desktop-integration.md`, X3).
+    /// `None` when nothing took it: no focus, or a focused node whose own
+    /// [`Node::paste`] answered `None` and which consumed none of the
+    /// characters typed in its place — a `Button`, a `MenuBar` title. Then
+    /// the window lets Ctrl+V go on as a key, so an Edit menu's Paste
+    /// accelerator can answer it. `Some(kept)` otherwise, `Some(0)` for a
+    /// node that took the paste and kept nothing. Pumps either way.
+    pub fn paste_taken_with(&mut self, text: &str, metrics: &mut dyn TextMeasure) -> Option<usize> {
         let table = <A::Tree as lumen_static::Widget>::SUB_TABLE;
         let focus = self.input.focus.map(|f| f as usize).filter(|&i| i < table.len());
         let hooked = focus.and_then(|i| self.app.tree_mut().node_mut(i).paste(text).map(|n| (i, n)));
@@ -2924,17 +3012,19 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
                     mark_node(&mut self.invalidation, table, Some(i as u32));
                     self.arenas_dirty = true;
                 }
-                n
+                Some(n)
             }
-            None => self.paste_as_typing(text),
+            None if focus.is_some() => self.paste_as_typing(text),
+            None => None,
         };
         self.pump_with(metrics);
         kept
     }
 
     /// A paste into a node with no paste of its own: typing, dispatched
-    /// now rather than queued, so no pump happens mid-paste.
-    fn paste_as_typing(&mut self, text: &str) -> usize {
+    /// now rather than queued, so no pump happens mid-paste. `None` when
+    /// no character was consumed — the node did not take the paste.
+    fn paste_as_typing(&mut self, text: &str) -> Option<usize> {
         let mut consumed = pass::Consumed::default();
         let (mut handled, mut kept) = (false, 0);
         let mut chars = text.chars().peekable();
@@ -2957,7 +3047,7 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         if handled {
             self.mark_handled(&consumed);
         }
-        kept
+        handled.then_some(kept)
     }
 
     /// What the frame just pumped changed, against the frame before it,

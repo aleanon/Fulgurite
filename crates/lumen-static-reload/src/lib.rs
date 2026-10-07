@@ -834,7 +834,7 @@ pub mod hot {
         fn has_focus(&self) -> bool {
             self.s().has_focus()
         }
-        fn paste(&mut self, text: &str) -> usize {
+        fn paste(&mut self, text: &str) -> Option<usize> {
             self.m().paste(text)
         }
         fn compose(&mut self, c: lumen_static::event::Composition<'_>) -> bool {

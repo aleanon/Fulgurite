@@ -117,6 +117,9 @@ const ROWS: &[Row] = &[
     row("ContextMenu", "ContextMenu", Role::GenericContainer, false),
     // M90/T90.4: a context menu's rows, its labels as the value.
     row("CommandList", "CommandList", Role::Menu, false),
+    // M90/T90.5: the drawn menu bar, its titles as the value and one
+    // MenuItem child each.
+    row("MenuBar", "MenuBar", Role::MenuBar, false),
     row("Toast", "Toast", Role::Status, false),
     row("Tooltip", "Tooltip", Role::Group, false),
     row("Modal", "Veil", Role::Dialog, false),

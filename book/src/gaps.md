@@ -28,9 +28,14 @@ reading as written.
 
 From the code, not from the survey:
 
-**A menu bar.** There is a dropdown menu — `Menu`, one of the three
-`Chooser` kinds (M27/T27.9) — and the overlay phase that carries it, but
-no application menu bar and no platform menu integration.
+**A native menu bar.** Since M90/T90.5 there is a menu bar — `MenuBar`,
+drawn by the framework from the program's menu data on every platform,
+with accelerators matched by the host ([Overlays](./overlays.md), "The
+menu bar") — but no platform menu integration: on macOS it is not the
+system's menu bar. The native half (`muda`, and the tray off Linux) is
+deferred until CI has a macOS or Windows leg that could test it
+(`docs/plan-desktop-integration.md`). Not built either: mnemonics,
+submenus, and check or radio entries.
 
 **Most of a style language.** Since M61 a sheet can be a `.lss` file,
 parsed at compile time ([Styling](./styling.md)), but only the part of

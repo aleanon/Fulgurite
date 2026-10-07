@@ -210,6 +210,75 @@ damages the list's ink and nothing else
 {{#include ../../crates/lumen-static-shell/tests/context_menu.rs:open_and_choose}}
 ```
 
+## The menu bar
+
+The same data makes the **menu bar**. On every platform it is drawn by
+the framework (owner decision D2; native menus on macOS and Windows wait
+for a CI leg that can test them), from the `&'static [MenuSection]` the
+program declares once — a titled group of `MenuEntry`s each:
+
+```text
+{{#include ../../examples/showcase/src/catalog.rs:menu_bar_data}}
+```
+
+`MenuBar` is a row of those titles, each opening a `Popup<CommandList>`
+below it. The application places it — a static tree has no slot the
+framework could insert one into. A press on a title opens its menu; with
+one open, hovering another title switches to it. The bar is **one Tab
+stop** with a roving title: Left and Right move between titles, Down or
+Enter opens one with its first row highlighted, Left and Right then move
+between open menus, and Escape closes the menu with focus back on the
+bar. A chosen row reaches `Program::on_menu` exactly as a context menu's
+does.
+
+What the bar does not do is match **accelerators**: the program does,
+with or without a bar. `Program::menu` installs the sections and a
+function from the state to the enabled mask:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:enabled}}
+```
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:program}}
+```
+
+A key press no widget consumed is offered to the entries' shortcuts
+**before** `Program::on_key`, so one key is handled once: by the focused
+widget (a field typing `s` keeps it), by an enabled menu entry, or by the
+key hook — and a disabled entry's shortcut falls through to the key
+hook. In a window, Ctrl+V reaches the menu only when the focused node
+did not take the paste: a field takes it, a button does not, so with a
+button focused an Edit menu's Paste answers. The window's routing is a
+function a test drives, in the window's order:
+
+```text
+{{#include ../../crates/lumen-static-winit/tests/clipboard_shortcut.rs:x3_gate}}
+```
+
+The showcase's entry draws the bar from the table above, and its
+`enabled` function lights the menu only while that entry is on the
+stage, so no other demo's Ctrl+C is the menu's:
+
+```text
+{{#include ../../examples/showcase/src/catalog.rs:menu_bar}}
+```
+
+```text
+{{#include ../../examples/showcase/src/main.rs:menu_enabled}}
+```
+
+The gates (`docs/results-desktop-integration.md`, T90.5) press Ctrl+S
+with nothing focused, then open, move and close the bar:
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:accel_gate}}
+```
+
+```text
+{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:bar_gate}}
+```
+
 ## What `Host` does with all this
 
 `Host::pump` paints through `paint_overlaid` and routes input through

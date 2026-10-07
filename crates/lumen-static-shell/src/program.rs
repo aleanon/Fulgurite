@@ -78,6 +78,25 @@ pub type KeyHook<A> = fn(&mut <A as App>::State, Key, Mods) -> KeyOutcome;
 /// [`KeyOutcome`] read as the key hook's is.
 pub type MenuHook<A> = fn(&mut <A as App>::State, u32) -> KeyOutcome;
 
+/// Which of a program's menu entries are enabled, from its state —
+/// [`Program::menu`], M90/T90.5. Bit *n* is the *n*-th entry of the
+/// sections in flattened order.
+pub type MenuEnabled<A> = fn(&<A as App>::State) -> lumen_static::menu::MenuMask;
+
+/// A program's menu: its sections and the function that says which
+/// entries are enabled — what [`Program::menu`] installs into the host.
+pub struct ProgramMenu<A: App> {
+    pub sections: &'static [lumen_static::menu::MenuSection],
+    pub enabled: MenuEnabled<A>,
+}
+
+impl<A: App> Clone for ProgramMenu<A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<A: App> Copy for ProgramMenu<A> {}
+
 /// A stylesheet key, type-erased: whether its value changed since it was
 /// last asked — [`Program::style_by`], M60/T60.2. The first call answers
 /// `true`, and records the value.
@@ -305,6 +324,8 @@ pub struct Program<A: App, I: Invalidation = DefaultInval> {
     on_key: Option<KeyHook<A>>,
     /// [`Program::on_menu`]'s hook.
     on_menu: Option<MenuHook<A>>,
+    /// [`Program::menu`]'s sections and enabled function.
+    menu: Option<ProgramMenu<A>>,
     /// Where [`Program::live_lss`] reads the sheet from, when it came
     /// from a `.lss` (M61/T61.5).
     lss: Option<LssSource<A>>,
@@ -387,6 +408,7 @@ where
         sheet_key: None,
         on_key: None,
         on_menu: None,
+        menu: None,
         lss: None,
         width: 640,
         height: 480,
@@ -463,6 +485,7 @@ impl<A: App, I: Invalidation> Program<A, I> {
             sheet_key: self.sheet_key,
             on_key: self.on_key,
             on_menu: self.on_menu,
+            menu: self.menu,
             lss: self.lss,
             width: self.width,
             height: self.height,
@@ -643,6 +666,54 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// event (K90b).
     pub fn on_menu(mut self, hook: MenuHook<A>) -> Self {
         self.on_menu = Some(hook);
+        self
+    }
+
+    /// **The program's menu: its sections, and which entries are enabled**
+    /// — M90/T90.5 (`docs/plan-desktop-integration.md`, "Accelerators are
+    /// the framework's" and "Enabled is state, not a `fn` per entry").
+    ///
+    /// The same `&'static [MenuSection]` a `MenuBar` draws: the menu is
+    /// data, declared once, and the program and the bar read it. What it
+    /// gives the program is the **accelerators**: a key press no widget
+    /// consumed is matched against every entry's
+    /// [`Accel`](lumen_static::menu::Accel), and an enabled match runs the
+    /// [`Program::on_menu`] hook with that entry's id.
+    ///
+    /// **The precedence is widget, then accelerator, then `on_key`**, so a
+    /// key is handled once: a focused node that takes it (a text field
+    /// typing `s`) keeps it; one nobody took goes to the menu; one no
+    /// enabled entry answers, or that the hook answered `Ignored`, goes on
+    /// to [`Program::on_key`]. A key the focused node *owns* — an arrow, Home,
+    /// End, Backspace in a field, as `on_key` exempts them — is not offered.
+    /// In a window the clipboard shortcuts come first: Ctrl+V reaches the
+    /// menu only when the focused node took no paste (`keys::clipboard_shortcut`
+    /// in the window crate).
+    ///
+    /// `enabled` is called **in the host**, with the state, each time an
+    /// accelerator matches: bit *n* is the *n*-th entry in flattened order
+    /// (the sections one after another). A disabled entry's accelerator
+    /// falls through to `on_key`. A drawn `MenuBar` gets the same mask
+    /// through its `enabled` field, written from the same function.
+    ///
+    /// **Installed by [`Program::host`]**, as `on_menu` is, so a hot swap's
+    /// new session matches the new build's accelerators and the loader
+    /// holds no table of the library's (rule 3).
+    ///
+    /// # Panics
+    ///
+    /// With more than [`MAX_ENTRIES`](lumen_static::menu::MAX_ENTRIES)
+    /// (64) entries across all sections, naming the count: the enabled
+    /// mask has one bit per entry.
+    pub fn menu(mut self, sections: &'static [lumen_static::menu::MenuSection], enabled: MenuEnabled<A>) -> Self {
+        let n: usize = sections.iter().map(|s| s.entries.len()).sum();
+        assert!(
+            n <= lumen_static::menu::MAX_ENTRIES,
+            "a program's menu holds at most {} entries (one bit each of its MenuMask); this one has {n} across {} sections",
+            lumen_static::menu::MAX_ENTRIES,
+            sections.len()
+        );
+        self.menu = Some(ProgramMenu { sections, enabled });
         self
     }
 
@@ -883,6 +954,9 @@ impl<A: App, I: Invalidation> Program<A, I> {
         }
         if let Some(hook) = self.on_menu {
             host.set_on_menu(hook);
+        }
+        if let Some(menu) = self.menu {
+            host.set_menu(menu);
         }
         if let Some(root) = self.source_root {
             host.set_source_root(root);

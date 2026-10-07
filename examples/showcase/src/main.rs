@@ -335,6 +335,11 @@ pub struct Store {
     context: Option<u32>,
     /// Whether it has cut or copied, which enables its Paste.
     clipped: bool,
+    /// The menu bar demo's last chosen id, from `on_menu` (M90/T90.5) —
+    /// by a row or by an accelerator.
+    bar: Option<u32>,
+    /// Whether its Copy has run, which enables its Paste.
+    bar_clipped: bool,
     /// The chip demo's selected tags, a bit each, and its × presses (B2).
     tags: u8,
     removed: u32,
@@ -514,6 +519,15 @@ fn refresh(s: &mut Show) -> bool {
     // once something was cut or copied. Compared first, as above.
     if let Demo::ContextMenu(d) = &mut s.ui.main.stage.row.demo {
         let want = lumen_static::menu::MenuMask::ALL.with(2, s.store.clipped);
+        if d.a.enabled != want {
+            d.a.enabled = want;
+            changed = true;
+        }
+    }
+    // **The menu bar's enabled entries** (M90/T90.5): the same function
+    // `Program::menu` asks, written to the bar — one source, two readers.
+    if let Demo::MenuBar(d) = &mut s.ui.main.stage.row.demo {
+        let want = menu_enabled(&s.store);
         if d.a.enabled != want {
             d.a.enabled = want;
             changed = true;
@@ -1227,6 +1241,10 @@ fn program(entry: usize, open: bool) -> Program<Show> {
         .style_by(|s: &Show| (s.store.spaced, s.store.ellipsis), sheet_for)
         // M90/T90.4: the context menu demo's choice, by id.
         .on_menu(on_menu)
+        // M90/T90.5: the menu bar demo's sections, whose accelerators the
+        // host matches. Enabled only while that demo is on the stage, so
+        // no other demo's Ctrl+C or Ctrl+Z is the menu's.
+        .menu(&catalog::MENU_BAR, menu_enabled)
         .shaping(SHAPING)
         // M84/T84.3: the Image demo's GIF, decoded once (`catalog::SPIN`).
         .images(catalog::images());
@@ -1240,10 +1258,28 @@ fn program(entry: usize, open: bool) -> Program<Show> {
 /// context menu demo's command, recorded by id for the readout. A seed
 /// clears it, so the demo opens on "nothing yet".
 fn on_menu(s: &mut Store, id: u32) -> lumen_static_winit::KeyOutcome {
-    s.context = Some(id);
-    s.clipped |= matches!(id, 1 | 2);
+    // The menu bar's ids are 11 and up (`catalog::MENU_BAR`, M90/T90.5).
+    if id >= 10 {
+        s.bar = Some(id);
+        s.bar_clipped |= id == 22;
+    } else {
+        s.context = Some(id);
+        s.clipped |= matches!(id, 1 | 2);
+    }
     lumen_static_winit::KeyOutcome::Handled
 }
+
+// ANCHOR: menu_enabled
+/// **Which menu bar entries are enabled** — `Program::menu`'s function
+/// (M90/T90.5): none unless the MenuBar demo is on the stage, and Paste
+/// once Copy has run. `refresh` writes the same mask to the bar.
+fn menu_enabled(s: &Store) -> lumen_static::menu::MenuMask {
+    if catalog::CATALOG.get(s.selected).is_none_or(|e| e.name != "MenuBar") {
+        return lumen_static::menu::MenuMask::NONE;
+    }
+    lumen_static::menu::MenuMask::ALL.with(catalog::BAR_PASTE, s.bar_clipped)
+}
+// ANCHOR_END: menu_enabled
 
 /// **The fill table** — M82/T82.3 (`docs/plan-paint-vocabulary.md`).
 /// Entry 0 is the Card demo's ground: a radial from the stage's own

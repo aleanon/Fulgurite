@@ -73,6 +73,9 @@ KEYS: dict[str, tuple[str, list[KeyAction]]] = {
     # names it.
     "ContextMenu": ("#d_context_a > #context-menu-content",
                     [KeyAction("Shift+F10, Down, Enter chooses Cut", [("F10", ["shift"]), "Down", "Enter"])]),
+    # M90/T90.5: Tab reaches the bar (one stop); Right moves to Edit, Down
+    # opens it with Undo highlighted, and Enter chooses it.
+    "MenuBar": ("#d_menubar_a", [KeyAction("Right, Down, Enter chooses Undo", ["Right", "Down", "Enter"])]),
     "NumberInput": ("#d_number_a", [KeyAction("Up steps the number", ["Up"])]),
     "RangeSlider": ("#d_range_a", [KeyAction("Right moves a handle", ["Right"])]),
     "SearchField": ("#d_search_a > #search-field",

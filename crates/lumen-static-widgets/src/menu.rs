@@ -1,6 +1,6 @@
 //! M90/T90.4 — context menus: `ContextMenu<W>` and its row list,
 //! `CommandList` (`docs/plan-desktop-integration.md`, "`ContextMenu<W>`
-//! and `CommandList`").
+//! and `CommandList`"); M90/T90.5 — the drawn menu bar, `MenuBar`.
 //!
 //! # What a context menu is here
 //!
@@ -47,7 +47,7 @@ use alloc::vec::Vec;
 use lumen_static::desc::{Constraints, NodeDesc, NodeState, Point, Size, NO_PARENT};
 use lumen_static::display::{Color, Painter};
 use lumen_static::event::{Event, EventCtx, Key, Mods};
-use lumen_static::menu::{MenuEntry, MenuMask, MAX_ENTRIES};
+use lumen_static::menu::{MenuEntry, MenuMask, MenuSection, MAX_ENTRIES};
 use lumen_static::style::{Fields, Length, Seed, Style};
 use lumen_static::widget::{Node, Widget};
 use lumen_static::{Edges, LayoutCx};
@@ -159,6 +159,14 @@ impl CommandList {
     pub fn reset(&mut self) {
         self.hot = None;
         self.highlight = None;
+    }
+
+    /// Fresh, with the keyboard's row on the first enabled entry — a menu
+    /// opened from the keyboard (M90/T90.5's `MenuBar`), so Enter chooses
+    /// at once.
+    pub fn reset_to_first(&mut self) {
+        self.reset();
+        self.step(1);
     }
 
     fn row_at(&self, y: f32) -> Option<usize> {
@@ -668,5 +676,457 @@ where
             return None;
         }
         self.content.handler(lumen_static::event::NodeSel { i: sel.i - Self::AT, ..sel })
+    }
+}
+
+// ---- MenuBar ---------------------------------------------------------
+
+/// Part ids — the bar's popup and its row list, addressed through the
+/// owner (`#owner > #menu-bar-list`), as a context menu's are.
+pub const PART_BAR_POPUP: &str = "menu-bar-popup";
+pub const PART_BAR_LIST: &str = "menu-bar-list";
+
+/// The horizontal padding inside each title.
+const TITLE_PAD: f32 = 12.0;
+
+/// **The menu bar, drawn by the framework** — M90/T90.5
+/// (`docs/plan-desktop-integration.md`, "The menu bar is drawn by the
+/// framework, on every platform"; owner decision D2: on Linux the bar is
+/// drawn from the same menu data, and native menus are deferred).
+///
+/// A row of titles from the same `&'static [MenuSection]` the program
+/// declares with `Program::menu`, each opening a [`Popup`]`<CommandList>`
+/// of its section's entries below it. The application places it: a static
+/// tree has no slot the framework could insert it into.
+///
+/// - **Pointer.** A press on a title opens its menu; a press on the open
+///   title (or anywhere outside the menu) closes it, through the pass's
+///   outside-press dismissal. With a menu open, hovering another title
+///   switches to its menu.
+/// - **Keyboard.** The bar is **one Tab stop**, as WAI-ARIA's menubar
+///   pattern has it, with a roving title: Left and Right move between
+///   titles, Down, Enter or Space open the current one with its first
+///   enabled row highlighted, and the list takes focus. With a menu open,
+///   Left and Right move to the neighbouring title's menu (the list
+///   declines them and they bubble here). Escape closes it and focus goes
+///   back to the bar on the title it opened from (M44/T44.9's path).
+/// - **Choosing** is the `CommandList`'s: a release on an enabled row or
+///   Enter; the host takes the entry's id ([`Node::take_menu`]) and runs
+///   the program's `Program::on_menu` hook, as for a context menu.
+/// - **Enabled** entries are [`MenuBar::enabled`], bit *n* for the *n*-th
+///   entry in flattened order — the mask `Program::menu`'s function
+///   computes, written here by the application from the same function.
+///   A disabled row is dimmed and chooses nothing.
+///
+/// The accelerators the rows show are matched by the host, not the bar
+/// (`Program::menu`): a bar is not needed for Ctrl+S to work.
+///
+/// Not built (reopen: an application that needs one): F10 or Alt focusing
+/// the bar, mnemonics, submenus, check and radio entries.
+pub struct MenuBar {
+    sections: &'static [MenuSection],
+    pub menu: Popup<CommandList>,
+    /// Which entries are enabled, in flattened order.
+    pub enabled: MenuMask,
+    /// The roving title: the keyboard's, and the open menu's.
+    title: usize,
+    /// The title under the pointer, for the hover affordance.
+    hot: Option<usize>,
+    /// Each title's `[x0, x1)` from the bar's left, from layout.
+    spans: Vec<(f32, f32)>,
+    /// The bar's top-left and height, from `place`/`layout`, so a menu
+    /// hangs below its title.
+    origin: Point,
+    height: f32,
+}
+
+impl Default for MenuBar {
+    fn default() -> Self {
+        MenuBar::new(&[])
+    }
+}
+
+impl MenuBar {
+    const POPUP: usize = 1;
+
+    /// A bar of `sections`, every entry enabled.
+    ///
+    /// # Panics
+    ///
+    /// With more than [`MAX_ENTRIES`] entries across its sections, naming
+    /// the count: the enabled mask has one bit per entry.
+    pub fn new(sections: &'static [MenuSection]) -> Self {
+        let n: usize = sections.iter().map(|s| s.entries.len()).sum();
+        assert!(
+            n <= MAX_ENTRIES,
+            "a menu bar holds at most {MAX_ENTRIES} entries (one bit each of its MenuMask); this one has {n}"
+        );
+        let mut menu = Popup::new(CommandList::default());
+        menu.open = false;
+        MenuBar {
+            sections,
+            menu,
+            enabled: MenuMask::ALL,
+            title: 0,
+            hot: None,
+            spans: Vec::new(),
+            origin: Point { x: 0.0, y: 0.0 },
+            height: 0.0,
+        }
+    }
+
+    pub fn sections(&self) -> &'static [MenuSection] {
+        self.sections
+    }
+
+    /// The open menu's title, if one is open.
+    pub fn open_title(&self) -> Option<usize> {
+        self.menu.open.then_some(self.title)
+    }
+
+    /// The roving title — the keyboard's, and the open menu's.
+    pub fn title(&self) -> usize {
+        self.title
+    }
+
+    /// Title `k`'s `[x0, x1)` from the bar's left edge, as the last layout
+    /// measured it.
+    pub fn title_span(&self, k: usize) -> Option<(f32, f32)> {
+        self.spans.get(k).copied()
+    }
+
+    /// Open title `k`'s menu; `keyboard` highlights its first enabled row.
+    pub fn open(&mut self, k: usize, keyboard: bool) {
+        let Some(sec) = self.sections.get(k) else { return };
+        self.title = k;
+        self.menu.content.set_entries(sec.entries);
+        self.menu.content.set_enabled(self.section_mask(k));
+        if keyboard {
+            self.menu.content.reset_to_first();
+        } else {
+            self.menu.content.reset();
+        }
+        self.menu.open = true;
+    }
+
+    /// Close the open menu, if any.
+    pub fn close(&mut self) {
+        self.menu.open = false;
+    }
+
+    /// Section `k`'s slice of [`MenuBar::enabled`].
+    fn section_mask(&self, k: usize) -> MenuMask {
+        let off: usize = self.sections[..k].iter().map(|s| s.entries.len()).sum();
+        MenuMask(self.enabled.0.checked_shr(off as u32).unwrap_or(0))
+    }
+
+    /// The title under bar-local `x`.
+    fn title_at(&self, x: f32) -> Option<usize> {
+        self.spans.iter().position(|&(a, b)| x >= a && x < b)
+    }
+
+    /// The title `d` steps from the current one, wrapping.
+    fn step(&self, d: i32) -> usize {
+        let n = self.sections.len().max(1) as i32;
+        (self.title as i32 + d).rem_euclid(n) as usize
+    }
+}
+
+impl Widget for MenuBar {
+    const NODE_COUNT: usize = 1 + <Popup<CommandList> as Widget>::NODE_COUNT;
+    const DEPTH: usize = 1 + <Popup<CommandList> as Widget>::DEPTH;
+    const IS_RIGID: bool = false;
+    const SUB_TABLE: &'static [NodeDesc] = MenuBarTable::SLICE;
+    const KIND: &'static str = "menubar";
+    const SEEDS: &'static [Seed] = MenuBarTable::SEED_SLICE;
+
+    /// A raised strip as wide as its titles; an application that wants it
+    /// across the window styles its width `fill`.
+    fn type_defaults() -> Style {
+        Style {
+            width: Length::Shrink,
+            height: Length::Shrink,
+            padding: Edges { left: 4.0, right: 4.0, top: 2.0, bottom: 2.0 },
+            background: Color(0xff, 0xff, 0xff, 0xff),
+            color: Color(0x30, 0x3a, 0x4c, 0xff),
+            font_size: 14.0,
+            radius: 6.0,
+            // A hairline, so the strip reads as one on a surface of its own
+            // colour; the palette's `border` role.
+            border_width: 1,
+            border_color: Color(0xd5, 0xdb, 0xe4, 0xff),
+            ..Style::default()
+        }
+    }
+}
+
+pub struct MenuBarTable;
+
+impl MenuBarTable {
+    const N: usize = <MenuBar as Widget>::NODE_COUNT;
+    const ARRAY: [NodeDesc; 3] = {
+        assert!(Self::N == 3, "a MenuBar is its strip, a popup and a list");
+        let mut t = [NodeDesc::EMPTY; 3];
+        // **Focusable**: the bar is one Tab stop with a roving title.
+        t[0] = NodeDesc::new(1, NO_PARENT, 0, 1, NodeDesc::CONTAINER | NodeDesc::FOCUSABLE);
+        lumen_static::widget::splice_child(&mut t, 1, <Popup<CommandList> as Widget>::SUB_TABLE, 0);
+        t[1] = t[1].with_id(PART_BAR_POPUP);
+        // The list takes focus when it opens (M57/A12), so a menu opened
+        // from the keyboard is chosen from the keyboard; focus goes back
+        // to the bar when it closes.
+        t[2] = t[2].with_id(PART_BAR_LIST);
+        t[2].flags |= NodeDesc::FOCUSABLE;
+        t
+    };
+    pub const SLICE: &'static [NodeDesc] = &Self::ARRAY;
+
+    const SEED_ARRAY: [Seed; 3] = {
+        let mut s = [Seed::WIDGET; 3];
+        s[0] = Seed::new(<MenuBar as Widget>::KIND, <MenuBar as Widget>::type_defaults, Fields::of(&[
+            Fields::WIDTH,
+            Fields::HEIGHT,
+            Fields::PADDING,
+            Fields::BACKGROUND,
+            Fields::BORDER,
+            Fields::BACKGROUND_FILL,
+            Fields::COLOR,
+            Fields::FONT_SIZE,
+            Fields::RADIUS,
+            Fields::VISIBLE,
+        ]))
+        .with_roles(
+            lumen_static::style::SeedRoles::NONE
+                .color(lumen_static::style::Role::Text)
+                .background(lumen_static::style::Role::Raised)
+                .border(lumen_static::style::Role::Border),
+        );
+        lumen_static::widget::splice_seeds(&mut s, 1, <Popup<CommandList> as Widget>::SEEDS);
+        s
+    };
+    pub const SEED_SLICE: &'static [Seed] = &Self::SEED_ARRAY;
+}
+
+impl Node for MenuBar {
+    lumen_static::node_count!();
+
+    fn kind_name(&self) -> &'static str {
+        <Self as Widget>::KIND
+    }
+
+    fn defaults(&self) -> Style {
+        <Self as Widget>::type_defaults()
+    }
+
+    fn layout(
+        &mut self,
+        cx: &mut LayoutCx,
+        limits: Constraints,
+        style: &[Style],
+        st: &mut [NodeState],
+        i: usize,
+    ) -> Size {
+        let me = style[i];
+        if !me.visible {
+            return lumen_static::ops::hide_subtree(st, i, limits, Self::NODE_COUNT);
+        }
+        // **A choice closes the menu**, taken here as `ContextMenu` takes
+        // it: the release reached the list, not this node.
+        if self.menu.content.take_done() {
+            self.menu.open = false;
+        }
+        if self.menu.open {
+            let mask = self.section_mask(self.title);
+            self.menu.content.set_enabled(mask);
+        }
+        // Each title's span, measured; the vector keeps its capacity, so a
+        // steady frame allocates nothing.
+        self.spans.clear();
+        let mut x = me.padding.left;
+        for sec in self.sections {
+            let w = cx.text.measure_weighted(sec.title, me.font_size, me.font_weight, f32::INFINITY).w + 2.0 * TITLE_PAD;
+            self.spans.push((x, x + w));
+            x += w;
+        }
+        let content = Size { w: x + me.padding.right, h: ROW_H + me.padding.vertical() };
+        let s = lumen_static::ops::resolve_self(limits, &me, content);
+        self.height = s.h;
+        // Flipping above clears the bar (M57/A18).
+        self.menu.above_by = s.h;
+        self.menu.layout(cx, limits, style, st, i + Self::POPUP);
+        lumen_static::ops::record_painted(st, i, limits, s, &me)
+    }
+
+    fn place(&mut self, origin: Point, style: &[Style], st: &mut [NodeState], i: usize) {
+        st[i].pos = origin;
+        self.origin = origin;
+        // Below the open title: `Anchor::Below` places the list *at* the
+        // point, flipping and clamping like every dropdown.
+        let x = self.spans.get(self.title).map_or(0.0, |s| s.0);
+        self.menu.place(Point { x: origin.x + x, y: origin.y + st[i].size.h }, style, st, i + Self::POPUP);
+    }
+
+    fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
+        let s = &st[i];
+        let r = lumen_static::ops::rect_of(s);
+        if r[2] > r[0] && r[3] > r[1] {
+            lumen_static::ops::fill(st, i, out);
+            out.rounded_rect(r, s.bg, s.radius);
+            lumen_static::ops::border(st, i, out);
+            let tint = |a: u8| Color(s.fg.0, s.fg.1, s.fg.2, a);
+            for (k, sec) in self.sections.iter().enumerate() {
+                let Some(&(a, b)) = self.spans.get(k) else { break };
+                let cell = [r[0] + a, r[1] + s.pad.1, r[0] + b, r[3] - s.pad.3];
+                // The open title reads as pressed; the hovered one, or the
+                // focused bar's roving one, as lit.
+                let open = self.menu.open && k == self.title;
+                let lit = Some(k) == self.hot || (s.focused && k == self.title);
+                if open {
+                    out.rounded_rect(cell, tint(0x2e), 6.0);
+                } else if lit {
+                    out.rounded_rect(cell, tint(0x16), 6.0);
+                }
+                let y = (cell[1] + cell[3]) / 2.0 - s.font_size * 0.6;
+                out.text_weighted([cell[0] + TITLE_PAD, y, cell[2], cell[3]], sec.title, s.font_size, s.font_weight, s.fg);
+            }
+        }
+        // Defers itself into the overlay phase.
+        self.menu.paint(st, i + Self::POPUP, out);
+    }
+
+    fn hit(&self, st: &[NodeState], i: usize, x: f32, y: f32) -> Option<lumen_static::Hit> {
+        // The open menu first: it is drawn over everything.
+        if let Some(h) = self.menu.hit(st, i + Self::POPUP, x, y) {
+            return Some(h);
+        }
+        if !lumen_static::hit::contains(&st[i], x, y) {
+            return None;
+        }
+        let o = st[i].pos;
+        Some(lumen_static::Hit { node: i as u32, inner: None, local: Point { x: x - o.x, y: y - o.y } })
+    }
+
+    fn on_event(&mut self, ev: &Event, cx: &EventCtx) -> bool {
+        let own = cx.target == cx.node;
+        match *ev {
+            // A press on a title opens its menu. With a menu open a press
+            // on the bar never arrives: it is outside the menu, so the
+            // pass's dismissal closes it and consumes the press.
+            Event::PointerDown { .. } if own => match self.title_at(cx.local.x) {
+                Some(k) => {
+                    self.open(k, false);
+                    true
+                }
+                None => false,
+            },
+            // `Hover`, not `PointerMove` (M27/T27.11). With a menu open,
+            // the pointer moving onto another title switches to its menu.
+            Event::Hover { .. } if own => {
+                let was = self.hot;
+                self.hot = self.title_at(cx.local.x);
+                if let Some(k) = self.hot {
+                    if self.menu.open && k != self.title {
+                        self.open(k, false);
+                        return true;
+                    }
+                }
+                was != self.hot
+            }
+            Event::Leave => self.hot.take().is_some(),
+            // Left and Right: the neighbouring title — its menu, when one
+            // is open (from the list, which declines them), or the roving
+            // title on a focused bar.
+            Event::Key { key: k @ (Key::Left | Key::Right), down: true } if !self.sections.is_empty() => {
+                let to = self.step(if k == Key::Right { 1 } else { -1 });
+                if self.menu.open {
+                    self.open(to, true);
+                } else {
+                    self.title = to;
+                }
+                true
+            }
+            Event::Key { key: Key::Home, down: true } if own && !self.menu.open => {
+                self.title = 0;
+                true
+            }
+            Event::Key { key: Key::End, down: true } if own && !self.menu.open => {
+                self.title = self.sections.len().saturating_sub(1);
+                true
+            }
+            Event::Key { key: Key::Down | Key::Enter | Key::Space, down: true } if own && !self.menu.open && !self.sections.is_empty() => {
+                self.open(self.title.min(self.sections.len() - 1), true);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Left, Right, Home and End move the roving title (M44/T44.1).
+    fn owns_arrows(&self) -> bool {
+        true
+    }
+
+    fn node(&self, k: usize) -> &dyn Node {
+        match k {
+            0 => self,
+            _ => self.menu.node(k - Self::POPUP),
+        }
+    }
+
+    fn node_mut(&mut self, k: usize) -> &mut dyn Node {
+        match k {
+            0 => self,
+            _ => self.menu.node_mut(k - Self::POPUP),
+        }
+    }
+
+    /// A menu bar: its titles, comma-separated, as its value, and one
+    /// `MenuItem` child per title — its text the label, its drawn cell the
+    /// bounds, expanded while its menu is open — so a reader meets each
+    /// title where it is and the agent's `~=` finds one by its text. The
+    /// open menu speaks for itself as a `Menu`.
+    #[cfg(feature = "a11y")]
+    fn observe(
+        &self,
+        st: &[NodeState],
+        i: usize,
+        id: u64,
+        node: &mut accesskit::Node,
+        extra: &mut Vec<(accesskit::NodeId, accesskit::Node)>,
+    ) {
+        node.set_role(accesskit::Role::MenuBar);
+        let mut v = String::new();
+        for s in self.sections {
+            if !v.is_empty() {
+                v.push(',');
+            }
+            v.push_str(s.title);
+        }
+        node.set_value(v);
+        let s = &st[i];
+        if s.size.w <= 0.0 || s.size.h <= 0.0 {
+            return;
+        }
+        for (k, sec) in self.sections.iter().enumerate() {
+            let Some(&(a, b)) = self.spans.get(k) else { break };
+            let mut c = accesskit::Node::new(accesskit::Role::MenuItem);
+            c.set_label(sec.title);
+            c.set_bounds(accesskit::Rect {
+                x0: (s.pos.x + a) as f64,
+                y0: s.pos.y as f64,
+                x1: (s.pos.x + b) as f64,
+                y1: (s.pos.y + s.size.h) as f64,
+            });
+            c.set_expanded(self.menu.open && k == self.title);
+            let cid = accesskit::NodeId(lumen_static::observe::instance_id(id, k as u64, 0));
+            extra.push((cid, c));
+            node.push_child(cid);
+        }
+    }
+}
+
+impl<S> lumen_static::event::Handlers<S> for MenuBar {
+    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &EventCtx)> {
+        // A choice is the program's menu hook, not a handler.
+        None
     }
 }

@@ -988,8 +988,14 @@ impl Agent {
                     None => None,
                     Some(v) => Some(parse_mods(v)?),
                 };
+                // Pumped on their own (M90/T90.5): a `Modifiers` event is
+                // always handled — dispatch records it — so pumped with the
+                // key it made `handled` true for every chord, and a drive
+                // could not tell an accelerator that fired from one that
+                // did not.
                 if let Some(m) = mods {
                     host.enqueue(Event::Modifiers(m));
+                    host.pump();
                 }
                 host.enqueue(Event::Key { key, down: half.unwrap_or(true) });
                 let (mut f, h) = host.pump();

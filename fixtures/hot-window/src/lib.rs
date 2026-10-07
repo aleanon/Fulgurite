@@ -34,6 +34,11 @@
 //! button and a 150 ms `Timers` tick. The drive opens it before the first
 //! swap and after one, and plants a panic in its boot (`EDIT panel-boot`)
 //! to see a refused swap leave both windows on the build they run.
+//! `MENU` (M90/T90.5) is the program's one-entry menu, installed with
+//! `Program::menu`: Bump answers Ctrl+K, and the drive edits `EDIT accel`
+//! to Ctrl+J. After the swap Ctrl+J must reach `on_menu` and Ctrl+K must
+//! not — the accelerators are the new build's, installed by
+//! `Program::host`, never a table the loader kept.
 
 use lumen_static::event::EventCtx;
 use lumen_static::style::{Length, Patch, Rule, Selector};
@@ -176,6 +181,24 @@ fn on_open(t: &mut Tally, _: &EventCtx) {
 /// `#pic`'s colour in this build: the line the drive edits.
 pub fn pic_ink() -> [u8; 4] {
     [0x16, 0x7a, 0x3c, 0xff] // EDIT pic
+}
+
+/// The program's menu (M90/T90.5): one entry, its accelerator on the line
+/// the drive edits.
+const TOOLS: [lumen_static::menu::MenuEntry; 1] = [
+    lumen_static::menu::MenuEntry::new("Bump", 1).accel(lumen_static::Key::Char('k'), lumen_static::Mods::CTRL), // EDIT accel
+];
+pub const MENU: [lumen_static::menu::MenuSection; 1] = [lumen_static::menu::MenuSection { title: "Tools", entries: &TOOLS }];
+
+/// Every entry enabled.
+fn menu_enabled(_: &Tally) -> lumen_static::menu::MenuMask {
+    lumen_static::menu::MenuMask::ALL
+}
+
+/// A chosen entry: handled, so the drive reads `handled: true` for the
+/// accelerator and `false` for a key no entry answers.
+fn on_menu(_: &mut Tally, _id: u32) -> lumen_static_shell::program::KeyOutcome {
+    lumen_static_shell::program::KeyOutcome::Handled
 }
 
 fn on_inc(t: &mut Tally, _: &EventCtx) {
@@ -362,6 +385,8 @@ pub fn program() -> Program<Counter, Strategy> {
             .title("hot-window")
             .size(320, 400)
             .windows(windows)
+            .menu(&MENU, menu_enabled)
+            .on_menu(on_menu)
             .style(|_: &Counter| {
                 #[allow(unused_mut)]
                 let mut rules = vec![

@@ -143,3 +143,128 @@ mod selectable_cut {
         assert_eq!(still.as_deref(), Some("this"), "the Cut's Backspace dropped the selection");
     }
 }
+
+// ---- M90/T90.5 (X3): a paste nobody took routes Ctrl+V on --------------
+//
+// `docs/plan-desktop-integration.md`, "`Win`'s clipboard shortcuts come
+// first, and today too often". The window decided on "any node focused",
+// so Ctrl+V with a `Button` focused and text on the clipboard was a paste
+// and was swallowed: an Edit menu's Paste accelerator never fired, and no
+// agent input passes through the window to have seen it. Driven through
+// `keys::clipboard_shortcut` and `keys::deliver_key` -- the two functions
+// the window's handler calls, in its order -- into a real `Local` session
+// built by `Program::host`, with a clipboard holding "x".
+
+mod paste_precedence {
+    use lumen_static::event::PointerButton;
+    use lumen_static::menu::{MenuEntry, MenuMask, MenuSection};
+    use lumen_static::prelude::*;
+    use lumen_static::{Event, Key, Mods};
+    use lumen_static_shell::program::{application, KeyOutcome, Program};
+    use lumen_static_shell::session::{Crashing, Local};
+    use lumen_static_widgets::prelude::*;
+    use lumen_static_winit::keys::{clipboard_shortcut, deliver_key, ClipText, Os};
+    use winit::keyboard::Key as WKey;
+
+    const PASTE: u32 = 30;
+    const EDIT: [MenuEntry; 1] = [MenuEntry::new("Paste", PASTE).accel(Key::Char('v'), Mods::CTRL)];
+    const SECTIONS: [MenuSection; 1] = [MenuSection { title: "Edit", entries: &EDIT }];
+
+    #[derive(StaticTree, Default)]
+    #[widget(column, spacing = 8.0)]
+    struct Ui {
+        #[widget_id("btn")]
+        btn: Button<Ran>,
+        #[widget_id("field")]
+        field: TextInput<String>,
+    }
+
+    #[derive(Default)]
+    struct Ran {
+        ids: Vec<u32>,
+    }
+
+    #[derive(DeriveApp, Default)]
+    struct App {
+        #[tree]
+        ui: Ui,
+        #[state]
+        ran: Ran,
+    }
+
+    fn on_menu(r: &mut Ran, id: u32) -> KeyOutcome {
+        r.ids.push(id);
+        KeyOutcome::Handled
+    }
+
+    fn boot() -> App {
+        let mut a = App::default();
+        a.ui.btn.label = "button";
+        a
+    }
+
+    fn program() -> Program<App> {
+        application(boot).size(400, 200).menu(&SECTIONS, |_: &Ran| MenuMask::ALL).on_menu(on_menu)
+    }
+
+    /// A clipboard that is not the desktop's.
+    struct Fake(Option<String>);
+    impl ClipText for Fake {
+        fn read(&mut self) -> Option<String> {
+            self.0.clone()
+        }
+        fn write(&mut self, text: &str) {
+            self.0 = Some(text.to_owned());
+        }
+    }
+
+    fn focus(s: &mut Local<App, Crashing>, wid: &str) {
+        let i = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, wid).expect("a part");
+        let st = s.host.states[i];
+        let (x, y) = (st.pos.x + 6.0, st.pos.y + st.size.h / 2.0);
+        s.host.post(Event::PointerDown { x, y, button: PointerButton::Left, clicks: 1 });
+        s.host.post(Event::up(x, y));
+        s.host.pump();
+        assert_eq!(s.host.input.focus, Some(i as u32), "setup: #{wid} did not take focus");
+    }
+
+    /// Ctrl+V as the window handles it: the clipboard shortcut first, and
+    /// the key on through `deliver_key` when that did not consume it.
+    fn ctrl_v(s: &mut Local<App, Crashing>, clip: &mut Fake) -> bool {
+        s.host.post(Event::Modifiers(Mods::CTRL));
+        s.host.pump();
+        let consumed = clipboard_shortcut(s, Some(Key::Char('v')), Mods::CTRL, Os::Other, clip);
+        if !consumed {
+            deliver_key(s, &WKey::Character("v".into()), None, true, Mods::CTRL);
+            deliver_key(s, &WKey::Character("v".into()), None, false, Mods::CTRL);
+        }
+        s.host.post(Event::Modifiers(Mods::NONE));
+        s.host.pump();
+        consumed
+    }
+
+    #[test]
+    fn ctrl_v_on_a_button_reaches_the_paste_accelerator_and_a_field_keeps_it() {
+        let mut s: Local<App, Crashing> = Local::from_program(program(), Crashing);
+        s.host.pump();
+        let mut clip = Fake(Some("x".into()));
+
+        // ANCHOR: x3_gate
+        focus(&mut s, "btn");
+        let consumed = ctrl_v(&mut s, &mut clip);
+        let ids = s.host.app.ran.ids.clone();
+        println!("Button focused, \"x\" on the clipboard: Ctrl+V consumed as a paste {consumed} (want false); on_menu {ids:?} (want [{PASTE}])");
+        assert!(!consumed, "Ctrl+V on a Button was swallowed as a paste nothing took");
+        assert_eq!(ids, vec![PASTE], "Ctrl+V on a Button did not run the Paste accelerator once");
+        // ANCHOR_END: x3_gate
+
+        // Accept: a focused field takes the paste, and the menu hears nothing.
+        focus(&mut s, "field");
+        let consumed = ctrl_v(&mut s, &mut clip);
+        let (text, ids) = (s.host.app.ui.field.as_str().to_owned(), s.host.app.ran.ids.len());
+        println!("TextInput focused: Ctrl+V consumed {consumed} (want true); text {text:?} (want \"x\"); on_menu {ids} (want 1, unchanged)");
+        assert!(consumed, "a field's paste was not consumed");
+        assert_eq!(text, "x", "the field did not take the paste");
+        assert_eq!(ids, 1, "a field's paste also ran the menu");
+    }
+}

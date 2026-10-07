@@ -768,59 +768,17 @@ impl Win {
     /// the platform's; what the widget owns is the selection and the
     /// typing, and both of those are session calls. Returns whether the
     /// keystroke was acted on as a clipboard shortcut, so the caller
-    /// knows not to route it on — and it is not, since M45/T45.9, when
-    /// there is nothing to act on: `keys::clipboard_decision` decides.
+    /// knows not to route it on. The routing is `keys::clipboard_shortcut`,
+    /// a function a test can call (M90/T90.5): nothing to act on, or a
+    /// paste the focused node did not take, routes the key on.
     fn clipboard_shortcut(&mut self, i: usize, event: &WindowEvent) -> bool {
         let WindowEvent::KeyboardInput { event, .. } = event else { return false };
         if event.state != winit::event::ElementState::Pressed {
             return false;
         }
         let slot = &mut self.slots[i];
-        // The decision is `keys::clipboard_decision`, a function a test
-        // can call (M45/T45.0 item 11). Only what it needs is read: the
-        // selection for c/x, the clipboard for v.
         let key = translate::key_of(&event.logical_key);
-        let copied = match key {
-            Some(lumen_static::Key::Char('c' | 'x')) => slot.session.copy(),
-            _ => None,
-        };
-        let pasted = match key {
-            Some(lumen_static::Key::Char('v')) => self.clipboard.get().filter(|t| !t.is_empty()),
-            _ => None,
-        };
-        let decision = keys::clipboard_decision(keys::Shortcut {
-            mods: slot.mods,
-            key,
-            focused: slot.session.has_focus(),
-            selection: copied.is_some(),
-            clipboard: pasted.is_some(),
-            os: keys::Os::CURRENT,
-        });
-        match decision {
-            None => false,
-            Some(keys::Clip::Swallow) => true,
-            Some(keys::Clip::Copy) | Some(keys::Clip::Cut) => {
-                if let Some(text) = copied {
-                    self.clipboard.set(&text);
-                }
-                if decision == Some(keys::Clip::Cut) {
-                    // Cut is copy plus the delete the field already
-                    // does: one edit path, so the caret and the shaped
-                    // cache cannot disagree with a bespoke one.
-                    slot.session.post(lumen_static::Event::Key {
-                        key: lumen_static::Key::Backspace,
-                        down: true,
-                    });
-                }
-                true
-            }
-            Some(keys::Clip::Paste) => {
-                if let Some(text) = pasted {
-                    slot.session.paste(&text);
-                }
-                true
-            }
-        }
+        keys::clipboard_shortcut(slot.session.as_mut(), key, slot.mods, keys::Os::CURRENT, &mut self.clipboard)
     }
 
     /// One frame of slot `i`'s window. `event_loop` is in hand because

@@ -354,6 +354,16 @@ pub struct DContextMenu {
     pub a: ContextMenu<Button<Store, String>>,
 }
 
+/// M90/T90.5: the drawn menu bar, from the same sections the program
+/// declares with `Program::menu` (`catalog::MENU_BAR`); a choice and an
+/// accelerator both reach `Program::on_menu`, which the readout reports.
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+pub struct DMenuBar {
+    #[widget_id("d_menubar_a")]
+    pub a: MenuBar,
+}
+
 /// A wrap: six chips that reflow when the box narrows.
 #[derive(StaticTree, Default)]
 #[widget(wrap, spacing = 8.0)]
@@ -938,6 +948,7 @@ demos! {
     Combobox(DCombobox),
     Menu(DMenu),
     ContextMenu(DContextMenu),
+    MenuBar(DMenuBar),
     PaneGrid(DPaneGrid),
     RichText(DRichText),
     Markdown(DMarkdown),
@@ -972,5 +983,6 @@ impl Default for Demo {
 // the picker it stood beside, so the catalogue's own `Select` is the one.
 // M82/T82.8's VectorText; M83/T83.6's ShaderView, with the `shader` feature;
 // M84/T84.3's Image; M84/T84.8's Video; M85/T85.1's Layout; M85/T85.2's Pin;
-// M85/T85.4's Pop; M87/T87.3's LinkedMarkdown; M90/T90.4's ContextMenu.
-pub const DEMOS: usize = 64 + cfg!(feature = "shader") as usize;
+// M85/T85.4's Pop; M87/T87.3's LinkedMarkdown; M90/T90.4's ContextMenu;
+// M90/T90.5's MenuBar.
+pub const DEMOS: usize = 65 + cfg!(feature = "shader") as usize;

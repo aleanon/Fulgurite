@@ -149,7 +149,7 @@ mod veil;
 // controlled, decoding nothing (`docs/plan-images-in-motion.md`).
 #[cfg(feature = "std")]
 pub mod video;
-// M90/T90.4: a context menu and its rows. Behind `std`, as the core's
+// M90/T90.4: a context menu and its rows; T90.5: the menu bar. Behind `std`, as the core's
 // `Node::take_menu` is, so the firmware links none of it.
 #[cfg(feature = "std")]
 pub mod menu;
@@ -203,7 +203,7 @@ pub use trim::{Avatar, Badge, Chip, Divider, Icon, Symbol};
 #[cfg(feature = "std")]
 pub use video::{seek_fraction, SeekTrack, Video};
 #[cfg(feature = "std")]
-pub use menu::{CommandList, ContextMenu};
+pub use menu::{CommandList, ContextMenu, MenuBar};
 
 /// Everything in this crate, for a `use` that keeps up.
 pub mod prelude {
@@ -233,5 +233,5 @@ pub mod prelude {
     #[cfg(feature = "shader")]
     pub use crate::ShaderView;
     #[cfg(feature = "std")]
-    pub use crate::{CommandList, ContextMenu, Video};
+    pub use crate::{CommandList, ContextMenu, MenuBar, Video};
 }

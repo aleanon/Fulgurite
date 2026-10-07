@@ -512,6 +512,9 @@ stateless! {
     // M90/T90.4: its entries are code; the keyboard's row is a gesture in
     // flight.
     [] crate::menu::CommandList,
+    // M90/T90.5: its sections are code, its mask the application's; which
+    // menu is open is a gesture in flight.
+    [] crate::menu::MenuBar,
     [] crate::image::Image,
     // M83/T83.6: its id, bytes and fallback are code, or a binding's whose
     // source is kept state.

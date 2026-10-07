@@ -87,6 +87,78 @@ pub fn clipboard_decision(s: Shortcut) -> Option<Clip> {
     }
 }
 
+/// The platform clipboard's text, as [`clipboard_shortcut`] uses it: a
+/// trait so a test can hand it a clipboard that is not the desktop's.
+pub trait ClipText {
+    /// The clipboard's text, if it has any.
+    fn read(&mut self) -> Option<String>;
+    /// Put `text` on it.
+    fn write(&mut self, text: &str);
+}
+
+impl ClipText for crate::Clipboard {
+    fn read(&mut self) -> Option<String> {
+        self.get()
+    }
+    fn write(&mut self, text: &str) {
+        self.set(text);
+    }
+}
+
+/// **Ctrl+C, Ctrl+X and Ctrl+V (Cmd on macOS) in `session`** — T14.5, a
+/// free function since M90/T90.5 so a test drives what the window runs
+/// (as [`deliver_key`] is, M45/T45.0 item 10). `key` is the press as
+/// [`translate::key_of`] reports it, `mods` the modifiers held. Returns
+/// whether the keystroke was **consumed** as a clipboard shortcut; `false`
+/// routes it on through [`deliver_key`] like any key, to a widget, the
+/// program's accelerators (`Program::menu`) and its key hook.
+///
+/// [`clipboard_decision`] decides whether it is a shortcut at all. A copy
+/// or a cut consumes the key whenever the focused node answers a
+/// selection. **A paste consumes it only when the focused node took the
+/// paste** ([`Session::paste`] answered `Some`; `docs/plan-desktop-integration.md`,
+/// X3): before, Ctrl+V with a `Button` or a menu bar focused and text on
+/// the clipboard was swallowed, so an Edit menu's Paste accelerator never
+/// fired, and no agent input passes through here to have seen it.
+pub fn clipboard_shortcut(session: &mut dyn Session, key: Option<Key>, mods: Mods, os: Os, clip: &mut dyn ClipText) -> bool {
+    // Only what the decision needs is read: the selection for c/x, the
+    // clipboard for v.
+    let copied = match key {
+        Some(Key::Char('c' | 'x')) => session.copy(),
+        _ => None,
+    };
+    let pasted = match key {
+        Some(Key::Char('v')) => clip.read().filter(|t| !t.is_empty()),
+        _ => None,
+    };
+    let decision = clipboard_decision(Shortcut {
+        mods,
+        key,
+        focused: session.has_focus(),
+        selection: copied.is_some(),
+        clipboard: pasted.is_some(),
+        os,
+    });
+    match decision {
+        None => false,
+        Some(Clip::Swallow) => true,
+        Some(Clip::Copy) | Some(Clip::Cut) => {
+            if let Some(text) = copied {
+                clip.write(&text);
+            }
+            if decision == Some(Clip::Cut) {
+                // Cut is copy plus the delete the field already does: one
+                // edit path, so the caret and the shaped cache cannot
+                // disagree with a bespoke one.
+                session.post(lumen_static::Event::Key { key: Key::Backspace, down: true });
+            }
+            true
+        }
+        // The focused node took it, or the key goes on (X3).
+        Some(Clip::Paste) => pasted.is_some_and(|text| session.paste(&text).is_some()),
+    }
+}
+
 /// Deliver one keyboard event to `session`, as the window does.
 ///
 /// **Key text arrives whole** (M45/T45.8, R10-F8). A single character is
