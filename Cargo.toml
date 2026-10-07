@@ -26,6 +26,7 @@ members = [
     "examples/shader",
     "examples/two-windows",
     "examples/daemon",
+    "examples/tray",
     "fixtures/hot-app",
     "fixtures/miri-smoke",
     "fixtures/miri-reload",
@@ -54,6 +55,24 @@ license = "MIT OR Apache-2.0"
 [profile.bench-opt]
 inherits = "release"
 debug = true
+
+# M90/T90.7: **a measuring profile, not a shipping one.** The tray's size
+# recipe (`book/src/platform.md`, "The tray") is three per-package
+# `opt-level = "s"` lines an application puts in ITS OWN top-level
+# Cargo.toml -- Cargo reads profiles from the top-level workspace only, so
+# a library cannot ship them. They are here under a custom profile so
+# `scripts/check_tray_symbols.sh` can print what they save without moving
+# `[profile.release]`, which every other recorded size (`a11y`'s
+# included) was measured under. Nothing builds with it by default.
+# Numbers: docs/results-desktop-integration.md T90.7.
+[profile.release-small]
+inherits = "release"
+[profile.release-small.package.zbus]
+opt-level = "s"
+[profile.release-small.package.zvariant]
+opt-level = "s"
+[profile.release-small.package.ksni]
+opt-level = "s"
 
 # The software rasteriser and the glyph rasteriser run optimised even in
 # dev builds. Unoptimised, a frame of the tally was 190 ms (clearing the

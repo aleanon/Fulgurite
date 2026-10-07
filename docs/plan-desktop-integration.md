@@ -739,6 +739,26 @@ T90.0; everything else cites it.
   `dialogs` adds about 10 (T90.0 prints it), so the "no more than the
   most expensive feature" bound now names `a11y`, the feature whose
   stack the tray shares.
+  - **Owner decision, 2026-10-07 (K90c re-budget, option 1).** The text
+    above is K90c as written, kept. K90c fired on its size clause: `ksni`
+    0.3 over zbus adds **+3,286,360 B** stripped to the release showcase
+    without `a11y`, against 3,000,000 B, and a trim experiment found
+    nothing sound under 3 MB from the library's side. **The size bound is
+    re-budgeted to 3,300,000 B for plain `tray`**, measured exactly as
+    written (release profile, stripped, without `a11y`, with `a11y`
+    printed beside it). The crate bound (`a11y`'s +71) and no-`unsafe` are
+    unchanged. Reason: a profile change applies only in the top-level
+    workspace (Cargo ignores a library's profile), so a smaller number
+    under a custom profile would not be what an application pays by
+    default; the honest default cost is ~3.29 MB. The zbus stack is pure
+    Rust and statically linked, where `ksni` 0.2's libdbus is the
+    system's shared library; 0.3 is kept because an `a11y` build then
+    carries one D-Bus stack, not two (P15). **D2 stands** (`ksni`, no GTK
+    thread); the fallback above is not taken. Opt-in, not default:
+    `tray-no-tracing` (it compiles every `tracing` call in the release
+    build out, the application's included) and a documented size recipe
+    (`book/src/platform.md`, "The tray"). Numbers:
+    `docs/results-desktop-integration.md` T90.7.
 
 **What the review found (M90).**
 
@@ -1160,3 +1180,60 @@ T90.0; everything else cites it.
   entries, and an icon whose byte count is not `width × height × 4`. A
   tray's menu is one flat `&'static [MenuEntry]`; the model carries each
   entry's label and id, not its accelerator, which a tray does not show.
+- **T90.7 landed on the owner's K90c decision of 2026-10-07** (option 1,
+  recorded at K90c above, its original text kept): the size bound is
+  3,300,000 B for plain `tray`, and the first build's +3,286,360 B holds
+  it. D2 stands; the GTK fallback is not taken.
+- **T90.7, injection (6) cannot be caught by the crate count.** `ksni`
+  with its default features (tokio) adds +46 crates, *fewer* than the
+  `async-io` build's +55, because tokio replaces the async-io stack rather
+  than joining it, so "no more than `a11y`'s +71" stayed green while the
+  transport was no longer the one `a11y` links (an earlier session's
+  finding). `scripts/check_tray_cost.sh` therefore also asserts that, over
+  `a11y`, `tray` adds **exactly** `futures-channel ksni pastey task-local`
+  (P15's four), and that no `tokio` is in the graph; under (6) both fire,
+  naming `bytes ksni mio pastey socket2 tokio tokio-macros`.
+- **T90.7, K90c's two clauses are two scripts.** The crate clause needs
+  no compile and runs in `just static` (`check_tray_cost.sh`); the size
+  clause needs release builds and runs in `just tray-symbols`
+  (`check_tray_symbols.sh`, in `check-extra`), with the 3,300,000 B bound
+  printed beside the measured delta. `just static`'s contract is no
+  compile, so the size cannot be measured there, and a size written down
+  and compared would not be a measurement.
+- **T90.7, "the release showcase without `a11y`" needed a feature.** The
+  showcase asked for `a11y` in its dependency line, so it could not be
+  built without it except by editing the manifest (which the earlier
+  session's measurement did). Its `a11y` is now its one default feature,
+  so `--no-default-features` is K90c's build and every other build is
+  unchanged.
+- **T90.7, `tracing/release_max_level_off` cannot be part of `tray`.** It
+  saves 213,800 B, but Cargo unifies a crate's features across the whole
+  build, so it would silence the *application's* `tracing` in release. It
+  is its own opt-in feature, `tray-no-tracing`, whose manifest comment
+  and book section say so, at +0 crates over `tray`.
+- **T90.7, the earlier "opt-level s" figure was two savings at once.**
+  The earlier session's 2,883,120 B was `opt-level = "s"` for zbus,
+  zvariant and ksni **with tracing off**; this task reproduced it
+  byte-for-byte with both, and measured the recipe alone at 3,079,128 B
+  (−207,232). A profile cannot ship in a library, so the recipe is
+  documented for the application's own manifest and measured here under a
+  custom `release-small` profile that changes no existing build.
+- **T90.7, injection (2)'s red is not the plan's message.** The plan
+  predicted `"no window yet"`; since M89/T89.6 the windowless session is
+  answered over a 1×1 offscreen screen, so `app.windows` moved behind the
+  backend check reaches the session, which answers `-32601 unknown method
+  app.windows`. The drive fails at (a) either way, printing the error
+  where it wanted `[0]`.
+- **T90.7, a menu hook's `KeyOutcome::Quit` was reported as the key
+  hook's.** Under injection (5) the daemon's stderr line read "the
+  daemon's key hook answered KeyOutcome::Quit"; it now says "key or menu
+  hook", since `Host::menu_hook` sets the same flag.
+- **T90.7, the live gate ran on a private bus.** `just tray-drive
+  --private-bus` runs inside `dbus-run-session` with
+  `scripts/live/sni_watcher.py` as the watcher, so the item never appears
+  in the user's own panel; the item, its dbusmenu and every click are the
+  application's, read with `gdbus` as on the desktop. The ordinary leg
+  (the desktop's watcher) is the same script without the flag. `gdbus`
+  must be called with typed literals (`int32 -1`): a bare `-1` is read as
+  an option.
+

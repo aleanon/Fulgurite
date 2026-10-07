@@ -19,7 +19,9 @@ cites. Machine: i9-13900KF. Created by T90.0 (2026-10-06).*
   on K90c**: `ksni` adds +3.29 MB stripped against a 3 MB bound (crates
   +55 against +71), and K90c's written fallback (`tray-icon` on a GTK
   thread) reverses owner decision D2, so it waits for the owner. The
-  working `ksni` patch is kept outside the tree.
+  working `ksni` patch is kept outside the tree. **Then landed on the
+  owner's decision of 2026-10-07** (K90c's size bound re-budgeted to
+  3,300,000 B for plain `tray`; D2 stands): the T90.7 section below.
 - **Closing CI.** Two runs failed before `ac98b18`, neither on M90's
   behaviour: `2116011` on `book` (T90.5 put the menu inside the anchor
   `book/src/hot-reload.md` compiles; fixed in `89e3f7d`), and `89e3f7d`
@@ -597,3 +599,137 @@ firmware_bind=0 firmware_cascade=0`: every binary +0 `.text` and +0
 `.rodata` (`firmware` 31,306, `firmware_interactive` 64,168,
 `firmware_bind` 34,678, `firmware_cascade` 33,398). No core code changed:
 the tray is the shell's.
+
+## T90.7 — the `tray` feature (`ksni` 0.3), `UserEvent::Menu`, `app.tray`, `examples/tray`, `just tray-drive` (2026-10-08, on `5f025ad`)
+
+The window shows a program's tray (T90.6's seam) as a StatusNotifierItem
+with a `com.canonical.dbusmenu` menu, served by `ksni`'s blocking service
+over zbus, behind the window crate's default-off `tray` feature, Linux
+only. A click sends the entry's id through the event loop's proxy
+(`UserEvent::Menu`), and `Win` posts it as `Event::Menu` to the program's
+primary session. `app.tray` reports what reached the tray.
+
+### K90c — the tray's cost, and the owner's re-budget
+
+K90c as written (`docs/plan-desktop-integration.md`): the crate count by
+K2's command, the stripped release showcase measured **without** `a11y`
+(printed with it too), and no `unsafe`. Its size bound was K2's 3 MB; the
+first build measured **+3,286,360 B**, K90c fired, and its written
+fallback (`tray-icon` on a GTK thread) would have reversed owner decision
+D2. **The owner's decision of 2026-10-07 (option 1)** re-budgets the size
+bound to **3,300,000 B** for plain `tray`, measured exactly as written; the
+crate bound (`a11y`'s +71) and no-`unsafe` are unchanged, and D2 stands.
+The reason: a profile only applies in the top-level workspace (Cargo
+ignores a library's), so a smaller number under a custom profile is not
+what an application pays by default; the default cost is ~3.29 MB.
+
+Stripped (GNU strip on a copy) release `examples/showcase`; "without
+`a11y`" is `--no-default-features` (the showcase's one default feature is
+`a11y` since this task, so the measurement needs no manifest edit).
+Crates by K2's command (`cargo tree -p lumen-static-winit -e normal
+--prefix none [--features F] | sed 's/ (\*)$//' | sort -u | wc -l`;
+default 96, `a11y` 167).
+
+| variant | Δ without `a11y` (B) | Δ with `a11y` (B) | crates (over default) | status |
+|---|---:|---:|---:|---|
+| bound, as written (K2) | ≤ 3,000,000 | printed | ≤ +71 (`a11y`'s) | fired at 3,286,360 |
+| **bound, re-budgeted (owner, 2026-10-07)** | **≤ 3,300,000** | printed | ≤ +71 | — |
+| **`tray`** (`ksni` 0.3, `blocking` + `async-io`, default features off) | **3,286,360** | **1,418,240** | **151 (+55)**; over `a11y` exactly `futures-channel ksni pastey task-local` | **shipped; holds 3,300,000** |
+| **`tray-no-tracing`** (`tracing/release_max_level_off`; opt-in) | **3,072,560** | **1,194,976** | 151 (+55), +0 over `tray` | shipped, opt-in |
+| **the size recipe**: `release-small` (`opt-level = "s"` for zbus, zvariant, ksni), `tray` | **3,079,128** | **1,401,600** | as `tray` | documented, informational |
+| the recipe with `tray-no-tracing` | **2,883,120** | **1,186,016** | as `tray` | informational |
+| *measured before the decision, not shipped:* | | | | |
+| v0, the first build (= `tray` above) | 3,286,360 | 1,418,240 | +55 | — |
+| tracing off as a hard dependency of `tray` | 3,073,456 | 1,194,976 | +55 | not adopted: it silences the application's `tracing` |
+| `ksni`'s default runtime, tokio | 3,743,120 | 2,263,936 | +46 | not adopted: P15, a second async stack |
+| without `blocking` | 3,079,088 | 1,210,464 | — | not adopted: the plan's pinned line and the owner's decision keep `blocking`; the earlier session did not record this variant's baseline, and at this size it sits beside tracing-off, not v0 |
+| `opt-level = "s"` (with tracing off) | 2,883,120 | 1,186,016 | — | reproduced byte-for-byte by the last informational row above; a library cannot ship a profile |
+| `ksni` 0.2 (libdbus) | 939,160 | 934,144 | +4 | not adopted: below |
+
+Measured 2026-10-08 by `just tray-symbols` (`scripts/check_tray_symbols.sh`),
+which also counts `ksni::` symbols: **0** in the default showcase (and 0
+without `a11y`), **242** in the `tray` build (the positive control). The
+"measured before" rows are the earlier session's (`scratchpad/k90c/measure.sh`,
+the same build with the manifest edited); its v0 is byte-identical to this
+task's `tray`. Its tracing-off row is 896 B larger than `tray-no-tracing`
+because there `tracing` was a hard dependency of `tray` rather than a
+feature of its own.
+
+**`tray-no-tracing` is opt-in, not the default, because of feature
+unification**: `release_max_level_off` is a feature of `tracing`, and Cargo
+unifies one crate's features across the whole build, so it compiles every
+`tracing` call in the release binary out — the application's own logging
+included. It saves 213,800 B without `a11y` and 223,264 B with it.
+
+**The recipe saves 207,232 B alone and 403,240 B with
+`tray-no-tracing`** (without `a11y`). It is three `[profile.release.package.<name>]`
+lines in the application's own top-level manifest
+(`book/src/platform.md`, "The tray"). The workspace measures it under a
+custom `release-small` profile (`Cargo.toml`), so `[profile.release]` —
+under which every other recorded size, `a11y`'s included, was measured —
+does not move. The earlier session's "opt-level s 2,883,120" was this
+recipe **with tracing off**; the recipe alone is 3,079,128.
+
+**Why `ksni` 0.3 and not 0.2**, though 0.2 measures 939,160 B: 0.2 speaks
+D-Bus through `libdbus-sys`, which links the system's shared
+`libdbus-1` — a C library the stripped binary does not contain, so the
+number is not comparable — and an `a11y` build would then carry two D-Bus
+stacks, zbus for AT-SPI and libdbus for the tray, where 0.3 over zbus
+shares the one `a11y` already links (P15). It also pulls `atty` and
+`ansi_term`, both unmaintained.
+
+### Gates
+
+| gate | measured | bound / accept |
+|---|---|---|
+| `scripts/check_tray_cost.sh` (`just static`): (1) crates | `tray` +55 | ≤ `a11y`'s +71, computed from `a11y`'s own count |
+| (2) over `a11y` | `[futures-channel ksni pastey task-local]` | exactly those four |
+| (3) tokio in the `tray` graph | 0 | 0 |
+| (4) `tray-no-tracing` over `tray` | +0 | 0 |
+| `scripts/check_tray_symbols.sh` (`just tray-symbols`): size | 3,286,360 B | ≤ 3,300,000 B |
+| `ksni::` symbols, default showcase / `tray` | 0 (0 without `a11y`) / 242 | 0 / not 0 |
+| `scripts/check_no_unsafe.sh` | no `unsafe` in `crates/*/src` | none |
+| `examples/tray` unit tests (no window, no bus): Open / Lock / Quit | `[OpenWindow { program: 1, tag: 1 }]`; `[CloseWindow { window: 7 }]`, `locked`, Open disabled; outcome `Handled`, `[Quit]` | one window at a time; Lock closes by key; Quit is a request |
+
+**Live, `just tray-drive --private-bus`** (a private `dbus-run-session`
+with `scripts/live/sni_watcher.py` as the watcher, on a private Xephyr
+display), both strategies, each leg's process named by
+`scripts/live/launch.py`:
+
+| step | Everything | Boundaries<256> | want |
+|---|---|---|---|
+| (a) `app.windows`, key 0 `windowless` | `[0]`, true | `[0]`, true | `[0]`, true |
+| (a) `app.tray` | declared, supported, registered; `Open, Lock, Quit` | same | registered |
+| (b) registry items owned by the launched pid | 1 | 1 | 1 |
+| (b) dbusmenu labels / `app.tray` | `Open, Lock, Quit` / same | same | equal |
+| (c) dbusmenu `Event(Open, "clicked")` | `[0]` → `[0, 1]`; Open's `enabled` false | same | `[0, k]` |
+| (d) the window's Close | `[0]`, still registered | same | `[0]`, registered |
+| (e) Lock / Open while locked / Lock again | `enabled` false, `#status` `locked` / `[0]` / `enabled` true | same | flips both ways; nothing opens |
+| (f) Quit from the tray | exited in 23 ms, status 0 | 23 ms, 0 | ≤ 2,000 ms, 0 |
+
+Without `gdbus` on `PATH` the drive exits **1** with the install line
+(`sudo apt install libglib2.0-bin`); on a session bus with no watcher it
+exits **77**, and with no session bus **77**, each naming the reason.
+
+### Injections (red, by name)
+
+| injection | what went red |
+|---|---|
+| (1) the click handled on the tray thread without `proxy.send_event` | "(c) app.windows [0] -> [0] (want [0, k])" -- "the click never reached the daemon's on_menu" |
+| (2) `app.windows` answered only with a backend (after the backend check) | "(a) app.windows answered {'code': -32601, 'message': 'unknown method `app.windows`'} where [0] was expected" |
+| (3) the process exits when its last window closes | "(d) the process was gone after its last window closed, before Quit" |
+| (4) `Event::Menu` posted to window 1, not the primary session | "(c) app.windows [0] -> [0] (want [0, k])" |
+| (5) the tray's Quit answers `KeyOutcome::Quit` | "(f) the process still running after 2019 ms / bound 2000 ms"; the stderr line printed: "the daemon's key or menu hook answered KeyOutcome::Quit; ignored -- ... a daemon ends with Request::Quit" |
+| the hooks, headless: Quit answers `KeyOutcome::Quit`; `enabled` ignores `locked`; Open unguarded | "Quit answered a KeyOutcome a daemon ignores" (`left: Quit`, `right: Handled`); "Open is enabled while locked"; "a second Open asked for a second window" |
+| `tray-no-tracing` turns on `dialogs` too | "(4) tray-no-tracing 161 crates, +10 over tray"; "K90c fires -- tray-no-tracing adds 10 crates over tray" |
+| an unused binding in `tray.rs` | `cargo clippy -p lumen-static-winit --features tray`: "unused variable: `injected`", exit 101; the default-feature line stays green (§3.1) |
+| (6) `ksni` with its default features (tokio) | `check_tray_cost`: (1) stays green at +46; (2) "over a11y the tray adds [bytes ksni mio pastey socket2 tokio tokio-macros]"; (3) "tokio in the tray graph: 1"; `check_tray_symbols`: "K90c fires -- the tray costs 3743024 B stripped without a11y, over the 3300000 B budget" |
+
+### Firmware
+
+`just firmware-delta 5f025ad firmware=0 firmware_interactive=0
+firmware_bind=0 firmware_cascade=0`: every binary +0 `.text` and +0
+`.rodata` (`firmware` 31,306, `firmware_interactive` 64,168,
+`firmware_bind` 34,678, `firmware_cascade` 33,398). No core code changed:
+the tray is the window crate's.
+

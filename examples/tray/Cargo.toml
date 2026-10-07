@@ -1,0 +1,37 @@
+[package]
+name = "tray"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# M90/T90.7 (docs/plan-desktop-integration.md): a tray application -- a
+# daemon (`daemon(boot)`, M89/T89.6) whose only surface is a Linux tray
+# item (Open, Lock, Quit). `just tray-drive` drives it through the
+# desktop's StatusNotifierWatcher and the item's dbusmenu, the OS path.
+#
+# **The binary requires `tray`**, which is default-off, because a
+# workspace member's normal dependency features unify into every
+# `--workspace` build: a `tray` named here unconditionally would link
+# `ksni` into every test binary and every example that `cargo build
+# --workspace` builds (examples/shader's manifest has the same reason).
+# The library -- the program, its hooks and their headless tests -- builds
+# without it.
+[[bin]]
+name = "tray"
+path = "src/main.rs"
+required-features = ["tray"]
+
+[dependencies]
+lumen-static = { path = "../../crates/lumen-static" }
+lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
+lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+
+[features]
+default = []
+# The Linux tray: lumen-static-winit's `tray` (`ksni` over D-Bus).
+tray = ["lumen-static-winit/tray"]
+# Both programs under `Everything`, so the drive runs both strategies -- a
+# compile-time choice made in `main.rs`, as examples/daemon's is.
+everything = []

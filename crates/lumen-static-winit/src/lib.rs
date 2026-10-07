@@ -63,6 +63,9 @@ use winit::window::{Window, WindowId};
 pub mod agent;
 #[cfg(feature = "a11y")]
 pub mod a11y;
+// M90/T90.7: the Linux tray, `ksni` over D-Bus (`docs/plan-desktop-integration.md`).
+#[cfg(all(feature = "tray", target_os = "linux"))]
+mod tray;
 
 /// What reaches the event loop from somewhere other than the window.
 ///
@@ -99,6 +102,14 @@ pub enum UserEvent {
     /// first tree was asked for, or a screen reader acted on a node.
     #[cfg(feature = "a11y")]
     A11y(accesskit_winit::Event),
+    /// **A tray entry was chosen** (M90/T90.7): its id, sent from `ksni`'s
+    /// thread by the entry's callback, which holds the proxy and the id and
+    /// nothing of the application's. The window posts it as
+    /// `Event::Menu { id }` to the program's primary session on the loop's
+    /// own thread (`docs/plan-desktop-integration.md`, "The Linux tray is
+    /// D-Bus, not GTK").
+    #[cfg(all(feature = "tray", target_os = "linux"))]
+    Menu(u32),
 }
 
 #[cfg(feature = "a11y")]
@@ -460,6 +471,14 @@ pub struct Config {
     /// **windowless**, as key 0, and no window is opened for it. From
     /// `Program::is_daemon`.
     pub daemon: bool,
+    /// The program declares a tray (`Program::tray`, M90/T90.7). From the
+    /// static binary's program, read once: **whether a tray exists is not
+    /// reloadable**, so a build that adds one needs a restart
+    /// (`docs/plan-window-reload.md` §2.7). What the tray shows is the
+    /// session's (`Session::tray_model`) and follows every swap. Shown with
+    /// the `tray` feature, on Linux; without it the window says once on
+    /// stderr that it shows none.
+    pub tray: bool,
 }
 
 impl Default for Config {
@@ -477,6 +496,7 @@ impl Default for Config {
             accessible: cfg!(feature = "a11y"),
             windows: None,
             daemon: false,
+            tray: false,
         }
     }
 }
@@ -728,6 +748,11 @@ struct Win {
     /// The proxy the accessibility adapters report through (M54/T54.2).
     #[cfg(feature = "a11y")]
     proxy: Option<winit::event_loop::EventLoopProxy<UserEvent>>,
+    /// **The tray** (M90/T90.7), started at the first `resumed` when the
+    /// program declares one (`Config::tray`); `None` before that, and in a
+    /// program without one.
+    #[cfg(all(feature = "tray", target_os = "linux"))]
+    tray: Option<tray::Tray>,
     /// `LUMEN_FRAME_REPORT=N`: after N frames, print how many were
     /// journaled and exit 0 — the diagnostic the T48.12 gate reads, since
     /// a window with no endpoint has nothing else to ask.
@@ -775,6 +800,8 @@ impl Win {
             report_after: std::env::var("LUMEN_FRAME_REPORT").ok().and_then(|v| v.parse().ok()),
             #[cfg(feature = "a11y")]
             proxy: None,
+            #[cfg(all(feature = "tray", target_os = "linux"))]
+            tray: None,
         }
     }
 
@@ -970,7 +997,8 @@ impl Win {
         let Some(i) = self.slot_keyed(key) else { return };
         let slot = &mut self.slots[i];
         slot.place_ime(&window);
-        slot.ask_menu_state();
+        let mask = slot.ask_menu_state();
+        self.apply_menu_state(key, mask);
         // A title that is a function of the state is re-asked after every
         // frame and set only when it changed (`docs/plan-program.md`
         // §2.1). A constant one compares equal every time.
@@ -1144,7 +1172,7 @@ impl Win {
         let _ = slot.session.take_damage_for_age(1);
         // The tray's state after each windowless pump (M90/T90.6); a panic
         // in `enabled` is read below as the failure state it raised.
-        slot.ask_menu_state();
+        let mask = slot.ask_menu_state();
         slot.wait = if slot.session.failed() {
             slot.last_frame = None;
             ControlFlow::Wait
@@ -1176,6 +1204,7 @@ impl Win {
             return;
         }
         let windows = Self::serve_requests(&mut *slot.session, None, &mut self.clipboard);
+        self.apply_menu_state(windows::WINDOWLESS, mask);
         if !windows.is_empty() {
             let _opened = self.window_requests(event_loop, windows::WINDOWLESS, windows);
         }
@@ -1450,6 +1479,91 @@ impl Win {
         if let (Some(m), Some(hot)) = (metrics, self.hot.as_mut()) {
             hot.metrics = Some(m);
         }
+        self.refresh_tray();
+    }
+
+    /// The key of the program's **primary session**: the windowless session
+    /// for a daemon, else window 1 (`docs/plan-windows.md`'s default
+    /// target). The tray is this session's: its model, its mask, and where
+    /// a chosen entry is posted (M90/T90.7, second review P14).
+    #[cfg_attr(not(all(feature = "tray", target_os = "linux")), allow(dead_code))]
+    fn primary_key(&self) -> u32 {
+        if self.config.daemon {
+            windows::WINDOWLESS
+        } else {
+            windows::PRIMARY
+        }
+    }
+
+    /// **Hand the tray a mask the session answered** (M90/T90.7): only the
+    /// primary session's, and only when it changed (`Session::menu_state`
+    /// answers `Some` then). Without the `tray` feature there is no tray to
+    /// hand it to, and the answer is dropped.
+    fn apply_menu_state(&mut self, key: u32, mask: Option<lumen_static::menu::MenuMask>) {
+        #[cfg(all(feature = "tray", target_os = "linux"))]
+        if let Some(mask) = mask {
+            if key == self.primary_key() {
+                if let Some(t) = self.tray.as_mut() {
+                    t.set_mask(mask);
+                }
+            }
+        }
+        #[cfg(not(all(feature = "tray", target_os = "linux")))]
+        let _ = (key, mask);
+    }
+
+    /// **Start the tray, once** (M90/T90.7): at the first `resumed`, which
+    /// a daemon gets at start as a window does, when the program declares
+    /// one. Built from the primary session's model; its mask arrives with
+    /// the next frame's `menu_state`. Without the `tray` feature (or off
+    /// Linux) a program that declares one is told once on stderr that the
+    /// window shows none.
+    fn start_tray(&mut self) {
+        if !self.config.tray {
+            return;
+        }
+        #[cfg(all(feature = "tray", target_os = "linux"))]
+        {
+            if self.tray.is_some() {
+                return;
+            }
+            let Some(i) = self.slot_keyed(self.primary_key()) else { return };
+            let Some(model) = self.slots[i].session.tray_model() else { return };
+            let Some(proxy) = self.wake_proxy.clone() else { return };
+            let id = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+                .unwrap_or_else(|| "lumen-static".into());
+            self.tray = Some(tray::Tray::start(model, proxy, id));
+        }
+        #[cfg(not(all(feature = "tray", target_os = "linux")))]
+        {
+            // Once per process: `resumed` may come again after a suspend.
+            static NOTED: std::sync::Once = std::sync::Once::new();
+            NOTED.call_once(|| {
+                eprintln!(
+                    "lumen-static: the program declares a tray, and this window was built without \
+                     lumen-static-winit's `tray` feature (Linux only) -- no tray is shown"
+                )
+            });
+        }
+    }
+
+    /// **A new build's tray** (M90/T90.7): after a swap, the primary
+    /// session's model is asked again and the tray rebuilt only when its
+    /// hash differs (`Session::tray_model`).
+    #[cfg(feature = "hot")]
+    fn refresh_tray(&mut self) {
+        #[cfg(all(feature = "tray", target_os = "linux"))]
+        {
+            let Some(i) = self.slot_keyed(self.primary_key()) else { return };
+            let model = self.slots[i].session.tray_model();
+            if let (Some(model), Some(t)) = (model, self.tray.as_mut()) {
+                if t.rebuild(model) {
+                    eprintln!("lumen-static: the new build's tray differs; rebuilt");
+                }
+            }
+        }
     }
 
     /// The soonest of every slot's deadlines (M47/T47.1, per slot since
@@ -1508,19 +1622,21 @@ impl WindowSlot {
     /// session answers `None` at once for a program with no tray, so this
     /// is a field test for every other program.
     ///
-    /// **The answer is dropped until the window has a tray to give it**
-    /// (M90/T90.7, `docs/plan-desktop-integration.md`); the call is here now because
-    /// it runs the application's `enabled` function, and where a window
-    /// runs application code is where M36's screen must be able to come
-    /// from — `just panic-drive` site 12. An `enabled` that panicked raised
-    /// the screen inside the session; this asks for the frame that draws
-    /// it, as [`WindowSlot::place_ime`] does for a caret.
-    fn ask_menu_state(&mut self) {
-        let _changed = self.session.menu_state();
+    /// **Answers the mask when it changed**, which the caller hands to the
+    /// tray (`Win::apply_menu_state`, M90/T90.7) — the primary session's
+    /// only, since the tray is the program's. It runs the application's
+    /// `enabled` function, and where a window runs application code is
+    /// where M36's screen must be able to come from — `just panic-drive`
+    /// site 12. An `enabled` that panicked raised the screen inside the
+    /// session; this asks for the frame that draws it, as
+    /// [`WindowSlot::place_ime`] does for a caret.
+    fn ask_menu_state(&mut self) -> Option<lumen_static::menu::MenuMask> {
+        let changed = self.session.menu_state();
         if self.session.failed() && self.window.is_some() {
             self.ime_area = None;
             self.ask_redraw();
         }
+        changed
     }
 }
 
@@ -1596,7 +1712,7 @@ impl ApplicationHandler<UserEvent> for Win {
                 if !self.quit_noted {
                     self.quit_noted = true;
                     eprintln!(
-                        "lumen-static: the daemon's key hook answered KeyOutcome::Quit; ignored -- its session has \
+                        "lumen-static: the daemon's key or menu hook answered KeyOutcome::Quit; ignored -- its session has \
                          no window to close, and a daemon ends with Request::Quit"
                     );
                 }
@@ -1722,6 +1838,19 @@ impl ApplicationHandler<UserEvent> for Win {
                             w.request_redraw();
                         }
                     }
+                }
+            }
+            // **A tray entry was chosen** (M90/T90.7): posted as
+            // `Event::Menu` to the program's **primary session** — key 0 for
+            // a daemon, else window 1 — which then runs (a windowless step,
+            // or its window's redraw) and has its requests drained, so the
+            // hook's `Request::OpenWindow` or `Request::Quit` leaves the queue
+            // (second review P14). A primary that is gone drops it.
+            #[cfg(all(feature = "tray", target_os = "linux"))]
+            UserEvent::Menu(id) => {
+                if let Some(i) = self.slot_keyed(self.primary_key()) {
+                    self.slots[i].session.post(lumen_static::Event::Menu { id });
+                    self.ask_frame(i);
                 }
             }
             #[cfg(feature = "hot")]
@@ -1853,6 +1982,43 @@ impl Win {
                 })));
                 return;
             }
+            // **`app.tray`** — M90/T90.7: what reached the tray, answered by
+            // the window before any backend lookup, so a daemon with every
+            // window closed is observed (G23). `declared`: the program has a
+            // tray (`Config::tray`); `supported`: this build can show one
+            // (the `tray` feature, on Linux); `registered`: the desktop's
+            // StatusNotifierWatcher holds the item; `labels`, `enabled` (one
+            // per entry, from the mask last applied), `mask` and `hash`: the
+            // model and state the item was built from; `error`: why the
+            // service did not start. Every field but `declared` and
+            // `supported` is empty or `null` without a running tray.
+            "app.tray" => {
+                #[cfg(all(feature = "tray", target_os = "linux"))]
+                let body = match self.tray.as_ref() {
+                    Some(t) => serde_json::json!({
+                        "declared": self.config.tray,
+                        "supported": true,
+                        "registered": t.registered(),
+                        "labels": t.model.entries.iter().map(|e| e.label.clone()).collect::<Vec<_>>(),
+                        "ids": t.model.entries.iter().map(|e| e.id).collect::<Vec<_>>(),
+                        "enabled": (0..t.model.entries.len()).map(|n| t.mask.enabled(n)).collect::<Vec<_>>(),
+                        "mask": format!("{:#x}", t.mask.0),
+                        "hash": format!("{:#018x}", t.model.hash),
+                        "error": t.error,
+                    }),
+                    None => serde_json::json!({
+                        "declared": self.config.tray, "supported": true, "registered": false,
+                        "labels": [], "ids": [], "enabled": [], "mask": null, "hash": null, "error": null,
+                    }),
+                };
+                #[cfg(not(all(feature = "tray", target_os = "linux")))]
+                let body = serde_json::json!({
+                    "declared": self.config.tray, "supported": false, "registered": false,
+                    "labels": [], "ids": [], "enabled": [], "mask": null, "hash": null, "error": null,
+                });
+                send(result(body));
+                return;
+            }
             // **`app.close`** — M89/T89.2: closes the window the request
             // names. Not `app.quit` with a field: a method whose meaning
             // flipped on an optional member would let a stale script close
@@ -1958,6 +2124,7 @@ impl Win {
         // launcher's identity check — answer a daemon with no window open.
         let Win { slots, clipboard, windowless_screen, .. } = self;
         let slot = &mut slots[i];
+        let mut menu_mask = None;
         // An input's latency runs from its arrival to the frame that
         // shows it (M60/T60.3): the present inside this request, and the
         // redraw asked for below, which journals it.
@@ -2001,7 +2168,7 @@ impl Win {
                 slot.ime_area = None;
             } else {
                 slot.place_ime(&window);
-                slot.ask_menu_state();
+                menu_mask = slot.ask_menu_state();
             }
         }
         // **Window requests, before the reply** (M89/T89.3, second review
@@ -2011,6 +2178,7 @@ impl Win {
         // that can tell "inside the drain" from "later" — every read after
         // the reply converges, because the loop idles between the two.
         let mut resp = resp;
+        self.apply_menu_state(key, menu_mask);
         if !windows.is_empty() {
             let opened = self.window_requests(event_loop, key, windows);
             if let (false, Some(o)) = (opened.is_empty(), resp.as_object_mut()) {
@@ -2167,6 +2335,8 @@ impl Win {
                 self.open_window(event_loop, i);
             }
         }
+        // M90/T90.7: the tray, once, at the first resume.
+        self.start_tray();
     }
 
     /// Create slot `i`'s window and its backend, at the slot's size and
@@ -2429,6 +2599,9 @@ pub fn regions_for(
 // ---- M32: running a described program ------------------------------
 
 pub use lumen_static_shell::program::{application, daemon, KeyOutcome, Program};
+/// A program's tray, declared as data (`Program::tray`) — M90/T90.6; shown
+/// by this crate's `tray` feature, on Linux (M90/T90.7).
+pub use lumen_static_shell::tray::TraySpec;
 
 /// Open a window on a described program and run until it closes — M32.
 ///
@@ -2510,6 +2683,8 @@ fn run_program<A: App + 'static, I: Invalidation + 'static>(
         accessible: program.accessible,
         windows: program.window_table(),
         daemon: program.is_daemon(),
+        // M90/T90.7: whether a tray exists is the static binary's, once.
+        tray: program.has_tray(),
     };
     start(session(program), config, hot);
 }

@@ -1040,7 +1040,7 @@ Milestone-specific kill rules live in their sections:
 | K89d | an idle daemon wakes without a deadline | `plan-windows.md` |
 | K90a | the leaf firmware grows at all, or `firmware_interactive` > 256 B per task or > 81,920 B | `plan-desktop-integration.md` |
 | K90b | with no menus, `dispatch` or the idle row leaves its spread | `plan-desktop-integration.md` |
-| K90c | `tray` adds more crates than `a11y`'s +71 (K2's method), > 3 MB, or any `unsafe` | `plan-desktop-integration.md` |
+| K90c | `tray` adds more crates than `a11y`'s +71 (K2's method), > 3 MB, or any `unsafe` (size re-budgeted to 3,300,000 B for plain `tray` by the owner, 2026-10-07) | `plan-desktop-integration.md` |
 
 ## 5. Dependency order
 

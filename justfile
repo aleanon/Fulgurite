@@ -50,6 +50,7 @@ static:
     ./scripts/check_fill_paint.sh       # M82/T82.3: every border site paints the node's fill first, and declares the bit
     ./scripts/check_shell_headless.sh   # M83/T83.0: the shell names no winit, softbuffer or wgpu (D1 b's premise)
     ./scripts/check_default_crates.sh   # M84/T84.0(c): K2 -- the default window's crate count against the parent commit's, bound 0
+    ./scripts/check_tray_cost.sh        # M90/T90.7: K90c's crate clause -- tray under a11y's +71, exactly ksni's four over a11y, no tokio
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
@@ -127,6 +128,15 @@ dev-shape:
     # (`hot::boot`, behind `reload`) and `Session::menu_state`, with the
     # features named rather than left to `--workspace`'s unification.
     cargo test -q -p lumen-static-shell --features truetype,reload --test tray_seam
+    # M90/T90.7 (docs/plan-iced-roadmap.md §3.1, second review X7): the
+    # window crate's default-off `tray` (`ksni` over D-Bus) -- `Win`'s tray,
+    # `UserEvent::Menu`, `app.tray` -- linted with the agent and hot reload
+    # that its code is cfg'd against, and documented with the feature on;
+    # and examples/tray, whose binary requires `tray` (its manifest says why).
+    cargo clippy -q -p lumen-static-winit --features tray --all-targets -- -D warnings
+    cargo clippy -q -p lumen-static-winit --features tray,hot,agent --all-targets -- -D warnings
+    cargo clippy -q -p tray --features tray,everything --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-winit --no-deps --features tray
     # M83/T83.6: `ShaderView` -- its role row in a build that has it (the
     # `a11y`-alone run above excuses it through FEATURE_GATED), and its
     # damage gates through a `Host` and the journal, behind the agent's
@@ -380,7 +390,7 @@ bench-lock +cmd:
 # decision CI gets to make.
 
 # Release-shape rustdoc, binsize, and the exhaustive f32 check.
-check-extra: floats thumb stack gpu simd threads book agent-symbols clipboard-image-symbols release-window-shape
+check-extra: floats thumb stack gpu simd threads book agent-symbols clipboard-image-symbols tray-symbols release-window-shape
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
@@ -397,6 +407,14 @@ agent-symbols:
 # showcase delta is printed beside K2's 3 MB. Two release builds.
 clipboard-image-symbols:
     ./scripts/check_clipboard_image_symbols.sh
+
+# M90/T90.7: a window built without `tray` links no `ksni`, the tray build
+# is the positive control, and K90c's size clause: the stripped release
+# showcase without `a11y`, plain and with `tray`, against the owner's
+# 3,300,000 B (re-budgeted 2026-10-07); `tray-no-tracing` and the size
+# recipe printed beside it. Twelve release builds.
+tray-symbols:
+    ./scripts/check_tray_symbols.sh
 
 # A release window without `reload` links no panic-recovery code, and one
 # with it does -- the `cfg` shown switching both ways (M52, F-NEW-3;
@@ -1016,3 +1034,12 @@ windows-drive:
 # and a release build WITHOUT `reload` must still die. Needs a display.
 panic-drive:
     ./scripts/panic_drive.sh
+
+# M90/T90.7 (docs/plan-desktop-integration.md): examples/tray, a daemon
+# whose only surface is a Linux tray item, driven through the OS path --
+# the StatusNotifierWatcher's registry and the item's dbusmenu over D-Bus
+# (`gdbus`, a prerequisite) -- under both strategies. `--private-bus` runs
+# it in `dbus-run-session` with a stand-in watcher, so the item never shows
+# in the user's own panel. Needs a display, a session bus and a watcher.
+tray-drive *args:
+    ./scripts/tray_drive.sh {{ args }}

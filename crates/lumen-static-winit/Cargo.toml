@@ -163,6 +163,35 @@ dialogs = ["dep:rfd"]
 # 0.6 MB resident, so the fallback is nearly free; the price is the
 # context, not the code.
 gpu = ["dep:lumen-static-wgpu"]
+# **The Linux tray** (M90/T90.7, docs/plan-desktop-integration.md, "The
+# Linux tray is D-Bus, not GTK"): a program's `Program::tray` shown as a
+# StatusNotifierItem with a dbusmenu menu, served by `ksni` 0.3 over zbus
+# on a thread of its own -- no GTK, so it sits beside `dialogs`' GTK
+# thread. Linux only (the dependency is target-gated; elsewhere the window
+# says once on stderr that it shows no tray). Default-OFF.
+#
+# By K2's method (above, at `clipboard`) it costs **+55 crates** (96 ->
+# 151), under `a11y`'s +71; over `a11y` it adds exactly four
+# (`futures-channel`, `ksni`, `pastey`, `task-local`), since its transport
+# is the zbus stack `a11y` already links. The stripped release showcase
+# grows by **+3,286,360 B without `a11y`** and +1,418,240 B with it --
+# against the owner's re-budgeted 3,300,000 B (2026-10-07; K2's 3 MB fired),
+# docs/results-desktop-integration.md T90.7, where the numbers live.
+# `scripts/check_tray_cost.sh` (crates, `just static`) and
+# `scripts/check_tray_symbols.sh` (size, `just tray-symbols`) hold them.
+# Smaller, both opt-in: `tray-no-tracing` below, and the three-line size
+# recipe for the APPLICATION's own top-level manifest in
+# book/src/platform.md, "The tray" (a library cannot ship a profile).
+tray = ["dep:ksni"]
+# **`tray` with every `tracing` call compiled out of the release build**
+# -- **the application's own included.** It sets `tracing`'s
+# `release_max_level_off`, and Cargo unifies a crate's features across the
+# whole build, so this cannot be confined to zbus and ksni: choose it only
+# if the application logs nothing through `tracing` in release. Saves
+# about 213 KB stripped without `a11y` (223 KB with), at +0 crates over
+# `tray` (docs/results-desktop-integration.md T90.7). Not part of `tray`
+# for exactly that reason.
+tray-no-tracing = ["tray", "dep:tracing", "tracing/release_max_level_off"]
 
 [dependencies]
 lumen-static = { path = "../lumen-static" }
@@ -205,6 +234,18 @@ notify = { version = "8", optional = true }
 # feature compiles the no-op `Clipboard` (see clipboard.rs).
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard = { version = "3", optional = true, default-features = false }
+
+# M90/T90.7: the Linux tray (the `tray` feature's comment has its cost).
+# `default-features = false` with `blocking` and `async-io` is the plan's
+# line verbatim (docs/plan-desktop-integration.md, Decisions; second
+# review P15): ksni's default runtime is tokio, which is not otherwise in
+# the lock, and with `async-io` its transport is the zbus stack `a11y`'s
+# AT-SPI adapter already links. `tracing` is named only so
+# `tray-no-tracing` can set its `release_max_level_off`; it is already in
+# the graph through zbus, so it adds no crate.
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3", optional = true, default-features = false, features = ["blocking", "async-io"] }
+tracing = { version = "0.1", optional = true, default-features = false }
 
 [dev-dependencies]
 # `tests/gpu_regions.rs` drives a `Host` at a device scale (M40/T40.1),

@@ -114,7 +114,13 @@ caret focused and while a panic is shown; M80/T80.5), and `app.windows`
 (`{windows: [{key, program, title, windowless}], posts: {delivered,
 dropped}}` — `posts` counts `Request::Post`s, M89/T89.4) and `app.close`
 (closes the window the request names; the primary's ends the process) —
-M89/T89.2. **A request's top-level `"window"` member names its window**
+M89/T89.2 — and `app.tray` (`{declared, supported, registered, labels,
+ids, enabled, mask, hash, error}`: whether the program declares a tray,
+whether this build can show one — the window crate's `tray` feature, on
+Linux — whether the desktop's StatusNotifierWatcher holds the item, and
+the model and mask it was built from; answered before any backend lookup,
+so a daemon with every window closed is observed; M90/T90.7, driven by
+`just tray-drive`). **A request's top-level `"window"` member names its window**
 by key (absent: the primary, key 1, never the focused one — for a
 `daemon(boot)` program its windowless session, key 0, answered over a 1×1
 offscreen screen, M89/T89.6); a key no

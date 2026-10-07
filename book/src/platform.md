@@ -83,6 +83,84 @@ and `app.diagnostics` answer with no window open. `just windows-drive`
 phase 5 drives it, and `just idle-count`'s daemon leg holds what it costs
 idle (`docs/results-windows.md` T89.6).
 
+## The tray
+
+A daemon's natural surface is a **tray item** (M90b,
+`docs/plan-desktop-integration.md`). It is declared as data on the
+program — an RGBA icon, a tooltip, a flat menu of `MenuEntry` rows, and
+an `enabled` function from the state to a `MenuMask` — and a chosen entry
+reaches the program's `on_menu` hook by its id, the same hook a drawn
+context menu or menu bar uses:
+
+```text
+{{#include ../../examples/tray/src/lib.rs:program}}
+```
+
+```text
+{{#include ../../examples/tray/src/lib.rs:on_menu}}
+```
+
+Every exit there is a **request**: Open pushes `Request::OpenWindow`,
+Lock closes the open window with `Request::CloseWindow` and the key its
+`WindowOpened` answer gave, and Quit pushes `Request::Quit`. A
+`KeyOutcome::Quit` from the windowless session would close nothing.
+
+It is shown by the windowing crate's default-off **`tray`** feature, on
+Linux only: a StatusNotifierItem with a `com.canonical.dbusmenu` menu,
+served by `ksni` over D-Bus on a thread of its own — **no GTK**, because
+the `dialogs` feature's file pickers already start a GTK thread and a
+second one would be two GTK initialisations on two threads. Nothing of
+the application crosses to that thread: the window builds the item from
+the session's owned model (`Session::tray_model`) and applies each
+enabled mask the session answers (`Session::menu_state`); a click only
+sends the entry's id back to the event loop, which posts it as
+`Event::Menu` to the program's primary session, so it is input in the
+one queue like any other. Whether a tray exists is the static binary's
+and is read once; what it shows follows every hot swap. A build without
+the feature, or off Linux, says once on stderr that it shows none.
+
+**What it costs** — `docs/results-desktop-integration.md` T90.7 owns
+every number here: +55 crates over the default window (fewer than
+`a11y`'s +71), and about 3.29 MB of stripped release showcase without
+`a11y`, against the owner's re-budgeted bound of 3.3 MB. The zbus stack
+is pure Rust and statically linked, which is most of that; with `a11y`
+the tray costs about 1.42 MB, because `a11y`'s AT-SPI adapter already
+links the same stack — one D-Bus stack, not two. Two opt-ins make it
+smaller, and neither is a default, for the reasons given:
+
+* **`tray-no-tracing`** instead of `tray` saves about 213 KB. It sets
+  `tracing`'s `release_max_level_off`, and Cargo unifies features across
+  the whole build: **every `tracing` call in the release binary is
+  compiled out, your application's included.** Choose it only if the
+  application logs nothing through `tracing` in release.
+* **The size recipe** saves about 207 KB alone, and about 403 KB with
+  `tray-no-tracing`: three lines in **your application's own top-level
+  `Cargo.toml`**, which build the D-Bus stack for size:
+
+  ```toml
+  [profile.release.package.zbus]
+  opt-level = "s"
+  [profile.release.package.zvariant]
+  opt-level = "s"
+  [profile.release.package.ksni]
+  opt-level = "s"
+  ```
+
+  Cargo reads profiles from the top-level workspace only, so the
+  windowing crate cannot ship them for you, and they are not in this
+  workspace's own release profile, which every recorded size was
+  measured under.
+
+`app.tray` tells a drive what reached the tray — whether the program
+declares one, whether the build supports one, whether the desktop's
+watcher holds it, and the labels, enabled entries and model hash it was
+built from — and `just tray-drive` drives `examples/tray` through the
+desktop's own path: it finds the item in the StatusNotifierWatcher's
+registry by the launched process's pid, reads its dbusmenu layout, and
+clicks entries with dbusmenu `Event` calls. `just tray-drive
+--private-bus` runs the same drive on a private session bus with a
+stand-in watcher, so nothing appears in your own panel.
+
 ## Clipboard
 
 Copy and paste is split in half, deliberately:

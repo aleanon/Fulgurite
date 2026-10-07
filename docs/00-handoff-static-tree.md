@@ -683,6 +683,18 @@ of the application's reaches the window; whether a tray exists at all is
 the window's and not reloadable (`docs/plan-window-reload.md` §2.7).
 `docs/results-desktop-integration.md` T90.6 has the gates.
 
+**DECIDED 2026-10-08 (M90/T90.7): the Linux tray is `ksni` 0.3 over
+zbus, no GTK** (owner decision D2 stands). `lumen-static-winit`'s
+default-off `tray` feature shows a program's tray as a StatusNotifierItem
+with a dbusmenu menu on a thread of its own; a click sends only the
+entry's id, posted as `Event::Menu` to the program's primary session.
+K90c's size bound was **re-budgeted by the owner (2026-10-07) from 3 MB to
+3,300,000 B** for plain `tray` (measured +3,286,360 B without `a11y`):
+a library cannot ship a size profile, so the default is what an
+application pays. `tray-no-tracing` (it silences the whole build's
+`tracing`) and a three-line profile recipe are opt-in.
+`docs/results-desktop-integration.md` T90.7 has the table and the gates.
+
 **REFINED 2026-08-31** (`docs/events-decision.md`): the constraint stands —
 event *payloads* must be data, never captures — but the static tree removes
 the reason handlers capture (identity is positional; repeater rows re-bind

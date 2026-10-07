@@ -67,7 +67,13 @@ candidate window. `app.windows` lists the open windows — each one's
 `windowless` — with `posts`, the `Request::Post`s delivered and those
 dropped because no open window had the key (M89/T89.4), and `app.close`
 closes the window a request names
-(closing the primary ends the process; M89/T89.2). The list above, the
+(closing the primary ends the process; M89/T89.2). `app.tray` answers
+what reached the tray (M90/T90.7): whether the program declares one,
+whether this build can show one (the windowing crate's `tray` feature, on
+Linux), whether the desktop's StatusNotifierWatcher holds the item, and
+the labels, ids, enabled entries, mask and model hash it was built from —
+answered by the window before any backend lookup, so a daemon with every
+window closed can still be asked. The list above, the
 skill's and the code are held to one another by
 `scripts/check_agent_methods.sh`.
 

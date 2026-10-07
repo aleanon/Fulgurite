@@ -454,7 +454,10 @@ where
 ///   process.
 /// - **Its key hook's `KeyOutcome::Quit` closes nothing** — key 0 has no
 ///   window — and is ignored with one line on stderr naming
-///   `Request::Quit` (second review A21).
+///   `Request::Quit` (second review A21). So is its menu hook's, which is
+///   why a tray's Quit entry pushes `Request::Quit` (M90/T90.7).
+/// - **A tray application is a daemon** with a [`Program::tray`]:
+///   `examples/tray` (M90/T90.7).
 /// - The agent addresses it as window 0, the default for a daemon, through
 ///   a 1×1 offscreen screen: `ui.resolve`, `ui.getTree` and
 ///   `app.diagnostics` answer with no window open.
@@ -737,8 +740,11 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// tray when the model's hash changed. **Whether a tray exists at all
     /// is the window's**, decided once from the static binary: a build
     /// that adds a tray needs a restart (`docs/plan-window-reload.md`
-    /// §2.7). The window that shows it is `lumen-static-winit`'s, from
-    /// M90/T90.7 (`docs/plan-desktop-integration.md`).
+    /// §2.7). The window shows it with `lumen-static-winit`'s default-off
+    /// `tray` feature, on Linux (M90/T90.7, `docs/plan-desktop-integration.md`):
+    /// a StatusNotifierItem served by `ksni` over D-Bus, no GTK. Without the
+    /// feature, or off Linux, the window says once on stderr that it shows
+    /// none. `examples/tray` is a daemon whose only surface is its tray.
     ///
     /// # Panics
     ///
@@ -944,6 +950,14 @@ impl<A: App, I: Invalidation> Program<A, I> {
     /// window for it.
     pub fn is_daemon(&self) -> bool {
         self.windowless
+    }
+
+    /// Whether the program declares a tray ([`Program::tray`]) — M90/T90.7.
+    /// The window reads it once, from the static binary's program, because
+    /// whether a tray exists is not reloadable (`docs/plan-window-reload.md`
+    /// §2.7); what the tray shows is the session's.
+    pub fn has_tray(&self) -> bool {
+        self.tray.is_some()
     }
 
     /// The application's source directory as the compiler spelled it
