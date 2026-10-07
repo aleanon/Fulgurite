@@ -27,8 +27,12 @@ ALLOW=scripts/zero-tests.allow
 sel=("$@")
 [ "${#sel[@]}" -gt 0 ] || sel=(--workspace --exclude lumen-static-wgpu)
 
-json=$(cargo test -q "${sel[@]}" --no-run --message-format=json 2>/dev/null)
+# cargo's stderr is kept, and its tail printed on failure: CI at 89e3f7d
+# failed here with only an exit code, and the cause could not be recovered.
+errf=$(mktemp)
+json=$(cargo test -q "${sel[@]}" --no-run --message-format=json 2>"$errf")
 rc=$?
-[ "$rc" -eq 0 ] || { echo "test-counts: cargo test --no-run failed (exit $rc)" >&2; exit 1; }
+[ "$rc" -eq 0 ] || { echo "test-counts: cargo test --no-run failed (exit $rc)" >&2; tail -20 "$errf" >&2; rm -f "$errf"; exit 1; }
+rm -f "$errf"
 
 printf '%s\n' "$json" | python3 scripts/lib/test_counts.py "$ALLOW"

@@ -363,26 +363,71 @@ fn a_failed_bind_exits_3() {
 }
 
 /// The accept direction: a bind on a free port serves.
+///
+/// The port is found by binding `:0` and dropping it, so something else
+/// on the machine can take it before `serve_addr` binds -- and a failed
+/// bind *exits the process* with 3 (that is the contract the test above
+/// pins). Served in-process, that race killed this whole binary with a
+/// bare "exit status: 3" (CI at 89e3f7d). So the server is a child, as in
+/// `a_failed_bind_exits_3`, and a child that exits 3 means the port was
+/// lost: a fresh one is tried, up to five, and each loss is printed.
 #[test]
 fn a_bind_on_a_free_port_serves() {
-    let port = transport::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let addr = format!("127.0.0.1:{port}");
-    let a = addr.clone();
-    std::thread::spawn(move || {
-        transport::serve_addr(&a, |req: Value| Some(json!({ "jsonrpc": "2.0", "id": req["id"], "result": 1 })))
-    });
-    let t0 = Instant::now();
-    let mut s = loop {
-        match TcpStream::connect(&addr) {
-            Ok(s) => break s,
-            Err(_) if t0.elapsed() < Duration::from_secs(2) => std::thread::sleep(Duration::from_millis(10)),
-            Err(e) => panic!("nothing served on {addr}: {e}"),
+    if let Ok(addr) = std::env::var("LUMEN_SERVE_CHILD") {
+        std::thread::spawn(move || {
+            transport::serve_addr(&addr, |req: Value| Some(json!({ "jsonrpc": "2.0", "id": req["id"], "result": 1 })))
+        });
+        std::thread::sleep(Duration::from_secs(10));
+        return;
+    }
+    for attempt in 1..=5 {
+        let port = transport::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let addr = format!("127.0.0.1:{port}");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "a_bind_on_a_free_port_serves", "--nocapture", "--test-threads=1"])
+            .env("LUMEN_SERVE_CHILD", &addr)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn the child");
+        let t0 = Instant::now();
+        let s = loop {
+            if let Some(st) = child.try_wait().unwrap() {
+                assert_eq!(st.code(), Some(transport::BIND_FAILED), "the server child died: {st}");
+                break None;
+            }
+            match TcpStream::connect(&addr) {
+                Ok(s) => break Some(s),
+                Err(_) if t0.elapsed() < Duration::from_secs(2) => std::thread::sleep(Duration::from_millis(10)),
+                Err(e) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("nothing served on {addr}: {e}");
+                }
+            }
+        };
+        let Some(mut s) = s else {
+            println!("attempt {attempt}: {addr} was taken before the child bound it (exit 3); trying another");
+            continue;
+        };
+        // Whatever took the port may accept and never answer: a reply
+        // must come within 2 s, and none from a child that exited 3 is a
+        // lost port, not a failure.
+        s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        s.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}\n").unwrap();
+        let mut line = String::new();
+        let read = BufReader::new(s).read_line(&mut line);
+        let _ = child.kill();
+        let st = child.wait().unwrap();
+        if read.is_err() || line.is_empty() {
+            assert_eq!(st.code(), Some(transport::BIND_FAILED), "no answer on {addr}, and the server child {st}");
+            println!("attempt {attempt}: {addr} answered nothing and the child exited 3 -- the port was taken; trying another");
+            continue;
         }
-    };
-    s.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}\n").unwrap();
-    let mut line = String::new();
-    BufReader::new(s).read_line(&mut line).unwrap();
-    println!("served on {addr}: {}", line.trim());
-    assert!(line.contains("\"result\":1"), "{line}");
+        println!("served on {addr} (attempt {attempt}): {}", line.trim());
+        assert!(line.contains("\"result\":1"), "{line}");
+        return;
+    }
+    panic!("five free ports were all taken before the child could bind one");
 }
 
