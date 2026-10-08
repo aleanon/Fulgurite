@@ -47,7 +47,32 @@ real playback and a toast's dismissal; they are what those actions test.
 
 The `e446ea2` run's `gpu` step hung for **21 h**: every test in
 `lumen-static-wgpu`'s `parity` binary blocked on a futex, 2 GB of GPU
-memory held. It did not reproduce in 33 runs afterwards (2.1-2.4 s
-each), and the shared context of T89.10 is `Rc` per window, not shared
-across the test threads. It ran while the real-desktop tray drive and
-its GPU windows were up. Whatever the cause, a step had no bound.
+memory held, beside the NVIDIA driver's own `vkcf`/`vkps`/`vkrt` threads.
+**The cause is no reachable X server**, not T89.10: the run's `DISPLAY`
+(`:73`) had gone.
+
+| `parity` binary, 30 s timeout | hung |
+|---|---:|
+| `DISPLAY=:0` | 0 / 38 |
+| `DISPLAY=` | 8 / 8 |
+| `DISPLAY=`, `--test-threads=1` | 0 / 1 (3.6 s) |
+| `DISPLAY=`, at `a8f5b2c` (before T89.10) | 5 / 5 |
+| `DISPLAY=`, under `cargo nextest` (a process per test) | 0 / 1 |
+
+So: concurrent headless device creation in one process, with no display,
+deadlocks inside the driver. `just ci` now bounds every step
+(`CI_STEP_TIMEOUT`, default 3600 s), so a hang costs an hour at most and
+names its step.
+
+## nextest
+
+The workspace's default shape, built, `--tests --lib --bins`, `DISPLAY=:0`:
+
+| runner | wall | tests |
+|---|---:|---|
+| `cargo test` (410 binaries, one at a time) | 39.7 s | 1 731 passed |
+| `cargo nextest run` (a process per test) | 7.85 s | 1 731 passed, 5 skipped |
+
+The 5× is test execution only; most `cargo test` steps in `just ci` are
+compile-bound. nextest does not run doctests (`cargo test --doc` stays),
+and `scripts/check_test_counts.sh` reads `cargo test`'s output.

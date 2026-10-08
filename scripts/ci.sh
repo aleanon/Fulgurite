@@ -27,7 +27,10 @@
 #      unless LUMEN_ALLOW_SKIP=1, recorded as a skip either way; anything
 #      else a failure. Under LUMEN_ALLOW_SKIP=1 a step that exits 0 but
 #      says it accepted a skip is recorded as a skip too. All steps run
-#      unless --fail-fast.
+#      unless --fail-fast. **Each step is bounded** by CI_STEP_TIMEOUT
+#      seconds (default 3600): past it, its whole process group is sent
+#      TERM, then KILL 30 s later, and it fails as `timed out`. `e446ea2`'s
+#      `gpu` step hung for 21 h with no bound (docs/results-ci-time.md).
 #   4. **Rule 5, the tree is left clean**: `git status --porcelain` of the
 #      worktree AFTER the run must be empty. A recipe that rewrites a
 #      committed file (M43/T43.12 found `just test` rewriting a lock) fails
@@ -49,7 +52,7 @@
 #
 # Environment: DISPLAY (the live gates open windows on it),
 # LUMEN_LIVE_PORT_RANGE (the ports the live launcher may pick; recorded),
-# LUMEN_ALLOW_SKIP. CARGO_TARGET_DIR is UNSET for the steps: several
+# LUMEN_ALLOW_SKIP, CI_STEP_TIMEOUT. CARGO_TARGET_DIR is UNSET for the steps: several
 # recipes name `target/...` paths, and the worktree's own target/ is the
 # warm cache this design depends on.
 #
@@ -147,9 +150,15 @@ for s in "${steps[@]}"; do
         probe=./scripts/probe.sh; [ -x "$probe" ] || probe="$ROOT/scripts/probe.sh"
         "$probe" thumb qemu miri xclip >"$log" 2>&1 </dev/null
     else
-        just --no-deps "$s" >"$log" 2>&1 </dev/null
+        # Not --foreground: timeout leads its own process group and
+        # signals all of it, so a test binary under cargo under just dies
+        # too, not only `just`.
+        timeout --kill-after=30 "${CI_STEP_TIMEOUT:-3600}" just --no-deps "$s" >"$log" 2>&1 </dev/null
     fi
     rc=$?
+    if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+        echo "ci: $s: timed out after ${CI_STEP_TIMEOUT:-3600} s (CI_STEP_TIMEOUT)" >> "$log"
+    fi
     secs=$(( $(date +%s) - t0 ))
     last=$(grep -v '^[[:space:]]*$' "$log" | tail -1 | cut -c1-140)
     case $rc in
