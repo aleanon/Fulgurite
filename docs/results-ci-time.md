@@ -202,3 +202,34 @@ before it went green:
 | `static`: `scripts/ui_check.py` needs Pillow | `python3-pil` in the job |
 | `live`: the launcher runs `ss` | `iproute2` in the job |
 | `markdown_bullet a_bullet_is_centred_on_the_x_height`: 1.5 px off on DejaVu, bound 1.0 | Noto in the job; `BULLET_DROP` is a constant for one face (its rustdoc says so); deriving it from the face is not built |
+
+**Green from nothing, at `1459051`**, three containers in parallel:
+
+| job | steps | wall, no cache |
+|---|---|---:|
+| lint | `static` 15 s, `deny` 1 s, `release-shape` 18 s, `lint-fast` 40 s | 86 s |
+| test | `test-fast` 183 s, 1,701 passed | 194 s |
+| live | `live-fast` 146 s | 157 s |
+
+The push waits for the slowest job, about 3 min 15 s here, before apt and
+toolchain setup. A GitHub vCPU is slower than an i9 thread, and
+rust-cache removes most of the dependency build, which is most of each
+figure. **Not yet measured on GitHub** (no remote). One test-job run died
+on `rustc interrupted by SIGSEGV` inside LLVM's bitcode reader, building
+a test that compiled in the run before and the run after. That joins the
+compiler SIGILL already recorded on this machine (AGENT.md, M89b) as a
+host fault, not a repository one.
+
+## `just ci` at the end (`1459051`, warm target)
+
+`just ci-verify 1459051` green: 30 steps, 0 failed, 0 skipped.
+
+| step | `ac98b18` s | `1459051` s |
+|---|---:|---:|
+| `live` | 7 060 | 889 |
+| `selftest-live` | 597 | 205 |
+| `adversary-plant` | 420 | 85 |
+| `selftest-slow` | 341 | 43 |
+| `dev-shape` | 245 (cold) | 90 |
+| `selftest-build` | 216 (cold) | 119 |
+| **total** | **9 236** | **1 724** |
