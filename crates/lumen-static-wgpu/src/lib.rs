@@ -576,7 +576,7 @@ enum Overflow {
 /// capabilities, and the blit pipeline that writes it is cached here keyed
 /// by that format, so a second surface with another format builds its own.
 /// The shapes pipeline writes the target, whose format is fixed
-/// ([`TARGET_FORMAT`]), and is shared.
+/// (`TARGET_FORMAT`), and is shared.
 ///
 /// Not `Send`: it is shared by `Rc`, on the one thread a window loop runs.
 pub struct GpuContext {
@@ -911,7 +911,7 @@ impl Gpu {
     }
 
     /// The format the surface was configured with, which the blit pipeline
-    /// targets — [`TARGET_FORMAT`]'s `Rgba8Unorm` for a headless renderer.
+    /// targets — `TARGET_FORMAT`'s `Rgba8Unorm` for a headless renderer.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.config.format
     }
