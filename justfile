@@ -86,7 +86,14 @@ release-shape: const-budget
 
 # Dev surface: observe + reload, unified across the workspace by cargo.
 dev-shape:
-    cargo test --workspace --exclude lumen-static-wgpu
+    # Under cargo-nextest, a process per test (docs/results-ci-time.md,
+    # "nextest": 36.5 s -> 7.4 s here, the same 1,701 tests), and the
+    # doctests, which nextest does not run, beside it -- together the
+    # 1,715 `cargo test --workspace` ran. `.config/nextest.toml` kills a
+    # test that hangs.
+    @command -v cargo-nextest >/dev/null || { echo "dev-shape: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest (or cargo install cargo-nextest --locked)" >&2; exit 1; }
+    cargo nextest run --workspace --exclude lumen-static-wgpu
+    cargo test --doc --workspace --exclude lumen-static-wgpu
     # M34/T34.1: the shadow oracle is a feature, so its test needs it on.
     cargo test -p lumen-static-shell --features shadow-oracle --test shadow
     # M54/T54.1: the screen-reader tree without the agent -- NodeDesc stays
@@ -480,7 +487,12 @@ gpu:
     # unless LUMEN_ALLOW_SKIP=1, and prints the one it used.
     set -euo pipefail
     if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: LUMEN_ALLOW_SKIP=1 -- an absent adapter skips"; else export LUMEN_REQUIRE_GPU=1; fi
-    cargo test -p lumen-static-wgpu
+    # nextest: concurrent headless devices in ONE process deadlock in the
+    # driver when no X server is reachable (docs/results-ci-time.md, "A
+    # hung step"); a process per test does not, and a hung test is killed.
+    command -v cargo-nextest >/dev/null || { echo "gpu: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest" >&2; exit 1; }
+    cargo nextest run -p lumen-static-wgpu
+    cargo test --doc -p lumen-static-wgpu
     cargo test -q -p lumen-static-wgpu --test parity the_gpu_half_ran -- --nocapture | grep '^adapter:'
     # M51/T51.2 (R9-F6): Prefer::Auto on a machine whose ONLY adapter is a
     # CPU rasteriser keeps the software canvas. This machine is made into
@@ -495,7 +507,8 @@ gpu:
     elif [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: no lavapipe ($lvp) -- the CPU-only step skipped"
     else echo "gpu: no lavapipe ($lvp): cannot make a CPU-only machine (LUMEN_ALLOW_SKIP=1 to skip)"; exit 1; fi
     # M81/T81.3: both backends paint shaped -- the `Complex` parity region.
-    cargo test -q -p lumen-static-wgpu --features shaping --test parity -- --nocapture 2>&1 | grep -E 'shaped region|test result'
+    # nextest's --no-capture runs one test at a time, with its prints.
+    cargo nextest run -p lumen-static-wgpu --features shaping --test parity --no-capture 2>&1 | grep -E 'shaped region|Summary'
     cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
     cargo clippy -p lumen-static-wgpu --features shaping --all-targets -- -D warnings
     # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
@@ -517,8 +530,8 @@ gpu:
     # M83/T83.5: the GPU split -- scissor, clip, region, refusal, content
     # key, order (`tests/shader.rs`); the `shader` parity region and the
     # two-shader allocation gate; the feature linted and its rustdoc built.
-    cargo test -p lumen-static-wgpu --features shader --test shader
-    cargo test -q -p lumen-static-wgpu --features shader --test parity --test alloc -- --nocapture 2>&1 | grep -E '^shader|two shaders|test result'
+    cargo nextest run -p lumen-static-wgpu --features shader --test shader
+    cargo nextest run -p lumen-static-wgpu --features shader --test parity --test alloc --no-capture 2>&1 | grep -E '^shader|two shaders|Summary'
     cargo clippy -p lumen-static-wgpu --features shader --all-targets -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-wgpu --no-deps --features shader
 

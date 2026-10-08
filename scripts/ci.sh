@@ -148,7 +148,7 @@ for s in "${steps[@]}"; do
     t0=$(date +%s)
     if [ "$s" = probe ]; then
         probe=./scripts/probe.sh; [ -x "$probe" ] || probe="$ROOT/scripts/probe.sh"
-        "$probe" thumb qemu miri xclip >"$log" 2>&1 </dev/null
+        "$probe" thumb qemu miri xclip nextest >"$log" 2>&1 </dev/null
     else
         # Not --foreground: timeout leads its own process group and
         # signals all of it, so a test binary under cargo under just dies

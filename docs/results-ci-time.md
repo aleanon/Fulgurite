@@ -85,8 +85,36 @@ The workspace's default shape, built, `--tests --lib --bins`, `DISPLAY=:0`:
 | `cargo nextest run` (a process per test) | 7.85 s | 1 731 passed, 5 skipped |
 
 The 5× is test execution only; most `cargo test` steps in `just ci` are
-compile-bound. nextest does not run doctests (`cargo test --doc` stays),
-and `scripts/check_test_counts.sh` reads `cargo test`'s output.
+compile-bound. nextest does not run doctests, so `cargo test --doc` runs
+beside it. `scripts/check_test_counts.sh` lists tests from a `--no-run`
+build and needed no change.
+
+**Adopted (2026-10-09)** where it pays or where it prevents a hang:
+
+- `dev-shape`'s workspace run, `cargo test --workspace --exclude
+  lumen-static-wgpu`, measured 36.5 s for 1,715 tests. It is now `cargo
+  nextest run` (1,701 tests, 7.4 s) plus `cargo test --doc` (14
+  doctests, 2.2 s). Three nextest runs were all green, with no flakes.
+- `gpu`'s whole-binary runs (`-p lumen-static-wgpu`, the `shaping`
+  `parity`, the `shader` `shader`/`parity`/`alloc`). `just gpu` with
+  `DISPLAY` empty passes now; under `cargo test` it hung at the `shaping`
+  `parity` line, killed after 8 min.
+- `.config/nextest.toml`: a test is flagged slow at 60 s and killed at
+  4 min. The slowest test in the workspace takes 7.1 s (a trybuild UI test).
+- `cargo-nextest` is a required tool: `scripts/probe.sh nextest`, in `just
+  ci`'s probe, exits 1 with the install line when it is missing.
+- Kept on `cargo test`:
+  - the single-crate and single-test lines that grep `--nocapture`
+    output or `--list`, which are compile-bound;
+  - `scripts/test_crates.sh`, which builds each crate alone to catch
+    feature unification and parses libtest's counts.
+
+| injection into `just dev-shape` | result |
+|---|---|
+| a test asserting `1 + 1 == 3` | exit 100, `FAIL lumen-static-text::zz_inject injected_failure` |
+| a test sleeping 30 s, limit set to 2 s × 2 | exit 100, `TIMEOUT [4.003s] … injected_hang` |
+| a doctest asserting `1 + 1 == 3` | exit 101, `lib.rs - (line 1) ... FAILED` |
+| `PATH` without `cargo-nextest`, `probe.sh nextest` | exit 1, the install line |
 
 ## `just ci` after the fixes (`59c32d3`, warm target)
 

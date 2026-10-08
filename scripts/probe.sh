@@ -10,6 +10,8 @@
 #   scripts/probe.sh qemu         qemu-system-arm on PATH
 #   scripts/probe.sh miri         `cargo +nightly miri` (just miri-reload)
 #   scripts/probe.sh xclip        xclip on PATH -- REQUIRED, see below
+#   scripts/probe.sh nextest      cargo-nextest -- REQUIRED: `dev-shape` and
+#                                 `gpu` run under it (docs/results-ci-time.md)
 #   scripts/probe.sh a b ...      all of them; 1 if a required one is
 #                                 absent, else 77 if any is absent
 #
@@ -32,7 +34,7 @@
 # --installed` answers for whichever toolchain rustup thinks is active.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
-[ "$#" -gt 0 ] || { echo "usage: probe.sh thumb|qemu|miri|xclip ..." >&2; exit 2; }
+[ "$#" -gt 0 ] || { echo "usage: probe.sh thumb|qemu|miri|xclip|nextest ..." >&2; exit 2; }
 
 THUMB=thumbv7em-none-eabihf
 absent=0
@@ -61,6 +63,13 @@ for cap in "$@"; do
             else
                 echo "probe: miri absent -- skipped (77): rustup +nightly component add miri"
                 absent=1
+            fi ;;
+        nextest)
+            if v=$(cargo nextest --version 2>/dev/null | head -1); then
+                echo "probe: nextest present ($v)"
+            else
+                echo "probe: nextest absent -- required: cargo binstall cargo-nextest (or cargo install cargo-nextest --locked)"
+                required=1
             fi ;;
         xclip)
             if x=$(command -v xclip); then

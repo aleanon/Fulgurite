@@ -1,0 +1,14 @@
+# cargo-nextest: the workspace's test runner for `just dev-shape` and
+# `just gpu` (docs/results-ci-time.md, "nextest").
+#
+# A process per test, so a test that hangs is that test's failure, named,
+# and not the step's: `e446ea2`'s gpu step hung 21 h because every test in
+# one `parity` process deadlocked together in the GPU driver (no X server).
+# Doctests are not nextest's: the recipes run `cargo test --doc` beside it.
+
+[profile.default]
+# Flagged slow at 60 s, killed at 4 periods. The slowest test in the
+# workspace runs in seconds; a test at 4 min is hung.
+slow-timeout = { period = "60s", terminate-after = 4 }
+# Every failure in one run, as `cargo test --no-fail-fast` would list them.
+fail-fast = false
