@@ -290,17 +290,19 @@ class Ctx:
 
 
 def _settled_hash(c: AgentClient, rect) -> dict:
-    """The rect's hash once the window says it is settled -- nothing
-    animating, no job pending, no timer due within a frame
-    (`ui.waitSettled`) -- and two reads 20 ms apart agree; at most 3 s.
-    It polled the hash every 100 ms until two agreed, which was 22 s of a
-    widget-drive leg spent asking a quiet window twice."""
+    """The rect's hash once two reads agree, with a `ui.waitSettled`
+    between them -- which pumps, so a frame the last input scheduled is
+    drawn before the second read; at most 3 s. It polled every 100 ms,
+    which was 22 s of a widget-drive leg spent asking a quiet window
+    twice. It does **not** wait for `settled`: a toast is ticked on every
+    frame of its 3 s life, so the window is unsettled while its pixels
+    hold still, and waiting for `settled` waited the toast away (the
+    scale-2 leg at 59c32d3)."""
     import time
     end = time.time() + 3.0
-    while time.time() < end and c.rpc("ui.waitSettled").get("settled") is False:
-        time.sleep(0.016)
     prev = c.rpc("ui.regionHash", rect=rect)
     while time.time() < end:
+        c.rpc("ui.waitSettled")
         time.sleep(0.02)
         cur = c.rpc("ui.regionHash", rect=rect)
         if cur.get("hash") == prev.get("hash"):

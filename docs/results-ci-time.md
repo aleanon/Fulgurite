@@ -28,14 +28,25 @@ After fix 1, 119 s of the 158 s leg was `time.sleep`: 76 s the
 secondary-button leg's 0.7 s rest after each hover (109 of them), so the
 hover intent `LINGER_MS` later could not land between its two hashes; 22 s
 `_settled_hash` polling every 100 ms. `input.hover` with `rest: true`
-delivers the intent at once (`Host::rest_now`), and `_settled_hash` asks
-`ui.waitSettled` before two reads 20 ms apart.
+delivers the intent at once (`Host::rest_now`), and `_settled_hash`
+reads the hash, pumps once through `ui.waitSettled`, and reads it again
+20 ms later until two reads agree.
+
+**It first waited for `settled`, and that was wrong**: a toast is ticked
+on every frame of its 3 s life, so the window reports unsettled while its
+pixels hold still, and the wait outlived the toast it was to measure. The
+scale-2 leg at `59c32d3` failed `Toast/Save shows a toast` with "no damage
+over the widget, 128 frames presented" (175 polls, about 3 s); 3 of 3
+runs alone red, the harness before `014d321` green. Without the gate, 3
+of 3 green, and both full legs below.
 
 | measure | value |
 |---|---|
 | `rest_now_delivers_hover_intent_without_waiting`, injected (`rest_now` leaves the clock) | tooltip open `false` -- red by name |
 | widget drive `Tooltip`, harness hovering without `rest` or the sleep | 2 FAIL (the intent landed inside the next action) |
 | one full `Boundaries` leg, both fixes | **61 s**, 0 failed, 184 actions, secondary checked 88 |
+| one full `Boundaries` leg, settle without the gate | 60 s, 0 failed |
+| one full `Boundaries+scale2` leg (`LUMEN_DRIVE_FULLCHECK=1`) | 85 s, 0 failed |
 
 The 61 s was taken while nothing else ran a window but with a stopped CI
 run's machine just released; it is indicative, not a K86b measurement.
@@ -76,3 +87,20 @@ The workspace's default shape, built, `--tests --lib --bins`, `DISPLAY=:0`:
 The 5× is test execution only; most `cargo test` steps in `just ci` are
 compile-bound. nextest does not run doctests (`cargo test --doc` stays),
 and `scripts/check_test_counts.sh` reads `cargo test`'s output.
+
+## `just ci` after the fixes (`59c32d3`, warm target)
+
+| step | `ac98b18` (cold) s | `59c32d3` s |
+|---|---:|---:|
+| `live` | 7 060 | 1 175 |
+| of which `widget-drive`, six legs | 6 247 | 395 |
+| `selftest-live` | 597 | 205 |
+| `adversary-plant` | 420 | 85 |
+| `selftest-slow` | 341 | 352 |
+| **total** | **9 236** | **2 138** |
+
+The cold run at `071f32a` (whose `live` stopped at once on the list
+check) measured the compile-bound steps: `dev-shape` 267, `selftest-build`
+227, `tray-symbols` 112. `live`'s largest scripts after `widget-drive` are
+`idle-count` (266 s, a timed idle window by design), `hot-window-drive`
+(105) and `tasks-drive` (72).
