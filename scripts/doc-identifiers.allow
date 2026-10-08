@@ -70,6 +70,8 @@ EnableAccessTree     # masonry's WindowEvent variant; the caveat turns on it
 BENCH_SIZES          # env var on the sibling harness (M16/T16.0)
 BENCH_CHURN_SIZES    # ditto
 LUMEN_TRACE          # env var named in a plan; nothing reads it yet
+DISPLAY              # the X server the live gates and the GPU tests reach; read by Xlib and the driver, not by us
+CI_STEP_TIMEOUT      # env bound read by scripts/ci.sh (a script, not workspace code)
 
 # Designs that were proposed and NOT built, or built and removed. The
 # sentence naming them IS the record of the decision -- deleting it to

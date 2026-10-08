@@ -44,6 +44,9 @@ ALL=(
     "shader-drive|./scripts/shader_drive.sh"
     "idle-count|./scripts/idle_count.sh"
     "a11y-drive|./scripts/a11y_drive.sh"
+    # On its own bus with the stand-in watcher, so `just ci` never puts an
+    # item in the user's panel; the desktop's watcher is `just tray-drive`.
+    "tray-drive|./scripts/tray_drive.sh --private-bus"
 )
 
 # Every script that goes through the live launcher is a live gate and must
@@ -54,7 +57,7 @@ check_live_list() {
     for f in $(grep -l 'scripts/live/launch.py' scripts/*.sh); do
         base=$(basename "$f")
         [ "$base" = live.sh ] && continue
-        if ! printf '%s\n' "${ALL[@]}" | grep -q "|./scripts/$base\$"; then
+        if ! printf '%s\n' "${ALL[@]}" | grep -qE "\\|\\./scripts/$base( |\$)"; then
             echo "live: $f uses the live launcher but is not in scripts/live.sh's list" >&2
             missing=1
         fi
