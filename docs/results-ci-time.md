@@ -149,3 +149,19 @@ at 6 s (`timeout`), and stopping it is the red.
 
 Both plants still read `run2 red=1 run3 red=1`, the reruns the plant
 exists for (R11-F5).
+
+## idle-count (2026-10-09)
+
+The window leg settles 20 s and then watches 60 s twice, and the two
+daemon legs watch 60 s each: 266 s in `just ci`. Only the daemon legs
+assert anything (K89d); the window leg's counts are the Idle figures in
+`docs/results-frame-cost.md`, measured at 60 s, which a bare `just
+idle-count` still does. `just live` now passes 15 s.
+
+| `scripts/idle_count.sh 15`, on `:73` | result |
+|---|---|
+| as committed | exit 0, **87 s**; daemon still: frames 0, loop wakes 1 (bound 0, 2); daemon timer: 125 frames for 125 periods (bound 126) |
+| injected: the still daemon's `wake_in_ms` answers 5000 ms | exit 1, `K89d FIRED`, frames 3 (bound 0), loop wakes 4 (bound 2) |
+
+What the shorter window gives up is a stray wake rarer than one in about
+15 s. The daemon's own legs and the 60 s run catch that.

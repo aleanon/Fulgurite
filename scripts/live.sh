@@ -42,7 +42,9 @@ ALL=(
     "resume-drive|./scripts/resume_drive.sh"
     "windows-rss|./scripts/windows_rss.sh"
     "shader-drive|./scripts/shader_drive.sh"
-    "idle-count|./scripts/idle_count.sh"
+    # 15 s windows, not the 60 s `just idle-count` measures the Idle
+    # figures with: K89d still fires on a stray 5 s wake (docs/results-ci-time.md).
+    "idle-count|./scripts/idle_count.sh 15"
     "a11y-drive|./scripts/a11y_drive.sh"
     # On its own bus with the stand-in watcher, so `just ci` never puts an
     # item in the user's panel; the desktop's watcher is `just tray-drive`.
