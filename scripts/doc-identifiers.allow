@@ -72,6 +72,7 @@ BENCH_CHURN_SIZES    # ditto
 LUMEN_TRACE          # env var named in a plan; nothing reads it yet
 DISPLAY              # the X server the live gates and the GPU tests reach; read by Xlib and the driver, not by us
 CI_STEP_TIMEOUT      # env bound read by scripts/ci.sh (a script, not workspace code)
+CARGO_PROFILE_DEV_DEBUG # cargo profile override set by .github/workflows/ci.yml
 
 # Designs that were proposed and NOT built, or built and removed. The
 # sentence naming them IS the record of the decision -- deleting it to
