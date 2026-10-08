@@ -37,5 +37,19 @@ for ws in . benches-competitive; do
         status=1
     fi
 done
+# **And the sources, for what runs after this in `just static`.** Its
+# crate-graph checks (check_shell_headless, check_default_crates,
+# check_tray_cost) read `cargo tree --offline`, which needs every crate's
+# manifest on disk; a fresh runner had none and check_tray_cost failed
+# "cargo tree failed for features 'tray'". `cargo fetch --locked` writes
+# nothing in the tree; offline first, so a warm machine stays offline.
+if [ "$status" -eq 0 ] && ! cargo fetch --locked --offline -q 2>/dev/null; then
+    if cargo fetch --locked -q; then
+        out="$out ; sources fetched (none cached)"
+    else
+        echo "lock: cargo fetch --locked failed -- the crate graph checks after this cannot run offline" >&2
+        status=1
+    fi
+fi
 [ "$status" -eq 0 ] && echo "$out"
 exit "$status"
