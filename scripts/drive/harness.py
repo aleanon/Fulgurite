@@ -290,11 +290,18 @@ class Ctx:
 
 
 def _settled_hash(c: AgentClient, rect) -> dict:
-    """The rect's hash once two reads 100 ms apart agree (at most 3 s)."""
+    """The rect's hash once the window says it is settled -- nothing
+    animating, no job pending, no timer due within a frame
+    (`ui.waitSettled`) -- and two reads 20 ms apart agree; at most 3 s.
+    It polled the hash every 100 ms until two agreed, which was 22 s of a
+    widget-drive leg spent asking a quiet window twice."""
     import time
+    end = time.time() + 3.0
+    while time.time() < end and c.rpc("ui.waitSettled").get("settled") is False:
+        time.sleep(0.016)
     prev = c.rpc("ui.regionHash", rect=rect)
-    for _ in range(30):
-        time.sleep(0.1)
+    while time.time() < end:
+        time.sleep(0.02)
         cur = c.rpc("ui.regionHash", rect=rect)
         if cur.get("hash") == prev.get("hash"):
             return cur
@@ -577,9 +584,10 @@ def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action:
     """The same clicks `do` sent, each with `button: "right"`: `handled`
     false, and `rect`'s pixels unchanged. Run after the action's own
     checks, in the state the action left, so nothing it measured sees
-    these inputs. The pointer is first put where the click lands and left
-    to rest past `LINGER_MS`, so a hover is not mistaken for the click's
-    doing; it ends where the action left it."""
+    these inputs. The pointer is first put where the click lands and
+    rested (`input.hover` with `rest`), so a hover -- and the hover intent
+    `LINGER_MS` later -- is not mistaken for the click's doing; it ends
+    where the action left it."""
     import time
     name = f"{widget}/{action}"
     n = c.rpc("app.diagnostics").get("open_overlays")
@@ -596,8 +604,9 @@ def _secondary_leg(c: AgentClient, rpc, clicks: list[dict], widget: str, action:
     for p in clicks:
         at = p["at"]
         loc = {"x": at[0], "y": at[1]}
-        rpc("input.hover", **loc)
-        time.sleep(0.7)
+        # `rest`: the hover intent a resting pointer would deliver after
+        # `LINGER_MS` is delivered now (`Host::rest_now`), not slept for.
+        rpc("input.hover", rest=True, **loc)
         h0 = _settled_hash(c, rect)
         extra = {"clicks": p["clicks"]} if p.get("clicks", 1) != 1 else {}
         inside = rect[0] <= at[0] < rect[2] and rect[1] <= at[1] < rect[3]

@@ -30,6 +30,9 @@ consequence *shows* rather than that a value moved (M57/D1).
 `input.pointerDown`, `input.pointerUp`, `input.invokeAction`,
 `input.compose` (an input-method step: `{text, commit}` or `{cancel:
 true}`, through the same route the window's IME takes).
+`input.hover` takes `rest: true` to deliver the hover intent a resting
+pointer gets after `LINGER_MS` at once instead of after the wait
+(`Host::rest_now`); its reply says whether one was pending (`rested`).
 `input.key`'s `key` is one of `Enter`, `Space`, `Escape`, `Tab`,
 `Backspace`, `Delete`, `Left`, `Right`, `Up`, `Down`, `Home`, `End`,
 `PageUp`, `PageDown`, `Menu`, `F1` to `F12` (the last two since

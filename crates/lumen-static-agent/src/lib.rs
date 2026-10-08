@@ -952,6 +952,20 @@ impl Agent {
                 let (x, y) = self.point_param(host, params)?;
                 host.enqueue(Event::PointerMove { x, y });
                 let (f, h) = host.pump();
+                // `rest: true` -- and the pointer stays long enough for
+                // hover intent to arrive, without the wait: `Event::Linger`
+                // is delivered now and the result pumped. `rested` says
+                // whether one was pending.
+                if params.get("rest").and_then(Value::as_bool) == Some(true) {
+                    let rested = host.rest().ok_or((
+                        INVALID_PARAMS,
+                        "`rest`: this host has no hover-intent clock to advance".into(),
+                        Value::Null,
+                    ))?;
+                    let (f, _) = host.pump();
+                    return Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h,
+                                      "at": [x, y], "rested": rested }));
+                }
                 Ok(json!({ "frame": self.reply_frame(), "host_frame": f, "handled": h, "at": [x, y] }))
             }
             "input.scroll" => {
@@ -2211,6 +2225,15 @@ pub trait AgentHost {
     /// press does, so "a right click changes nothing" is a claim only
     /// about a window with none open.
     fn open_overlays(&self) -> Option<usize> {
+        None
+    }
+
+    /// Deliver a pending hover intent now instead of after `LINGER_MS` --
+    /// `input.hover` with `rest: true`. `Some(delivered)`, or `None` by
+    /// default, for a host with no hover-intent clock, which the method
+    /// refuses rather than answering as if the pointer had rested.
+    /// Provided for the reason [`AgentHost::process_info`] gives.
+    fn rest(&mut self) -> Option<bool> {
         None
     }
 }

@@ -1375,6 +1375,21 @@ impl<A: App, R: Retention, I: Invalidation> Host<A, R, I> {
         lumen_static::overlay::OverlaySink::len(&self.overlays)
     }
 
+    /// **The pointer has rested, now** -- what `LINGER_MS` of real time
+    /// would have done: a pending hover intent is delivered by a zero
+    /// tick instead of waiting out its clock. `false` when none was
+    /// pending (nothing under the pointer, or it already arrived).
+    ///
+    /// For a drive that must let a hover finish before it measures the
+    /// next input (`input.hover` with `rest`), which slept 700 ms per
+    /// action for it and spent most of a widget-drive leg doing so.
+    pub fn rest_now(&mut self) -> bool {
+        let Some((n, _)) = self.linger else { return false };
+        self.linger = Some((n, 0.0));
+        self.tick(0.0);
+        true
+    }
+
     pub fn frame_number(&self) -> u64 {
         self.frame
     }

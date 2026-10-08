@@ -143,6 +143,27 @@ fn tab_passes_through_an_open_tooltip() {
     assert_eq!(h.input.focus, expected, "an open tooltip changed where Tab goes");
 }
 
+/// **`Host::rest_now` is the pointer resting, without the clock** -- what
+/// `input.hover` with `rest` runs, so `just widget-drive` stops sleeping
+/// 700 ms an action for hover intent. No tick moves time here: the open
+/// tooltip is the linger delivered, and a second call has nothing left.
+#[test]
+fn rest_now_delivers_hover_intent_without_waiting() {
+    let mut h = host();
+    assert!(!h.rest_now(), "nothing hovered, nothing pending: rest_now delivered something");
+    let b = h.states[tipped_button() as usize];
+    h.post(Event::PointerMove { x: b.pos.x + b.size.w / 2.0, y: b.pos.y + b.size.h / 2.0 });
+    h.pump();
+    assert!(!h.app.ui.tipped.is_open(), "setup: the tooltip opened on the move itself, before any intent");
+    let rested = h.rest_now();
+    h.pump();
+    let open = h.app.ui.tipped.is_open();
+    println!("rest_now -> {rested}, tooltip open {open} (no time advanced)");
+    assert!(rested, "a hover over the tipped button left no intent pending");
+    assert!(open, "rest_now did not deliver Event::Linger: the tooltip is still closed");
+    assert!(!h.rest_now(), "the intent was delivered twice");
+}
+
 #[test]
 fn escape_from_a_modal_returns_focus_to_its_trigger() {
     let mut h = host();

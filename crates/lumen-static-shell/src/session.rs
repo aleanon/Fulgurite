@@ -1486,6 +1486,11 @@ impl<A: App, P: RecoverPolicy, I: Invalidation> lumen_static_agent::AgentHost fo
         Some(self.host.open_overlays())
     }
 
+    /// Guarded: delivering `Event::Linger` runs the widget's `on_event`.
+    fn rest(&mut self) -> Option<bool> {
+        Some(run_guarded::<A, P, I, _>(self.host, |h| h.rest_now()).unwrap_or(false))
+    }
+
     /// Measured on the frame's own display list (M54/T54.5): each text
     /// run whose centre lies in `rect` against the opaque fill under it,
     /// with the page behind everything.
