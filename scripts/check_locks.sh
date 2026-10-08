@@ -12,6 +12,14 @@
 # `cargo metadata --locked --offline` resolves without touching the network
 # and refuses to write the lock; a stale lock is an error naming the
 # workspace. No compile, so it lives in `just static`.
+#
+# **Offline needs the index cached.** On a machine that has never fetched
+# a crate -- a hosted runner, found by running ci.yml's steps in a clean
+# ubuntu:24.04 (docs/results-ci-time.md, "Tier 1") -- it answered "no
+# matching package named `serde`" and called a good lock stale. So a
+# failed offline resolve is asked again online, still `--locked`: that
+# may fetch the index but never writes the lock, and only its failure is
+# a stale lock.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -20,6 +28,8 @@ out=""
 for ws in . benches-competitive; do
     if err=$(cargo metadata --locked --offline --format-version 1 --manifest-path "$ws/Cargo.toml" 2>&1 >/dev/null); then
         out="$out${out:+ ; }lock ok: $ws"
+    elif err=$(cargo metadata --locked --format-version 1 --manifest-path "$ws/Cargo.toml" 2>&1 >/dev/null); then
+        out="$out${out:+ ; }lock ok: $ws (the index fetched: nothing cached offline)"
     else
         echo "lock STALE: $ws -- $ws/Cargo.lock does not match its manifests:" >&2
         echo "$err" | head -4 | sed 's/^/    /' >&2
