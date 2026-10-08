@@ -715,19 +715,22 @@ found" section rather than silently replacing itself.
     **M88, M89a and M89b DONE**, `just ci-verify 1faf792` green (29
     steps, 0 failed, 0 skipped). M88 (T88.0-T88.5) and M89a
     (T89.0-T89.7) shipped as planned; **M89b closed with K89b fired**:
-    T89.9's resume leg and per-window RSS ship, T89.10's shared GPU
-    context does not and is kept on `t89.10-shared-gpu-context`
-    (`9cc2e22`) pending the owner's call on judging K89b by the GPU
-    share (`docs/results-windows.md`, Summary). The runs at `a796eb7`,
+    T89.9's resume leg and per-window RSS ship, and T89.10's shared GPU
+    context shipped later (`5f025ad`) on the owner's decision to judge
+    K89b by the GPU share (`docs/results-windows.md`, T89.10). The runs at `a796eb7`,
     `6cd1e0d` and `cad8edc` failed on a compiler SIGILL, two script
     defects (`cce0f65`) and a Toast drive race (`f3deb9a`).
     **M90a DONE** (T90.0-T90.5), `just ci-verify ac98b18` green (29
     steps, 0 failed, 0 skipped): context menus, the drawn menu bar (D2)
-    and accelerators. **M90b is open**: T90.6's tray seam is in
-    (`8747678`); **T90.7 stopped on K90c** (`ksni` +3.29 MB against
-    3 MB) because its written fallback, `tray-icon` on a GTK thread,
-    reverses D2 -- the owner's call (`docs/results-desktop-integration.md`,
-    Summary).
+    and accelerators. **M90b DONE** (T90.6-T90.7), `just ci-verify
+    58865bc` green (30 steps, 0 failed, 0 skipped): the Linux tray on
+    `ksni` 0.3, after T90.7 stopped on K90c and the owner re-budgeted
+    its size bound to 3,300,000 B (`e446ea2`); the drive passed on the
+    desktop's watcher too (`docs/results-desktop-integration.md`,
+    Summary). **M80-M90 is complete.** Closing it found `just ci`
+    taking 2.5 h, nearly all of it a 40 ms Nagle stall per agent
+    request; it is 1,978 s now (`docs/results-ci-time.md`), and every
+    step is bounded (`CI_STEP_TIMEOUT`) after a 21 h GPU-test hang.
   Written 2026-09-28 from iced's board, then reviewed twice by eight
   lenses with adversarial verification (202, then 189 findings; 19,
   then 9 blocking), redrafted per milestone, and checked three times

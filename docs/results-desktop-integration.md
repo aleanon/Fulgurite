@@ -3,7 +3,7 @@
 *M90, `docs/plan-desktop-integration.md`. Owns every figure that plan
 cites. Machine: i9-13900KF. Created by T90.0 (2026-10-06).*
 
-## Summary — M90a closes (`just ci-verify ac98b18` green)
+## Summary — M90a closes (`just ci-verify ac98b18` green); M90b closes (`just ci-verify 58865bc` green)
 
 - **M90a DONE** (T90.0–T90.5). A secondary press is one
   `Event::ContextRequest` and its release reaches nothing (T90.2); the
@@ -15,13 +15,24 @@ cites. Machine: i9-13900KF. Created by T90.0 (2026-10-06).*
   D2). Each section below owns its figures; K90a and K90b held on every
   task (T90.4's first K90b reading fired by 0.005 µs and its written
   response was applied, then re-measured inside the spread).
-- **M90b open.** T90.6's seam is committed (`8747678`). **T90.7 stopped
-  on K90c**: `ksni` adds +3.29 MB stripped against a 3 MB bound (crates
-  +55 against +71), and K90c's written fallback (`tray-icon` on a GTK
-  thread) reverses owner decision D2, so it waits for the owner. The
-  working `ksni` patch is kept outside the tree. **Then landed on the
-  owner's decision of 2026-10-07** (K90c's size bound re-budgeted to
-  3,300,000 B for plain `tray`; D2 stands): the T90.7 section below.
+- **M90b DONE** (T90.6–T90.7), `just ci-verify 58865bc` green (30
+  steps, 0 failed, 0 skipped, 1,978 s). T90.6's seam is `8747678`.
+  **T90.7 first stopped on K90c**: `ksni` adds +3.29 MB stripped against
+  a 3 MB bound (crates +55 against +71), and K90c's written fallback
+  (`tray-icon` on a GTK thread) reverses owner decision D2. **It landed
+  on the owner's decision of 2026-10-07** (`e446ea2`: K90c's size bound
+  re-budgeted to 3,300,000 B for plain `tray`, `tray-no-tracing` opt-in;
+  D2 stands): the T90.7 section below. The drive passed on the desktop's
+  own watcher as well as the private bus (T90.7, "Live"), and `just
+  live` runs it on the private bus since `59c32d3`.
+- **Closing M90b's CI.** `e446ea2`'s run hung 21 h in `gpu`: concurrent
+  headless GPU tests deadlock in the driver with no X server, and its
+  `:73` had gone (`docs/results-ci-time.md`). Every `ci.sh` step is
+  bounded since `ab841e2`. The steps the hang had kept from running
+  found two defects: T89.10's rustdoc linked a private const (`071f32a`),
+  and `tray_drive.sh` was missing from `just live`'s list (`59c32d3`).
+  `59c32d3`'s run then failed one scale-2 Toast action on a settle the
+  CI-time work had just changed, fixed in `58865bc`.
 - **Closing CI.** Two runs failed before `ac98b18`, neither on M90's
   behaviour: `2116011` on `book` (T90.5 put the menu inside the anchor
   `book/src/hot-reload.md` compiles; fixed in `89e3f7d`), and `89e3f7d`
@@ -706,6 +717,12 @@ display), both strategies, each leg's process named by
 | (d) the window's Close | `[0]`, still registered | same | `[0]`, registered |
 | (e) Lock / Open while locked / Lock again | `enabled` false, `#status` `locked` / `[0]` / `enabled` true | same | flips both ways; nothing opens |
 | (f) Quit from the tray | exited in 23 ms, status 0 | 23 ms, 0 | ≤ 2,000 ms, 0 |
+
+**Live, `just tray-drive` on the desktop's own watcher** (Cinnamon's
+StatusNotifierWatcher on the session bus, the item shown in the panel
+for the run; the owner approved the run, 2026-10-08): the same steps
+(a)–(f), both strategies, passed; each leg's app log 0 panics and exit
+status 0.
 
 Without `gdbus` on `PATH` the drive exits **1** with the install line
 (`sudo apt install libglib2.0-bin`); on a session bus with no watcher it
