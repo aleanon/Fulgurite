@@ -165,3 +165,40 @@ idle-count` still does. `just live` now passes 15 s.
 
 What the shorter window gives up is a stray wake rarer than one in about
 15 s. The daemon's own legs and the 60 s run catch that.
+
+## Tier 1 (2026-10-09)
+
+`just ci-fast` is what `.github/workflows/ci.yml` runs, as three
+parallel jobs: lint (`static`, `deny`, `release-shape`, `lint-fast`),
+test (`test-fast`) and live (`live-fast`). `CARGO_PROFILE_DEV_DEBUG` is
+`line-tables-only`, not `0`, because at `0`
+`panic-app::recover every_site_is_caught_reported_and_recovered_from`
+fails with "no application frame in the backtrace".
+
+**On the reference machine, 4 CPUs** (`taskset 0-3`,
+`CARGO_BUILD_JOBS=4`, `CARGO_INCREMENTAL=0`), with dependencies cached
+and the workspace crates cleaned, as rust-cache leaves them:
+
+| recipe | full debug info | line tables |
+|---|---:|---:|
+| `static` | 9 s | – |
+| `deny` | 1 s | – |
+| `release-shape` | 15 s | 15 s |
+| `lint-fast` (clippy) | (inside `test-fast`) | 23 s |
+| `test-fast` | 215 s (clippy included) | 143 s |
+| `live-fast` | 65 s | 67 s |
+
+**In a clean `ubuntu:24.04`**, one container per job, each on its own
+4 CPUs, as user `runner`, from no cache at all (the first run's worst
+case). Each container installs only what its job's steps install,
+on top of git, curl, a C toolchain, python3 and sudo. What it found
+before it went green:
+
+| finding | fix |
+|---|---|
+| `check_locks` called a good lock stale: `--offline` with no index | asks again online, `--locked` (`3aae94c`) |
+| `check_tray_cost`: `cargo tree --offline` with no sources | `check_locks` fetches them first (`2c94799`) |
+| `deny`: no advisory database; resolved offline too | fetched when absent; a non-verdict is named (`2c94799`) |
+| `static`: `scripts/ui_check.py` needs Pillow | `python3-pil` in the job |
+| `live`: the launcher runs `ss` | `iproute2` in the job |
+| `markdown_bullet a_bullet_is_centred_on_the_x_height`: 1.5 px off on DejaVu, bound 1.0 | Noto in the job; `BULLET_DROP` is a constant for one face (its rustdoc says so); deriving it from the face is not built |

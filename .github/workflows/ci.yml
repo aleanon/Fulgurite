@@ -88,8 +88,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
-      # A system face for the text tests that look for one.
-      - run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+      # The reference machine's face, which `FontStack::system` tries first.
+      # Not DejaVu alone: a Markdown bullet's drop is tuned to Noto Sans's
+      # metrics and sits 1.5 px off on DejaVu (docs/results-ci-time.md,
+      # "Tier 1"), so the test would judge a face the reference never uses.
+      - run: sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-dejavu-core
       - uses: Swatinem/rust-cache@v2
         with:
           key: test
@@ -109,11 +112,13 @@ jobs:
       - run: rustup show
       # Xvfb is the display. winit opens libxkbcommon-x11 and the X
       # extensions at run time; xclip is owner decision D7's prerequisite;
-      # Pillow is what the drive saves a failing frame pair with.
+      # Pillow is what the drive saves a failing frame pair with; `ss`
+      # (iproute2) is how the launcher names the process on a port; Noto
+      # is the reference face, as in the test job.
       - run: >
           sudo apt-get install -y --no-install-recommends
           xvfb xauth libxkbcommon-x11-0 libxcursor1 libxi6 libxrandr2
-          fonts-dejavu-core xclip python3-pil
+          fonts-noto-core fonts-dejavu-core xclip python3-pil iproute2
       - uses: Swatinem/rust-cache@v2
         with:
           key: live

@@ -416,6 +416,10 @@ const BULLET_X: f32 = 14.0;
 /// sits below the dot's box here. The dot was centred on the box and read
 /// 2.5 px high at 15 px; `tests/markdown_bullet.rs` in the shell checks
 /// the dot against a rasterised `x`, since this is a fact about ink.
+/// **A constant for one face**: on DejaVu Sans the dot sits 1.5 px off
+/// the x-height's middle at 15 px (bound 1.0), found by running the test
+/// job on a machine with no Noto (`docs/results-ci-time.md`, "Tier 1").
+/// Deriving it from the face's own cap and x heights is not built.
 const BULLET_DROP: f32 = 0.17;
 /// Padding around a `code` chip.
 const CHIP: f32 = 3.0;
