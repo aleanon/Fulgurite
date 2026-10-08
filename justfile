@@ -821,8 +821,17 @@ const-budget:
     cargo build -q -p lumen-static -p lumen-static-widgets
     cargo clean -q -p const-budget
     start=$(date +%s%N)
-    cargo build -q -p const-budget
+    # Stopped at the bound plus a second: a build past 5000 ms is red
+    # whatever it would have taken, and a planted quadratic ran on for
+    # minutes before (selftest-slow builds it six times;
+    # docs/results-ci-time.md, "selftest-slow").
+    rc=0; timeout --kill-after=2 6 cargo build -q -p const-budget || rc=$?
     ms=$(( ($(date +%s%N) - start) / 1000000 ))
+    if [ "$rc" = 124 ] || [ "$rc" = 137 ]; then
+        echo "const-budget: stopped at ${ms} ms, over the 5000 ms budget -- see docs/results-const-eval.md" >&2
+        exit 1
+    fi
+    [ "$rc" = 0 ] || exit "$rc"
     echo "const-budget: ${ms} ms for 3711 nodes (non-incremental, bound 5000; wid_index uses: $uses)"
     if [ "$ms" -gt 5000 ]; then
         echo "over the 5000 ms budget — see docs/results-const-eval.md" >&2

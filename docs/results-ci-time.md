@@ -132,3 +132,20 @@ check) measured the compile-bound steps: `dev-shape` 267, `selftest-build`
 227, `tray-symbols` 112. `live`'s largest scripts after `widget-drive` are
 `idle-count` (266 s, a timed idle window by design), `hot-window-drive`
 (105) and `tasks-drive` (72).
+
+## selftest-slow (2026-10-09)
+
+Its two plants (`scripts/selftest/plants/slow/`) each run `just
+const-budget` three times with a quadratic planted in the const tables,
+and each run compiled to the end: 350 s at `58865bc`. A timed build past
+5,000 ms is red whatever it would have taken, so the build is now stopped
+at 6 s (`timeout`), and stopping it is the red.
+
+| measure | before | after |
+|---|---:|---:|
+| `just const-budget`, unplanted | 499–590 ms, pass | 499 ms, pass |
+| `scripts/selftest/run.sh slow` | 350 s | **44 s** |
+| each planted run | ran to the end, red | `stopped at 6003 ms, over the 5000 ms budget`, red |
+
+Both plants still read `run2 red=1 run3 red=1`, the reruns the plant
+exists for (R11-F5).
