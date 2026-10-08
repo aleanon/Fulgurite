@@ -220,7 +220,7 @@ fn connection(stream: TcpStream, mut handler: impl Handler) {
             }
         };
         let Some(resp) = handler(req) else { return };
-        if writeln!(out, "{resp}").is_err() {
+        if send_line(&mut out, &resp).is_err() {
             return;
         }
     }
@@ -240,7 +240,7 @@ const HTTP_REFUSAL: &str = "this is a JSON-RPC line protocol, not HTTP: send one
 /// 64 KiB, before the socket drops.
 fn refuse(out: &mut TcpStream, reply: Value) {
     use std::net::Shutdown;
-    let _ = writeln!(out, "{reply}");
+    let _ = send_line(out, &reply);
     let _ = out.shutdown(Shutdown::Write);
     let _ = out.set_read_timeout(Some(std::time::Duration::from_millis(250)));
     let mut sink = [0u8; 4096];
@@ -251,6 +251,17 @@ fn refuse(out: &mut TcpStream, reply: Value) {
             Ok(n) => left -= n.min(left),
         }
     }
+}
+
+/// **One write per line.** `writeln!` on the bare stream sends a
+/// `Value`'s `Display` output in the pieces it writes and the newline
+/// apart, and Nagle holds the last small segment until the peer's delayed
+/// ACK -- about 40 ms on every request, whatever it did, which was most
+/// of every live drive's wall time (`a_reply_is_not_held_for_an_ack`).
+fn send_line(out: &mut TcpStream, v: &Value) -> std::io::Result<()> {
+    let mut buf = v.to_string();
+    buf.push('\n');
+    out.write_all(buf.as_bytes())
 }
 
 fn refusal(code: i64, message: &str) -> Value {

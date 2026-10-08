@@ -206,3 +206,23 @@ risk): every one sends one well-formed object per line with
 The injection turned all six red, not only the two the plan required
 (`agent-drive` and `widget-drive`, which hold one connection for many
 calls): every client makes more than one call on a connection.
+
+## §8 A reply's latency (CI time, 2026-10-08)
+
+**Every request cost about 41.6 ms, whatever it did** — a key press and
+a full tree read alike. The reply was written with `writeln!` on the
+bare `TcpStream`, which sends a `Value`'s `Display` output in the pieces
+it produces and the newline apart; the first piece goes out, Nagle holds
+the rest until it is acknowledged, and the client, which has nothing to
+send until it sees the newline, acknowledges only when its delayed-ACK
+timer fires. `send_line` writes each line in one `write_all`.
+
+| measure | before | after |
+|---|---:|---|
+| `a_reply_is_not_held_for_an_ack`, median of 20 | 40.91 ms | 0.07 ms (bound 10 ms) |
+| widget drive, four widgets (Button, Slider, Select, DataGrid) | 73 s | 11 s |
+| widget drive, one full `Boundaries` leg | ~1 000 s | 158 s, 0 FAIL |
+
+The leg was **6 247 s of the 9 236 s** `just ci` at `ac98b18`, six legs
+at that rate. The Toast race fixed in `f3deb9a` was this latency too: a
+dismissal timer expiring between two 40 ms calls.

@@ -162,6 +162,36 @@ fn a_line_client_is_answered() {
     assert_eq!(executed.load(Ordering::SeqCst), 2, "two lines, two executions");
 }
 
+/// **A reply costs a round trip, not a delayed ACK.** Twenty requests in
+/// turn on one connection; the median is the figure. A reply written in
+/// pieces -- `writeln!` on the bare stream sends a `Value`'s `Display`
+/// output piece by piece and the newline apart -- leaves its tail to
+/// Nagle, which holds it until the client's delayed ACK: about 40 ms on
+/// every request, whatever the request did. The client side writes each
+/// request in one `write_all` so only the server's writes are measured.
+#[test]
+fn a_reply_is_not_held_for_an_ack() {
+    let (addr, _) = server();
+    let s = TcpStream::connect(addr).unwrap();
+    let mut w = s.try_clone().unwrap();
+    let mut r = BufReader::new(s);
+    let mut ms = Vec::new();
+    for id in 0..20 {
+        let req = format!("{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"ui.getTree\"}}\n");
+        let t = Instant::now();
+        w.write_all(req.as_bytes()).unwrap();
+        let mut line = String::new();
+        r.read_line(&mut line).unwrap();
+        ms.push(t.elapsed().as_secs_f64() * 1e3);
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["id"], id, "{v}");
+    }
+    ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let median = ms[ms.len() / 2];
+    println!("round trip: median {median:.2} ms, max {:.2} ms / bound 10 ms", ms[ms.len() - 1]);
+    assert!(median < 10.0, "a reply waited {median:.2} ms: it is written in pieces and Nagle holds the last one");
+}
+
 /// A malformed line ends the session, and says why — including to a
 /// person who pointed `curl` at the port.
 #[test]
