@@ -45,8 +45,21 @@ status=0
 #   asks the window's oracle the leg's question (M42/T42.4): `supported`,
 #   `compared > 0` and no divergence where the leg declares it, and
 #   `supported: false` everywhere else.
+#
+# LUMEN_DRIVE_LEGS (comma-separated leg names, e.g. `Boundaries`) runs only
+# those legs -- `just ci-fast` drives one (docs/results-ci-time.md). A name
+# that is not a leg is refused, so a typo cannot drive nothing and pass.
+ALL_LEGS="Everything Boundaries Boundaries+oracle Boundaries+scale2 Everything+shaping Boundaries+shaping"
+if [ -n "${LUMEN_DRIVE_LEGS:-}" ]; then
+    for l in ${LUMEN_DRIVE_LEGS//,/ }; do
+        case " $ALL_LEGS " in *" $l "*) ;; *) echo "widget-drive: LUMEN_DRIVE_LEGS: '$l' is not a leg ($ALL_LEGS)" >&2; exit 2 ;; esac
+    done
+fi
 run_one() {
     local leg="$1" features="$2" expect="$3"
+    if [ -n "${LUMEN_DRIVE_LEGS:-}" ] && [[ ",$LUMEN_DRIVE_LEGS," != *",$leg,"* ]]; then
+        return 0
+    fi
     cargo build --release -p showcase --features "$features" >/dev/null
     $LAUNCH --leg "$leg" --exe target/release/showcase \
         --expect-strategy "${leg%%+*}" --expect-features "$expect" \

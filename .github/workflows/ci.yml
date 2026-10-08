@@ -1,28 +1,27 @@
-# A DORMANT SPECIFICATION (M43/T43.14, docs/plan-gate-hygiene.md §2.7).
+# Tier 1 of the gate, for a hosted runner (owner decision 2026-10-08;
+# docs/results-ci-time.md, "Tier 1").
 #
-# **This workflow has never run.** The repository has no git remote, so
-# nothing triggers it. The executed gate is local: `just test` on every
-# commit and `just check` before calling work done; `just ci` (M43/T43.13,
-# scripts/ci.sh) runs the whole set against a commit in a clean worktree
-# and records the result, which `just ci-verify` checks. This file is kept for what a future hosted runner needs -- the
-# job split, and the reasoning below for each job -- and its steps are
-# `just` recipes so the justfile stays the one definition of the gate.
-# Its comments state only what this file shows; every number lives in a
-# `docs/results-*.md` and is cited, and scripts/check_ci_claims.sh refuses
-# a bare count here.
+# **This workflow has not run on GitHub yet**: the repository has no git
+# remote. Its recipes have: `just ci-fast` is this file's whole gate,
+# timed on four CPUs of the reference machine with the dependencies cached
+# and the workspace cold, as rust-cache leaves it (the results doc owns
+# the figures). The full gate stays local -- `just ci` (scripts/ci.sh)
+# against a commit in a clean worktree, checked by `just ci-verify` --
+# because it needs the GPU, a desktop session and time a hosted runner
+# does not have.
 #
 # Two rules shape everything here:
 #
 #   1. CI runs `just` recipes, never bare cargo lines. The justfile is the
-#      gate; if CI reimplemented it the two would drift, which is the exact
-#      failure mode this repo already has in its docs. The recipes are invoked
-#      one per step only so a red X names the stage that failed.
+#      gate; if CI reimplemented it the two would drift. One recipe per
+#      step, so a red X names the stage that failed.
 #
-#   2. Nothing in the required path compares a number produced on this runner
-#      to a number measured elsewhere. The reference machine is an i9-13900KF
-#      with governor `powersave` and turbo on; GitHub runners are shared
-#      vCPUs. Benchmarks run for their exit code, and their output is archived
-#      to read, not diffed.
+#   2. Nothing in the required path compares a number produced on this
+#      runner to one measured elsewhere. GitHub runners are shared vCPUs;
+#      the reference machine is an i9-13900KF.
+#
+# The gate's jobs run in parallel, so a push waits for the slowest of
+# them, not their sum.
 
 name: ci
 
@@ -31,102 +30,109 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The non-gating jobs below (bench, coverage, miri, portability) run
+  # nightly rather than on every push: each costs more than the gate.
+  schedule:
+    - cron: "17 3 * * *"
 
-# A new push to a PR cancels the previous run: the gate is seconds long, so
-# there is nothing to gain from finishing a superseded one.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
-  # Backtraces cost nothing here and turn a fixture panic into a location.
   RUST_BACKTRACE: 1
+  # Line tables, not full debug info: test binaries link faster and the
+  # cache is smaller. NOT `0`: the panic screen's test reads the
+  # application's frame from a backtrace's file and line, and fails
+  # without them (docs/results-ci-time.md, "Tier 1").
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   # ---------------------------------------------------------------------
-  # The gate. Everything required to merge lives in this one job.
-  #
-  # No OS matrix in the gate. The hot-reload swap is linux-only by
-  # construction (scripts/hot_reload_demo.sh names a `.so`, and "never
-  # dlclose" is a dlopen-specific contract), and the `portability` job
-  # below is the part genuinely worth a second OS.
+  # The gate: lint, test and live, each on its own runner.
   # ---------------------------------------------------------------------
-  gate:
+  lint:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      # No toolchain is declared here on purpose. rust-toolchain.toml pins
-      # 1.94.0 with rustfmt + clippy and profile=minimal; `rustup show`
-      # materialises exactly that. Declaring a toolchain in the workflow
-      # would create a second source of truth that silently loses to the file.
-      - name: Install the pinned toolchain
-        run: rustup show
-
-      # The cache is worth having but must not become load-bearing: a cold
-      # build is the configuration a new runner starts in. The thumb target
-      # `check-extra` needs comes from rust-toolchain.toml's `targets`.
+      # rust-toolchain.toml pins the toolchain, its components and the
+      # thumb target; `rustup show` materialises exactly that. Declaring
+      # one here would be a second source of truth.
+      - run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
-          # `just test` builds three distinct graphs (default features,
-          # unified features, release profile). Keyed so all three land in
-          # one cache entry.
-          key: gate
-
+          key: lint
       - uses: extractions/setup-just@v2
-
-      # Sub-second, no compile. Runs first so a dead doc reference is not
-      # discovered after a build.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      # No compile; first, so a dead doc reference is not found after a build.
       - name: Static drift checks
         run: just static
-
-      - name: Release shape (default features)
+      - name: Licences and advisories
+        run: just deny
+      - name: The core's release shape
         run: just release-shape
+      - name: Clippy, default workspace
+        run: just lint-fast
 
-      - name: Dev shape (observe + reload)
-        run: just dev-shape
-
-      - name: Fixtures (counter, hot-reload swap)
-        run: just fixtures
-
-      # `just check-extra` includes `just book`, which needs mdbook. It is
-      # installed rather than skipped on purpose: a book gate that silently
-      # does nothing when the tool is absent is a gate that passes for the
-      # wrong reason, and CI is the only place it would ever be absent.
-      # binstall fetches a release binary (~3 s); building mdbook from
-      # source here would cost minutes.
-      - name: Install mdbook
-        uses: taiki-e/install-action@v2
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      # A system face for the text tests that look for one.
+      - run: sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+      - uses: Swatinem/rust-cache@v2
         with:
-          tool: mdbook
+          key: test
+      - uses: extractions/setup-just@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: Tests (nextest) and doctests, default workspace
+        run: just test-fast
 
-      - name: Release-shape rustdoc, binsize, the book
-        run: just check-extra
-
-      # fixtures/binsize is a code-size comparison with no threshold yet.
-      # Publishing the number every run is what makes a threshold possible
-      # later; asserting one now would be inventing it.
-      - name: Record binary size
-        if: always()
-        run: |
-          if [ -f target/release/binsize ]; then
-            echo "| artifact | bytes |" >> "$GITHUB_STEP_SUMMARY"
-            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-            echo "| binsize | $(stat -c%s target/release/binsize) |" >> "$GITHUB_STEP_SUMMARY"
-          fi
+  live:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup show
+      # Xvfb is the display. winit opens libxkbcommon-x11 and the X
+      # extensions at run time; xclip is owner decision D7's prerequisite.
+      - run: >
+          sudo apt-get install -y --no-install-recommends
+          xvfb xauth libxkbcommon-x11-0 libxcursor1 libxi6 libxrandr2
+          fonts-dejavu-core xclip
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: live
+      - uses: extractions/setup-just@v2
+      - name: Live smoke (the counter window, the widget drive's Boundaries leg)
+        run: xvfb-run -a -s "-screen 0 1920x1200x24" just live-fast
+      - name: Live logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-${{ github.sha }}
+          path: target/live/
+          retention-days: 14
 
   # ---------------------------------------------------------------------
-  # Benchmarks: run, do not assert.
-  #
-  # Timings from a shared vCPU are not comparable to the reference machine and
-  # are barely comparable to themselves, so nothing here is a performance
-  # gate. What IS gated is the exit code, and that catches a real class of rot
-  # for free: a bench that no longer compiles or panics fails this job.
-  # (A doc citing a bench binary that no longer exists is refused earlier,
-  # by scripts/check_doc_paths.sh in `just static`.)
+  # Nightly, non-gating. Each reports; none blocks a merge.
   # ---------------------------------------------------------------------
+
+  # Benchmarks run for their exit code only: a shared vCPU's timings are
+  # not comparable to the reference machine's.
   bench:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,17 +150,9 @@ jobs:
           path: bench-output.txt
           retention-days: 90
 
-  # ---------------------------------------------------------------------
   # Coverage: a number to read, not a threshold.
-  #
-  # Four fixtures sit at 0% today. A workspace percentage would therefore be
-  # dominated by whether the fixtures ran rather than by how well the core is
-  # tested, and a threshold on it would encode that noise. The lcov file is
-  # the artifact; the per-crate summary goes in the run summary. Add a
-  # threshold on crates/lumen-static/src only after the fixtures are inside
-  # the gate and the number has stopped moving for structural reasons.
-  # ---------------------------------------------------------------------
   coverage:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,11 +163,11 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Measure
         run: |
-          cargo llvm-cov --workspace --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --exclude lumen-static-wgpu --lcov --output-path lcov.info
           {
             echo '### Coverage'
             echo '```'
-            cargo llvm-cov --workspace --summary-only
+            cargo llvm-cov report --summary-only
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -178,18 +176,10 @@ jobs:
           path: lcov.info
           retention-days: 90
 
-  # ---------------------------------------------------------------------
-  # Non-blocking. Two things this project wants to know about but cannot
-  # currently gate on.
-  # ---------------------------------------------------------------------
-
-  # fixtures/miri-smoke exists precisely so `cargo miri run -p miri-smoke` is
-  # possible, and docs/verification-notes.md records that the tooling is
-  # broken. Running it non-blocking costs nothing and turns "the day miri
-  # works again" into a green check instead of something nobody rechecks.
-  # fixtures/miri-reload (M49/T49.3) has no dependencies, so it runs where
-  # miri-smoke cannot; it is the hot-reload FFI's only UB check.
+  # The hot-reload FFI's UB check (fixtures/miri-reload, M49/T49.3); also
+  # a `just ci` step locally.
   miri:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -198,23 +188,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: miri
-      - run: cargo +nightly miri run -p miri-smoke
-      # M49/T49.3: lumen-static-reload's unsafe. Dependency-free, so it does
-      # not hit the build-script failure miri-smoke does. Belongs in M43's
-      # local runner too, and runs there: a `just ci` step since M43/T43.13.
       - run: cargo +nightly miri run -p miri-reload
 
-  # aarch64 macOS, non-blocking. crates/ has no platform code, so this is not
-  # a portability check in the usual sense -- it is an f32 check. The layout
-  # engine is float arithmetic and the tests assert on positions; if any of
-  # them are only true because of x86-64 rounding, this is where that shows
-  # up. The hot-reload *demo* script is not run here (it is linux-only by
-  # construction); the reload crates and fixtures are built and tested
-  # like every other member.
-  #
-  # Make this blocking the day the project claims cross-platform support.
-  # Until then a red X here is information, not a broken build.
+  # aarch64 macOS: an f32 check rather than a portability one -- the
+  # layout engine is float arithmetic and the tests assert positions.
+  # Make it blocking the day the project claims cross-platform support.
   portability:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     continue-on-error: true
     steps:
@@ -223,5 +203,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: portability
-      - run: cargo test --workspace
-      - run: cargo test -p lumen-static
+      - run: cargo test --workspace --exclude lumen-static-wgpu

@@ -9,8 +9,9 @@
 #                  unless LUMEN_ALLOW_SKIP=1 (a skip is not a pass).
 #   just ci     -- the executed gate (M43/T43.13): `check`'s closure step by
 #                  step, plus the ci-only steps, against a COMMIT in a clean
-#                  worktree, with a record `just ci-verify` reads. There is
-#                  no remote; .github/workflows/ci.yml is a dormant spec.
+#                  worktree, with a record `just ci-verify` reads.
+#   just ci-fast -- tier 1, what .github/workflows/ci.yml runs on a hosted
+#                  runner (no remote yet, so it has not run there).
 #   manual      -- bench, firewall. Machine-dependent; never gates a commit.
 #                  Time them under `just bench-lock`.
 
@@ -353,6 +354,33 @@ adversary-plant:
 # and every live gate. **No display is a failure**, not "skipped" and green
 # (R17-F8): `live` exits 77, and so does `check`, unless LUMEN_ALLOW_SKIP=1.
 check: test check-extra selftest-build live
+
+# **Tier 1: what a hosted runner runs on every push** (owner, 2026-10-08;
+# docs/results-ci-time.md, "Tier 1"). A subset of `check` chosen for
+# minutes on four vCPUs: the static drift checks, licences, the core's
+# release shape, the default workspace's tests and lints, and a live
+# smoke (the counter window, and the widget drive's `Boundaries` leg).
+# Everything else -- the other legs and live gates, the GPU, feature
+# combinations, firmware, the selftests -- is `just ci`, run locally.
+# `.github/workflows/ci.yml` runs these recipes one per step.
+ci-fast: static deny release-shape lint-fast test-fast live-fast
+
+# Tier 1's lint: clippy over the default workspace. Its own recipe so the
+# workflow runs it on its own runner, beside the tests.
+lint-fast:
+    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+
+# Tier 1's tests: the default workspace under nextest, and its doctests.
+test-fast:
+    @command -v cargo-nextest >/dev/null || { echo "test-fast: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest" >&2; exit 1; }
+    cargo nextest run --workspace --exclude lumen-static-wgpu
+    cargo test --doc --workspace --exclude lumen-static-wgpu
+
+# Tier 1's live smoke. Needs a display (Xvfb on the runner); like every
+# live gate it exits 77 without one.
+live-fast:
+    ./scripts/live_gate.sh
+    LUMEN_DRIVE_LEGS=Boundaries ./scripts/widget_drive.sh
 
 # Every live gate, one line each and a total (M43/T43.13, §2.2 of
 # docs/plan-gate-hygiene.md): `name: pass | FAIL | skip(77) -- reason`.

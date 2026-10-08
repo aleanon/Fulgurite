@@ -4,8 +4,9 @@
 #
 #   scripts/ci.sh [--only a,b,...] [--fail-fast] [SHA]    (default HEAD)
 #
-# WHY. There is no git remote, so `.github/workflows/ci.yml` has never run
-# and a pre-push hook would never fire. Until this existed, "the gates are
+# WHY. There is no git remote, so `.github/workflows/ci.yml` (tier 1,
+# `just ci-fast`, since 2026-10-09) has never run and a pre-push hook would
+# never fire. Until this existed, "the gates are
 # green" meant whatever somebody remembered running, in a working tree
 # that may not have been the commit, with skips that looked like passes.
 #
