@@ -40,4 +40,6 @@ fi
 export LUMEN_LIVE_PORT_RANGE="${LUMEN_LIVE_PORT_RANGE:-7880-7889}"
 export LUMEN_SELFTEST_STRANGER_PORT="${LUMEN_SELFTEST_STRANGER_PORT:-7890}"
 echo "selftest-live: launcher ports $LUMEN_LIVE_PORT_RANGE, stranger on $LUMEN_SELFTEST_STRANGER_PORT"
+# The stranger plant starts its window itself, not through the launcher.
+. "$(dirname "$0")/../drive_window.sh"  # live windows on the monitor the user is not reading
 exec "$(dirname "$0")/run.sh" live

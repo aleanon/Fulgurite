@@ -22,6 +22,9 @@ In order, for one leg:
    `LUMEN_AGENT_ADDR` set (M48/T48.11 settled on the one name, R13-F10),
    and its log at `target/live/<script>-<leg>.log` — per
    worktree, per leg, so two worktrees or two legs never share one.
+   Its windows are asked onto the monitor the user is not reading, without
+   focus — `scripts/drive_window.sh`'s defaults, filled in here when the
+   script did not source it.
 4. **Waits for the port while its own child is alive**, and prints the
    log's tail if the child dies first: `child exited 3: agent: cannot
    bind ...` (M42/T42.1 made a failed bind exit 3).
@@ -35,6 +38,9 @@ In order, for one leg:
    `reload`; the strategy is its own check since M55/T55.4). `--identity socket` skips the second, for
    binaries that predate it (T42.8's re-run of old commits).
    It prints: `drove pid P (socket owner P), strategy S, features F, exe E`.
+   Then **where its windows opened**: each must sit on the monitor
+   `LUMEN_WINDOW_POS` names, or the leg fails (`check_placement` says
+   when it cannot look).
    A child that dies between binding and answering is reported as step 4's
    death, with its status and log tail (M83/T83.7).
 6. **The drive**, with `{port}`, `{addr}`, `{pid}`, `{log}` substituted in
@@ -68,6 +74,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -207,6 +214,109 @@ def last_line(log: Path) -> str:
     return lines[-1] if lines else ""
 
 
+def placement(env: dict) -> None:
+    """Fill in `scripts/drive_window.sh`'s window placement for a script
+    that did not source it: the first monitor xrandr does not mark
+    primary, and no focus. Whatever the environment already says wins,
+    as it does in the helper, which stays the one place the rule lives."""
+    if "LUMEN_WINDOW_POS" in env and "LUMEN_WINDOW_INACTIVE" in env:
+        return
+    r = subprocess.run(["bash", "-c", '. "$1" && printf "%s\\n%s\\n" "${LUMEN_WINDOW_POS-}" '
+                        '"$LUMEN_WINDOW_INACTIVE"', "_", str(ROOT / "scripts" / "drive_window.sh")],
+                       env=env, capture_output=True, text=True)
+    pos, _, inactive = r.stdout.partition("\n")
+    if pos:
+        env.setdefault("LUMEN_WINDOW_POS", pos)
+    env.setdefault("LUMEN_WINDOW_INACTIVE", inactive.strip() or "1")
+
+
+def monitors(env: dict) -> list[tuple[str, int, int, int, int]]:
+    """`xrandr --listmonitors` as (name, x, y, w, h)."""
+    try:
+        out = subprocess.run(["xrandr", "--listmonitors"], env=env, capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    got = []
+    for line in out.splitlines()[1:]:
+        m = re.search(r"(\d+)/\d+x(\d+)/\d+\+(-?\d+)\+(-?\d+)\s+(\S+)\s*$", line)
+        if m:
+            w, h, x, y = map(int, m.groups()[:4])
+            got.append((m.group(5), x, y, w, h))
+    return got
+
+
+def windows_of(pid: int, env: dict) -> list[tuple[str, int, int, int, int]]:
+    """The child's top-level windows as (id, x, y, w, h). The pid comes
+    from `wmctrl -lp` (`_NET_WM_PID`); the position from `xwininfo`,
+    because `wmctrl -G` is off by a monitor's width under Muffin."""
+    try:
+        ls = subprocess.run(["wmctrl", "-lp"], env=env, capture_output=True, text=True,
+                            timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    got = []
+    for line in ls.stdout.splitlines():
+        f = line.split()
+        if len(f) < 3 or f[2] != str(pid):
+            continue
+        info = subprocess.run(["xwininfo", "-id", f[0]], env=env, capture_output=True,
+                              text=True).stdout
+        num = dict(re.findall(r"(Absolute upper-left X|Absolute upper-left Y|Width|Height):"
+                              r"\s+(-?\d+)", info))
+        if len(num) == 4:
+            got.append((f[0], int(num["Absolute upper-left X"]),
+                        int(num["Absolute upper-left Y"]), int(num["Width"]), int(num["Height"])))
+    return got
+
+
+def check_placement(tag: str, pid: int, env: dict) -> None:
+    """**Every window a leg opens is on the monitor `LUMEN_WINDOW_POS`
+    names** -- the secondary one, by `placement`'s default -- and not in
+    front of what the user is reading. A window manager may refuse the
+    request, so this looks: the centre of each of the child's windows
+    must lie inside that monitor, or the leg fails, as does no position
+    at all with a second monitor there. Not checked, and said so, with
+    no position asked for (one monitor), no `wmctrl`/`xwininfo`
+    or no EWMH window manager (Xvfb, a bare Xephyr), or no window."""
+    pos = env.get("LUMEN_WINDOW_POS", "")
+    m = re.fullmatch(r"\s*(-?\d+)\s*,\s*(-?\d+)\s*", pos)
+    if "LUMEN_WINDOW_POS" not in env and len(monitors(env)) > 1:
+        # `placement` sets it whenever there is a monitor to move to; an
+        # empty value is a script's own choice (motion_present's Xephyr).
+        fail(tag, "LUMEN_WINDOW_POS is unset with more than one monitor -- the window "
+                  "opens wherever the window manager likes, maybe in front of the user")
+    if not m:
+        say(tag, "placement: no position asked for, not checked")
+        return
+    px, py = map(int, m.groups())
+    mon = next(((n, x, y, w, h) for n, x, y, w, h in monitors(env)
+                if x <= px < x + w and y <= py < y + h), None)
+    if mon is None:
+        say(tag, f"placement: {pos} is on no monitor xrandr lists, not checked")
+        return
+    if not shutil.which("wmctrl") or not shutil.which("xwininfo") or \
+            subprocess.run(["wmctrl", "-m"], env=env, capture_output=True).returncode != 0:
+        say(tag, "placement: no wmctrl, xwininfo or EWMH window manager, not checked")
+        return
+    wins, deadline = [], time.time() + 3
+    while not wins and time.time() < deadline:
+        wins = windows_of(pid, env)
+        if not wins:
+            time.sleep(0.1)
+    if not wins:
+        say(tag, f"placement: pid {pid} has no window, not checked")
+        return
+    n, x0, y0, w0, h0 = mon
+    off = [(i, x, y) for i, x, y, w, h in wins
+           if not (x0 <= x + w // 2 < x0 + w0 and y0 <= y + h // 2 < y0 + h0)]
+    if off:
+        fail(tag, f"window {off[0][0]} opened at ({off[0][1]}, {off[0][2]}), off monitor {n} "
+                  f"({w0}x{h0}+{x0}+{y0}) that LUMEN_WINDOW_POS={pos} asked for")
+    say(tag, f"placement: {len(wins)} window(s) on {n} at "
+             + ", ".join(f"({x}, {y})" for _, x, y, _, _ in wins))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--script", required=True, help="the live script's name, for messages and the log path")
@@ -265,6 +375,7 @@ def main() -> int:
     for kv in a.env:
         k, _, v = kv.partition("=")
         env[k] = v
+    placement(env)
 
     # 2. a port nobody else answers on
     port = None
@@ -370,6 +481,7 @@ def main() -> int:
             else:
                 say(tag, f"drove pid {child.pid} (socket owner {o[0]}, by {how}), "
                          f"identity: socket only")
+        check_placement(tag, child.pid, env)
         env["LUMEN_LIVE_PID"] = str(child.pid)
         env["LUMEN_LIVE_STRATEGY"] = strategy
         env["LUMEN_LIVE_FEATURES"] = ",".join(features)

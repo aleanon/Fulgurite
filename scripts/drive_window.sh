@@ -9,6 +9,11 @@
 # The default is the first monitor `xrandr` does not mark primary, 40 px
 # in from its corner. With one monitor, or no `xrandr`, placement is left
 # alone and only the focus request applies.
+#
+# scripts/live/launch.py applies this file itself for a script that did
+# not source it, and then checks it: a leg whose window opened off the
+# monitor asked for fails. A script that starts a window any other way
+# (Xephyr, a selftest's stranger, `just a11y-cost`) sources this file.
 if [ -z "${LUMEN_WINDOW_POS+set}" ] && command -v xrandr >/dev/null 2>&1; then
     # " 1: +HDMI-0 1920/531x1080/299+0+0  HDMI-0" -- the geometry field's
     # trailing +X+Y is the monitor's origin; "*" marks the primary.

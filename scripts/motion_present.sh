@@ -30,13 +30,22 @@ python3 -c 'import Xlib.ext.xtest' 2>/dev/null || { echo "motion-present: python
 # pointer is over the window.
 if command -v Xephyr >/dev/null; then
     for n in $(seq 71 99); do [ -e /tmp/.X11-unix/X$n ] || break; done
-    Xephyr :$n -screen 1280x900 -ac -nolisten tcp >target/live/motion-present-xephyr.log 2>&1 &
+    # Xephyr's own window is a window on the user's desktop: on the
+    # monitor they are not reading, as scripts/drive_window.sh places
+    # every live window.
+    . scripts/drive_window.sh
+    at=""
+    [ -n "${LUMEN_WINDOW_POS:-}" ] && at="+${LUMEN_WINDOW_POS%,*}+${LUMEN_WINDOW_POS#*,}"
+    Xephyr :$n -screen "1280x900$at" -ac -nolisten tcp >target/live/motion-present-xephyr.log 2>&1 &
     xephyr=$!
     trap 'kill $xephyr 2>/dev/null || true' EXIT
     for _ in $(seq 50); do [ -e /tmp/.X11-unix/X$n ] && break; sleep 0.1; done
     [ -e /tmp/.X11-unix/X$n ] || { echo "motion-present: Xephyr :$n did not start"; exit 1; }
     export DISPLAY=:$n
     unset WAYLAND_DISPLAY
+    # Inside it, the host's monitor origin means nothing: no position, so
+    # the window opens at Xephyr's origin as it always has.
+    export LUMEN_WINDOW_POS=
     echo "motion-present: on a private Xephyr display :$n"
 fi
 

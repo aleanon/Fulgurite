@@ -993,6 +993,7 @@ a11y-cost:
     cargo build -q --release -p showcase --features agent
     cp target/release/showcase target/showcase-plain
     uptime
+    . scripts/drive_window.sh  # its windows on the monitor the user is not reading
     ./scripts/bench_lock.sh python3 scripts/a11y_cost.py target/showcase-plain target/showcase-a11y
     uptime
 
