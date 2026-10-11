@@ -239,6 +239,40 @@ Xephyr):
   `--still` drew 2,939,304 frames in 10 s and `--steady` 2,914,247 for 83
   periods, and K89d fired by name on both.
 
+**K89d on a shared desktop: known to fire, winit's defect (2026-10-10,
+[winit#4755](https://github.com/rust-windowing/winit/issues/4755)).** The
+table above is a private Xephyr with no input. On the reference desktop
+(`:0`, Muffin) `daemon --still` read **218–975 loop-thread wakes in 8 s**
+(three runs, 0 frames) while the user typed and moved the mouse. Cause:
+winit 0.30.13's X11 backend selects raw `XI_RawMotion`/`XI_RawButton*`/
+`XI_RawKey*` on the root window at start-up as if a window were focused,
+and recomputes the selection only on a focus change; `listen_device_events`
+only stores the setting. A windowless loop, or a window opened with
+`with_active(false)` (every drive window, `scripts/drive_window.sh`), never
+has one, so it wakes on every input anywhere on the screen.
+
+| measured on a private Xephyr, XTest pointer motion every 50 ms | no input | moving |
+|---|---:|---:|
+| `daemon --still`, loop-thread wakes in 8 s | 1 | 160 |
+| `counter-window` opened inactive, pointer away from it, wakes in 6 s | 0 | 119 |
+| winit alone, windowless (the issue's repro), wakes / device events in 8 s | 0 / 0 | 158 / 474 |
+| the same with `DeviceEvents::Never` | 0 / 0 | 158 / 474 |
+| prototype: winit re-selects in `listen_device_events`, lumen asks `Never` — `daemon --still` | 1 | 1 |
+
+The prototype is **not shipped** (owner decision 2026-10-12: report
+upstream and wait; the 0.31.0-beta.3 code is the same). Until a winit
+release fixes it, `scripts/idle_count.py` reports a still daemon's wakes on
+a display with an EWMH window manager as `K89d KNOWN` and exits 0 — frames
+stay strict there, and a display without a window manager (Xephyr, Xvfb,
+`just ci`) stays strict on both. Remove the exception with the winit bump
+that fixes #4755.
+
+**A private Xephyr is private only while nobody points at it.** Xephyr
+forwards the host's pointer and keys to its own display whenever they are
+over its window: a 1920x1200 Xephyr filling the secondary monitor read
+587 wakes in 8 s on a quiet run, and a 320x240 one read 1, twice. A `just
+ci` run's Xephyr is judged strictly, so keep the pointer off its window.
+
 **The injections** (the plan's three, each on the Boundaries leg):
 
 | injection | what the drive printed |

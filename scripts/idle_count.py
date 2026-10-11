@@ -25,8 +25,17 @@ two reads' own (2, as a still window's do, docs/results-windows.md
 T89.0), and a ticking one runs at most one windowless frame a period --
 periods + 1 over the interval, since one of N.x periods holds N + 1
 deadlines.
+
+**Known to fire on a shared desktop**, until winit fixes
+https://github.com/rust-windowing/winit/issues/4755: winit's X11 backend
+wakes a windowless loop on every input anywhere on the screen
+(docs/results-windows.md, "K89d on a shared desktop"). So on a display with
+an EWMH window manager -- someone's desktop -- a still daemon's wakes over
+the bound print `K89d KNOWN` and exit 0. Its frames stay strict there, and
+a display with no window manager (Xephyr, Xvfb, `just ci`) is strict on
+both. Remove `shared_desktop` with the winit release that fixes #4755.
 """
-import json, os, socket, sys, time
+import json, os, shutil, socket, subprocess, sys, time
 
 port, secs = int(sys.argv[1]), float(sys.argv[2])
 pid = os.environ["LUMEN_LIVE_PID"]
@@ -86,12 +95,26 @@ def phase(name, periods_of=None, settle=1.0):
     return {"frames": frames, "loop": loop, "periods": int(el * 1000 // periods_of) if periods_of else 0}
 
 
+def shared_desktop():
+    """Whether an EWMH window manager answers on this display: someone's
+    desktop, where input reaches every winit loop (winit#4755), rather
+    than a private one nobody types on."""
+    return bool(shutil.which("wmctrl")) and subprocess.run(
+        ["wmctrl", "-m"], capture_output=True).returncode == 0
+
+
 # The daemon leg (M89/T89.6): one phase, no toggles, K89d judged.
 leg = sys.argv[3] if len(sys.argv) > 3 else None
 if leg == "daemon-still":
     r = phase("daemon still", settle=2.0)
     print(f"idle-count [daemon still]: K89d -- frames {r['frames']} (bound 0), loop-thread wakes "
           f"{r['loop']} (bound 2: the two reads' own)")
+    if r["frames"] == 0 and r["loop"] > 2 and shared_desktop():
+        print("idle-count: K89d KNOWN -- the still daemon woke on a shared desktop: winit wakes a "
+              "windowless loop on every input on the screen "
+              "(https://github.com/rust-windowing/winit/issues/4755); not a verdict here, "
+              "strict on a display with no window manager")
+        sys.exit(0)
     if r["frames"] > 0 or r["loop"] > 2:
         sys.exit("idle-count: K89d FIRED -- an idle daemon with no deadline ran frames or woke: the "
                  "windowless pump is driven by something other than a deadline or a wake")

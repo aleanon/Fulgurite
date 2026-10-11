@@ -695,7 +695,10 @@ feature, so K2 is not engaged.
   in 60 s, or with the 120 ms timer runs more than one windowless frame
   per period (`just idle-count`'s daemon leg). **Fires →** T89.6 stops.
   The pump is being driven by something other than a deadline or a
-  wake.
+  wake. **On a shared desktop the wakes half fires on winit's defect,
+  not the pump's** (winit#4755): judged on a display with no window
+  manager only, until a winit release fixes it
+  (`docs/results-windows.md`, "K89d on a shared desktop").
 
 ## What the review found (M89)
 

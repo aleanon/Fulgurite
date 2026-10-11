@@ -153,3 +153,4 @@ RegisteredStatusNotifierItems  # proposed by M90
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
 Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it
+DeviceEvents                   # winit's device-event filter, cited by K89d's shared-desktop note (winit#4755); not used by the workspace
