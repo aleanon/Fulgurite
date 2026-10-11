@@ -56,7 +56,9 @@ ALL=(
 # aggregated -- which is R17-F8's shape again.
 check_live_list() {
     local f base missing=0
-    for f in $(grep -l 'scripts/live/launch.py' scripts/*.sh); do
+    # Scripts that *run* the launcher, not ones whose comments name it
+    # (scripts/drive_window.sh, sourced by them, describes it).
+    for f in $(grep -lE 'python3 +scripts/live/launch\.py' scripts/*.sh); do
         base=$(basename "$f")
         [ "$base" = live.sh ] && continue
         if ! printf '%s\n' "${ALL[@]}" | grep -qE "\\|\\./scripts/$base( |\$)"; then
