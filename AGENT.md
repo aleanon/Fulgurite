@@ -867,6 +867,10 @@ found" section rather than silently replacing itself.
   - Kill rules: simple sheets must not slow down, descendant combinators
     ≤ 2× simple, and a `:hovered` rule ≤ 1.5× today's paint-time
     `hover-dim`.
+  - **Re-checked 2026-10-12 (plan §6), and merged to main then.**
+    Most of T62.4 already exists, from M61. Lumen's alias table would
+    refuse `box-shadow` if copied as-is. K62.3 must account for M86's
+    hover blending.
 - **M63 — `docs/plan-style-capabilities.md`** (T63.0–T63.7), after M62:
   new framework capabilities with `.lss` properties.
   - Size limits and `aspect-ratio`, a non-negative margin, text
@@ -875,6 +879,10 @@ found" section rather than silently replacing itself.
   - Kill rules: `Style` may grow by at most 24 B per node, since every
     field costs every node's RAM on every target, and trees that do not
     use a feature must not pay for it.
+  - **Re-checked 2026-10-12 (plan §7).** M80 built ellipsis and M82
+    built gradient backgrounds, so T63.3 is `text-align` only and
+    T63.5 is re-scoped or dropped at T63.0. `Style` is 84 B now, which
+    is K63.1's baseline.
 - **M64 — deferred. Not started until M62 and M63 are both closed with
   a green `just ci-verify`** (the owner's decision, 2026-09-29). Its list
   is `docs/plan-style-capabilities.md` §6. When M62 and M63 are done, M64

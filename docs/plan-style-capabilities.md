@@ -11,6 +11,12 @@
 > **The fourth step, the large and design-level items, is deferred to
 > M64 and is not started until M62 and this milestone are done.** §6
 > lists every item, where it came from and why it waits.
+>
+> **Re-checked 2026-10-12 against `95ac01f`; read §7 before §1.** The
+> iced roadmap (M80–M90) built two of the six tasks while this plan
+> waited. Ellipsis (half of T63.3) came from M80/T80.3, and gradient
+> backgrounds (T63.5) from M82/T82.3. K63.1's baseline moved too:
+> `Style` is now 84 B, not 80.
 
 *Each task is one commit and ends with `just test` green. Task ids go in
 commit subjects. Every gate names the injection that must turn it red,
@@ -252,3 +258,62 @@ They are also deferred, so none is lost:
 | T63.4 | every Cmd kind at half alpha, on both renderers | one Painter method provided, not forwarded |
 | T63.5 | gradient parity; clipped at the corner | drop the radius clip |
 | T63.6 | shadow offset ±0.5 px; damage includes it | offset left out of damage |
+
+## 7. Re-checked 2026-10-12, against `95ac01f`
+
+The plan was written at `7d58aad` and merged unchanged at `d74372f`.
+§1 and every task were checked against the code; the findings below are
+corrections. The sections above are left as written.
+
+1. **§1's `Style` list is stale.** `Style` has gained `disabled`
+   (M57/A16), `line_height` (M80/T80.2), `overflow` (M80/T80.3),
+   `background_fill` (M82/T82.3) and `transition` (M86/T86.1).
+   `Length` gained `Flexible` (M85/T85.1). `Cmd::Text` carries a
+   `line_height`.
+2. **K63.1 starts from 84 B.** `background_fill` grew `Style` from 80
+   to 84 B, with two tail bytes left (`tests/cursor.rs`). The ≤ 24 B
+   budget is therefore measured against 84 B. T63.0 re-records the
+   embedded RAM row at the commit M63 starts from, not at `7d58aad`.
+3. **T63.3 shrinks to `text-align`.** Ellipsis exists as
+   `TextOverflow::{Clip, Ellipsis}`, cut by grapheme and read by
+   `Label` and `AppBar`; `.lss` spells it `text-overflow`. Its gates
+   shipped with T80.3 and are not rebuilt. T63.3's ±0.5 px centring
+   gate and its memo-key injection stand, for alignment only.
+4. **T63.5 is built, in a different shape, and as written it would
+   break a rule.** M82/T82.3 shipped gradient backgrounds, linear and
+   radial (`GradKind`). The `.lss` declaration is
+   `background-fill: <index>`, an index into the table an application
+   passes to `Program::fills`, resolved before paint. T63.5's
+   `background: linear-gradient(…)` would overload `background`,
+   which `docs/plan-iced-roadmap.md` §2.4 forbids: one declaration per
+   setter. What could be left is writing a fill table in `.lss` itself.
+   T63.0 either plans that as its own declaration, or drops T63.5 and
+   says so.
+5. **T63.2 and T63.4 must delete a hint as they land.** `lower.rs`'s
+   `ALIASES` answers `margin` and `opacity` with "v1 has no …". A hint
+   that names a real property shadows it. So the commit adding each
+   property removes its row, and M62 §6 item 3's ported test catches a
+   row that is left behind.
+6. **T63.6 is unchanged.** `Cmd::Shadow` is still
+   `{ rect, color, radius, spread }` with no offset, and `Style.shadow`
+   is one `f32`.
+7. **§6 has moved under M80–M90:**
+   - Transitions are partly built: M86 ships `transition-duration` for
+     the hover and press shade only, with no `transition-property` or
+     timing function. General property transitions, `animation` and
+     `@keyframes` remain.
+   - Paths exist (`Cmd::Path`, `Painter::path`, M82/T82.5). A transform
+     command does not.
+   - **`z-index` is already decided against.**
+     `docs/plan-iced-roadmap.md` §1.3 rejects arbitrary z-order on the
+     record, because paint order is tree order. M64 starts from that
+     decision instead of re-asking it.
+   - `line-height` (§6.2) is done (M80/T80.2). `flex-grow` is partly
+     covered by `Length::Flexible` (M85/T85.1).
+
+Checked and unchanged: there is still no margin model, no opacity, no
+size limits or aspect ratio, and no text alignment. `W1012` is the
+cascade's existing repair warning (`Patch::repairs`, M55/T55.5), so
+§2.2 reuses it as intended. `scripts/check_text.sh`, `scripts/ui_check.py`,
+`fixtures/embedded`, and the `crossover`, `grid` and `cascade` arms
+all exist.

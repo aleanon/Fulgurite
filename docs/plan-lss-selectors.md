@@ -13,6 +13,11 @@
 > that already exist. Part B (T62.5–T62.7) extends the cascade:
 > compound selectors, combinators, and `:state` for the states the
 > framework already tracks.
+>
+> **Re-checked 2026-10-12 against `95ac01f`, 231 commits later; read
+> §6 before §1.** M57 and M80–M90 landed in between. §1's
+> inventory is stale, most of T62.4 already exists, and T62.4 as
+> written would refuse a property that works today.
 
 *Each task is one commit and ends with `just test` green. Task ids go in
 commit subjects. Every gate names the injection that must turn it red,
@@ -247,3 +252,55 @@ eight runs a side.
 | T62.5 | compound needs all parts; specificity tuple; old sheets identical | match on any one part |
 | T62.6 | `>` is one level, space is any depth | treat `>` as descendant |
 | T62.7 | `:hovered`/`:checked` repaint under both strategies; wrapper; agent agrees | skip the mark after a state re-cascade |
+
+## 6. Re-checked 2026-10-12, against `95ac01f`
+
+The plan was written at `7d58aad` and merged unchanged at `d74372f`.
+Each claim in §1 and each name a task builds on was checked against the
+code; the six findings below are corrections. The sections above are
+left as written, so the record shows what changed.
+
+1. **§1's property count is 23, not 18.** Five landed after `7d58aad`.
+   `disabled` came from M57/A16, and `line-height` and `text-overflow`
+   from M80 (T80.2, T80.3). `background-fill` came from M82/T82.3 and
+   `transition-duration` from M86/T86.1. Each new value kind came with
+   them (`Takes::Index`, `Overflow`, `Millis`, `Number`). T62.0's
+   baselines therefore get recorded at the commit M62 starts from, not
+   at `7d58aad`. K1 is unchanged.
+2. **T62.4 is mostly built.** M61 already suggests property names by
+   edit distance. It also keeps an `ALIASES` hint table in
+   `crates/lumen-static-lss/src/lower.rs`, covering `gap`, `radius`,
+   `background-color`, `shadow`, `margin` and `opacity`. Its errors are
+   tested in `crates/lumen-static-lss/src/tests.rs`. What is left is
+   extending that table from Lumen's CSS_ALIASES table.
+3. **Adopting Lumen's table as-is would refuse `box-shadow`.** Lumen
+   maps `box-shadow` → `shadow`, because its property is `shadow`.
+   Here `box-shadow` is the property and `shadow` is the alias. Lumen's
+   own `no_alias_shadows_a_real_property` test guards this case.
+   T62.4 ports that test along with the table, and its gate adds:
+   `box-shadow` still parses. **Injection:** copy Lumen's `box-shadow`
+   row verbatim, and the ported test names it.
+4. **`InputState` now has `pressed` as well as `capture`.** §1 named
+   `capture` as the pressed node. T62.7 says which of the two
+   `:pressed` reads, and why.
+5. **`:disabled` now has a model, but stays deferred for a different
+   reason.** `Style::disabled` (M57/A16) is a field the cascade writes
+   itself. A `:disabled` selector would make the cascade match on its
+   own output. So it needs a state source outside `Style` first, which
+   is M64's (M63 §6.2). §2.3's "no widget models them yet" still holds
+   for the other four states.
+6. **Hover and press now blend over time, which K62.3 must account
+   for.** Since M86/T86.1, the shade blends through
+   `NodeState::pointer_mix` in `ops::shaded`, behind the core
+   `transitions` feature. A `:hovered` colour rule resolved by
+   re-cascade would snap where `hover-dim` blends. T62.7 decides
+   whether state rules transition. K62.3's two arms build with the
+   same `transitions` setting and say which.
+
+Checked and unchanged: `Selector`'s four variants, `matches`, and the
+`u8` specificity. Also `Patch.padding: Option<Edges>`, `cascade_subtree`,
+`Host::restyle_subtree`, `Event::Action`, and `Palette::LIGHT`/`DARK`
+with `Program::palette`. `StateSet`, `Node::style_state` and
+`Palette::HIGH_CONTRAST` are still unbuilt, and still allow-listed as
+promised names. The `cascade_deep` arm and `scripts/check_lss_parity.sh`
+exist, and so does `/mnt/Utvikling-linux/Lumen/crates/lumen-style`.
