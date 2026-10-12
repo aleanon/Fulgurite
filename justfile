@@ -1,3 +1,6 @@
+default:
+    @just --list
+
 # Everyday commands.
 #
 #   just test   -- the every-commit gate. Deterministic, no numbers, no
