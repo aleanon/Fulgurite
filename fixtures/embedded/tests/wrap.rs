@@ -13,7 +13,7 @@
 //! line's content fits, and the measured width is at most the limit.
 
 use embedded::face::FACE;
-use lumen_static::cx::{Cluster, GlyphSink, TextMeasure};
+use fulgurite::cx::{Cluster, GlyphSink, TextMeasure};
 
 /// The core's `Vec<Cluster>` sink is behind its `alloc` feature, which
 /// this fixture's device profile leaves off.
@@ -26,7 +26,7 @@ impl GlyphSink for Sink {
 
 const SIZE: f32 = 16.0;
 
-fn shape(text: &str, max_w: f32) -> (lumen_static::Size, Vec<Cluster>) {
+fn shape(text: &str, max_w: f32) -> (fulgurite::Size, Vec<Cluster>) {
     let mut face = FACE;
     let mut sink = Sink(Vec::new());
     let s = face.shape(text, SIZE, 400.0, max_w, &mut sink);

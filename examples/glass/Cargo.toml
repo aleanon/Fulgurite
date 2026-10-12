@@ -6,21 +6,21 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-winit = { path = "../../crates/fulgurite-winit" }
 # `truetype` so the rows are real glyphs. A backdrop filter over block
 # metrics blurs uniform boxes, which is a demonstration of nothing.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype"] }
 
 [features]
 default = []
 # Superseded by M22/T22.6: the GPU runs the real filter now, not a flat
 # tint. Built `--features gpu` this example looks the same and costs far
 # less -- `docs/results-glass.md` §0h.
-gpu = ["lumen-static-winit/gpu"]
+gpu = ["fulgurite-winit/gpu"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
 # that every rule in its stylesheet does something, so they need it.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "agent"] }

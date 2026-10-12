@@ -1,6 +1,6 @@
 """M47/T47.7's live step. See scripts/resume_drive.sh.
 
-One screenshot before the window's LUMEN_TEST_RESUME round trip, one
+One screenshot before the window's FULGURITE_TEST_RESUME round trip, one
 after, and the fraction of pixels that differ printed beside its bound.
 Reads are spaced by sleeps, not polled: the hook fires on a clock of its
 own, and the reads are what this compares.
@@ -80,8 +80,8 @@ a = shot()
 if leg in COMPARE:
     # Setup landed: the backend the leg names is the one the window made.
     started = [l for l in open(f"target/live/resume-drive-{leg}.log", errors="replace").read().splitlines()
-               if l.startswith("lumen-static: ") and "(" in l and "LUMEN_TEST_RESUME" not in l]
-    want = "lumen-static: gpu (" if source == "xwd" else "lumen-static: software"
+               if l.startswith("fulgurite: ") and "(" in l and "FULGURITE_TEST_RESUME" not in l]
+    want = "fulgurite: gpu (" if source == "xwd" else "fulgurite: software"
     print(f"  ..  setup: startup line {started[:1]} (want {want!r})")
     if not started or not started[0].startswith(want):
         sys.exit(f"resume-drive[{leg}]: setup: the window did not start on {want!r}: {started[:1]}")
@@ -118,7 +118,7 @@ if custom:
     if max(abs(x - y) for x, y in zip(wall, PAGE)) <= 8:
         sys.exit(f"resume-drive[{leg}]: setup: the first capture shows the page colour at {WALL_PX} "
                  f"-- the factory's backend drew no wallpaper (set_images dropped?)")
-# The hook fires at LUMEN_TEST_RESUME (4000 ms after the window starts);
+# The hook fires at FULGURITE_TEST_RESUME (4000 ms after the window starts);
 # the second read comes well after the frame the resume asks for.
 time.sleep(max(0.0, 7.0 - (time.time() - t0)))
 b = shot()
@@ -127,16 +127,16 @@ b = shot()
 # was made -- or, on the still leg, neither. Read from the app's own log,
 # which the launcher writes per script and leg.
 log = open(f"target/live/resume-drive-{leg}.log", errors="replace").read()
-hooks = log.count("LUMEN_TEST_RESUME: suspend and resume")
-backends = sum(1 for l in log.splitlines() if l.startswith("lumen-static: ") and "(" in l
-               and "LUMEN_TEST_RESUME" not in l)
+hooks = log.count("FULGURITE_TEST_RESUME: suspend and resume")
+backends = sum(1 for l in log.splitlines() if l.startswith("fulgurite: ") and "(" in l
+               and "FULGURITE_TEST_RESUME" not in l)
 print(f"  ..  round trips {hooks} (want {int(resume)}), backends made {backends} "
       f"(want {1 + int(resume)})")
 if (hooks, backends) != (int(resume), 1 + int(resume)):
     sys.exit(f"resume-drive[{leg}]: setup: the round trip did not happen as asked")
 if custom:
-    named = [l.split("lumen-static: ", 1)[1] for l in log.splitlines()
-             if l.startswith("lumen-static: ") and "(" in l and "LUMEN_TEST_RESUME" not in l]
+    named = [l.split("fulgurite: ", 1)[1] for l in log.splitlines()
+             if l.startswith("fulgurite: ") and "(" in l and "FULGURITE_TEST_RESUME" not in l]
     counted = [n for n in named if n.startswith("counting (software)")]
     second = named[1] if len(named) > 1 else None
     print(f"  ..  factory backends {len(counted)} (bound: exactly 2); backend #2 is {second!r}")

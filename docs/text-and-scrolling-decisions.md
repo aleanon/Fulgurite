@@ -22,7 +22,7 @@ Step 3.
 
 ## Why these two are one decision
 
-`crates/lumen-static/src/hit.rs:3-6` states the invariant hit testing
+`crates/fulgurite/src/hit.rs:3-6` states the invariant hit testing
 rests on:
 
 > Because containers place children sequentially by measured size and
@@ -75,7 +75,7 @@ weakened.
 (a) gives up a real property to buy generality nothing has asked for.
 
 **(c) is not an alternative, because it is not doing the job today.**
-Measured, not assumed — `crates/lumen-static/tests/scroll_containment.rs`:
+Measured, not assumed — `crates/fulgurite/tests/scroll_containment.rs`:
 
 | `Repeat`, 24px rows, 100px viewport | escapes above | escapes below | clip cmds |
 |---|---|---|---|
@@ -92,7 +92,7 @@ occurrences of "clip".
 
 So the invariant in `hit.rs` is **already false**, and has been since
 Step 3. It went unnoticed because the guard test in
-`lumen-static-agent/tests/lint.rs` walks `SUB_TABLE`, and a repeater's
+`fulgurite-agent/tests/lint.rs` walks `SUB_TABLE`, and a repeater's
 rows live in an off-table arena — the one mechanism that breaks the
 invariant is invisible to the test written to catch it.
 
@@ -434,7 +434,7 @@ window is a ring, so a one-row scroll rebinds every row but only *one*
 writes — the measured 31-of-31 became 1-of-31 then. The recommendation's
 second half ("skip `bind` for rows whose index is unchanged") saves only
 the call itself, which writes nothing.
-`crates/lumen-static/tests/repeat_memo.rs` pins both.
+`crates/fulgurite/tests/repeat_memo.rs` pins both.
 
 `repeat.rs:145-147` calls `bind(item, row)` for every materialized row on
 every layout. The natural bind body is `row.label.set_str(..)`, which
@@ -577,7 +577,7 @@ hit outside it.
 
 1. `hit.rs`'s module comment states the global invariant and must be
    rewritten to the scoped one. **Still open.**
-2. The guard test in `lumen-static-agent/tests/lint.rs` — rewrite, do
+2. The guard test in `fulgurite-agent/tests/lint.rs` — rewrite, do
    not delete (A4). It walks `SUB_TABLE` and cannot see arenas.
 3. `docs/plan-architecture-v2.md` T2.6 re-pinned the containment
    invariant under the `Length` model; it needs an amendment.

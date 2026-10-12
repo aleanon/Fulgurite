@@ -61,11 +61,11 @@
 //! problem, and the benchmark prints the damage so the cliff has a
 //! number beside it rather than only a comment.
 
-use lumen_static::display::{Color, Material};
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static_widgets::Glass;
-use lumen_static_winit::{application, Program, Run};
+use fulgurite::display::{Color, Material};
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite_widgets::Glass;
+use fulgurite_winit::{application, Program, Run};
 
 // ---- the device ------------------------------------------------------
 
@@ -182,7 +182,7 @@ fn icon_glass(k: f32) -> Material {
 const WALL_W: u32 = 470;
 const WALL_H: u32 = 1018;
 
-/// `lumen-static-wgpu`'s `IMAGE_ATLAS`, restated because it is private —
+/// `fulgurite-wgpu`'s `IMAGE_ATLAS`, restated because it is private —
 /// with the consequence beside it, which is what makes a restated
 /// constant survive being restated.
 const GPU_IMAGE_ATLAS: u32 = 1024;
@@ -191,15 +191,15 @@ const _: () = assert!(
     "the wallpaper is larger than the GPU's image atlas: it will draw on \
      the software canvas, draw headless, and vanish on the GPU"
 );
-const WALL_ID: lumen_static::display::ImageId = lumen_static::display::ImageId(1);
+const WALL_ID: fulgurite::display::ImageId = fulgurite::display::ImageId(1);
 
 /// Where `Cmd::Image` gets its pixels. One image, generated once.
 struct Wallpaper {
     px: Vec<u8>,
 }
 
-impl lumen_static::ImageSource for Wallpaper {
-    fn image(&self, id: lumen_static::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
+impl fulgurite::ImageSource for Wallpaper {
+    fn image(&self, id: fulgurite::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
         (id == WALL_ID).then_some((WALL_W, WALL_H, &self.px))
     }
 }
@@ -399,7 +399,7 @@ struct Floating {
 #[widget(stack)]
 struct Screen {
     #[widget_id("wall")]
-    wall: lumen_static_widgets::Image,
+    wall: fulgurite_widgets::Image,
     apps: Apps,
     #[widget_id("status")]
     status: Glass<Status>,
@@ -571,14 +571,14 @@ const APPS: [(&str, &str); 24] = [
 
 fn build(k: f32) -> Home {
     let mut app = Home::default();
-    app.ui.wall = lumen_static_widgets::Image::new(
+    app.ui.wall = fulgurite_widgets::Image::new(
         WALL_ID,
-        lumen_static::Size { w: WALL_W as f32, h: WALL_H as f32 },
+        fulgurite::Size { w: WALL_W as f32, h: WALL_H as f32 },
     );
     // **`Cover`, not `Contain`.** A wallpaper fills the screen and is
     // cropped; letterboxing one would put the page colour down the
     // sides, and the icons over that edge would have nothing to refract.
-    app.ui.wall.fit = lumen_static_widgets::image::Fit::Cover;
+    app.ui.wall.fit = fulgurite_widgets::image::Fit::Cover;
     {
         let a = &mut app.ui.apps;
         let rows = [&mut a.r0, &mut a.r1, &mut a.r2, &mut a.r3, &mut a.r4, &mut a.r5];
@@ -610,9 +610,9 @@ fn build(k: f32) -> Home {
 
 // ---- headless: a frame, and what it costs ----------------------------
 
-fn host(w: u32, h: u32) -> lumen_static_shell::Host<Home> {
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host: lumen_static_shell::Host<Home> = program(w, h).host();
+fn host(w: u32, h: u32) -> fulgurite_shell::Host<Home> {
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    let mut host: fulgurite_shell::Host<Home> = program(w, h).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
     // Twice: the first pump is what teaches the layout its sizes, and
     // the second is the one whose damage means anything.
@@ -626,8 +626,8 @@ fn host(w: u32, h: u32) -> lumen_static_shell::Host<Home> {
 }
 
 fn shot(path: &str, w: u32, h: u32) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::FontStack;
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::FontStack;
 
     let host = host(w, h);
     let mut canvas = match FontStack::system() {
@@ -637,7 +637,7 @@ fn shot(path: &str, w: u32, h: u32) {
     canvas.images = Some(Box::new(Wallpaper::new()));
     canvas.clear(PAGE);
     let t = std::time::Instant::now();
-    lumen_static::Renderer::render(&mut canvas, &host.list, w, h);
+    fulgurite::Renderer::render(&mut canvas, &host.list, w, h);
     let ms = t.elapsed().as_secs_f32() * 1000.0;
 
     let mut out = format!("P6\n{w} {h}\n255\n").into_bytes();
@@ -650,9 +650,9 @@ fn shot(path: &str, w: u32, h: u32) {
 
 /// What this scene costs, and what its damage degrades to.
 fn bench(w: u32, h: u32) {
-    use lumen_static::display::Cmd;
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::FontStack;
+    use fulgurite::display::Cmd;
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::FontStack;
 
     let mut host = host(w, h);
     let panels = host.list.cmds.iter().filter(|c| matches!(c, Cmd::Glass { .. })).count();
@@ -665,7 +665,7 @@ fn bench(w: u32, h: u32) {
         "damage: {:?} on a frame where nothing changed\n        \
          (MAX_DEPS is {}; past it every frame is a full redraw)",
         host.damage(),
-        lumen_static::retain::MAX_DEPS,
+        fulgurite::retain::MAX_DEPS,
     );
 
     let mut canvas = match FontStack::system() {
@@ -677,7 +677,7 @@ fn bench(w: u32, h: u32) {
     for _ in 0..8 {
         let t = std::time::Instant::now();
         canvas.clear(PAGE);
-        lumen_static::Renderer::render(&mut canvas, &host.list, w, h);
+        fulgurite::Renderer::render(&mut canvas, &host.list, w, h);
         best = best.min(t.elapsed().as_secs_f32() * 1000.0);
     }
     println!("software: {best:.1} ms a frame at {w}x{h}");
@@ -685,18 +685,18 @@ fn bench(w: u32, h: u32) {
 }
 
 #[cfg(not(feature = "gpu"))]
-fn gpu_bench(_: &lumen_static_shell::Host<Home>, _: u32, _: u32) {
+fn gpu_bench(_: &fulgurite_shell::Host<Home>, _: u32, _: u32) {
     println!("gpu:      not built — rebuild with `--features gpu` for the number that matters");
 }
 
 #[cfg(feature = "gpu")]
-fn gpu_bench(host: &lumen_static_shell::Host<Home>, w: u32, h: u32) {
-    use lumen_static::Renderer as _;
-    let Some(mut g) = lumen_static_wgpu::Gpu::headless(w, h) else {
+fn gpu_bench(host: &fulgurite_shell::Host<Home>, w: u32, h: u32) {
+    use fulgurite::Renderer as _;
+    let Some(mut g) = fulgurite_wgpu::Gpu::headless(w, h) else {
         println!("gpu:      no adapter");
         return;
     };
-    if let Some(f) = lumen_static_shell::text::FontStack::system() {
+    if let Some(f) = fulgurite_shell::text::FontStack::system() {
         g.set_font(f);
     }
     g.set_images(Box::new(Wallpaper::new()));
@@ -732,7 +732,7 @@ fn main() {
         }
         Some("--bench") => bench(dim(1, dw), dim(2, dh)),
         _ => {
-            // Built `--features agent`, the endpoint is `LUMEN_AGENT_ADDR`,
+            // Built `--features agent`, the endpoint is `FULGURITE_AGENT_ADDR`,
             // read by the window (M48/T48.11); inert otherwise (M47/T47.7).
             let program = program(W, H).title("glasswall").images(Wallpaper::new());
             #[cfg(feature = "custom-backend")]
@@ -753,10 +753,10 @@ fn main() {
 #[cfg(feature = "custom-backend")]
 mod counting {
     // ANCHOR: factory
-    use lumen_static::display::Color;
-    use lumen_static_shell::session::FrameSource;
-    use lumen_static_shell::text::FontStack;
-    use lumen_static_winit::{Backend, BackendTarget, Frame, ShaderTable, Software};
+    use fulgurite::display::Color;
+    use fulgurite_shell::session::FrameSource;
+    use fulgurite_shell::text::FontStack;
+    use fulgurite_winit::{Backend, BackendTarget, Frame, ShaderTable, Software};
 
     /// `Software`, under a name that counts.
     pub struct Counting {
@@ -784,10 +784,10 @@ mod counting {
         fn fetch_rgba(&mut self) -> Option<(u32, u32, Vec<u8>)> {
             self.inner.fetch_rgba()
         }
-        fn set_images(&mut self, images: Box<dyn lumen_static::ImageSource>) {
+        fn set_images(&mut self, images: Box<dyn fulgurite::ImageSource>) {
             self.inner.set_images(images)
         }
-        fn take_images(&mut self) -> Option<Box<dyn lumen_static::ImageSource>> {
+        fn take_images(&mut self) -> Option<Box<dyn fulgurite::ImageSource>> {
             self.inner.take_images()
         }
         fn invalidate_images(&mut self) {
@@ -821,8 +821,8 @@ fn program(w: u32, h: u32) -> Program<Home> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lumen_static::display::Cmd;
-    use lumen_static::event::Event;
+    use fulgurite::display::Cmd;
+    use fulgurite::event::Event;
 
     /// Every panel reaches the display list.
     ///
@@ -855,7 +855,7 @@ mod tests {
     /// The icon nodes, and the glyph label inside each — found by
     /// geometry rather than by a hand-counted index that a new field
     /// would silently shift.
-    fn icons(host: &lumen_static_shell::Host<Home>) -> Vec<(usize, usize)> {
+    fn icons(host: &fulgurite_shell::Host<Home>) -> Vec<(usize, usize)> {
         // **The scaled size, not `ICON`.** Every length in this file is
         // `design × k`, so a helper that looked for 224 px nodes found
         // none at any window size but the design's.
@@ -906,16 +906,16 @@ mod tests {
     /// twenty-four invisible squares.
     #[test]
     fn the_icons_are_clear_and_still_visible() {
-        use lumen_static_shell::software::Canvas;
+        use fulgurite_shell::software::Canvas;
         // **Both canvases need the image source.** Without it neither
         // draws the wallpaper, and the test compares glass over the page
         // colour with page colour — which is a real measurement of
         // something nobody will ever see.
-        let shot = |h: &lumen_static_shell::Host<Home>| {
+        let shot = |h: &fulgurite_shell::Host<Home>| {
             let mut c = Canvas::new(W, H);
             c.images = Some(Box::new(Wallpaper::new()));
             c.clear(PAGE);
-            lumen_static::Renderer::render(&mut c, &h.list, W, H);
+            fulgurite::Renderer::render(&mut c, &h.list, W, H);
             c
         };
         let host = host(W, H);
@@ -965,12 +965,12 @@ mod tests {
     /// the wallpaper and not a rim.
     #[test]
     fn the_wallpaper_is_a_picture() {
-        use lumen_static_shell::software::Canvas;
+        use fulgurite_shell::software::Canvas;
         let host = host2();
         let mut c = Canvas::new(W, H);
         c.images = Some(Box::new(Wallpaper::new()));
         c.clear(PAGE);
-        lumen_static::Renderer::render(&mut c, &host.list, W, H);
+        fulgurite::Renderer::render(&mut c, &host.list, W, H);
 
         let lum = |x: usize, y: usize| {
             let i = (y * W as usize + x) * 4;
@@ -1009,9 +1009,9 @@ mod tests {
 
     /// The same tree with every material made fully transparent, so the
     /// wallpaper can be measured on its own.
-    fn host2() -> lumen_static_shell::Host<Home> {
-        use lumen_static_shell::text::{FontMetrics, FontStack};
-        let mut host: lumen_static_shell::Host<Home> = program(W, H).host();
+    fn host2() -> fulgurite_shell::Host<Home> {
+        use fulgurite_shell::text::{FontMetrics, FontStack};
+        let mut host: fulgurite_shell::Host<Home> = program(W, H).host();
         let app = &mut host.app;
         let clear = Material { blur: 0.0, rim: 0.0, tint: Color(0, 0, 0, 0), ..Material::FROSTED };
         {
@@ -1047,7 +1047,7 @@ mod tests {
         let rest = icon_glass(k(W, H)).rim;
         let found = icons(&host);
         assert_eq!(found.len(), 24, "the grid is not twenty-four icons");
-        let centre = |h: &lumen_static_shell::Host<Home>, i: usize| {
+        let centre = |h: &fulgurite_shell::Host<Home>, i: usize| {
             let s = &h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };

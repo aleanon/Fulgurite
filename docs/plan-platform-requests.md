@@ -13,9 +13,9 @@ depends on T88.3, because its `OpenWindow`/`CloseWindow`/`Quit` are
 variants appended to T88.3's `Request`, and its per-window routing
 follows from T88.3's rule that a session's requests are answered to
 that same session. T88.2 changes `frame_rgba`'s receiver on `Backend`.
-If M83 has already moved `Backend` into `lumen-static-shell` (D1(b)),
+If M83 has already moved `Backend` into `fulgurite-shell` (D1(b)),
 the edit happens there. Otherwise it happens in
-`crates/lumen-static-winit/src/backend.rs` and M83 moves the new
+`crates/fulgurite-winit/src/backend.rs` and M83 moves the new
 signature. The first draft modelled all three items as `Job`s. That
 cannot be built: a `Job` is
 `{desc, job: JobFn, on_fail}`, `Copy`, and run by a spawner on a
@@ -91,10 +91,10 @@ section replaces that design.*
     is not engaged). Everything is behind `feature = "std"`, like the
     inbox, so the firmware links none of it (D5's 81,920 B ceiling and
     1,000 B per-task cap are not touched).
-  - *Crate:* `lumen-static` (`inbox.rs`, `spawn.rs`).
+  - *Crate:* `fulgurite` (`inbox.rs`, `spawn.rs`).
 - **S1 is defined here: platform requests are data, answered by the
   current build.**
-  - *Core types, in a new `crates/lumen-static/src/request.rs` behind
+  - *Core types, in a new `crates/fulgurite/src/request.rs` behind
     `std`, as `Outbox` is:*
     - `Request` is a `Copy` enum: `Screenshot { tag: u64 }`,
       `ClipboardWrite { tag: u64, kind: ClipKind }`, and
@@ -166,7 +166,7 @@ section replaces that design.*
     `fixtures/miri-reload`'s `Session` is a local two-method stand-in
     (`count`, `bump`; `main.rs:22-35`), not the shell's trait, so it
     has nothing to implement (second review P18); M89/T89.7 owns its
-    `lumen_boot` change. Because the methods are required, a
+    `fulgurite_boot` change. Because the methods are required, a
     missing `Hot` forward does not compile, so the compiler is that
     gate. `Local::answer` and `Local::take_requests` run `answered`,
     `apply` and `clip_for` inside the session's panic guard, the M36
@@ -215,11 +215,11 @@ section replaces that design.*
     `Post`, carried only by an application that declares one. `Win` pays one vtable call per
     frame, returning an empty `Vec`. There is no `Style`, `NodeState`,
     `Cmd` or `Event` change, and nothing reaches the firmware.
-  - *Crates:* `lumen-static` (`Request`, `Requests`, `Clip`, `Answer`,
+  - *Crates:* `fulgurite` (`Request`, `Requests`, `Clip`, `Answer`,
     `ClipKind`, `ClipFormat`, `Refusal`, and the three `App` hooks),
-    `lumen-static-shell` (`Outgoing`, `Payload`, the `Session`
-    methods, `Host::take_requests`/`answer`), `lumen-static-reload`
-    (`Hot`'s forwards) and `lumen-static-winit` (`Win::serve_requests`).
+    `fulgurite-shell` (`Outgoing`, `Payload`, the `Session`
+    methods, `Host::take_requests`/`answer`), `fulgurite-reload`
+    (`Hot`'s forwards) and `fulgurite-winit` (`Win::serve_requests`).
 - **A screenshot is what the renderer drew, and the GPU gains
   `frame_rgba`, not `fetch_rgba`.**
   - `fetch_rgba` stays `None` on the GPU, as `winit/src/gpu.rs:132-140`
@@ -251,11 +251,11 @@ section replaces that design.*
     not in it.
   - **Native Wayland has no clipboard in this build**, because the
     workspace builds arboard with `default-features = false` and no
-    `wayland-data-control` (`lumen-static-winit/Cargo.toml:147`). It
+    `wayland-data-control` (`fulgurite-winit/Cargo.toml:147`). It
     works under XWayland. This is recorded in the `clipboard`
     feature's manifest comment. Reopen when a Wayland-only session is a
     target, with that feature's crate count measured first.
-  - *Crate:* `lumen-static-winit` (`clipboard.rs`, `Cargo.toml`).
+  - *Crate:* `fulgurite-winit` (`clipboard.rs`, `Cargo.toml`).
 
 **Tasks.**
 
@@ -263,7 +263,7 @@ section replaces that design.*
   Each test asserts today's measured behaviour, so `just test` stays
   green. The task that closes each gap flips the assertion, and the
   flip is named there.
-  - `crates/lumen-static-shell/tests/sipper.rs`: one job under
+  - `crates/fulgurite-shell/tests/sipper.rs`: one job under
     `Immediate` sends 10,000 `u64`s through `Sender::send` into a
     one-node host, which is then pumped to empty.
     - *Printed:* refused sends, the largest number applied in one pump,
@@ -378,7 +378,7 @@ section replaces that design.*
 - **T88.2 — `frame_rgba` on the GPU, and `&mut self`.** This changes
   the receiver on `Backend`, `Screen`, `AgentHost::frame` and their
   implementations: `Software`, `AsScreen`, `Offscreen`, `Live`, and
-  the test `Screen`s in seven files in `crates/lumen-static-shell/
+  the test `Screen`s in seven files in `crates/fulgurite-shell/
   tests/` (`agent_paste`, `agent_settled`, `agent_motion`,
   `process_info`, `agent_compose`, `agent_panic`, `agent_frames`).
   It adds `GpuBackend::frame_rgba` backed by `shot`. `fetch_rgba` stays
@@ -386,7 +386,7 @@ section replaces that design.*
   pointer to `frame_rgba`.
   - `examples/tasks-demo` gains a 16×16 swatch at the origin, a
     `#swatch` button that sets it to a colour derived from its click
-    count, and a `gpu` feature that passes `lumen-static-winit/gpu`
+    count, and a `gpu` feature that passes `fulgurite-winit/gpu`
     through. `just tasks-drive` gains a GPU leg that exits 77 with no
     adapter, as `gpu-parity` does. These land here, not in T88.3,
     because the per-call gate below needs a control whose click
@@ -399,7 +399,7 @@ section replaces that design.*
       here.
     - `docs/results-gpu.md` gains a row for the readback's cost at
       1920×1080 (median of 8, measured by a new `readback_cost` test
-      in `crates/lumen-static-wgpu/tests/parity.rs`).
+      in `crates/fulgurite-wgpu/tests/parity.rs`).
     - The rustdoc on the `frame_rgba` of `backend.rs` and the `Screen`
       trait says a call may read the GPU back.
     - `scripts/resume_drive.sh`'s header drops "because the GPU backend
@@ -477,7 +477,7 @@ section replaces that design.*
     - The rustdoc on the `Session` trait and on `request.rs` changes.
     - `docs/competitive-feature-gaps.md`'s screenshot row is closed.
   - *Gates:*
-    - `crates/lumen-static-shell/tests/requests.rs` (new).
+    - `crates/fulgurite-shell/tests/requests.rs` (new).
       - A click on a button pushes `Screenshot { tag: 7 }`.
         `take_requests` returns exactly one `Outgoing` (length
         printed, bound 1), and a second `take` returns 0.
@@ -494,7 +494,7 @@ section replaces that design.*
       - *Setup landed:* the click is `handled`.
       - *Accept:* an application with no `requests()` returns an empty
         `Vec` and counts nothing.
-    - `crates/lumen-static-shell/tests/alloc_gate.rs` gains an arm: a
+    - `crates/fulgurite-shell/tests/alloc_gate.rs` gains an arm: a
       steady frame plus `take_requests` on an application whose
       `Requests` is empty, 0 allocations per frame (printed, bound 0).
       - *Setup landed:* the arm's `requests()` is `Some`.
@@ -639,7 +639,7 @@ section replaces that design.*
         body.
       - *Accept:* after the app writes `C` to the clipboard, primary
         still reads `B`.
-    - Crate count: `cargo tree -p lumen-static-winit -e normal --prefix
+    - Crate count: `cargo tree -p fulgurite-winit -e normal --prefix
       none | sed 's/ (\*)$//' | sort -u | wc -l`, before and after,
       printed. Bound: 0 new crates. The `sed` strips cargo tree's
       `(*)` repeat markers, so the count is K2's: 96 for the default
@@ -670,7 +670,7 @@ section replaces that design.*
   - *Gates:*
     - K2's crate count with the feature off is unchanged (bound 0) and
       with it on is printed.
-    - Lint: `cargo clippy -p lumen-static-winit --features
+    - Lint: `cargo clippy -p fulgurite-winit --features
       clipboard-image --all-targets -- -D warnings` joins `just gpu`'s
       winit clippy line (`justfile:372`), so `check-extra` runs it.
     - The stripped release `showcase` size delta with the feature is
@@ -678,7 +678,7 @@ section replaces that design.*
       printed beside the 3 MB bound (B9; opt-in either way, recorded).
     - Symbols, modelled on `scripts/check_agent_symbols.sh`: the
       default `showcase` build has 0 `image::` symbols (bound 0), and
-      the build with `lumen-static-winit/clipboard-image` has more
+      the build with `fulgurite-winit/clipboard-image` has more
       than 0 (the positive control).
     - `just tasks-drive` with the feature: `#copy-image` then
       `#read-image` shows `8x4`, and the pixel hash equals the one
@@ -891,7 +891,7 @@ section replaces that design.*
   listed while its body waited): that test now asserts the job leaves,
   and `Ledger::unsettled`'s stop filter — which guards only a result
   sent between a drain and the prune after it — is gated on a ledger
-  directly, `crates/lumen-static/tests/ledger_stop.rs`.
+  directly, `crates/fulgurite/tests/ledger_stop.rs`.
 - **T88.1, the sipper gate's setup.** "In flight = 1 before the first
   pump" is asserted *after* the claims, not before: under the plan's
   injection (drop `!fresh` from `settled`) the `Immediate` job is pruned
@@ -914,7 +914,7 @@ section replaces that design.*
   `#[reload(fresh)]`, so v2 starts with no value; v1's worker streams on
   into a slot nobody reads. The gate names that.
 - **T88.1, a loader defect the second gate found, fixed in
-  `lumen-static-reload`.** `Reloader` numbered its copies per instance,
+  `fulgurite-reload`.** `Reloader` numbered its copies per instance,
   so the second `Reloader` in one process (the sipper gate's, after the
   chain gate's) wrote `chain-v2-hot-1.so` again — truncating the image
   the loader still had mapped — and the next `dlsym` died with `SIGSEGV`
@@ -932,7 +932,7 @@ section replaces that design.*
   uninhabited and the compiler removes the slot drain
   (`docs/results-tasks.md` T88.1).
 - **T88.2, where the receiver changed.** M83 had moved `Backend` into
-  `lumen_static_shell::backend`, so the edit is there. The test `Screen`s
+  `fulgurite_shell::backend`, so the edit is there. The test `Screen`s
   are in **eight** files, not seven: `contrast_scale.rs` has one too. Two
   more `Backend`s follow by compile error: winit's test `Fake` and
   `examples/glasswall`'s `Counting` (the book's `factory` anchor).
@@ -1028,10 +1028,10 @@ section replaces that design.*
   `false`/`None` without it), so only the clippy line, and beside it
   `serve_requests`' unit test with the feature, join `just gpu`.
 - **T88.5, the symbol count is anchored** at the crate root: an unanchored
-  `image::` matches the 26 `lumen_static_shell::image::` symbols every
+  `image::` matches the 26 `fulgurite_shell::image::` symbols every
   showcase build links.
 - **K88d** did not fire: the advisory check passes with
-  `--features lumen-static-winit/clipboard-image`, with `image` and `png`
+  `--features fulgurite-winit/clipboard-image`, with `image` and `png`
   in its graph. It is a one-off measurement here, not a standing gate:
   `just deny` checks the default graph, and no advisory could be planted
   to watch a second pass go red.

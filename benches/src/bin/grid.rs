@@ -60,15 +60,15 @@ use std::hint::black_box;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
-use lumen_static_widgets::ops::{Button, Label};
-use lumen_static::repeat::Repeat;
-use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{App as DeriveApp, EventCtx, StaticTree, Widget};
-use lumen_static::display::Color;
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{FontMetrics, FontStack};
-use lumen_static::cx::TextMeasure;
-use lumen_static_shell::Host;
+use fulgurite_widgets::ops::{Button, Label};
+use fulgurite::repeat::Repeat;
+use fulgurite::style::{Length, Patch, Rule, Selector};
+use fulgurite::{App as DeriveApp, EventCtx, StaticTree, Widget};
+use fulgurite::display::Color;
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{FontMetrics, FontStack};
+use fulgurite::cx::TextMeasure;
+use fulgurite_shell::Host;
 
 // ---- the frozen grid: table nodes ------------------------------------
 
@@ -149,7 +149,7 @@ pub struct BodyRow {
 /// what the first version of this file was measuring and attributing to
 /// `Repeat::layout` (`docs/results-damage-precision.md` T29.5).
 fn bind_body(row: &mut BodyRow, i: usize) {
-    use lumen_static::bind::format_into;
+    use fulgurite::bind::format_into;
     format_into(&mut row.a, format_args!("r{i}"));
     format_into(&mut row.b, format_args!("{:.2}", i as f32 * 1.37));
     format_into(&mut row.c, format_args!("{}", if i.is_multiple_of(3) { "pending" } else { "ok" }));
@@ -354,9 +354,9 @@ mod split {
 }
 
 // The twin is split, checked where it costs nothing.
-const _: () = assert!(<split::Grid as lumen_static::event::App>::STATE_IS_SPLIT);
+const _: () = assert!(<split::Grid as fulgurite::event::App>::STATE_IS_SPLIT);
 
-type BoundedSplit = Host<split::Grid, lumen_static::Incremental, lumen_static::Boundaries<16>>;
+type BoundedSplit = Host<split::Grid, fulgurite::Incremental, fulgurite::Boundaries<16>>;
 
 fn host_split(m: &mut dyn TextMeasure) -> BoundedSplit {
     let mut h: BoundedSplit = Host::new(split::app(), W, H);
@@ -366,7 +366,7 @@ fn host_split(m: &mut dyn TextMeasure) -> BoundedSplit {
     h
 }
 
-type Bounded = Host<Grid, lumen_static::Incremental, lumen_static::Boundaries<16>>;
+type Bounded = Host<Grid, fulgurite::Incremental, fulgurite::Boundaries<16>>;
 
 /// The measurer the probe runs under.
 ///
@@ -383,7 +383,7 @@ fn metrics() -> Box<dyn TextMeasure> {
         // belong beside the published ones.
         None => {
             println!("!! no system font: falling back to BlockMetrics — NOT the published arm");
-            Box::new(lumen_static::cx::BlockMetrics)
+            Box::new(fulgurite::cx::BlockMetrics)
         }
     }
 }
@@ -406,8 +406,8 @@ fn host(m: &mut dyn TextMeasure) -> Bounded {
 /// (`docs/plan-frame-cost.md` §1.1).
 static PUMP_NS: AtomicU64 = AtomicU64::new(0);
 
-fn pump<A: lumen_static::event::App>(
-    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+fn pump<A: fulgurite::event::App>(
+    h: &mut Host<A, fulgurite::Incremental, fulgurite::Boundaries<16>>,
     m: &mut dyn TextMeasure,
 ) {
     let t = Instant::now();
@@ -465,9 +465,9 @@ impl Samples {
     /// what retention says changed. `Host::render` draws the whole list,
     /// which no shell does and which would inflate the frame this probe
     /// is judged against.
-    fn record<A: lumen_static::event::App>(
+    fn record<A: fulgurite::event::App>(
         &mut self,
-        h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+        h: &mut Host<A, fulgurite::Incremental, fulgurite::Boundaries<16>>,
         canvas: &mut Canvas,
     ) {
         let us = |ns: u64| ns as f64 / 1000.0;
@@ -545,11 +545,11 @@ impl Run {
 /// One run of `iters` frames of `act`, as the probe loop in `main` does
 /// it. Generic so the split twin (M29/T29.6) is measured by the same code
 /// rather than a copy that could drift.
-fn measure<A: lumen_static::event::App>(
-    h: &mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>,
+fn measure<A: fulgurite::event::App>(
+    h: &mut Host<A, fulgurite::Incremental, fulgurite::Boundaries<16>>,
     iters: usize,
     m: &mut dyn TextMeasure,
-    mut act: impl FnMut(&mut Host<A, lumen_static::Incremental, lumen_static::Boundaries<16>>, &mut dyn TextMeasure),
+    mut act: impl FnMut(&mut Host<A, fulgurite::Incremental, fulgurite::Boundaries<16>>, &mut dyn TextMeasure),
 ) -> Run {
     let mut canvas = Canvas::new(W, H);
     let mut s = Samples::default();
@@ -581,7 +581,7 @@ fn med(v: &mut [f64]) -> f64 {
 /// **Arm C is the frame an application actually produces**, and it is
 /// the one the first version of this probe did not have. A click is
 /// dispatched, a handler consumes it, and `pump_with` answers that with
-/// `mark_all()` at `lumen-static-shell/src/lib.rs:694` — *before* it
+/// `mark_all()` at `fulgurite-shell/src/lib.rs:694` — *before* it
 /// asks `App::update` anything. So whatever the binding reports, the
 /// tree is already fully marked, and the saving B measures is
 /// unreachable. A and B differ in what they mark; C differs in **who
@@ -636,7 +636,7 @@ fn edit_value(k: u32) -> i64 {
 /// the decision and the renderer is what it checks.
 struct K81bKeys {
     face: FontStack,
-    scratch: lumen_static_shell::text::ShapeScratch,
+    scratch: fulgurite_shell::text::ShapeScratch,
     seen: std::collections::HashSet<(u32, u16, u8, u8)>,
     /// Runs this counter placed, and of those through the shaper.
     own: (u64, u64),
@@ -644,14 +644,14 @@ struct K81bKeys {
 
 impl K81bKeys {
     fn new(face: FontStack) -> Self {
-        K81bKeys { face, scratch: lumen_static_shell::text::ShapeScratch::new(), seen: Default::default(), own: (0, 0) }
+        K81bKeys { face, scratch: fulgurite_shell::text::ShapeScratch::new(), seen: Default::default(), own: (0, 0) }
     }
 
     /// Add every key the list draws on the surface; return how many the
     /// counter had not seen.
-    fn screen(&mut self, list: &lumen_static::display::DisplayList) -> u64 {
-        use lumen_static::display::Cmd;
-        let before = lumen_static_shell::text::text_counters();
+    fn screen(&mut self, list: &fulgurite::display::DisplayList) -> u64 {
+        use fulgurite::display::Cmd;
+        let before = fulgurite_shell::text::text_counters();
         let mut new = 0;
         for c in &list.cmds {
             let Cmd::Text { rect, text, size, weight, line_height, .. } = c else { continue };
@@ -679,7 +679,7 @@ impl K81bKeys {
         }
         // Its own placements are not the canvas's: kept out of the
         // pass's "runs painted" and "through the shaper".
-        let after = lumen_static_shell::text::text_counters();
+        let after = fulgurite_shell::text::text_counters();
         self.own.0 += after.shaped - before.shaped;
         self.own.1 += after.complex - before.complex;
         new
@@ -704,7 +704,7 @@ fn main() {
     // prints its measured quantity beside it**, because a bound that
     // cannot be exceeded reads exactly like one that holds.
     assert!(table >= 2000, "the frozen grid is {table} nodes, too few to show a whole-tree walk");
-    let formula_at = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "formula")
+    let formula_at = fulgurite::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "formula")
         .expect("#formula must be a TABLE node — in an arena it would never go through #[bind]");
     let mut h = host(m);
     assert_eq!(h.app.ui.top.formula.as_str(), "= 0", "setup: the binding wrote the formula bar");
@@ -766,9 +766,9 @@ fn main() {
     // latin` (the default) is the accept direction: 0 phased keys.
     let args: Vec<String> = std::env::args().skip(1).collect();
     let shaping = match args.iter().position(|a| a == "--shaping").map(|i| args.get(i + 1).map(String::as_str)) {
-        None | Some(Some("basic")) => lumen_static_shell::text::Shaping::Basic,
+        None | Some(Some("basic")) => fulgurite_shell::text::Shaping::Basic,
         #[cfg(feature = "shaping")]
-        Some(Some("complex")) => lumen_static_shell::text::Shaping::Complex,
+        Some(Some("complex")) => fulgurite_shell::text::Shaping::Complex,
         Some(other) => panic!("--shaping takes basic or complex (complex needs the `shaping` feature), not {other:?}"),
     };
     // **`--content latin|shaped`** (M81/T81.8, K81b): see `SHAPED_CONTENT`.
@@ -783,11 +783,11 @@ fn main() {
         // Measured by the stack that paints, so a shaped run's box is the
         // shaper's.
         let mut tm = FontMetrics::new(face.clone());
-        let shaped0 = lumen_static_shell::text::text_counters();
+        let shaped0 = fulgurite_shell::text::text_counters();
         let mut hw = host(&mut tm);
         let mut tc = Canvas::with_font(W, H, face.clone());
         for _ in 0..3 {
-            lumen_static::Renderer::render(&mut tc, &hw.list, W, H);
+            fulgurite::Renderer::render(&mut tc, &hw.list, W, H);
         }
         let _ = hw.take_damage_for_age(1);
         let warm = tc.glyph_cache_stats();
@@ -815,7 +815,7 @@ fn main() {
             per_edit.push((misses, new));
         }
         let after = tc.glyph_cache_stats();
-        let shaped1 = lumen_static_shell::text::text_counters();
+        let shaped1 = fulgurite_shell::text::text_counters();
         let through = shaped1.complex - shaped0.complex - keys.own.1;
         SHAPED_CONTENT.store(false, Ordering::Relaxed);
         println!(
@@ -834,7 +834,7 @@ fn main() {
         assert_eq!(after.uncached, 0, "the glyph cache drew {} glyphs uncached on the grid", after.uncached);
         assert_eq!(after.resets, 0, "the glyph cache reset {} times on one screen", after.resets);
         assert!(over.is_empty(), "K81b: phases thrash the glyph cache: {}", over.join("; "));
-        if shaped_content && shaping != lumen_static_shell::text::Shaping::Basic {
+        if shaped_content && shaping != fulgurite_shell::text::Shaping::Basic {
             assert!(through > 0, "setup: no run of the shaped grid went through the shaper");
             assert!(
                 warm_keys > warm_glyphs,
@@ -873,7 +873,7 @@ fn main() {
     // handled.
     let mut hc = host(m);
     let bump_at = {
-        let s = hc.states[lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "bump")
+        let s = hc.states[fulgurite::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "bump")
             .expect("#bump must be on the table")];
         (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
     };

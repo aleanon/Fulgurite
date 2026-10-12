@@ -7,7 +7,7 @@
 # built from different FRAMEWORK SOURCE. `Cmd::Rect` is moved after
 # `Cmd::Text` in a copy of the workspace -- a reordering no size can see --
 # and the library built from the copy must be refused. An edit to
-# `lumen-static-widgets` alone, which defines no type that crosses, must be
+# `fulgurite-widgets` alone, which defines no type that crosses, must be
 # accepted (§2.1's exclusion, checked rather than assumed).
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,7 +20,7 @@ cp target/release/libstamp_lib.so "$OUT/same.so"
 cargo build --release -q -p stamp-lib --features observe
 cp target/release/libstamp_lib.so "$OUT/observe.so"
 ./target/release/stamp-host "$OUT/same.so" accept
-./target/release/stamp-host "$OUT/observe.so" refuse "lumen-static features"
+./target/release/stamp-host "$OUT/observe.so" refuse "fulgurite features"
 
 # ---- M81/T81.1: a shell feature in the stamp -----------------------------
 #
@@ -37,16 +37,16 @@ cp target/release/stamp-host "$OUT/host-shell"
 cargo build --release -q -p stamp-host --features shaping
 cp target/release/stamp-host "$OUT/host-shaping"
 "$OUT/host-shell" "$OUT/shell.so" accept
-"$OUT/host-shell" "$OUT/shaping.so" refuse "lumen-static-shell features"
+"$OUT/host-shell" "$OUT/shaping.so" refuse "fulgurite-shell features"
 "$OUT/host-shaping" "$OUT/shaping.so" accept
 
 # ---- M83/T83.3: the two shader entries ----------------------------------
 #
-# docs/plan-iced-roadmap.md §2.3 (second review A7). `lumen_shader` is the
+# docs/plan-iced-roadmap.md §2.3 (second review A7). `fulgurite_shader` is the
 # core's variant set, read through the shell's `build.rs`; `shader` is the
 # shell's own feature (`ShaderTable`'s layout across `Session::shaders`).
 # Pair 1: core on, shell off, under a loader with neither -- refused, for
-# `lumen_shader`. Pair 2: core and shell on, under a loader with the core
+# `fulgurite_shader`. Pair 2: core and shell on, under a loader with the core
 # on and the shell off -- refused, for `shader`. Accept: built alike, in
 # all three builds (the plain shell pair above is the third).
 cargo build --release -q -p stamp-lib --features shader-core
@@ -57,8 +57,8 @@ cargo build --release -q -p stamp-host --features shader-core
 cp target/release/stamp-host "$OUT/host-shader-core"
 cargo build --release -q -p stamp-host --features shader
 cp target/release/stamp-host "$OUT/host-shader"
-"$OUT/host-shell" "$OUT/shader-core.so" refuse "lumen-static-shell features" lumen_shader
-"$OUT/host-shader-core" "$OUT/shader.so" refuse "lumen-static-shell features" shader
+"$OUT/host-shell" "$OUT/shader-core.so" refuse "fulgurite-shell features" fulgurite_shader
+"$OUT/host-shader-core" "$OUT/shader.so" refuse "fulgurite-shell features" shader
 "$OUT/host-shader-core" "$OUT/shader-core.so" accept
 "$OUT/host-shader" "$OUT/shader.so" accept
 
@@ -109,7 +109,7 @@ build_ws copy
 ./target/release/stamp-host "$OUT/copy.so" accept
 
 # Two `Cmd` variants reordered: every size and alignment is unchanged.
-python3 - "$WS/crates/lumen-static/src/display.rs" <<'PY'
+python3 - "$WS/crates/fulgurite/src/display.rs" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
@@ -122,11 +122,11 @@ s = s[:text_end] + rect + s[text_end:]
 open(p, "w").write(s)
 PY
 build_ws reordered
-./target/release/stamp-host "$OUT/reordered.so" refuse "source lumen-static"
+./target/release/stamp-host "$OUT/reordered.so" refuse "source fulgurite"
 
 # A widget edited alone: no type of that crate crosses, so it is accepted.
 sync_ws
-printf '\n// M49/T49.1: an edit to the widgets crate alone.\n' >> "$WS/crates/lumen-static-widgets/src/lib.rs"
+printf '\n// M49/T49.1: an edit to the widgets crate alone.\n' >> "$WS/crates/fulgurite-widgets/src/lib.rs"
 build_ws widgets
 ./target/release/stamp-host "$OUT/widgets.so" accept
 sync_ws

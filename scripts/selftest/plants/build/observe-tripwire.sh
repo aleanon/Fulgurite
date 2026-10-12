@@ -3,7 +3,7 @@
 CHECK='just release-shape'
 EXPECT='release-shape tripwire'
 plant() {
-    replace crates/lumen-static/Cargo.toml \
-        'lumen-static-widgets = { path = "../lumen-static-widgets" }' \
-        'lumen-static-widgets = { path = "../lumen-static-widgets", features = ["observe"] }'
+    replace crates/fulgurite/Cargo.toml \
+        'fulgurite-widgets = { path = "../fulgurite-widgets" }' \
+        'fulgurite-widgets = { path = "../fulgurite-widgets", features = ["observe"] }'
 }

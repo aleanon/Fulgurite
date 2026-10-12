@@ -33,14 +33,14 @@
 > - **T43.6** the agent's dev edge takes `observe`; `just test-crates`
 >   (908 tests, nine crates alone, 22 s warm).
 > - **T43.7** core's dev edge featureless; `fixtures/observe-tests`;
->   the `lumen_release_shape` tripwire; 416 core tests in the shipped
+>   the `fulgurite_release_shape` tripwire; 416 core tests in the shipped
 >   shape.
 > - **T43.8** `fixtures/embedded/tests/bind_nostd.rs`: 256 of 1,000
->   stored, under `LUMEN_REQUIRE_NOSTD=1` in `thumb`.
+>   stored, under `FULGURITE_REQUIRE_NOSTD=1` in `thumb`.
 > - **T43.9** goldens run with the shell alone; `Recorded` fails in
 >   both files; `check_test_counts.sh` (1 zero-test binary, allowed and
 >   verified).
-> - **T43.10** `LUMEN_REQUIRE_GPU=1` in `just gpu`; `the_gpu_half_ran`.
+> - **T43.10** `FULGURITE_REQUIRE_GPU=1` in `just gpu`; `the_gpu_half_ran`.
 > - **T43.11** DejaVu Sans committed (759,720 B); only
 >   `font_discovery.rs` needs the system; `just fonts`.
 > - **T43.12** the competitive lock regenerated; `check_locks.sh`;
@@ -121,11 +121,11 @@ accepts good input in the same session.*
 **The golden gates run nowhere.** R17-F1 and R9-F4 are both WORSE, and
 I-NEW-4 is new.
 
-- `crates/lumen-static-shell/tests/golden.rs:15` is
+- `crates/fulgurite-shell/tests/golden.rs:15` is
   `#![cfg(not(feature = "truetype"))]`.
 - Every `--workspace` build turns `truetype` on, so the file compiles
   to zero tests in `dev-shape` (justfile:62) and in ci.yml.
-- The only `-p lumen-static-shell` lines are justfile:64 (`shadow`),
+- The only `-p fulgurite-shell` lines are justfile:64 (`shadow`),
   `simd` (:132-134) and `threads` (:146). None of them names `golden`.
 
 The findings got **worse** because M36/T36.2 (5641723) added a second
@@ -141,15 +141,15 @@ dev-shape selection stayed green, and the shell built alone went red.
 
 - justfile:30-31 calls `release-shape` "the ONLY build" of the shipped
   shape.
-- `crates/lumen-static/Cargo.toml:52` gives the core a dev-dependency
-  on `lumen-static-widgets` **with `observe`**. Widgets' `observe`
-  turns core's on, so `cargo test -p lumen-static` (justfile:48) and
+- `crates/fulgurite/Cargo.toml:52` gives the core a dev-dependency
+  on `fulgurite-widgets` **with `observe`**. Widgets' `observe`
+  turns core's on, so `cargo test -p fulgurite` (justfile:48) and
   the clippy line (:49) both build core in the dev shape.
 - The re-triage re-ran the `520ed2e` tripwire. `--tests` went red, and
   the lib alone stayed green.
 
 **No gate executes core's no_std-only branch (R12-F2).**
-`crates/lumen-static/src/bind.rs:89-90` defines `SCRATCH_CAP`, and
+`crates/fulgurite/src/bind.rs:89-90` defines `SCRATCH_CAP`, and
 `:164-165` is the only place that uses it. The branch is not reachable
 from core's own tests, for R12-F1's reason. Neither `fixtures/embedded`'s
 source nor its one test (`baked_face.rs`) contains a `#[bind]`.
@@ -157,9 +157,9 @@ source nor its one test (`baked_face.rs`) contains a `#[bind]`.
 **The agent's tests pass only through unification.** R13-F7 and R3-F8
 are one defect found twice.
 
-- `crates/lumen-static-agent/Cargo.toml:34` takes `lumen-static-widgets`
+- `crates/fulgurite-agent/Cargo.toml:34` takes `fulgurite-widgets`
   without `observe`.
-- `cargo test -p lumen-static-agent` fails 19 tests.
+- `cargo test -p fulgurite-agent` fails 19 tests.
 - `--workspace` passes them, because core's dev edge (above) turns
   widgets' `observe` on.
 
@@ -175,8 +175,8 @@ tests green. The two fixes are ordered (T43.6, then T43.7).
   one". libtest captures that print on a pass.
 - **Fonts, R17-F7.** Several shaping tests return early when no system
   face exists, and some print nothing when they do. The sites are
-  `lumen-static-shell/tests/shaping.rs:9` and its `else { return }`
-  sites, `glyph_placement.rs:32`, `lumen-static-text/tests/shaping.rs:34`
+  `fulgurite-shell/tests/shaping.rs:9` and its `else { return }`
+  sites, `glyph_placement.rs:32`, `fulgurite-text/tests/shaping.rs:34`
   and `fixtures/embedded/tests/baked_face.rs:31`. The counts are in the
   review (`docs/results-deep-review.md` §2.4, R17-F7).
 - **The live gates, R17-F8, WORSE.** They exit 0 on an empty display:
@@ -205,11 +205,11 @@ tests green. The two fixes are ordered (T43.6, then T43.7).
   string literal. It also scans only `crates/*/src` as text, so a
   `#[path]` module outside `src` and a build script's `include!` both
   pass. `#![forbid(unsafe_code)]` is in one crate,
-  `lumen-static-widgets/src/lib.rs:56`.
+  `fulgurite-widgets/src/lib.rs:56`.
   - The re-triage re-applied `dea0bb6`. All three bypasses passed, and
-    `cargo build --release -p lumen-static` succeeded.
+    `cargo build --release -p fulgurite` succeeded.
   - The re-triage also found that no crate other than
-    `lumen-static-reload` contains `no_mangle`, `export_name`,
+    `fulgurite-reload` contains `no_mangle`, `export_name`,
     `link_section` or `extern "C"`. So a `forbid` in the other seven
     breaks nothing.
 - **Identifiers (R17-F15, WORSE).** Three gaps in
@@ -223,7 +223,7 @@ tests green. The two fixes are ordered (T43.6, then T43.7).
   `MARK`, `offset`, `PanicReport`, `ROWS` and `ToggleLook`.
   `PanicReport`'s own entry (`doc-identifiers.allow:113`) says it
   "comes off when it exists". It exists, in
-  `crates/lumen-static-shell/src/recover.rs`.
+  `crates/fulgurite-shell/src/recover.rs`.
   **Correction to the re-triage:** it says the allowlist grew from 76 to
   83 entries. It did not. Counted the way the script counts, it holds
   76 names at both ac91d51 and 1717808, and the file has no commits in
@@ -248,10 +248,10 @@ tests green. The two fixes are ordered (T43.6, then T43.7).
     as a use.
   - Its header (`:9`) still says `widget_class` has zero uses, which is
     stale.
-  - The App derive (`lumen-static-macros/src/lib.rs:1825`) gained
+  - The App derive (`fulgurite-macros/src/lib.rs:1825`) gained
     `state` in M33.
 - **A stripped comment in a manifest (R12-F7).**
-  `crates/lumen-static-widgets/Cargo.toml:28-30` has lost its
+  `crates/fulgurite-widgets/Cargo.toml:28-30` has lost its
   backticked names ("`#  implies , the tiering  uses`"). No check reads
   TOML comments.
 
@@ -303,7 +303,7 @@ tests green. The two fixes are ordered (T43.6, then T43.7).
 
   **Checked for this plan** (`git archive` of HEAD into scratch):
   `cargo metadata --offline` in `benches-competitive` rewrote the lock,
-  adding `lumen-static-widgets`. `just test` runs `observe-inlining`,
+  adding `fulgurite-widgets`. `just test` runs `observe-inlining`,
   which builds in that workspace (`scripts/check_observe_inlining.sh:16-23`).
   So since T35.0, **the every-commit gate rewrites a committed file**.
   Rule 5 exists because of this.
@@ -374,21 +374,21 @@ The concrete rules:
 - **`just live` runs all seven live scripts plus `live_gate.sh`.** It
   prints `name: pass | FAIL | skip(77) — reason` per script and a total.
   It fails on any FAIL. It also fails on any skip, unless
-  LUMEN_ALLOW_SKIP=1 is set, in which case it prints `N skipped
+  FULGURITE_ALLOW_SKIP=1 is set, in which case it prints `N skipped
   (allowed)`.
 - **`check` calls `live`** in place of its ad hoc display test (justfile:97-99).
 - **Skips inside a test process** (GPU adapter, system fonts) follow
   the same policy through requirement variables. The recipe that names
-  the capability sets them, unless LUMEN_ALLOW_SKIP=1:
-  - `gpu` sets LUMEN_REQUIRE_GPU=1;
-  - `dev-shape` sets LUMEN_REQUIRE_FONTS=1 for the tests that remain
+  the capability sets them, unless FULGURITE_ALLOW_SKIP=1:
+  - `gpu` sets FULGURITE_REQUIRE_GPU=1;
+  - `dev-shape` sets FULGURITE_REQUIRE_FONTS=1 for the tests that remain
     about system discovery (T43.11).
 
   A plain `cargo test` outside `just` keeps today's skip-and-return,
   because a developer's partial run is not a gate.
 
 What (b) breaks: `just check` on a headless machine. It now fails
-unless the user sets LUMEN_ALLOW_SKIP=1. That is the point. The record
+unless the user sets FULGURITE_ALLOW_SKIP=1. That is the point. The record
 `just ci` writes then carries the skip flag, so a green record never
 hides a skip.
 
@@ -404,7 +404,7 @@ The options:
 
 (c) is cheap:
 
-- the two golden files run with `lumen-static-shell` alone;
+- the two golden files run with `fulgurite-shell` alone;
 - the zero-test check (`scripts/check_test_counts.sh`) catches the
   *next* file that a cfg compiles out, which is what a list of lines
   cannot do.
@@ -454,9 +454,9 @@ because it reproduces a recorded one.
 
 **Recommended:**
 
-- Add `#![forbid(unsafe_code)]` to `lumen-static`, `-agent`, `-macros`,
+- Add `#![forbid(unsafe_code)]` to `fulgurite`, `-agent`, `-macros`,
   `-shell`, `-text`, `-winit` and `-wgpu`. With `-widgets`, which has it
-  already, that is every crate except `lumen-static-reload`.
+  already, that is every crate except `fulgurite-reload`.
 - Keep the script as a fast check before compiling. Make it
   literal-aware, and add a presence check that every `crates/*/src/lib.rs`
   except reload carries the attribute (`forbid: 8/8 crates`).
@@ -465,7 +465,7 @@ because it reproduces a recorded one.
 modules and `include!`d code, because both expand inside the crate.
 
 **One limit, stated in the script's header:** `forbid` in
-`lumen-static-macros` covers the macro crate's own code, not the tokens
+`fulgurite-macros` covers the macro crate's own code, not the tokens
 its derives emit. Emitted code is checked by `forbid` in whichever crate
 uses the derive, which for the core's own tests is the core.
 
@@ -475,7 +475,7 @@ The re-triage recommends moving "the widget-using core tests" into a
 new crate. It says the alternative, a separate `--lib` step, cannot
 work, because dev-dependencies unify anyway. **The move is much smaller
 than that sounds.** 63 of core's 70 test files use
-`lumen-static-widgets`, but only four need `observe`:
+`fulgurite-widgets`, but only four need `observe`:
 
 - `tests/observe.rs` and `tests/hatches.rs`, both `required-features =
   ["observe"]`;
@@ -488,7 +488,7 @@ than that sounds.** 63 of core's 70 test files use
 - Move those two files and two sections into a new workspace package
   under `fixtures/` that depends on core and widgets with `observe`.
 - Add the permanent tripwire: a `compile_error!` under
-  `cfg(all(feature = "observe", lumen_release_shape))`, with
+  `cfg(all(feature = "observe", fulgurite_release_shape))`, with
   `release-shape` setting that cfg in its own target directory.
 
 What this breaks: the agent's workspace tests, until T43.6 gives the
@@ -570,7 +570,7 @@ The options were:
 and the fixture. Measured at this branch's base (826c7c3), LOADED (load
 average 2.3–11.9 on 32 cores, other agents compiling): **1.35 s** for
 `check_text.sh` against a firmware built earlier in the session, **0.84 s**
-after a one-line change to `crates/lumen-static/src/lib.rs` (cargo
+after a one-line change to `crates/fulgurite/src/lib.rs` (cargo
 recompiled core, widgets and the fixture), **0.12 s** with nothing
 changed, and 0.10 s for `check_bss.sh` after it. That is noise beside
 `dev-shape`. (a) would keep the gap open for exactly the case that
@@ -594,7 +594,7 @@ slow tiers, and one plant per finding.
 | plant | check | expected once fixed | at 1717808 |
 |---|---|---|---|
 | string-slash | `check_no_unsafe.sh` | names the file:line of an `unsafe` after a `"http://…"` literal | green |
-| path-module, OUT_DIR include | `cargo check -p lumen-static` | `usage of an unsafe block` | builds |
+| path-module, OUT_DIR include | `cargo check -p fulgurite` | `usage of an unsafe block` | builds |
 | forbid-removed | the presence check | names the crate | no check |
 | trailing, block, AGENT.md | `check_doc_identifiers.sh` | names the dead identifier | green |
 | stale-allow (no edit) | `check_doc_identifiers.sh` | names the six live entries | green |
@@ -607,7 +607,7 @@ slow tiers, and one plant per finding.
 | stale target dir | `check_text.sh`, `check_bss.sh` | report on the fresh binary, and name the planted static | green on the stale one |
 | stale headline | `check_text.sh` | `headline … delta` | no check |
 | quadratic, rerun | `just const-budget` | red on run 2 | green on run 2 |
-| agent-alone | `cargo test -p lumen-static-agent` | green | 19 failed |
+| agent-alone | `cargo test -p fulgurite-agent` | green | 19 failed |
 | observe-tripwire | `just release-shape` | the tripwire's message | no tripwire |
 | nostd-bind (`fa64952`) | the embedded bind test | `stored 0 of 1000` | no test |
 | golden-corrupt, golden-deleted | dev-shape's golden lines | `differs`; `a first run is not a pass` | green |
@@ -662,7 +662,7 @@ plants on this harness.
 - The script prints `no-unsafe: clean; forbid: 8/8 crates`.
 
 **Injection:** the string-slash, path-module and OUT_DIR plants.
-`cargo check -p lumen-static` must fail three times with `usage of an
+`cargo check -p fulgurite` must fail three times with `usage of an
 unsafe block`. The forbid-removed plant makes the presence check name
 the crate.
 
@@ -838,8 +838,8 @@ figure is printed beside the bound.
 
 **Change:**
 
-- `crates/lumen-static-agent/Cargo.toml:34` takes
-  `lumen-static-widgets` with `observe`, with the comment that core's
+- `crates/fulgurite-agent/Cargo.toml:34` takes
+  `fulgurite-widgets` with `observe`, with the comment that core's
   own dev edge carries.
 - Add `just test-crates`, which loops `cargo test -p` over the nine
   `crates/*` libraries (§2.3). It prints `crate: P passed, F failed`
@@ -848,7 +848,7 @@ figure is printed beside the bound.
 **Gate:** `just test-crates`.
 
 **Injection:** the agent-alone plant, which removes the feature. The
-recipe reports `lumen-static-agent: 19 failed`, while `cargo test
+recipe reports `fulgurite-agent: 19 failed`, while `cargo test
 --workspace` stays green. That contrast is the point of the gate.
 
 **Accepts good input:** with the feature, the recipe reports 0 failures
@@ -870,12 +870,12 @@ across all nine crates.
 
 **Change:** §2.6.
 
-- Drop `observe` from `crates/lumen-static/Cargo.toml:52`.
+- Drop `observe` from `crates/fulgurite/Cargo.toml:52`.
 - Move `tests/observe.rs`, `tests/hatches.rs` and the two cfg'd sections
   into the new package.
-- Add the `lumen_release_shape` tripwire in `crates/lumen-static/src/lib.rs`.
+- Add the `fulgurite_release_shape` tripwire in `crates/fulgurite/src/lib.rs`.
 - `release-shape` sets the cfg in its own target directory, and prints
-  the resolved feature set of `lumen-static` from `cargo tree -e
+  the resolved feature set of `fulgurite` from `cargo tree -e
   features` together with the core test count.
 
 **Gate:** `just release-shape`. The tripwire fires if any edge turns
@@ -924,13 +924,13 @@ turns the agent's workspace tests red.
 
 **Injection:** the nostd-bind plant (`fa64952`: `format_into` clears its
 buffer). The test goes red with `stored 0 of 1000`, while `cargo test -p
-lumen-static` stays green.
+fulgurite` stays green.
 
 **Accepts good input:** reverted, the test stores 256.
 
 **Docs in the same commit:**
 
-- the rustdoc in `lumen-static-macros/src/lib.rs` for `#[bind]`;
+- the rustdoc in `fulgurite-macros/src/lib.rs` for `#[bind]`;
 - `bind.rs:74-89`;
 - `docs/results-embedded.md` notes that bind is exercised.
 
@@ -942,10 +942,10 @@ lumen-static` stays green.
 
 **Change:**
 
-- `dev-shape` gains `cargo test -p lumen-static-shell --test golden
+- `dev-shape` gains `cargo test -p fulgurite-shell --test golden
   --test failure_screen` next to justfile:64.
 - `failure_screen.rs` treats `Verdict::Recorded` as a failure ("commit
-  it and re-run"), and accepts `Updated` only under LUMEN_UPDATE_GOLDENS=1.
+  it and re-run"), and accepts `Updated` only under FULGURITE_UPDATE_GOLDENS=1.
 - Add `scripts/check_test_counts.sh` at the end of `dev-shape`. It runs
   the workspace test binaries with `--list` and fails on any binary
   listing zero tests that is not named in `scripts/zero-tests.allow`
@@ -990,16 +990,16 @@ binaries.
 **Change:**
 
 - Implement §2.2's in-process half. `parity.rs`'s adapter helper panics
-  when LUMEN_REQUIRE_GPU=1, instead of returning `None`.
+  when FULGURITE_REQUIRE_GPU=1, instead of returning `None`.
 - Add a test, `the_gpu_half_ran`, that asserts the adapter exists under
   the requirement and prints its name and backend.
-- `gpu` sets the variable unless LUMEN_ALLOW_SKIP=1.
+- `gpu` sets the variable unless FULGURITE_ALLOW_SKIP=1.
 - Record the skip policy in `docs/results-gpu.md`.
 
 **Gate:** `just gpu` prints `adapter: <name> (<backend>)`.
 
 **Injection:** the GPU plant (the adapter hidden by environment). It
-fails with `LUMEN_REQUIRE_GPU=1 but no adapter`. Remove the variable
+fails with `FULGURITE_REQUIRE_GPU=1 but no adapter`. Remove the variable
 from the recipe while hiding the adapter, and the recipe goes green
 again. That shows the mechanism is the requirement and not a flake.
 
@@ -1020,14 +1020,14 @@ llvmpipe.
 
 **Change:**
 
-- Commit a test face under `crates/lumen-static-shell/tests/fonts/`.
+- Commit a test face under `crates/fulgurite-shell/tests/fonts/`.
   DejaVu Sans is on the reference machine, and its licence permits
   redistribution. `fontTools` is not installed, so the face is
   committed whole rather than subset, and its size is recorded in the
   commit.
 - The shaping tests load it through `FontStack::from_bytes`.
 - Only tests *about* system discovery keep `FontStack::system`. They
-  panic under LUMEN_REQUIRE_FONTS=1, which `dev-shape` sets (§2.2).
+  panic under FULGURITE_REQUIRE_FONTS=1, which `dev-shape` sets (§2.2).
 - `baked_face.rs` does the same with its source path.
 
 **Gate:** each affected test asserts a non-zero glyph count and prints
@@ -1109,7 +1109,7 @@ the accepted list.
 **Injection:**
 
 - `env -u DISPLAY -u WAYLAND_DISPLAY just live` exits non-zero with
-  eight `skip(77)` lines. With LUMEN_ALLOW_SKIP=1 it exits 0 and says
+  eight `skip(77)` lines. With FULGURITE_ALLOW_SKIP=1 it exits 0 and says
   `8 skipped (allowed)`.
 - `just ci-verify` on a fresh commit fails with `no CI record for <sha>`.
 - Revert T43.12's lock inside the CI worktree. `just ci` must fail with
@@ -1138,7 +1138,7 @@ found two pieces every later plan assumes and none provides:
 - **A capability probe for qemu and the thumb target.** `just ci`
   checks for `qemu-system-arm` and `thumbv7em-none-eabihf` before
   running the recipes that need them. If either is missing, those
-  recipes exit 77, which counts as a failure unless LUMEN_ALLOW_SKIP=1.
+  recipes exit 77, which counts as a failure unless FULGURITE_ALLOW_SKIP=1.
   Both are present on the reference machine.
 
 **Effort:** L. **Depends on:** M42/T42.2 (the live scripts' 77 and free
@@ -1257,7 +1257,7 @@ original wording.
   borrowed from unification.
 - **T43.8's test accepts the std answer in a unified build** (1,000
   stored under `--workspace`, where other members turn `std` on) and
-  only `LUMEN_REQUIRE_NOSTD=1` in `thumb` insists on 256 — a no_std test
+  only `FULGURITE_REQUIRE_NOSTD=1` in `thumb` insists on 256 — a no_std test
   cannot be a gate inside `cargo test --workspace`.
 - **The shaping tests were shaping Noto, not DejaVu**, on the reference
   machine (`FontStack::system`'s first candidate). T43.11 pins DejaVu.
@@ -1276,8 +1276,8 @@ original wording.
   (T43.15 wires them into `test`, `check` and `ci`; the static tier is
   22 plants in 19 s, inside §5's 30 s budget; build 14 plants in ~50 s
   warm; slow 2 plants in ~6 min); the requirement variables
-  (`LUMEN_REQUIRE_GPU`, `LUMEN_REQUIRE_FONTS`, `LUMEN_REQUIRE_NOSTD`)
-  and `LUMEN_ALLOW_SKIP`, which `just ci` must record as skip flags.
+  (`FULGURITE_REQUIRE_GPU`, `FULGURITE_REQUIRE_FONTS`, `FULGURITE_REQUIRE_NOSTD`)
+  and `FULGURITE_ALLOW_SKIP`, which `just ci` must record as skip flags.
 - **To build in T43.13:** `just live`, `just ci`/`ci-verify` (the
   dirty-tree assertion can reuse the harness's sync), `just
   install-hooks`, the bench-lock recipe (§3 T43.13) and the
@@ -1297,23 +1297,23 @@ original wording.
   `deny`, `selftest-slow`, `selftest-live`, `adversary-plant` (M42/T42.7,
   which also needs a window and had no runner) and `miri-reload` (M49's
   pending wiring, docs/plan-reload-hardening.md T49.3).
-- **The first `LUMEN_ALLOW_SKIP=1` run recorded a skip as a pass.** With
+- **The first `FULGURITE_ALLOW_SKIP=1` run recorded a skip as a pass.** With
   no display, `live` printed `8 skipped (allowed)` and exited 0, and the
   record said 0 skipped — the green-record-hides-a-skip case §2.2 exists
-  to prevent. Under LUMEN_ALLOW_SKIP=1 a step that exits 0 and prints an
+  to prevent. Under FULGURITE_ALLOW_SKIP=1 a step that exits 0 and prints an
   accepted-skip marker (`skipped (allowed)`, or `gpu`/`fonts`'s
-  `LUMEN_ALLOW_SKIP=1 --`) is now recorded as a skip, and `ci-verify`
+  `FULGURITE_ALLOW_SKIP=1 --`) is now recorded as a skip, and `ci-verify`
   refuses any skip unless it is given `--allow-skip` too.
 - **An `--only` run writes `<sha>.only.json`**, which `ci-verify` never
   reads, so a partial run cannot replace or pass for a full record.
 - **The bench lock is not under `target/`.** One file per worktree's
   `target/` serialises nothing across worktrees, and that is where the
-  parallel work is. It lives at `<git common dir>/lumen-bench.lock`,
-  which every worktree of the repository shares; LUMEN_BENCH_LOCK
+  parallel work is. It lives at `<git common dir>/fulgurite-bench.lock`,
+  which every worktree of the repository shares; FULGURITE_BENCH_LOCK
   overrides it (this session's agents were briefed to use a path outside
   the repository, which the variable reaches). LOADED means the
   one-minute load average, before or after, exceeded 0.25 of the online
-  cores (LUMEN_BENCH_LOAD_FRACTION).
+  cores (FULGURITE_BENCH_LOAD_FRACTION).
 - **No recipe uses qemu yet.** `grep` finds none; the capability exists
   on the reference machine and nothing runs it. `scripts/probe.sh qemu`
   is ready for M52's first qemu recipe to call on its first line, and
@@ -1323,10 +1323,10 @@ original wording.
   rust-toolchain.toml), not rustup's default.
 - **`gpu_parity.sh` still exited 0 on a missing adapter or `xwd`.** §1.2
   listed it; M42/T42.2 moved only the display check to 77. Both now exit
-  77, so `just live` refuses them unless LUMEN_ALLOW_SKIP=1.
+  77, so `just live` refuses them unless FULGURITE_ALLOW_SKIP=1.
 - **The `stranger` live plant held a fixed port (7890)**, outside any
   range a caller gives. `scripts/selftest/live.sh` now gives the stranger
-  the top port of LUMEN_LIVE_PORT_RANGE and the launcher the rest.
+  the top port of FULGURITE_LIVE_PORT_RANGE and the launcher the rest.
 - **`just install-hooks` writes `core.hooksPath` to the config every
   worktree shares.** It was not run in this session, so as not to put a
   hook on other agents' worktrees; it was exercised in a scratch clone.
@@ -1387,7 +1387,7 @@ and T43.15 assign to it are proposed here, not made:
   R11-F4, F-NEW-1). Those are M52. T43.4 gives M52 a firmware path that
   follows cargo, and T43.8 keeps its test out of the firmware so that
   F-NEW-1 does not arise here.
-- **Not the winit `agent` feature forwarding `lumen-static-widgets/observe`**
+- **Not the winit `agent` feature forwarding `fulgurite-widgets/observe`**
   (R12-F3, M48). T43.6 fixes the agent crate's *test* manifest only. A
   downstream build is R12-F3's problem.
 - **Not `cargo fmt`.** The justfile records why it is off (justfile:103-107).

@@ -3,7 +3,7 @@
 **Ran 2026-09-07.** Reference machine: i9-13900KF, governor `powersave`,
 NVIDIA GeForce RTX 4070 (Vulkan). `cargo run --release -p raster-scaling`
 in `benches-competitive/`, min of 30 after 5 warm-ups;
-`cargo test -p lumen-static-wgpu` for the parity numbers.
+`cargo test -p fulgurite-wgpu` for the parity numbers.
 
 This is the results doc for `docs/plan-capabilities.md` T15.12.
 
@@ -107,15 +107,15 @@ The gate T15.12 set: *"the same frame renders pixel-comparably on both
 backends (within an antialiasing tolerance, stated)."*
 
 **A skip is not a pass (M43/T43.10).** Without an adapter the parity
-tests in `crates/lumen-static-wgpu/tests/` return early, and libtest
+tests in `crates/fulgurite-wgpu/tests/` return early, and libtest
 captures their "skipping" line on a pass — so `just gpu` was green on a
 machine that compared nothing (M38's R17-F6). The policy now: a plain
 `cargo test` still skips, because a developer's partial run is not a gate;
 `just gpu`, the recipe that claims the comparison happened, sets
-`LUMEN_REQUIRE_GPU=1`, under which a missing adapter panics with
-`LUMEN_REQUIRE_GPU=1 but no adapter`, and prints the adapter it used
+`FULGURITE_REQUIRE_GPU=1`, under which a missing adapter panics with
+`FULGURITE_REQUIRE_GPU=1 but no adapter`, and prints the adapter it used
 (`adapter: <name> (<backend>, <device type>)`, from `the_gpu_half_ran`; the device type since M51, because llvmpipe is an adapter for parity and not evidence about a discrete GPU).
-`LUMEN_ALLOW_SKIP=1` is the explicit way to run it without one.
+`FULGURITE_ALLOW_SKIP=1` is the explicit way to run it without one.
 
 > **Superseded 2026-09-27 by per-region bounds (M51/T51.1, §2b below).**
 > The whole-frame bound this section states could not see the one shape
@@ -204,7 +204,7 @@ Injections, each red by region name on both adapters:
 |---|---|
 | binary ring coverage in the software border | `border: 56 px over 8 (bound 2)`; the whole frame, which the pre-M51 test bounded, read 60 px (0.14%) on the RTX in the T51.0 frame: green under its 86 |
 | the GPU draws no `Image` | `image: 1024 px over 8 (bound 2)`; `images_agree_across_the_backends`: `image 1:1 is not drawn: inked 196/0 of 196` |
-| the software canvas draws no `Image` | the same region, and `lumen-static-shell/tests/image_pixels.rs` (in `just test`): `256 of 256 px differ from their texel` |
+| the software canvas draws no `Image` | the same region, and `fulgurite-shell/tests/image_pixels.rs` (in `just test`): `256 of 256 px differ from their texel` |
 | the image removed from the frame | `commands the parity frame does not draw: ["Image"]` |
 
 `images_agree_across_the_backends` draws the card at 1:1, 2×, tinted 3×,
@@ -382,8 +382,8 @@ already exceptional.
 > **`app.perf` reports it** as `atlas_give_ups` (the newest frame's
 > running count; `null` from the software canvas), since M48/T48.3 made
 > `app.perf` carry measured frames at all. `just gpu-parity`'s live leg
-> runs a debug showcase with `LUMEN_GPU_ATLAS_MAX=64` (a debug-only cap,
-> like `LUMEN_GPU_DROP_FIRST`) on the RTX: `app.perf atlas_give_ups = 1;
+> runs a debug showcase with `FULGURITE_GPU_ATLAS_MAX=64` (a debug-only cap,
+> like `FULGURITE_GPU_DROP_FIRST`) on the RTX: `app.perf atlas_give_ups = 1;
 > the renderer logged 1 give-up line(s)`; uncapped, `= 0` and 0 lines.
 > With `app.perf` dropping the field, the capped leg fails `app.perf
 > carried no atlas count`, and `protocol.rs`
@@ -416,7 +416,7 @@ already exceptional.
 ## 5. What it costs, and why the CPU is still the default
 
 Three axes, measured today. The crate count is unique packages in
-`cargo tree -p lumen-static-winit --prefix none`; the binary is
+`cargo tree -p fulgurite-winit --prefix none`; the binary is
 `examples/minimal` built `--release`, unstripped; RSS is the median of
 three launches read from `VmRSS` four seconds after start, which is the
 method `docs/results-competitive.md` §3 uses.
@@ -425,7 +425,7 @@ method `docs/results-competitive.md` §3 uses.
 |---|---:|---:|---:|
 | software (default) | 101 | 2.71 MB | 25.6 MB |
 | `--features gpu`, GPU in use | 138 | 6.58 MB | **199.3 MB** |
-| `--features gpu`, `LUMEN_BACKEND=software` | 138 | 6.58 MB | **26.2 MB** |
+| `--features gpu`, `FULGURITE_BACKEND=software` | 138 | 6.58 MB | **26.2 MB** |
 
 > **Corrected 2026-09-08 (M16/T16.5). The binary column was wrong, and
 > wrong in the GPU's disfavour.** It first read 5.29 and 12.26 MB, taken
@@ -461,7 +461,7 @@ T89.9–T89.10.
 
 **The price is the context, not the code.** Compiling the GPU backend in
 and not using it costs 0.6 MB resident. Opening an adapter costs 174 MB,
-which lands `lumen-static` squarely among the GPU-backed arms of
+which lands `fulgurite` squarely among the GPU-backed arms of
 `docs/results-competitive.md` §3 — iced at 196.3, Lumen at 169.6 — and
 confirms that doc's guess that the gap over them "is mostly a GPU
 context". It was.
@@ -469,7 +469,7 @@ context". It was.
 That is the whole case for keeping the software canvas the default. A
 form at 1080p should pay 5.6 ms and save 174 MB; a chart animating at 4K
 should not. The choice is per-application (`Config::backend`), per-run
-(`LUMEN_BACKEND`), and per-build (the `gpu` feature), and none of the
+(`FULGURITE_BACKEND`), and per-build (the `gpu` feature), and none of the
 three is the framework's to make.
 
 **The blur scratch is paid for by glass only — M51/T51.5, 2026-09-27.**
@@ -493,7 +493,7 @@ per-process VRAM figure was taken.
 
 For scale against the other optional features on the same crate, by the
 same count: clipboard +5 crates, dialogs +24, GPU +37. (The +11 and +79
-recorded in `crates/lumen-static-winit/Cargo.toml` for the first two are
+recorded in `crates/fulgurite-winit/Cargo.toml` for the first two are
 from 2026-09-05/07 on a different counting method and an older lockfile;
 the ordering agrees, the absolutes do not, and neither has been re-run.)
 
@@ -602,7 +602,7 @@ with 133 threads after one frame (`docs/results-deep-review.md` R9-F6,
 Now `accept_adapter(device_type, accept_cpu)` refuses a `Cpu` adapter
 unless `accept_cpu`, before any device is made, and prints why once.
 `pick_backend` passes `accept_cpu` for `Prefer::Gpu` only (the decision
-is `choose_backend`), so `LUMEN_BACKEND=gpu` still opens llvmpipe on
+is `choose_backend`), so `FULGURITE_BACKEND=gpu` still opens llvmpipe on
 purpose, and `Gpu::headless` accepts any adapter so parity stays
 executable there. `Other` and `VirtualGpu` are accepted: NVIDIA's GL
 adapter reports `Other` on this machine, and a virtualised GPU that
@@ -616,14 +616,14 @@ reports an odd type is still a GPU.
 
 The live half needs a CPU-only machine. `just gpu` makes this one into
 one — the Vulkan loader (VK_ICD_FILENAMES) at lavapipe, the EGL vendor list at nothing —
-under `LUMEN_REQUIRE_CPU_ONLY=1`, where a visible GPU fails instead of
+under `FULGURITE_REQUIRE_CPU_ONLY=1`, where a visible GPU fails instead of
 reporting "NOT RUN". The other half, that `Auto` still takes a discrete
 GPU, is live on this machine's default loader (the RTX 4070) and covered
 by the table.
 
 The live check that the two are interchangeable is `just gpu-parity`: it
 builds `examples/minimal` once, runs *that one binary* twice — plain and
-`LUMEN_BACKEND=software` — and reads the window back off the X server
+`FULGURITE_BACKEND=software` — and reads the window back off the X server
 both times. Measured 2026-09-07 at 320×160: **worst channel delta 1, no
 pixel over 8.** It skips rather than fails without a display, an adapter
 or `xwd`.
@@ -631,7 +631,7 @@ or `xwd`.
 It exists because "rendered" and "shown" are different claims and this
 project has been caught by the gap: the first partial redraw skipped the
 present entirely and left another window's pixels on screen
-(`crates/lumen-static-winit/src/surface.rs`). No headless test sees that.
+(`crates/fulgurite-winit/src/surface.rs`). No headless test sees that.
 
 The GPU backend deliberately answers `None` to `Backend::fetch_rgba`. It
 *could* read its target back, but the target is what was rendered, not
@@ -677,7 +677,7 @@ target still holds the whole frame, so the retry shows it without a
 re-render.
 
 `just gpu-parity` gained the live half, on a debug `examples/minimal`
-with the fault switch `LUMEN_GPU_DROP_FIRST=n` (320×160, idle 3 s, one
+with the fault switch `FULGURITE_GPU_DROP_FIRST=n` (320×160, idle 3 s, one
 `xwd` read, against the presented GPU frame; bound 1% of pixels over a
 channel delta of 8):
 

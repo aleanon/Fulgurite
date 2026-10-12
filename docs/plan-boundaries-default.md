@@ -40,7 +40,7 @@ commit subjects. Every gate names the injection that must turn it red.*
    changed.)* If a stale
    frame disappears when you build with it, you have found an
    invalidation defect. The rustdoc says so, in those words.
-3. **Both defaults flip.** Both `lumen_static_winit::Inval` and `Host`'s
+3. **Both defaults flip.** Both `fulgurite_winit::Inval` and `Host`'s
    own default type parameter change. Otherwise every headless host,
    and counter-window's hand-written window, would still run
    `Everything`, and "the default" would mean two different things.
@@ -52,7 +52,7 @@ commit subjects. Every gate names the injection that must turn it red.*
   which builds showcase with `--features agent` only, so it runs
   `Everything`. The first draft of this plan listed it under two
   strategies (§4, finding 1).
-- `crates/lumen-static-shell/tests/invalidation_oracle.rs` compares
+- `crates/fulgurite-shell/tests/invalidation_oracle.rs` compares
   `Everything` with **`Boundaries<16>`**, byte for byte, over a driven
   session. The window ships **`Boundaries<256>`**, and M26/T26.5 was a
   wrap at exactly 256 marks, so the shipped `N` has never been through
@@ -91,7 +91,7 @@ commit subjects. Every gate names the injection that must turn it red.*
 > showcase's writes its readout and reseeds the stage. Under
 > `Boundaries` a tick-written label kept its old box: the first tick
 > already differed from the whole-tree frame
-> (`crates/lumen-static-shell/tests/tick_marks.rs`, which failed before
+> (`crates/fulgurite-shell/tests/tick_marks.rs`, which failed before
 > the fix). An advancing tick that reports a change now marks
 > everything; a zero-`dt` query, by `App::tick`'s contract, marks
 > nothing.
@@ -102,7 +102,7 @@ commit subjects. Every gate names the injection that must turn it red.*
 > field and marked nothing** — R1-F2, now S0 — so under this plan's
 > default an IME commit was painted over last frame's layout: the field
 > kept its box and scroll, and a 16 px empty field painted no text at
-> all (`crates/lumen-static-shell/tests/compose_marks.rs`). This is the
+> all (`crates/fulgurite-shell/tests/compose_marks.rs`). This is the
 > row that should have been here, with every other `&mut self` method on
 > `Host` audited the same way at b213ae0:
 >
@@ -159,7 +159,7 @@ Each injected session asserts its own precondition (`pump` returned
 > `shadow-oracle` feature (forwarded by winit and showcase); the agent's
 > `app.shadow` reports `{supported, compared, first}`, and
 > `supported: false` from a host without it. Headless gate
-> `crates/lumen-static-shell/tests/shadow.rs`: a hover, a click and a
+> `crates/fulgurite-shell/tests/shadow.rs`: a hover, a click and a
 > leave are compared and quiet, with the compared count asserted first;
 > *injection* — skip the hover mark — names the button (`node 2`,
 > `field: "colour"`) on the hover frame. Live: `just agent-drive`'s
@@ -266,7 +266,7 @@ where it was measured.
 > | `just agent-drive` | `Everything`, `Boundaries`, `Boundaries+oracle` | 42, none |
 > | `just widget-drive` (39 entries, 94 actions each leg) | all three | 5 933, none |
 > | `just tasks-drive` (five capabilities) | all three | 108, none |
-> | `cargo test --workspace --features lumen-static-shell/shadow-oracle` (254 test binaries) | — | 2 080; 8 first divergences, every one in a test that writes the tree unmarked on purpose (`shadow.rs`'s three positive cases, `repeat_data.rs`'s unreported arm, `pointer_invalidation.rs` ×2, `loop_test.rs`, `invalidation_oracle.rs`'s skip proof); `alloc_gate.rs` (5) and `palette_host.rs` (2) fail by construction, because they count allocations and layouts and the oracle adds a layout |
+> | `cargo test --workspace --features fulgurite-shell/shadow-oracle` (254 test binaries) | — | 2 080; 8 first divergences, every one in a test that writes the tree unmarked on purpose (`shadow.rs`'s three positive cases, `repeat_data.rs`'s unreported arm, `pointer_invalidation.rs` ×2, `loop_test.rs`, `invalidation_oracle.rs`'s skip proof); `alloc_gate.rs` (5) and `palette_host.rs` (2) fail by construction, because they count allocations and layouts and the oracle adds a layout |
 >
 > 6 083 live frames judged across the three drives. **It was not quiet
 > the first time.** The first widget-drive oracle leg named
@@ -288,7 +288,7 @@ where it was measured.
   becomes the same (rule 3).
 - The `boundaries` feature becomes a diagnostic `everything` feature
   (rule 2). Any example can reach it as
-  `--features lumen-static-winit/everything` without forwarding it.
+  `--features fulgurite-winit/everything` without forwarding it.
 - In the same commit: the two example manifests; `widget_drive.sh`,
   `tasks_drive.sh` and `agent_drive.sh`, with their legs inverted so
   that the `Everything` leg now asks for `everything`; the winit

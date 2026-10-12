@@ -1,6 +1,6 @@
 //! **M28/T28.1's live half: a completion wakes an idle window.**
 //!
-//! The deterministic half (`crates/lumen-static/tests/inbox_wake.rs`)
+//! The deterministic half (`crates/fulgurite/tests/inbox_wake.rs`)
 //! asserts that sending *asks* for a wake, against a recording proxy and
 //! no window. This asserts the other end of the same wire: that the ask
 //! reaches a real winit loop sleeping in `ControlFlow::Wait`, and that a
@@ -42,8 +42,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use lumen_static::inbox::{Inbox, Waker};
-use lumen_static_winit::{ProxyWaker, UserEvent};
+use fulgurite::inbox::{Inbox, Waker};
+use fulgurite_winit::{ProxyWaker, UserEvent};
 
 /// The one window's key, as a `Program`'s primary is (M89/T89.1).
 const KEY: u32 = 1;
@@ -85,15 +85,15 @@ impl ApplicationHandler<UserEvent> for Fixture {
         let mut attrs = Window::default_attributes()
             .with_title("wake-gate")
             .with_inner_size(winit::dpi::LogicalSize::new(240.0, 120.0));
-        // The live drives' placement requests, read as lumen-static-winit
+        // The live drives' placement requests, read as fulgurite-winit
         // reads them when it opens a window: this fixture opens its own.
-        if let Some((x, y)) = std::env::var("LUMEN_WINDOW_POS").ok().and_then(|v| {
+        if let Some((x, y)) = std::env::var("FULGURITE_WINDOW_POS").ok().and_then(|v| {
             let (x, y) = v.split_once(',')?;
             Some((x.trim().parse::<i32>().ok()?, y.trim().parse::<i32>().ok()?))
         }) {
             attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
         }
-        if std::env::var("LUMEN_WINDOW_INACTIVE").as_deref() == Ok("1") {
+        if std::env::var("FULGURITE_WINDOW_INACTIVE").as_deref() == Ok("1") {
             attrs = attrs.with_active(false);
         }
         let w = Arc::new(e.create_window(attrs).expect("window"));

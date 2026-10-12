@@ -78,7 +78,7 @@ needed neither a gate exemption nor a feature.
 
 ## Why it is trusted
 
-`crates/lumen-static-shell/tests/wide_stores.rs` writes out the loops
+`crates/fulgurite-shell/tests/wide_stores.rs` writes out the loops
 that were replaced and compares against them exhaustively — every
 remainder shape (`w % 4` over 0..3), every start and end offset within a
 row for the partial-span case, and one whole rasterised frame at

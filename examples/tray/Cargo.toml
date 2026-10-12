@@ -23,15 +23,15 @@ path = "src/main.rs"
 required-features = ["tray"]
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["observe"] }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", features = ["agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype"] }
 
 [features]
 default = []
-# The Linux tray: lumen-static-winit's `tray` (`ksni` over D-Bus).
-tray = ["lumen-static-winit/tray"]
+# The Linux tray: fulgurite-winit's `tray` (`ksni` over D-Bus).
+tray = ["fulgurite-winit/tray"]
 # Both programs under `Everything`, so the drive runs both strategies -- a
 # compile-time choice made in `main.rs`, as examples/daemon's is.
 everything = []

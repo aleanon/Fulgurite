@@ -28,7 +28,7 @@ three implementations exist at different points on the cost curve:
 |---|---|---|
 | `BakedFace` | nothing — a `&'static` table in flash | measures and draws without an allocator |
 | `FontMetrics` (`fontdue`) | `alloc`, `std` | real outlines, real metrics |
-| `lumen-static-text` | its own crate, reached by the shell's `shaping` feature | cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs — **measured and painted** by a `FontStack` in `Shaping::Complex`, which a program chooses with `Program::shaping` |
+| `fulgurite-text` | its own crate, reached by the shell's `shaping` feature | cluster-correct segmentation, Arabic joining, Indic reordering, bidi runs — **measured and painted** by a `FontStack` in `Shaping::Complex`, which a program chooses with `Program::shaping` |
 
 `BakedFace` exists because of a gap worth remembering: `FontMetrics` is a
 `std` crate living in the shell, so until the baked face was written the
@@ -117,13 +117,13 @@ This stand-in draws each character as a 10 × 20 px box, and the run
 turned on its side is laid out in the turned box:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::cx::{PathSink, TextMeasure};
-use lumen_static::display::PathEl;
-use lumen_static::widget::{Node, Widget};
-use lumen_static::{Constraints, LayoutCx, NodeState, Point, Size};
-use lumen_static_widgets::VectorText;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::cx::{PathSink, TextMeasure};
+use fulgurite::display::PathEl;
+use fulgurite::widget::{Node, Widget};
+use fulgurite::{Constraints, LayoutCx, NodeState, Point, Size};
+use fulgurite_widgets::VectorText;
 
 /// A measurer whose glyphs are boxes, 10 px a character and 20 px tall.
 struct Boxes;
@@ -169,7 +169,7 @@ M82/T82.8).
 
 ## Complex scripts are a crate, not a feature
 
-`lumen-static-text` is separate on purpose. That is the M15 gating
+`fulgurite-text` is separate on purpose. That is the M15 gating
 policy's *strongest* mechanism: nothing enters the dependency graph
 unless it is named in a manifest. Cargo features are additive and unified
 across a build, so a feature would let one dependent's choice become
@@ -181,7 +181,7 @@ measured against this one and declined, with reasons.
 Since M81 the shell, which paints, reaches the shaper through its own
 `shaping` feature, off by default: a build that does not name it compiles
 no shaper, and a window turns it on by forwarding
-`lumen-static-winit/shaping` (`docs/plan-shaped-paint.md`).
+`fulgurite-winit/shaping` (`docs/plan-shaped-paint.md`).
 
 **It measures and paints, when a program asks.** Until M81 the shaper
 decided only the box and the carets, and the canvas drew the original
@@ -205,7 +205,7 @@ the caret at the line's logical end. The highlight is the part a
 reader would expect, never the letters between two selected parts:
 
 ```text
-{{#include ../../crates/lumen-static-widgets/src/caret.rs:tint_rule}}
+{{#include ../../crates/fulgurite-widgets/src/caret.rs:tint_rule}}
 ```
 
 Left and Right still step through the text in reading order, not across
@@ -220,7 +220,7 @@ rasteriser's own 3× horizontal raster, keyed apart in the glyph cache.
 Both renderers choose the column and the third in one function:
 
 ```text
-{{#include ../../crates/lumen-static-shell/src/text.rs:pen_rule}}
+{{#include ../../crates/fulgurite-shell/src/text.rs:pen_rule}}
 ```
 
 A `Basic` glyph has no phase, so nothing a program drew before M81 moves.

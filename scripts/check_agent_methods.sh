@@ -2,9 +2,9 @@
 # M48/T48.14 (R13-F11): the documented method set is the built one.
 #
 # Extracts every method-name string literal ("ui.x", "input.x", "app.x")
-# that the agent's dispatch answers -- `crates/lumen-static-agent/src/lib.rs`
+# that the agent's dispatch answers -- `crates/fulgurite-agent/src/lib.rs`
 # (`dispatch`, `dispatch_input`, `handle`, `handle_input`) and the window's
-# `answer_agent` (`crates/lumen-static-winit/src/lib.rs`) -- and diffs the
+# `answer_agent` (`crates/fulgurite-winit/src/lib.rs`) -- and diffs the
 # set against the backticked names in the skill's "Methods that exist"
 # paragraph and in `book/src/agent.md`. Either list non-empty fails.
 set -euo pipefail
@@ -14,8 +14,8 @@ skill=.claude/skills/verifying-apps/SKILL.md
 book=book/src/agent.md
 name='(ui|input|app)\.[A-Za-z]+'
 
-code=$( { sed -E 's@//.*$@@' crates/lumen-static-agent/src/lib.rs; \
-          sed -E 's@//.*$@@' crates/lumen-static-winit/src/lib.rs; } \
+code=$( { sed -E 's@//.*$@@' crates/fulgurite-agent/src/lib.rs; \
+          sed -E 's@//.*$@@' crates/fulgurite-winit/src/lib.rs; } \
         | grep -oE "\"$name\"" | tr -d '"' | sort -u)
 # The skill's paragraph: from its bold heading to the next blank line.
 skill_set=$(awk '/\*\*Methods that exist\*\*/{on=1} on&&/^$/{exit} on' "$skill" \

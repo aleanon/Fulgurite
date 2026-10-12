@@ -1,18 +1,18 @@
-# lumen-static — static-tree GUI framework (spec: docs/00-handoff-static-tree.md).
+# fulgurite — static-tree GUI framework (spec: docs/00-handoff-static-tree.md).
 # Virtual workspace manifest.
 [workspace]
 resolver = "2"
 members = [
-    "crates/lumen-static",
-    "crates/lumen-static-agent",
-    "crates/lumen-static-reload",
-    "crates/lumen-static-macros",
-    "crates/lumen-static-lss",
-    "crates/lumen-static-shell",
-    "crates/lumen-static-text",
-    "crates/lumen-static-winit",
-    "crates/lumen-static-wgpu",
-    "crates/lumen-static-widgets",
+    "crates/fulgurite",
+    "crates/fulgurite-agent",
+    "crates/fulgurite-reload",
+    "crates/fulgurite-macros",
+    "crates/fulgurite-lss",
+    "crates/fulgurite-shell",
+    "crates/fulgurite-text",
+    "crates/fulgurite-winit",
+    "crates/fulgurite-wgpu",
+    "crates/fulgurite-widgets",
     "benches",
     "examples/counter",
     "examples/minimal",
@@ -81,7 +81,7 @@ opt-level = "s"
 # operation the inner loops are made of; with both off it is 0.8 ms,
 # the same as release. The core, the macros and the examples are still
 # compiled for debugging. `docs/results-frame-cost.md`.
-[profile.dev.package.lumen-static-shell]
+[profile.dev.package.fulgurite-shell]
 opt-level = 3
 debug-assertions = false
 [profile.dev.package.fontdue]

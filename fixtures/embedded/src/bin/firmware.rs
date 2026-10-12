@@ -22,7 +22,7 @@
 use core::panic::PanicInfo;
 
 use embedded::{frame, Checksum, Panel, NODES};
-use lumen_static::{NodeState, Style};
+use fulgurite::{NodeState, Style};
 
 #[panic_handler]
 fn panicked(_: &PanicInfo) -> ! {

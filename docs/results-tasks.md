@@ -13,18 +13,18 @@ recorded there.
 
 | quantity | how | threshold | kill if |
 |---|---|---|---|
-| allocation, a frame that drains | `crates/lumen-static-shell/tests/alloc_gate.rs`, extended twice: to a pump that applies results, **and to count frees** — its counting allocator increments on `alloc` only and its `dealloc` counts nothing today | **zero allocations and zero frees** on the frame thread, both printed | either is non-zero |
+| allocation, a frame that drains | `crates/fulgurite-shell/tests/alloc_gate.rs`, extended twice: to a pump that applies results, **and to count frees** — its counting allocator increments on `alloc` only and its `dealloc` counts nothing today | **zero allocations and zero frees** on the frame thread, both printed | either is non-zero |
 | frame, drain | `benches --bin crossover`, new drain row at N = 0, 1, 3 | N = 0 indistinguishable from today's frame | an application that defers nothing pays anything |
 | frame, subscription diff | the same arm, with no subscriptions declared | indistinguishable from today's frame | same |
 | wake path | a completion on an idle window reaching a presented frame | reported; no bound written before it is measured | — |
 | embedded task symbols | `nm` on the linked firmware, printed beside the count the way `scripts/check_text.sh` prints its Toggle count | **zero** | any task symbol links into a leaf profile |
 | struct sizes | the const asserts in `fixtures/embedded` | unchanged | an unrecorded change |
-| crate count | `cargo tree -p lumen-static-winit --prefix none` | **unchanged** by the default spawner | the default pulls a dependency |
+| crate count | `cargo tree -p fulgurite-winit --prefix none` | **unchanged** by the default spawner | the default pulls a dependency |
 | outbox and subscription refusals | the counters T28.4 and T28.10 add | readable, and asserted where capacity is exceeded | an overflow is silent |
 
 **Why the crate count is a gate here and not a note.** This workspace
 prices dependencies and has refused them on that basis. By one method —
-`cargo tree -p lumen-static-winit --prefix none` — clipboard costs +5
+`cargo tree -p fulgurite-winit --prefix none` — clipboard costs +5
 crates, dialogs +24 and the GPU backend +37 (`docs/results-gpu.md` §5).
 `docs/plan-capabilities.md` records +11 and +79 for clipboard and rfd by
 an older count; **the two methods are not commensurable and this doc uses
@@ -129,7 +129,7 @@ and the post half 9.1.
 ### 3. The wake path — built with the mechanism it measures
 
 The plan's injection for this arm is "drop the wake", which presupposes
-a wake. Outside the `agent` feature `lumen-static-winit` built
+a wake. Outside the `agent` feature `fulgurite-winit` built
 `EventLoop::new()`, which has no user-event channel at all, so there was
 nothing to drop and nothing to time. Building the arm against a path
 that does not exist would have measured its absence — the "setup
@@ -157,7 +157,7 @@ drifts away from its quantity is visible rather than inferred.
 
 | half | where | asserts |
 |---|---|---|
-| deterministic | `crates/lumen-static/tests/inbox_wake.rs`, in `cargo test` | sending **asks** for a wake, against a recording proxy and no window |
+| deterministic | `crates/fulgurite/tests/inbox_wake.rs`, in `cargo test` | sending **asks** for a wake, against a recording proxy and no window |
 | live | `scripts/wake_gate.sh` → `examples/wake-gate`, `just wake-gate` | the ask reaches a real winit loop in `ControlFlow::Wait`, and a frame follows |
 
 The live half is a binary that asserts *itself* for three reasons, all
@@ -242,7 +242,7 @@ while this case drains fifty out of the bounded one and reports
 
 ### The gate
 
-`crates/lumen-static-shell/tests/deferred.rs`, six cases, on
+`crates/fulgurite-shell/tests/deferred.rs`, six cases, on
 `Boundaries<16>` because a result that changes state must **mark** it.
 
 | claim | measured |
@@ -514,7 +514,7 @@ above is what that looks like from the outside.
 > whichever build is loaded when it lands. It does **not** show a
 > framework property. The pending descriptor in this gate is held by the
 > fixture's loader, which has no inbox and no epoch at all; no
-> `lumen_static::spawn` or `inbox` code is on its path (`docs/results-deep-review.md` R4-F3 counted
+> `fulgurite::spawn` or `inbox` code is on its path (`docs/results-deep-review.md` R4-F3 counted
 > zero such symbols). Until T49.10 the framework's window swap carried no
 > work at all: the old session's inbox and its jobs were dropped with it.
 > The framework half now exists and is gated with a framework-side
@@ -852,7 +852,7 @@ used together, by an application, through a real window.
 `examples/tasks-demo` spawns, batches, chains, cancels and subscribes.
 `just tasks-drive` clicks every button through the agent endpoint under
 **both** invalidation strategies — which is a compile-time feature of
-`lumen-static-winit`, so the script builds twice.
+`fulgurite-winit`, so the script builds twice.
 
 ```
 == everything ==
@@ -1132,14 +1132,14 @@ returns on `Sender::is_stopped`, and the drain drops what it sent
 (`Host::stopped_dropped`). M84/T84.5 had pinned the gap green: **20**
 messages applied and **20** job iterations in the 200 ms after the stop.
 
-| gate (`crates/lumen-static-shell/tests/`) | measured | bound |
+| gate (`crates/fulgurite-shell/tests/`) | measured | bound |
 |---|---:|---:|
 | `subscriptions.rs` `a_stopped_subscription_stops`: messages applied after the stop | **0** | 0 |
 | the same: job iterations after the stop | **0** | ≤ 1 |
 | the same: waiting at the stop / dropped at the drain | 3 / 3 | dropped ≥ waiting |
 | `a_declared_subscription_keeps_delivering` (accept) | **50 of 50** applied, 0 dropped | 50 |
 | `a_rekeyed_subscription_delivers_only_the_new_key`: old key / new key after the change | **0** / 21 | 0 / > 0 |
-| `reissue.rs` `a_stopped_subscription_is_not_carried_across_a_swap` | re-issued `[14]`, not the stopped `8` (since M88/T88.1 the stopped job also leaves the ledger at its stop's pump; the filter is gated in `crates/lumen-static/tests/ledger_stop.rs`) | — |
+| `reissue.rs` `a_stopped_subscription_is_not_carried_across_a_swap` | re-issued `[14]`, not the stopped `8` (since M88/T88.1 the stopped job also leaves the ledger at its stop's pump; the filter is gated in `crates/fulgurite/tests/ledger_stop.rs`) | — |
 
 Injections, each red by name and restored green:
 
@@ -1171,7 +1171,7 @@ once its body returns and the drain has consumed what it sent.
 ## M88/T88.0 — baseline: a streaming job loses what it streams
 
 `docs/plan-platform-requests.md` T88.0. Pinned green on today's code by
-`crates/lumen-static-shell/tests/sipper.rs`: one job under `Immediate`
+`crates/fulgurite-shell/tests/sipper.rs`: one job under `Immediate`
 sends 10,000 `u64`s through `Sender::send` into a one-node host, pumped
 until the ledger is empty. T88.1 flips it.
 
@@ -1197,7 +1197,7 @@ which is why that leg reads `xwd`. T88.2 flips it (the leg now compares
 `docs/plan-platform-requests.md` T88.1. A job reports a stream through
 `Sender::progress`, which replaces the value in a one-value slot on its
 `JobTrack`; the pump takes each fresh slot before it drains the channel.
-`crates/lumen-static-shell/tests/sipper.rs` is T88.0's pin, flipped.
+`crates/fulgurite-shell/tests/sipper.rs` is T88.0's pin, flipped.
 
 | gate | Immediate | Queued | `Threads::with_cap(2)` | bound |
 |---|---:|---:|---:|---|
@@ -1239,7 +1239,7 @@ subscription also takes its job off the ledger, though its body has not
 run; `reissue.rs`'s T84.7 test asserted the opposite as its setup and
 now asserts this. `Ledger::unsettled`'s stop filter guards only a result
 sent between a pump's drain and its prune, which no deterministic host
-can stage, so `crates/lumen-static/tests/ledger_stop.rs` builds that
+can stage, so `crates/fulgurite/tests/ledger_stop.rs` builds that
 state on a ledger directly (listed `[8, 14]`, unsettled `[14]`; red under
 T84.7's injection).
 
@@ -1313,7 +1313,7 @@ no `requests()`, and `Host::answer` is never called, so the
 ## M88/T88.4 — clipboard reach: text, HTML, primary
 
 `docs/plan-platform-requests.md` T88.4. `Win::serve_requests` answers
-`ClipboardWrite` and `ClipboardRead` from `lumen_static_winit::Clipboard`,
+`ClipboardWrite` and `ClipboardRead` from `fulgurite_winit::Clipboard`,
 which gains `set_html`/`get_html` (arboard's ungated HTML) and
 `set_primary`/`get_primary` (its Linux extension traits,
 `LinuxClipboardKind::Primary`). A write answers `Written` or
@@ -1323,7 +1323,7 @@ off X11, HTML on primary — `Refused(Unsupported)`.
 
 | gate | measured | bound |
 |---|---|---|
-| K2 crate count, `cargo tree -p lumen-static-winit -e normal --prefix none \| sed 's/ (\*)$//' \| sort -u \| wc -l` | **96 → 96** (`check_default_crates`: delta 0) | 0 new |
+| K2 crate count, `cargo tree -p fulgurite-winit -e normal --prefix none \| sed 's/ (\*)$//' \| sort -u \| wc -l` | **96 → 96** (`check_default_crates`: delta 0) | 0 new |
 | `scripts/probe.sh xclip` on the reference machine | `probe: xclip present (/usr/bin/xclip, xclip version 0.13)` | present |
 | refuse direction: the primary leg's preflight with `xclip` off `PATH` | exit **1**, `sudo apt install xclip` printed | non-zero, non-77 |
 | `just tasks-drive`, every software leg (Everything, Boundaries, Boundaries + oracle): `#copy-text` / `#copy-primary` | `Written` / `Written` | `Written` |
@@ -1356,7 +1356,7 @@ task does not touch that leg's phases.
 
 `docs/plan-platform-requests.md` T88.5. `ClipFormat::Image`, `Clip::Image`
 and the shell's `Payload::Image` exist in every build; a window built with
-`lumen-static-winit`'s default-off `clipboard-image` (`clipboard` plus
+`fulgurite-winit`'s default-off `clipboard-image` (`clipboard` plus
 arboard's `image-data`) answers them through `Clipboard::set_image` and
 `get_image` — a read as `Answer::Image` with scale 1 — and without it
 answers both `Refused(Unsupported)`.
@@ -1367,8 +1367,8 @@ answers both `Refused(Unsupported)`.
 | K2 crate count, `--features clipboard-image` | **108** (+12: `image`, `png`, `moxcms`, `pxfm`, `flate2`, `miniz_oxide`, `fdeflate`, `crc32fast`, `adler2`, `simd-adler32`, `byteorder-lite`, `num-traits`) | printed |
 | stripped release `showcase` (GNU strip, as `docs/results-a11y-platform.md` measured `a11y`) | 10,106,856 B → 10,428,136 B: **+321,280 B** | 3 MB (default-off either way) |
 | `just clipboard-image-symbols`: `image::` symbols, default showcase | **0** | 0 |
-| the same, built with `lumen-static-winit/clipboard-image` (positive control) | **168** | > 0 |
-| K88d, `cargo deny --offline --features lumen-static-winit/clipboard-image check advisories` | ok (`image@0.25.10`, `png@0.18.1` in the graph) | passes |
+| the same, built with `fulgurite-winit/clipboard-image` (positive control) | **168** | > 0 |
+| K88d, `cargo deny --offline --features fulgurite-winit/clipboard-image check advisories` | ok (`image@0.25.10`, `png@0.18.1` in the graph) | passes |
 | `just tasks-drive`, the `clipboard-image` leg: `#copy-image` | `Written` | `Written` |
 | `#read-image` | **`8x4 3a67c4c731ebb3a5`**; written `8x4 3a67c4c731ebb3a5` | equal |
 | accept, every software leg (built without the feature): `#copy-image` / `#read-image` | `Refused(Unsupported)` / `Refused(Unsupported)` | not `Empty` |
@@ -1376,7 +1376,7 @@ answers both `Refused(Unsupported)`.
 | winit `serve_requests`, closed clipboard: an image read | `Refused(Failed)` with the feature, `Refused(Unsupported)` without | as listed |
 
 The symbol pattern is anchored at the crate root: the default showcase
-holds 26 `lumen_static_shell::image::` symbols (the workspace's own image
+holds 26 `fulgurite_shell::image::` symbols (the workspace's own image
 store), which an unanchored `image::` would have counted.
 
 Injections, each red by name and restored green:

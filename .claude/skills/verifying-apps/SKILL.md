@@ -1,9 +1,9 @@
 ---
 name: verifying-apps
-description: Use to verify that a lumen-static app, widget, style or renderer change behaves, looks and performs correctly — headless frames, headless assertions, the live window over the agent endpoint, and the measurable GUI-quality checks (centring, anti-aliasing, contrast, target size, latency). Encodes the verification ladder, the implemented agent-method set, the no-auto-wait rule, the headless-vs-live measurer trap, the performance budgets and how to profile. Applies whenever you changed app/widget/paint/input behavior and must prove it works, or are asked to test/verify/screenshot/profile a lumen-static app.
+description: Use to verify that a fulgurite app, widget, style or renderer change behaves, looks and performs correctly — headless frames, headless assertions, the live window over the agent endpoint, and the measurable GUI-quality checks (centring, anti-aliasing, contrast, target size, latency). Encodes the verification ladder, the implemented agent-method set, the no-auto-wait rule, the headless-vs-live measurer trap, the performance budgets and how to profile. Applies whenever you changed app/widget/paint/input behavior and must prove it works, or are asked to test/verify/screenshot/profile a fulgurite app.
 ---
 
-# Verifying a lumen-static app
+# Verifying a fulgurite app
 
 An agent must be able to verify its own work; that is the point of the
 `observe` feature. There are four rungs; climb only as high as the change
@@ -16,13 +16,13 @@ text or input is not verified until `ui_check.py latency` has passed.
 |---|---|---|---|
 | 1. Headless frame | `just tally-frame 7` → `target/tally.ppm` → convert → `Read` | builds, lays out, paints | any visual change (cheapest sanity) |
 | 2. Headless drive | `just tally-drive` / `just fixtures` | state, bindings, hit-testing by author id | always — this is the regression artifact |
-| 3. Agent tests | `cargo test -p lumen-static-agent` | tree/layout/lint/changes as JSON | any change to what the agent can see |
+| 3. Agent tests | `cargo test -p fulgurite-agent` | tree/layout/lint/changes as JSON | any change to what the agent can see |
 | 4. Live window | `just live-gate`, or `just run-agent` + the scripts | real input, real fonts, the blit, **timing**, **GUI quality** | new interactions; paint/text/input; anything headless cannot catch |
 
 ## Rung 1 — a frame to look at
 
 ```bash
-just tally-frame 12                               # examples/counter-window under LUMEN_SHOT
+just tally-frame 12                               # examples/counter-window under FULGURITE_SHOT
 python3 -c "from PIL import Image; Image.open('target/tally.ppm').save('/tmp/f.png')"
 ```
 Then `Read /tmp/f.png`. Without PIL, `ffmpeg -i target/tally.ppm /tmp/f.png`.
@@ -31,7 +31,7 @@ Then `Read /tmp/f.png`. Without PIL, `ffmpeg -i target/tally.ppm /tmp/f.png`.
 otherwise.** `Host::pump()` measures with `BlockMetrics` (one block per
 glyph); the window measures with `FontMetrics` (fontdue, `truetype`
 feature). A headless frame that looks right can still wrap in the
-window. A `Program`'s `LUMEN_SHOT` and its `Local` session measure with
+window. A `Program`'s `FULGURITE_SHOT` and its `Local` session measure with
 the system face for this reason; a hand-built `Host` must pass its
 `FontMetrics` to `pump_with` itself. The same trap applies to the agent's
 audit: `Local` installs the session's face with `Agent::set_text_measure`
@@ -50,7 +50,7 @@ an assertion in `main` that nothing runs is not a test.
 
 ## Rung 3 — the agent surface in tests
 
-`crates/lumen-static-agent/tests/*.rs` show the fixture shape:
+`crates/fulgurite-agent/tests/*.rs` show the fixture shape:
 `TreeRef::of_root(&app, &styles, &states)` + `agent.dispatch(&tree,
 &json!({..}))`. Use it when the change is to what an agent sees
 (`ui.getTree`, `ui.lint`, `ui.lastChange`, `app.perf`), not to pixels.
@@ -61,7 +61,7 @@ an assertion in `main` that nothing runs is not a test.
 port, warms it, runs every check in `scripts/ui_check.py`, closes it,
 and exits non-zero on any failure. `just check` runs it through `just
 live`, with every other live gate, and **fails without a display** (exit
-77) unless `LUMEN_ALLOW_SKIP=1` — a skip is not a pass (M43/T43.13). Run
+77) unless `FULGURITE_ALLOW_SKIP=1` — a skip is not a pass (M43/T43.13). Run
 it before claiming a paint/text/input change is done.
 
 By hand, for anything the gate does not cover:
@@ -91,8 +91,8 @@ after any change to presenting, damage or the blit** — and note that
 read-back exists on X11 and Web only, so elsewhere it says "not
 checkable", which is not a pass.
 
-**Methods that exist** (`crates/lumen-static-agent/src/lib.rs`, and
-`crates/lumen-static-winit/src/lib.rs`'s `answer_agent`; this list is
+**Methods that exist** (`crates/fulgurite-agent/src/lib.rs`, and
+`crates/fulgurite-winit/src/lib.rs`'s `answer_agent`; this list is
 checked against both by `scripts/check_agent_methods.sh`, M48/T48.14):
 `ui.getTree` `ui.getLayout` `ui.resolve` `ui.probe` `ui.probeRegion`
 `ui.explain` `ui.getAppliedStyles` `ui.lint` `ui.lastChange`
@@ -204,13 +204,13 @@ say — not "yes". It does not block: poll it. In the live window the RPC is ans
 after `pump`, so a `layout` right after a `click` already sees the
 result — but write the check anyway; it is what makes the run a test.
 
-**Port lifecycle:** `LUMEN_AGENT_ADDR` is **the one name** for the
+**Port lifecycle:** `FULGURITE_AGENT_ADDR` is **the one name** for the
 address (M48/T48.11): every turnkey window reads it in
-`lumen-static-winit`, overriding the program's own `Program::agent`
+`fulgurite-winit`, overriding the program's own `Program::agent`
 default (showcase's is `127.0.0.1:7654`; with neither set there is no
-endpoint), and the client and drive scripts read it too. `LUMEN_AGENT`
+endpoint), and the client and drive scripts read it too. `FULGURITE_AGENT`
 still works for one release and prints a deprecation line.
-One window owns `LUMEN_AGENT_ADDR` (default
+One window owns `FULGURITE_AGENT_ADDR` (default
 `127.0.0.1:9230`; the gate uses `:9231` so it never talks to your dev
 window). **A window whose endpoint cannot bind exits with status 3**
 (M42/T42.1), naming the address — it used to keep running without an
@@ -218,7 +218,7 @@ endpoint while a stale window from a previous run answered instead of
 yours. `quit` the stale one or set a different address. **Ask which
 process answered**: `app.diagnostics` carries a `process` block —
 `pid`, `exe`, `strategy` (the host's invalidation type, e.g.
-`lumen_static::invalidate::Boundaries<256>`) and `features`
+`fulgurite::invalidate::Boundaries<256>`) and `features`
 (`agent`, `everything`, `shadow-oracle`, `reload`) — or
 `{"supported": false}` from a host that cannot say, which is not an
 answer. The live drives check it on every leg (`scripts/live/launch.py`). `wait-port` times out at 60 s — a
@@ -229,7 +229,7 @@ so a hand-typed request that fails to parse means reconnecting, not
 retyping. That is what keeps a web page from driving the window. The
 address must be **loopback** (`127.0.0.1`, `[::1]`, `localhost`): a
 `0.0.0.0` bind is refused with `agent: cannot bind ...` unless
-`LUMEN_AGENT_ALLOW_REMOTE=1`, which binds it and warns that the endpoint
+`FULGURITE_AGENT_ALLOW_REMOTE=1`, which binds it and warns that the endpoint
 has no authentication. **One window serves up to sixteen clients at
 once** (M39), so a harness holding a connection open no longer blocks a
 second tool; requests from two clients interleave on the event loop, so
@@ -267,7 +267,7 @@ looks reasonable when that happens.
 | `damaged_px` p50 | ≪ viewport | a partial redraw that damages the whole frame is not one |
 
 **A stage nobody measured is `null`, and `null` fails** (M48/T48.3). Every
-turnkey window (`lumen_static_winit::run`, a `Program`) reported 0 ns for
+turnkey window (`fulgurite_winit::run`, a `Program`) reported 0 ns for
 every stage until then, and the budgets above passed on the zeros.
 `ui_check.py latency` now prints `NOT MEASURED` and fails on a window with
 no samples, a `null` stage or a frame that took 0 ns; `ui_check.py
@@ -305,7 +305,7 @@ than with a script.
 | `presented` | what is on screen matches what was drawn (X11/Web only) | the canvas is not the screen; everything after it is otherwise unobservable |
 | `press` | a control changes while held, and restores | every platform's HIG; the affordance people check without noticing |
 | `latency` | budgets above | Nielsen 1993; 60 Hz |
-| `lint` | the agent's ambient audit is empty (blank, truncated, collapsed, hidden-but-hit) | `crates/lumen-static-agent/src/audit.rs` |
+| `lint` | the agent's ambient audit is empty (blank, truncated, collapsed, hidden-but-hit) | `crates/fulgurite-agent/src/audit.rs` |
 
 `press` holds the button open — `input.pointerDown`, screenshot,
 `input.pointerUp` — because `input.click` queues both halves into one

@@ -13,11 +13,11 @@
 
 use std::path::Path;
 
-use lumen_static::display::Cmd;
-use lumen_static::request::{Answer, ClipFormat, ClipKind, Request};
-use lumen_static::Event;
-use lumen_static_reload::hot::{Build, Hot, Outcome, Reloader};
-use lumen_static_shell::session::{FrameSource, Session};
+use fulgurite::display::Cmd;
+use fulgurite::request::{Answer, ClipFormat, ClipKind, Request};
+use fulgurite::Event;
+use fulgurite_reload::hot::{Build, Hot, Outcome, Reloader};
+use fulgurite_shell::session::{FrameSource, Session};
 
 const W: u32 = 240;
 const H: u32 = 120;
@@ -275,7 +275,7 @@ fn main() {
 /// (M49/T49.10).
 fn in_flight_of(s: &dyn Session) -> Vec<[u64; 3]> {
     let v: serde_json::Value = serde_json::from_slice(&s.save()).expect("a session saves JSON");
-    v[lumen_static_reload::hot::RESERVED]["in_flight"]
+    v[fulgurite_reload::hot::RESERVED]["in_flight"]
         .as_array()
         .expect("the saved bytes carry the work in flight")
         .iter()

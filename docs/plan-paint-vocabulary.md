@@ -20,7 +20,7 @@ took of the two spare bytes in each (§2's byte inventory), and each task
 asserts the size it produces. M82b does not need M81: vector text is
 drawn as paths. M81 builds no glyph command; text under a transform is
 `VectorText`. Checked against
-`lumen-static-merge` at `553fa5e` (the `92a4033` merge plus M61's
+`fulgurite-merge` at `553fa5e` (the `92a4033` merge plus M61's
 `.lss`, which is therefore present, not conditional). No `Request`
 (S1) and no new `Session` method: fills are resolved in the host,
 before paint, and paths travel in the `DisplayList` that already
@@ -46,7 +46,7 @@ crosses.*
     an optimisation the gate cannot see.
   - Rejected: a stops store out of line. It is the M27/T27.3 index
     hazard (S2), for 15 B that shrinking recovers.
-  - Crate: `lumen-static` (`display.rs`). `Cmd` budget: +0 B.
+  - Crate: `fulgurite` (`display.rs`). `Cmd` budget: +0 B.
 - **`GradShape` is relative to the rect.** `Linear { angle }` or
   `Radial { center, radius }`. `center` is a fraction of the rect.
   `radius` is a fraction of the distance from the centre to the
@@ -78,7 +78,7 @@ crosses.*
     called at every one of `border`'s **29 production call sites in 18
     files** at `553fa5e`, before the flat `bg`: the derive's container
     paint (`macros/src/lib.rs:1244`), `Repeat` (`repeat.rs:754`), and
-    27 in 16 `lumen-static-widgets` files. Two of those 27 are the bare
+    27 in 16 `fulgurite-widgets` files. Two of those 27 are the bare
     `border(st, i, out)` in `Label::paint` and `Button::paint`
     (`widgets/src/ops.rs:196`, `:497`, imported at `:21`), which a grep
     for `ops::border` misses; `tests/border_pixels.rs` is a test, not a
@@ -88,7 +88,7 @@ crosses.*
   - So what reaches `Recording`, `hash_into`, the journal and the window
     is content, never the index (S2).
   - `Fill { stops, roles: [Option<Role>; MAX_STOPS], shape }` lives in
-    `lumen_static::style`. `Host::set_fills` and `Host::set_palette`
+    `fulgurite::style`. `Host::set_fills` and `Host::set_palette`
     (`lib.rs:886`, which already re-cascades and `mark_all`s) resolve
     the roles against the palette (M25/T25.11's mechanism).
     `Host::set_fills` compares the resolved table with its stored copy
@@ -150,7 +150,7 @@ crosses.*
     gains a `Takes::Index` arm reading `Value::Number(n, Unit::None)`
     with no fraction and in range, as `Takes::Byte`'s does after
     `px()`. `include_lss!` already emits `Val::U8`
-    (`lumen-static-macros/src/lss.rs:229`), so no macro arm and no new
+    (`fulgurite-macros/src/lss.rs:229`), so no macro arm and no new
     `Val` variant; the shell's `set` gains only the
     `("background_fill", Val::U8(x))` pairing.
 - **Paths are a command whose points live in the list, as `Text`'s bytes
@@ -169,7 +169,7 @@ crosses.*
     (`display.rs:666-694`'s rule). `hash_from` folds the elements,
     special-cased beside `Text` (`display.rs:1077-1085`).
     `Recording::path` hashes `xf`, the elements and the paint (A8, T5).
-  - Crate: `lumen-static` (`display.rs`).
+  - Crate: `fulgurite` (`display.rs`).
   - Budget: `Cmd` +0 B (36 < 56). Firmware growth accepted by D3
     (paths; header of `docs/plan-iced-roadmap.md`).
 - **The transform is a per-path argument, not a stack.**
@@ -193,7 +193,7 @@ crosses.*
 - **Software fills by signed-area accumulation.**
   - Coverage is `min(|acc|, 1)`, which is non-zero winding, and it is
     analytic, not sampled. No `unsafe`. The code is in
-    `lumen-static-shell` (`software.rs`) as a public `rasterize_path`,
+    `fulgurite-shell` (`software.rs`) as a public `rasterize_path`,
     so the GPU uses the same function.
   - Curves are flattened after `Scaled`, at 0.1 physical px.
   - Rows are clipped to the band before accumulation, so banded raster
@@ -258,9 +258,9 @@ crosses.*
     (C32).
   - Under the feature, `FontStack` keeps each parsed face's bytes. Today
     they are dropped after parse (`text.rs:79-110`).
-  - `ComplexText` (`lumen-static-text`) implements it through
+  - `ComplexText` (`fulgurite-text`) implements it through
     rustybuzz's face, which derefs to `ttf_parser::Face`.
-  - **`VectorText`** lives in `lumen-static-widgets` behind `alloc`. It
+  - **`VectorText`** lives in `fulgurite-widgets` behind `alloc`. It
     memoises its outline on (text, size, weight, `generation()`).
     - Its box is the rotated bounds of the unrotated run, so its ink
       stays inside its box.
@@ -270,7 +270,7 @@ crosses.*
       axis-aligned text: visible beats faithful, the `glass` precedent.
   - **No `abi_fields` entry.** `FontStack` does not cross the seam: the
     library builds its own (`session.rs:387`) and so does the loader
-    (`lumen-static-winit/src/lib.rs:677`). The `DisplayList` and `Cmd`
+    (`fulgurite-winit/src/lib.rs:677`). The `DisplayList` and `Cmd`
     that do cross are covered by the source hash (M49), and the wire
     `VERSION` is bumped where a field changes meaning: once in T82.1
     (`Stops::at`) and once in T82.2 (tag 6's `angle` becomes `kind`,
@@ -300,10 +300,10 @@ crosses.*
     `Svg` (a `Renderer`, `svg.rs:113`), `wire.rs`, `contrast.rs`,
     `hash_into`/`hash_from`, and `tests/svg.rs`'s exhaustive `kind`.
   - **Exhaustive matches with no wildcard**, which a new variant breaks:
-    `lumen-static-shell/tests/clip_test.rs:122-142` (`render_cmds`),
-    `lumen-static-wgpu/tests/parity.rs:57-69` (`kind`, and
-    `KINDS = 11` at `:47`), `lumen-static/tests/overlay.rs:55-71`
-    (`cmds`), `lumen-static/tests/glass_cmd.rs:58-70`, and
+    `fulgurite-shell/tests/clip_test.rs:122-142` (`render_cmds`),
+    `fulgurite-wgpu/tests/parity.rs:57-69` (`kind`, and
+    `KINDS = 11` at `:47`), `fulgurite/tests/overlay.rs:55-71`
+    (`cmds`), `fulgurite/tests/glass_cmd.rs:58-70`, and
     `benches/src/bin/retain.rs`'s `ink`. T82.5 names each.
 - **Firmware** (D3, D6, B6, T21, M2):
   - Accepted growth, by owner decision:
@@ -346,7 +346,7 @@ crosses.*
     it.
   - **Pins**, which assert today's gap so that the owning task's
     inversion is the red run:
-    - `crates/lumen-static-shell/tests/contrast_ground.rs`: text over a
+    - `crates/fulgurite-shell/tests/contrast_ground.rs`: text over a
       `Cmd::Gradient` lands in `Report::unmeasured` with `"gradient"`
       (`contrast.rs:121`). T82.2 inverts it.
     - `tests/glass_cmd.rs` gains a `GradientPayload` mirror, printing
@@ -396,7 +396,7 @@ crosses.*
       change it is byte-identical (max delta printed, bound 0).
       - Injection: `at[k] as f32` without `/ 255.0`. The golden
         differs, delta printed at ≥ 100.
-    - **SVG** (`crates/lumen-static-shell/tests/svg.rs`). A middle stop
+    - **SVG** (`crates/fulgurite-shell/tests/svg.rs`). A middle stop
       at 51/255 writes `offset="0.200"`, printed.
       - Injection: format the raw byte. It writes `offset="51"`.
     - **Wire.** A round trip of a 3-stop gradient at the new version is
@@ -438,8 +438,8 @@ crosses.*
     the run's centre and both horizontal ends, and the minimum ratio is
     reported.
   - **Gates**
-    (`crates/lumen-static-shell/tests/gradient_shapes.rs`; GPU in
-    `lumen-static-wgpu/tests/parity.rs`, run by `just gpu`):
+    (`crates/fulgurite-shell/tests/gradient_shapes.rs`; GPU in
+    `fulgurite-wgpu/tests/parity.rs`, run by `just gpu`):
     - **Radial.** The centre pixel is stop 0 and the pixel at `radius`
       is the last stop, within 2/255, on both backends. The deltas are
       printed. Setup: the list holds exactly 1 `Gradient` of kind
@@ -515,7 +515,7 @@ crosses.*
   - The showcase's Card demo gets a radial, rounded, role-named fill
     through `Program::fills`.
   - **Gates**
-    (`crates/lumen-static-shell/tests/fill.rs` unless named):
+    (`crates/fulgurite-shell/tests/fill.rs` unless named):
     - **Sizes.** `tests/cursor.rs:32-33`, `tests/focus.rs:203-204` and
       `fixtures/embedded/src/lib.rs`'s `STYLE`, `NODE_STATE` and
       `PER_NODE_RAM` asserts are edited to the exact measured values.
@@ -551,7 +551,7 @@ crosses.*
       same table again marks nothing (damage 0).
       - Injection: `set_fills` omits `mark_all`. The frame keeps the
         old stops.
-    - **Journal** (`crates/lumen-static-agent/tests/`). A derive
+    - **Journal** (`crates/fulgurite-agent/tests/`). A derive
       container with a transparent `bg` and a role-named fill:
       `set_palette` gives `ui.lastDamage` at 1.00× its box, printed.
       A `Button` with a fill reports the same.
@@ -584,7 +584,7 @@ crosses.*
     - **`check_fill_paint.sh`**, per call site, not per file, both
       directions (tests excluded):
       - every `border(` call in a paint body, qualified
-        (`ops::border(`, `::lumen_static::ops::border(`) or bare through
+        (`ops::border(`, `::fulgurite::ops::border(`) or bare through
         an import, must be preceded by `fill(` in the same `fn`, unless
         listed with a reason. The script reports the enclosing
         `impl … for` type. A per-file rule could not fire: `Label` and
@@ -644,7 +644,7 @@ crosses.*
     - `PathEl`, `Affine` and `PathPaint`;
     - `path` in every implementor, `DisplayList::paths`, and
       `hash_into`/`hash_from`;
-    - winit's `hot::Barred::new` (`lumen-static-winit/src/lib.rs:1709`)
+    - winit's `hot::Barred::new` (`fulgurite-winit/src/lib.rs:1709`)
       copies the session's list by named-field literal. If M83/T83.3
       has not landed, T82.5 adopts its design: `DisplayList` gains
       `#[derive(Clone)]` and `Barred` copies with `src.clone()`, so
@@ -678,7 +678,7 @@ crosses.*
   - The showcase's `PaintBox` callback (`catalog.rs:135`) also fills a
     star and strokes an arc.
   - **Gates**
-    (`crates/lumen-static-shell/tests/path_coverage.rs` and
+    (`crates/fulgurite-shell/tests/path_coverage.rs` and
     `path_damage.rs`):
     - **Coverage, on edge pixels only** (G12). The reference is 32×32
       supersampled non-zero coverage. The population is the pixels with
@@ -754,7 +754,7 @@ crosses.*
       uploads R8, and draws `KIND_GLYPH` tiles;
     - the T82.5 pin inverts;
     - a `gpu_parity.sh` leg on `showcase --demo <PaintBox>`.
-  - **Gates** (`lumen-static-wgpu/tests/parity.rs`, `just gpu`):
+  - **Gates** (`fulgurite-wgpu/tests/parity.rs`, `just gpu`):
     - **Parity.** The same path scene on both backends: max channel
       delta ≤ 1 (blend rounding), with the pixel count printed. The
       scene includes a filled-and-stroked path, which rasterises 2
@@ -786,7 +786,7 @@ crosses.*
     - `FontStack`/`FontMetrics::outline` behind `vector-text`, with the
       face bytes retained;
     - `ComplexText::outline`;
-    - `lumen-static-winit` forwards `vector-text`;
+    - `fulgurite-winit` forwards `vector-text`;
     - the manifest comment records crates and size (K2);
     - a re-grep of `impl TextMeasure for`: any wrapper found gets a
       forwarding test (none expected; 28 leaves at `553fa5e`).
@@ -795,14 +795,14 @@ crosses.*
     the default selection does not build it and
     `check_test_counts.sh` never sees an empty binary. `just test`
     (and so `dev-shape`) gains
-    `cargo test -p lumen-static-shell --features vector-text --test
+    `cargo test -p fulgurite-shell --features vector-text --test
     vector_text`, which T82.8's gates also ride. The clippy recipe
-    gains `cargo clippy -p lumen-static-shell --features vector-text
+    gains `cargo clippy -p fulgurite-shell --features vector-text
     --all-targets -- -D warnings`, beside the `simd` and
     `threads,truetype` lines (`justfile:328`, `:338`), since the
     workspace line builds the shell without the feature.
   - **Gates**
-    (`crates/lumen-static-shell/tests/vector_text.rs`, with
+    (`crates/fulgurite-shell/tests/vector_text.rs`, with
     `tests/fonts/DejaVuSans.ttf`):
     - **Outline.** `outline("AVWay", 32)` emits a count of elements that
       is printed and asserted above 0, which is the setup. Its bounding
@@ -820,10 +820,10 @@ crosses.*
         it answers `false`.
     - **Symbols** (`scripts/release_window_shape.sh`, extended).
       `examples/minimal` in release links 0 outline symbols by default,
-      and more than 0 with `lumen-static-winit/vector-text`, printed
+      and more than 0 with `fulgurite-winit/vector-text`, printed
       beside `.text`.
       - Injection: make `vector-text` a default feature.
-    - **Crates.** `cargo tree` of `lumen-static-winit` with and without
+    - **Crates.** `cargo tree` of `fulgurite-winit` with and without
       the feature: 0 new crates, printed. The stripped showcase's size
       delta is printed against 3 MB (B9).
     - **Memory.** The retained face bytes and the RSS delta are printed
@@ -836,11 +836,11 @@ crosses.*
     row.
 - **T82.8 — `VectorText`.**
   - What changes:
-    - the widget, in `lumen-static-widgets` (`alloc`), with `observe`;
+    - the widget, in `fulgurite-widgets` (`alloc`), with `observe`;
     - a catalogue entry at 0°, 30° and 90°;
     - `VECTORTEXT` in `scripts/drive/widgets/rich.py`;
     - `roles.py` `"VectorText": "Label"`;
-    - a `ROWS` entry in `crates/lumen-static-widgets/tests/a11y_roles.rs`
+    - a `ROWS` entry in `crates/fulgurite-widgets/tests/a11y_roles.rs`
       (`:57`) and the catalogue field it reads: `every_node_impl_has_a_row`
       (`a11y_roles.rs:165-198`) scans `src/*.rs` for ` Node for ` and
       fails on an impl with no row;
@@ -915,7 +915,7 @@ crosses.*
     one that compiles under workspace unification, not cfg'd
     *required* items: a required method behind a core feature breaks
     `Checksum` (`fixtures/embedded/src/lib.rs:247`), which builds
-    `lumen-static` with `default-features = false`
+    `fulgurite` with `default-features = false`
     (`fixtures/embedded/Cargo.toml:18`) while the workspace unifies
     `alloc` on (`std = ["alloc"]`), and it cannot test the core's
     feature (`docs/plan-iced-roadmap.md` §2.2).
@@ -923,22 +923,22 @@ crosses.*
       crossed) becomes **provided** under `cfg(feature = "alloc")`,
       with a documented leaf default (`path` draws nothing, `fills`
       answers `&[]`). The three wrappers (`Scaled`, `Deferring`,
-      `Recording`), all in `lumen-static`, override it under the same
+      `Recording`), all in `fulgurite`, override it under the same
       `cfg`, as do any added since (M85's culling painter, if landed).
     - `PathEl`, `Cmd::Path` and `ops::fill` carry
       `cfg(feature = "alloc")` in the core. Every crate outside the
       core that matches `Cmd` exhaustively (shell, wgpu, benches and
-      their tests) depends on `lumen-static` with `std`, so `alloc` is
+      their tests) depends on `fulgurite` with `std`, so `alloc` is
       on wherever they compile and their arms need no cfg; the
       fixtures that match `Cmd` do so with `if let`. Were that ever
-      false, the arms take M83's `links`/`DEP_LUMEN_STATIC_*` cfg.
+      false, the arms take M83's `links`/`DEP_FULGURITE_*` cfg.
     - Gate: two builds, `fixtures/embedded` alone (alloc off, 0 path
       symbols by `nm`, printed, bound 0) and the workspace (which
       compiles `Checksum` with the provided default).
   - Recorded with the number either way.
 - **K82c — unused features must not cost the frame.** K3's arms
   (`docs/plan-iced-roadmap.md` §4): `benches-competitive/run.sh -p
-  lumen-static-frame`'s idle and paint rows, `--bin textarea`'s
+  fulgurite-frame`'s idle and paint rows, `--bin textarea`'s
   `keystroke + layout` row and `--bin cascade`'s `cascade_deep` row,
   eight interleaved runs under `just bench-lock`, on a tree with no
   fill and no path.
@@ -1041,7 +1041,7 @@ crosses.*
   (`Self::KIND` in `SEEDS`, a `*Table` const, `"appbar"`, a part's
   `"picker-trigger"`), so the script asks only that a file whose paint
   calls `fill(` names `BACKGROUND_FILL`. The per-kind claim is
-  `lumen-static-widgets/tests/style_reads.rs`, which renders every kind
+  `fulgurite-widgets/tests/style_reads.rs`, which renders every kind
   with and without `background_fill(1)` over a one-entry table: it found
   **16** kinds reading the bit before their masks named it. `Image` is
   listed in the script: its layout never calls `record_painted`, so its
@@ -1186,7 +1186,7 @@ crosses.*
 - T82.7: **`ComplexText`'s gate runs in `vector_text.rs` under `shaping`
   too**, a second `just` line (`--features vector-text,shaping`): the
   plan puts the gate beside `FontMetrics`'s, and the shell's tests reach
-  `lumen-static-text` only through `shaping`. **The memory gate is
+  `fulgurite-text` only through `shaping`. **The memory gate is
   in `font_heap.rs`**, beside the counting allocator it needs; its bound
   is one copy of each file + 64 KiB, and its RSS is printed in-process.
 - T82.7: under `shaping` and `vector-text` together a `Complex` stack holds

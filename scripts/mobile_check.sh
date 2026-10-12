@@ -16,14 +16,14 @@ bad=0
 
 # NAME | MUST (1 = a failure fails the recipe) | cargo arguments
 CONFIGS=(
-    "lumen-static|1|-p lumen-static"
-    "lumen-static-widgets|1|-p lumen-static-widgets"
-    "lumen-static-shell|1|-p lumen-static-shell"
-    "lumen-static-winit (no defaults, android-native-activity)|1|-p lumen-static-winit --no-default-features --features winit/android-native-activity"
-    "lumen-static-winit (+ reload, hot, agent)|1|-p lumen-static-winit --no-default-features --features winit/android-native-activity,reload,hot,agent"
-    "lumen-static-winit (default features)|1|-p lumen-static-winit --features winit/android-native-activity"
-    "lumen-static-winit (+ a11y)|1|-p lumen-static-winit --features winit/android-native-activity,a11y"
-    "lumen-static-winit (+ dialogs)|0|-p lumen-static-winit --features winit/android-native-activity,dialogs"
+    "fulgurite|1|-p fulgurite"
+    "fulgurite-widgets|1|-p fulgurite-widgets"
+    "fulgurite-shell|1|-p fulgurite-shell"
+    "fulgurite-winit (no defaults, android-native-activity)|1|-p fulgurite-winit --no-default-features --features winit/android-native-activity"
+    "fulgurite-winit (+ reload, hot, agent)|1|-p fulgurite-winit --no-default-features --features winit/android-native-activity,reload,hot,agent"
+    "fulgurite-winit (default features)|1|-p fulgurite-winit --features winit/android-native-activity"
+    "fulgurite-winit (+ a11y)|1|-p fulgurite-winit --features winit/android-native-activity,a11y"
+    "fulgurite-winit (+ dialogs)|0|-p fulgurite-winit --features winit/android-native-activity,dialogs"
 )
 
 for c in "${CONFIGS[@]}"; do

@@ -27,8 +27,8 @@ static A: Counting = Counting;
 
 use benches::{bench, Ten10};
 
-use lumen_static::{pass, Constraints, NodeState, Widget};
-use lumen_static_agent::{Agent, TreeMut, TreeRef};
+use fulgurite::{pass, Constraints, NodeState, Widget};
+use fulgurite_agent::{Agent, TreeMut, TreeRef};
 
 const ROOT_C: Constraints =
     Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 100_000.0 };
@@ -47,7 +47,7 @@ fn main() {
 
     bench("frame: layout + paint", 20_000, || {
         pass::layout(&mut w, &sty, &mut st, ROOT_C);
-        let mut out = lumen_static::DisplayList::new();
+        let mut out = fulgurite::DisplayList::new();
         pass::paint(&w, &st, &mut out);
         out.len() as u64
     });
@@ -55,11 +55,11 @@ fn main() {
     let mut agent = Agent::new();
     {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        agent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
     }
     bench("frame_done (steady state)", 20_000, || {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        agent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
         1
     });
 
@@ -75,24 +75,24 @@ fn main() {
     let mut sagent = Agent::new();
     for _ in 0..3 {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        sagent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
     }
     println!("  ({} findings in the short viewport)", sagent.finding_count());
     bench("frame_done, short viewport", 5_000, || {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        sagent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
         1
     });
 
     // Allocations per steady-state frame_done. The claim is zero.
     for _ in 0..5 {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        agent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
     }
     let before = ALLOCS.load(Ordering::Relaxed);
     for _ in 0..100 {
         let mut t = TreeMut::of_root(&mut w, &sty, &st);
-        agent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        agent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
     }
     let per_frame = (ALLOCS.load(Ordering::Relaxed) - before) as f64 / 100.0;
     println!("\nallocations per steady-state frame_done: {per_frame:.2}");
@@ -101,7 +101,7 @@ fn main() {
     let b2 = ALLOCS.load(Ordering::Relaxed);
     for _ in 0..100 {
         let mut t = TreeMut::of_root(&mut sw, &ssty, &sst);
-        sagent.frame_done(&mut t, lumen_static_agent::FrameTiming::passes(1, 1));
+        sagent.frame_done(&mut t, fulgurite_agent::FrameTiming::passes(1, 1));
     }
     println!(
         "allocations per frame_done with {} findings:  {:.2}",
@@ -115,7 +115,7 @@ fn main() {
         bench("node(i) full scan over the tree", 2_000, || {
             let mut acc = 0u64;
             for i in 0..Ten10::NODE_COUNT {
-                acc += lumen_static::widget::Node::node(tree.root, i).kind_name().len() as u64;
+                acc += fulgurite::widget::Node::node(tree.root, i).kind_name().len() as u64;
             }
             acc
         });
@@ -123,7 +123,7 @@ fn main() {
 
     // Commands recorded per node — the O(N.depth) symptom.
     let tree = TreeRef::of_root(&w, &sty, &st);
-    let mut list = lumen_static::DisplayList::new();
+    let mut list = fulgurite::DisplayList::new();
     pass::paint(&w, &st, &mut list);
     println!(
         "\n{} nodes, one root paint records {} commands ({:.2}x N)",

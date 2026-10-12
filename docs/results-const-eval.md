@@ -27,7 +27,7 @@ here by restoring the old body and rebuilding the fixture:
 
 ```
 error: constant evaluation is taking a long time
-   --> crates/lumen-static/src/widget.rs:192:19
+   --> crates/fulgurite/src/widget.rs:192:19
     |
 192 |         while k < t.len() {
 ```
@@ -61,7 +61,7 @@ false` in it was unreached. A mutation making the function return `true`
 unconditionally passed the entire suite — silently disabling
 proof-carrying tables while every gate stayed green.
 
-`crates/lumen-static/tests/table_invariants.rs` now pins twelve cases:
+`crates/fulgurite/tests/table_invariants.rs` now pins twelve cases:
 empty, root-with-parent, child-before-parent, over- and under-stated
 child counts, misplaced `first_child`, a sibling link leaving the table,
 a backwards link (a cycle the linear walk must not spin on), an orphan,

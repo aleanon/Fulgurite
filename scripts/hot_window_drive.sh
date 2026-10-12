@@ -47,7 +47,7 @@
 #   daemon      M89/T89.7: examples/daemon built `hot`, `--still`, no window:
 #               the build's arrival swaps it (`app.reloads` on window 0).
 # The GPU legs skip with exit 77 without `xwd` or an adapter -- and a skip
-# is not a pass (M43): `just live` refuses it unless LUMEN_ALLOW_SKIP=1.
+# is not a pass (M43): `just live` refuses it unless FULGURITE_ALLOW_SKIP=1.
 # `HOT_WINDOW_LEGS` picks legs (default "hot static everything gpu
 # gpu-everything"); `--gpu` runs the two GPU legs alone;
 # `HOT_WINDOW_SHAPING_ONLY=1` runs step 9 alone in the hot leg too.
@@ -111,7 +111,7 @@ if [[ " $LEGS " == *" hot "* ]]; then
     [ ${#ONLY[@]} -gt 0 ] && PANICS=0
     # One panic, provoked: the drive plants one in the library and checks the
     # screen shows it. Exact, so a second is a failure (M42/T42.3).
-    $LAUNCH --leg hot --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$FEATURES" "${SCALE[@]}" \
+    $LAUNCH --leg hot --exe "$WS/target/release/hot-window" --env "FULGURITE_HOT_FEATURES=$FEATURES" "${SCALE[@]}" \
         --expect-panics $PANICS --expect-strategy Boundaries --expect-features reload,shaping \
         -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" "${ONLY[@]}" --save "$SAVED"
 fi
@@ -130,11 +130,11 @@ fi
 
 if [[ " $LEGS " == *" everything "* ]]; then
     fresh_copy
-    sed -i 's|^pub type Strategy = .*// EDIT strategy$|pub type Strategy = lumen_static::Everything; // EDIT strategy|' "$WS/app/src/lib.rs"
-    grep -q 'lumen_static::Everything; // EDIT strategy' "$WS/app/src/lib.rs" \
+    sed -i 's|^pub type Strategy = .*// EDIT strategy$|pub type Strategy = fulgurite::Everything; // EDIT strategy|' "$WS/app/src/lib.rs"
+    grep -q 'fulgurite::Everything; // EDIT strategy' "$WS/app/src/lib.rs" \
         || { echo "hot-window-drive: the strategy edit did not apply" >&2; exit 1; }
     build_hot
-    $LAUNCH --leg everything --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$FEATURES" "${SCALE[@]}" \
+    $LAUNCH --leg everything --exe "$WS/target/release/hot-window" --env "FULGURITE_HOT_FEATURES=$FEATURES" "${SCALE[@]}" \
         --expect-strategy Everything --expect-features reload,shaping \
         -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --only-shaping
 fi
@@ -148,17 +148,17 @@ gpu_leg() { # LEG STRATEGY
     fi
     fresh_copy
     if [ "$2" = Everything ]; then
-        sed -i 's|^pub type Strategy = .*// EDIT strategy$|pub type Strategy = lumen_static::Everything; // EDIT strategy|' "$WS/app/src/lib.rs"
-        grep -q 'lumen_static::Everything; // EDIT strategy' "$WS/app/src/lib.rs" \
+        sed -i 's|^pub type Strategy = .*// EDIT strategy$|pub type Strategy = fulgurite::Everything; // EDIT strategy|' "$WS/app/src/lib.rs"
+        grep -q 'fulgurite::Everything; // EDIT strategy' "$WS/app/src/lib.rs" \
             || { echo "hot-window-drive: the strategy edit did not apply" >&2; exit 1; }
     fi
     build_hot "$GPU_FEATURES"
-    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$GPU_FEATURES" \
-        --env LUMEN_BACKEND=gpu "${SCALE[@]}" \
+    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "FULGURITE_HOT_FEATURES=$GPU_FEATURES" \
+        --env FULGURITE_BACKEND=gpu "${SCALE[@]}" \
         --expect-strategy "$2" --expect-features reload \
         -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --gpu || {
         rc=$?
-        if ! grep -q '^lumen-static: gpu' "target/live/hot-window-drive-$1.log"; then
+        if ! grep -q '^fulgurite: gpu' "target/live/hot-window-drive-$1.log"; then
             echo "hot-window-drive: no adapter on this machine -- skipped (77): $(head -3 "target/live/hot-window-drive-$1.log")"
             exit 77
         fi
@@ -179,7 +179,7 @@ windows_leg() { # LEG STRATEGY FEATURES
         || { echo "hot-window-drive: the break did not apply" >&2; exit 1; }
     # One panic, provoked: v3's panel boot, caught in the library -- or two,
     # when the watcher builds v3 twice and the refused build is booted again.
-    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "LUMEN_HOT_FEATURES=$3" "${SCALE[@]}" \
+    $LAUNCH --leg "$1" --exe "$WS/target/release/hot-window" --env "FULGURITE_HOT_FEATURES=$3" "${SCALE[@]}" \
         --expect-panics 1-2 --expect-strategy "$2" --expect-features reload,shaping \
         -- python3 scripts/hot_window_drive.py {port} "$WS/app/src/lib.rs" {pid} "$WS/hash-hot" --windows
 }
@@ -194,7 +194,7 @@ if [[ " $LEGS " == *" daemon "* ]]; then
     # The drive waits for the first swap, then edits the copy: that build
     # lands with no agent call and no timer -- `--still` has none -- so only
     # the window scheduling a windowless step on `Built` can take the swap.
-    $LAUNCH --leg daemon --exe "$WS/target/release/daemon" --arg=--still --env LUMEN_HOT_FEATURES=hot \
+    $LAUNCH --leg daemon --exe "$WS/target/release/daemon" --arg=--still --env FULGURITE_HOT_FEATURES=hot \
         --expect-strategy Boundaries --expect-features reload \
         -- python3 scripts/hot_window_drive.py {port} --daemon "$WS/daemon/src/lib.rs"
 fi

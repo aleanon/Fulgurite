@@ -43,7 +43,7 @@ TOLERANCE_PCT=1
 # the argument -- so the unset default is checked against that row below,
 # and the script and the doc cannot become two copies of one number.
 CEILING_DEFAULT=81920
-CEILING=${LUMEN_TEXT_CEILING:-$CEILING_DEFAULT}
+CEILING=${FULGURITE_TEXT_CEILING:-$CEILING_DEFAULT}
 
 # shellcheck source=lib/firmware.sh
 source scripts/lib/firmware.sh
@@ -55,7 +55,7 @@ fail() { echo "text: $*" >&2; rc=1; }
 # **The default agrees with the budget row** (M80/T80.0). Read the
 # `Framework .text` threshold from the doc's budget table and compare it
 # with CEILING_DEFAULT, by name, with both numbers printed. An override
-# (`LUMEN_TEXT_CEILING`) changes the comparison below, not the budget, so
+# (`FULGURITE_TEXT_CEILING`) changes the comparison below, not the budget, so
 # it skips this check -- which is about the default.
 row=$(python3 - "$DOC" <<'PY'
 import re, sys
@@ -63,7 +63,7 @@ m = re.search(r"^\| Framework `\.text` \| \*\*≤ ([0-9]+) KB\*\*", open(sys.arg
 print(int(m.group(1)) * 1024 if m else "")
 PY
 )
-if [ -z "${LUMEN_TEXT_CEILING:-}" ]; then
+if [ -z "${FULGURITE_TEXT_CEILING:-}" ]; then
     if [ -z "$row" ]; then
         fail "ceiling: no 'Framework .text' budget row in $DOC"
     elif [ "$row" -ne "$CEILING_DEFAULT" ]; then
@@ -99,7 +99,7 @@ PRE_firmware_cascade='cascade_range'
 # And the cascade-only binary's `.text` must sit within CASCADE_DELTA of
 # the paint-only one: a three-rule sheet costs the cascade, not a vtable.
 CASCADE_DELTA=3072
-# The binding's own code in the bind-only binary -- `lumen_static::bind::`,
+# The binding's own code in the bind-only binary -- `fulgurite::bind::`,
 # `update_marked` and `TextTarget` symbols, summed -- must stay within
 # BIND_OWN. NOT the whole-binary delta against the paint-only firmware,
 # which the plan first named: that binary holds a different tree (one
@@ -153,11 +153,11 @@ done
 #
 # Printed beside its bound like the Toggle count above, so a run that
 # reports it is showing the quantity rather than asserting a pass.
-tasks=$(printf '%s\n' "$NM" | grep -cE 'lumen_static::(inbox|spawn)::' || true)
+tasks=$(printf '%s\n' "$NM" | grep -cE 'fulgurite::(inbox|spawn)::' || true)
 if [ "${tasks:-0}" -ne 0 ]; then
   fail "$name: $tasks deferred-work symbols linked into $BIN, expected 0"
   echo "" >&2
-  printf '%s\n' "$NM" | grep -E 'lumen_static::(inbox|spawn)::' | head -5 >&2
+  printf '%s\n' "$NM" | grep -E 'fulgurite::(inbox|spawn)::' | head -5 >&2
   echo "" >&2
   echo "M28's inbox and spawner are behind \`std\`; an embedded leaf profile" >&2
   echo "must link none of them (docs/plan-tasks.md T28.7)." >&2
@@ -224,7 +224,7 @@ fi
 
 [ "$name" = firmware ] && paint_text=$text
 if [ "$name" = firmware_bind ]; then
-    own=$(nm -C -S --radix=d "$BIN" | awk '$3 ~ /^[TtWw]$/ && /lumen_static::bind::|update_marked|TextTarget/ {s += $2} END {print s + 0}')
+    own=$(nm -C -S --radix=d "$BIN" | awk '$3 ~ /^[TtWw]$/ && /fulgurite::bind::|update_marked|TextTarget/ {s += $2} END {print s + 0}')
     echo "text: bind firmware: binding's own symbols $own B (bound $BIND_OWN); .text $text (paint-only ${paint_text:-?}, delta $((text - ${paint_text:-0})), a different tree and two frames -- record), Node>::hit symbols $(count 'Node>::hit') (bound 0)"
     [ "$own" -gt 0 ] || fail "bind firmware: no binding symbol found -- the pattern or the binary is wrong, so the bound proves nothing"
     [ "$own" -le "$BIND_OWN" ] || fail "bind firmware: the binding's own symbols are $own B, over $BIND_OWN"

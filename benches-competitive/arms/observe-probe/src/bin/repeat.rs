@@ -1,9 +1,9 @@
 //! A `Repeat<Label<String>>` window of rows — the container
 //! `Repeat::observe` walks.
-use lumen_static::prelude::*;
-use lumen_static::repeat::Repeat;
-use lumen_static_shell::Host;
-use lumen_static_widgets::ops::Label;
+use fulgurite::prelude::*;
+use fulgurite::repeat::Repeat;
+use fulgurite_shell::Host;
+use fulgurite_widgets::ops::Label;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

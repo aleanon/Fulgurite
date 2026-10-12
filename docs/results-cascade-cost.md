@@ -68,7 +68,7 @@ so a subtree *is* a contiguous range.
 
 Adding a descendant combinator (`Card Label`) would end that property.
 `cascade_subtree`'s doc says so, and
-`crates/lumen-static/tests/scoped_cascade.rs` fails if it is added
+`crates/fulgurite/tests/scoped_cascade.rs` fails if it is added
 without revisiting the function.
 
 The caller's half of the contract — the new sheet may differ only in
@@ -104,7 +104,7 @@ against it.**
   by a screen that needs it. Nothing measured so far does.
 - **T8c.1 and T8c.2 have no consumer without T8c.3.** Building them
   anyway would be the "finished-but-unreachable" failure
-  `crates/lumen-static-agent/src/audit.rs` was written to catch.
+  `crates/fulgurite-agent/src/audit.rs` was written to catch.
 
 Recorded rather than silently dropped: if a future screen makes
 whole-tree layout matter — many thousands of on-table nodes, or a
@@ -146,7 +146,7 @@ change, which `style.rs` states as its contract; a still frame does not
 pay this at all. What it shortens is a palette swap and the showcase's
 own demo switch.
 
-The gate is `crates/lumen-static/tests/cascade_levels.rs`, and it
+The gate is `crates/fulgurite/tests/cascade_levels.rs`, and it
 asserts the **ordering** rather than differencing against a naive copy
 of the loop — a differential test would pass under an injection that
 broke both sides, since both sides would be the same code. Three

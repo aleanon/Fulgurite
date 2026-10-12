@@ -50,14 +50,14 @@ import re, sys
 expanded, src_path, out = sys.argv[1], sys.argv[2], sys.argv[3]
 x = open(expanded).read()
 src = open(src_path).read()
-HEAD = "const __LUMEN_LSS: &[::lumen_static::style::Rule] ="
+HEAD = "const __FULGURITE_LSS: &[::fulgurite::style::Rule] ="
 blocks = []
 pos = 0
 while True:
     i = x.find(HEAD, pos)
     if i < 0:
         break
-    tail = re.compile(r"\n\s*__LUMEN_LSS\n").search(x, i)
+    tail = re.compile(r"\n\s*__FULGURITE_LSS\n").search(x, i)
     rules = x[i:tail.start()]
     start = x.rfind("const _: &[u8] =", 0, i)
     # The tracking line and the tree checks, verbatim but for the
@@ -68,13 +68,13 @@ while True:
         lambda m: f'const _: () = assert!({m.group(1)}, "{m.group(2)}");', x[start:i], flags=re.S)
     blocks.append((rules, checks, n))
     pos = tail.end()
-calls = list(re.finditer(r"lumen_static::include_lss!\(([^)]*)\)", src))
+calls = list(re.finditer(r"fulgurite::include_lss!\(([^)]*)\)", src))
 assert calls and len(calls) == len(blocks), f"{src_path}: {len(calls)} include_lss! calls, {len(blocks)} expansions"
 for arm in ("hand", "const"):
     s, shift = src, 0
     for m, (rules, checks, _) in zip(calls, blocks):
         body = [checks] if arm == "const" else []
-        body.append(rules + "\n__LUMEN_LSS")
+        body.append(rules + "\n__FULGURITE_LSS")
         text = "{ " + "\n".join(body) + " }"
         a, b = m.start() + shift, m.end() + shift
         s = s[:a] + text + s[b:]

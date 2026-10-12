@@ -17,14 +17,14 @@
 //! recorded `line!() + k` constants and four of seven were off by a line
 //! or three: hand-counted offsets were exactly the copying this avoids.)
 
-use lumen_static::cx::LayoutCx;
-use lumen_static::desc::{NodeDesc, NO_PARENT};
-use lumen_static::event::{App, EventCtx, Handlers, NodeSel};
-use lumen_static::prelude::*;
-use lumen_static::spawn::{Descriptor, JobFn};
-use lumen_static::style::{Seed, Style};
-use lumen_static::{Constraints, NodeState, Painter};
-use lumen_static_widgets::prelude::*;
+use fulgurite::cx::LayoutCx;
+use fulgurite::desc::{NodeDesc, NO_PARENT};
+use fulgurite::event::{App, EventCtx, Handlers, NodeSel};
+use fulgurite::prelude::*;
+use fulgurite::spawn::{Descriptor, JobFn};
+use fulgurite::style::{Seed, Style};
+use fulgurite::{Constraints, NodeState, Painter};
+use fulgurite_widgets::prelude::*;
 
 /// Where each site's panic is raised.
 pub const SITES: [(u8, &str); 12] = [
@@ -71,7 +71,7 @@ impl Widget for Bomb {
     const SEEDS: &'static [Seed] = &[Seed::new(
         Self::KIND,
         Self::type_defaults,
-        lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]),
+        fulgurite::style::Fields::of(&[fulgurite::style::Fields::VISIBLE]),
     )];
 }
 
@@ -82,16 +82,16 @@ impl Node for Bomb {
         if self.arm == 4 {
             panic!("site 4: a widget's layout"); // SITE 4
         }
-        lumen_static::ops::record_painted(st, i, limits, size, &style[i])
+        fulgurite::ops::record_painted(st, i, limits, size, &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        out.rect(lumen_static::ops::rect_of(&st[i]), st[i].bg);
+        out.rect(fulgurite::ops::rect_of(&st[i]), st[i].bg);
         if self.arm == 5 {
             let _ = st;
             panic!("site 5: a widget's paint"); // SITE 5
         }
     }
-    lumen_static::leaf_common!(Bomb, 0);
+    fulgurite::leaf_common!(Bomb, 0);
 }
 
 impl<S> Handlers<S> for Bomb {
@@ -125,25 +125,25 @@ impl Widget for Fuse {
     const SEEDS: &'static [Seed] = &[Seed::new(
         Self::KIND,
         Self::type_defaults,
-        lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]),
+        fulgurite::style::Fields::of(&[fulgurite::style::Fields::VISIBLE]),
     )];
 }
 
 impl Node for Fuse {
     fn layout(&mut self, _cx: &mut LayoutCx, limits: Constraints, style: &[Style], st: &mut [NodeState], i: usize) -> Size {
-        lumen_static::ops::record_painted(st, i, limits, Size { w: 60.0, h: 20.0 }, &style[i])
+        fulgurite::ops::record_painted(st, i, limits, Size { w: 60.0, h: 20.0 }, &style[i])
     }
     fn paint(&self, st: &[NodeState], i: usize, out: &mut dyn Painter) {
-        out.rect(lumen_static::ops::rect_of(&st[i]), st[i].bg);
+        out.rect(fulgurite::ops::rect_of(&st[i]), st[i].bg);
     }
-    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<lumen_static::display::Rect> {
+    fn caret_rect(&self, st: &[NodeState], i: usize) -> Option<fulgurite::display::Rect> {
         if self.arm.replace(false) {
             panic!("site 8: a focused field's caret_rect"); // SITE 8
         }
         let s = st.get(i)?;
         Some([s.pos.x + 4.0, s.pos.y + 2.0, s.pos.x + 5.0, s.pos.y + s.size.h - 2.0])
     }
-    lumen_static::leaf_common!(Fuse, 0);
+    fulgurite::leaf_common!(Fuse, 0);
 }
 
 impl<S> Handlers<S> for Fuse {
@@ -226,14 +226,14 @@ pub struct Fx {
     pub ui: Ui,
     /// Which site will panic next, if any.
     pub armed: u8,
-    pub outbox: lumen_static::spawn::Outbox,
+    pub outbox: fulgurite::spawn::Outbox,
     pub clicks: u32,
     /// Each site disarms itself just before it panics — the window mode
     /// (M36/T36.3), so a retry can succeed without the agent, whose input
     /// is refused while the screen is up, having to disarm anything.
     pub one_shot: bool,
     /// The timer behind `#timer`, and how many times it has landed.
-    pub timers: lumen_static::spawn::Timers,
+    pub timers: fulgurite::spawn::Timers,
     pub ticks: u32,
     /// Site 9's arm (M84/T84.3): a `Cell`, because `wake_in_ms` takes
     /// `&self`. `update` sets it and the wake disarms it as it fires, as
@@ -244,7 +244,7 @@ pub struct Fx {
     pub images_arm: core::cell::Cell<bool>,
     /// Site 11's queue (M88/T88.3): `#go` armed with 11 pushes a
     /// screenshot request tagged [`SITE_ANSWERED`], whose answer panics.
-    pub requests: lumen_static::request::Requests,
+    pub requests: fulgurite::request::Requests,
     /// Site 12's arm (M90/T90.6): a `Cell`, because the tray's `enabled`
     /// takes `&State`. `update` sets it and [`menu_enabled`] disarms it as
     /// it fires, as `Fuse` does for site 8.
@@ -269,7 +269,7 @@ impl Fx {
     }
 }
 
-fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
+fn echo(d: Descriptor, tx: &fulgurite::inbox::Sender<u8>) {
     let _ = tx.send(d.payload as u8);
 }
 
@@ -277,7 +277,7 @@ fn echo(d: Descriptor, tx: &lumen_static::inbox::Sender<u8>) {
 /// M84/T84.6, 11 until M88/T88.3 and 12 until M90/T90.6 gave those
 /// numbers to sites). M28's spawner catches it as
 /// `Failure::Panicked`; the frame guard must not report it (M36/T36.1).
-fn bad_job(_: Descriptor, _: &lumen_static::inbox::Sender<u8>) {
+fn bad_job(_: Descriptor, _: &fulgurite::inbox::Sender<u8>) {
     panic!("a job's panic, which the spawner owns");
 }
 
@@ -297,13 +297,13 @@ fn on_go(s: &mut Fx, _: &EventCtx) {
     // `answered`, which panics on this tag (M88/T88.3).
     if s.armed == 11 {
         s.fire();
-        s.requests.push(lumen_static::request::Request::Screenshot { tag: SITE_ANSWERED });
+        s.requests.push(fulgurite::request::Request::Screenshot { tag: SITE_ANSWERED });
     }
     if s.armed == 7 {
         s.fire();
         // An index the framework trusts the caller about: the panic is
-        // raised inside `lumen-static`, and the application's line is this.
-        let _ = lumen_static::style::subtree_range(<Ui as Widget>::SUB_TABLE, 10_000); // SITE 7
+        // raised inside `fulgurite`, and the application's line is this.
+        let _ = fulgurite::style::subtree_range(<Ui as Widget>::SUB_TABLE, 10_000); // SITE 7
     }
 }
 
@@ -320,18 +320,18 @@ impl App for Fx {
     fn tree_mut(&mut self) -> &mut Ui {
         &mut self.ui
     }
-    fn outbox(&mut self) -> Option<&mut lumen_static::spawn::Outbox> {
+    fn outbox(&mut self) -> Option<&mut fulgurite::spawn::Outbox> {
         Some(&mut self.outbox)
     }
-    fn timers(&mut self) -> Option<&mut lumen_static::spawn::Timers> {
+    fn timers(&mut self) -> Option<&mut fulgurite::spawn::Timers> {
         Some(&mut self.timers)
     }
-    fn requests(&mut self) -> Option<&mut lumen_static::request::Requests> {
+    fn requests(&mut self) -> Option<&mut fulgurite::request::Requests> {
         Some(&mut self.requests)
     }
     /// Asked when the window answers a request (M88/T88.3), through the
     /// session's guard.
-    fn answered(tag: u64, _a: lumen_static::request::Answer<'_>) -> Option<u8> {
+    fn answered(tag: u64, _a: fulgurite::request::Answer<'_>) -> Option<u8> {
         if tag == SITE_ANSWERED {
             panic!("site 11: App::answered"); // SITE 11
         }
@@ -367,7 +367,7 @@ impl App for Fx {
     }
     /// Asked by every present (M84/T84.6) — and first inside the frame's
     /// guarded entry, which is what catches this.
-    fn images(&self) -> Option<&dyn lumen_static::ImageSource> {
+    fn images(&self) -> Option<&dyn fulgurite::ImageSource> {
         if self.images_arm.replace(false) {
             panic!("site 10: App::images"); // SITE 10
         }
@@ -401,9 +401,9 @@ impl App for Fx {
             self.fire();
         }
         let text = format!("{shown}");
-        let a = lumen_static::bind::set_if_changed(&mut self.ui.title, &text);
-        let b = lumen_static::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
-        let c = lumen_static::bind::set_if_changed(&mut self.ui.clock.ticks, &format!("{}", self.ticks));
+        let a = fulgurite::bind::set_if_changed(&mut self.ui.title, &text);
+        let b = fulgurite::bind::BindValue::bind_value(&mut self.ui.bomb.arm, &bomb);
+        let c = fulgurite::bind::set_if_changed(&mut self.ui.clock.ticks, &format!("{}", self.ticks));
         a | b | c
     }
 }
@@ -445,19 +445,19 @@ pub fn build() -> Fx {
 /// Which of the tray's entries are enabled — site 12's function
 /// (M90/T90.6). Asked by `Session::menu_state` after every frame, through
 /// the session's guard; panics once when armed.
-pub fn menu_enabled(s: &Fx) -> lumen_static::menu::MenuMask {
+pub fn menu_enabled(s: &Fx) -> fulgurite::menu::MenuMask {
     if s.menu_arm.replace(false) {
         panic!("site 12: a tray's enabled fn"); // SITE 12
     }
-    lumen_static::menu::MenuMask::ALL
+    fulgurite::menu::MenuMask::ALL
 }
 
 /// The fixture's tray (M90/T90.6): one entry and a 1 × 1 icon. Only its
 /// `enabled` function matters here — site 12.
-pub const TRAY: lumen_static_shell::tray::TraySpec<Fx> = lumen_static_shell::tray::TraySpec {
+pub const TRAY: fulgurite_shell::tray::TraySpec<Fx> = fulgurite_shell::tray::TraySpec {
     icon: (1, 1, &[0x1b, 0x1f, 0x2a, 0xff]),
     tooltip: "panic-app",
-    menu: &[lumen_static::menu::MenuEntry::new("Open", 1)],
+    menu: &[fulgurite::menu::MenuEntry::new("Open", 1)],
     enabled: menu_enabled,
 };
 

@@ -60,7 +60,7 @@ passing on the new path before the old one is removed.*
 
 **Gates:** all 28 suites green; `crossover`, `safety`, `repeater`,
 `fusion`, `memory` re-run and recorded; `miri-smoke` runs clean; zero
-`unsafe` in `crates/lumen-static/src` with default features (`grep`
+`unsafe` in `crates/fulgurite/src` with default features (`grep`
 gate added to `just test`); hot reload demo PASS.
 
 ### T0.1 — the `Widget` trait, unified
@@ -93,7 +93,7 @@ Decisions inside the task:
   exclusive access is natural, and it is what lets `Repeat` mutate its
   window without `RefCell` (T0.6). `place`/`paint`/`hit` take `&self`.
 - `observe`/`stats` are default methods gated *in the trait definition*
-  (inside `lumen-static`), so derive output stays cfg-free — the rule
+  (inside `fulgurite`), so derive output stays cfg-free — the rule
   from `docs/step5-observability.md`, re-learned in
   `docs/results-traversal.md`.
 - `NodeState` unchanged (32 B). `NodeDesc` slims in T0.3.
@@ -118,7 +118,7 @@ parameters. `concat_table` keeps its signature minus `stride`. The
 ### T0.4 — depth cap
 
 `const DEPTH: usize = 1 + max(children's DEPTH)`, computed by the
-derive; `const _: () = assert!(DEPTH <= lumen_static::MAX_DEPTH)` emitted
+derive; `const _: () = assert!(DEPTH <= fulgurite::MAX_DEPTH)` emitted
 with every table. `MAX_DEPTH = 64` initially. This is §5's stack-depth
 fear turned into a compile-time fact — a tree that could overflow does
 not compile. Recorded in `docs/results-traversal.md`'s cost list as
@@ -397,7 +397,7 @@ Adopting the real crates is now a swap behind those two traits, with no
 widget signature affected — which is the property that made the seam
 worth building first.
 
-T5.3 stops one step short of a window. `crates/lumen-static-shell` is
+T5.3 stops one step short of a window. `crates/fulgurite-shell` is
 everything between an application and the OS *except* the OS binding:
 `Host` owns the tree, both parallel arrays, the input queue, focus and
 the frame's display list; `pump()` drains input, lays out, paints, times
@@ -559,7 +559,7 @@ shaping method M8/M9 need. T7.3 ran and its four numbers are in
   every test still runs on a deterministic measurer.
 
   **Live agent endpoint — DONE 2026-09-03.** The window serves the
-  agent protocol on `LUMEN_AGENT_ADDR` (default `127.0.0.1:9230`),
+  agent protocol on `FULGURITE_AGENT_ADDR` (default `127.0.0.1:9230`),
   newline-delimited JSON-RPC over TCP, Lumen's transport. Requests
   cross to the event-loop thread through an `EventLoopProxy` and are
   answered after `pump`, so a reply already reflects the input it
@@ -606,7 +606,7 @@ shaping method M8/M9 need. T7.3 ran and its four numbers are in
 const table (the technique T8.0 introduced). Content is measured against
 an unbounded main axis so it can exceed the viewport, placed at a
 clamped offset, and clipped when painted and when hit. Ten tests in
-`crates/lumen-static/tests/scroll_view.rs`, including the A5 NaN repro
+`crates/fulgurite/tests/scroll_view.rs`, including the A5 NaN repro
 and a scroller inside an `Either` branch — the composition T8.0 was
 sequenced ahead of this milestone for.
 
@@ -715,7 +715,7 @@ plumbing that answer to where it is useful.
 type parameter" below. Settled here so T8b.1 does not grow a `cfg`.
 
 **T8b.1 — a damage rect from the frame diff, in the core.** Move the
-geometry+checksum diff out of the agent crate into `lumen-static`
+geometry+checksum diff out of the agent crate into `fulgurite`
 (`retain::Frame`: previous `Geom` and paint hash per node, 24 B/node)
 so a release build has it; the journal keeps its ring of coalesced
 changes on top. The diff's cost is already measured: part of the 46 µs
@@ -995,7 +995,7 @@ because nothing about the signature makes it obvious.
 call site changed; four tests pin the properties T10a.2 relies on.
 
 **T10a.2 — DONE.** Every `paint` signature takes `&mut dyn Painter` —
-the 14 in `crates/lumen-static/src` and the derive's two, in one commit
+the 14 in `crates/fulgurite/src` and the derive's two, in one commit
 because a trait method and its impls must change together to compile.
 **No call site needed touching**: `&mut DisplayList` coerces at each
 one. And every widget file dropped its `DisplayList` import, which is
@@ -1284,7 +1284,7 @@ navigation.
 1. **Measured, not assumed.** Any traversal, dispatch or memory change is
    re-run through `crossover`/`safety`/`memory`/`repeater`/`fusion` and
    the numbers go in the commit and the results doc.
-2. **No `cfg` in derive output.** Bodies gated in `lumen-static`, never
+2. **No `cfg` in derive output.** Bodies gated in `fulgurite`, never
    the call site (bitten twice; see `results-traversal.md`).
 3. **Zero `unsafe` in the release core** is a gate from M0 on.
 4. **Doc currency** per AGENT.md: the handoff's DECIDED/SUPERSEDED markers
@@ -1352,7 +1352,7 @@ one of them. M14 answers the opposite question — **what is missing that
 no implementation can supply** — and the answer is that the desktop
 side has capability gaps, not seam gaps:
 
-- **There is no windowing crate.** `lumen-static-shell` has no window
+- **There is no windowing crate.** `fulgurite-shell` has no window
   dependency at all; the winit/softbuffer glue is ~480 lines inside
   `examples/counter-window`, tangled with the agent endpoint and the
   profiler. A second application copy-pastes it (T14.0).
@@ -1379,7 +1379,7 @@ default type argument of every seam, and M13 improved it: retention got
 faster at every scale (`docs/results-retention.md`) and `num::clamp`
 removed a panic path from every node of every frame.
 
-**Done, T14.0–T14.8.** `lumen-static-winit` exists and
+**Done, T14.0–T14.8.** `fulgurite-winit` exists and
 `examples/minimal` opens a real window in **24 lines**. Modifiers,
 three mouse buttons, click counts, the common keys, selection,
 clipboard, cursor shapes, scrollbars and IME composition all work.

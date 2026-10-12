@@ -21,15 +21,15 @@
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use lumen_static::display::ImageId;
-use lumen_static::prelude::*;
-use lumen_static::retain::Damage;
-use lumen_static::spawn::{Descriptor, JobFn, Subs, Threads};
-use lumen_static_shell::image::{DecodedImage, ImageStore};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::video::{video_job, GifFeed, GifLibrary, VideoFrame, VideoKey};
-use lumen_static_shell::Host;
-use lumen_static_widgets::prelude::*;
+use fulgurite::display::ImageId;
+use fulgurite::prelude::*;
+use fulgurite::retain::Damage;
+use fulgurite::spawn::{Descriptor, JobFn, Subs, Threads};
+use fulgurite_shell::image::{DecodedImage, ImageStore};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::video::{video_job, GifFeed, GifLibrary, VideoFrame, VideoKey};
+use fulgurite_shell::Host;
+use fulgurite_widgets::prelude::*;
 
 static SIZE: OnceLock<(u32, u32)> = OnceLock::new();
 
@@ -98,7 +98,7 @@ fn take(s: &mut St, f: VideoFrame) -> bool {
     }
 }
 
-fn images(p: &Player) -> Option<&dyn lumen_static::ImageSource> {
+fn images(p: &Player) -> Option<&dyn fulgurite::ImageSource> {
     Some(&p.st.store)
 }
 
@@ -122,7 +122,7 @@ fn main() {
     let args: Vec<u32> = std::env::args().skip(1).filter_map(|a| a.parse().ok()).collect();
     let (w, h) = (args.first().copied().unwrap_or(1280), args.get(1).copied().unwrap_or(720));
     SIZE.set((w, h)).expect("once");
-    let (ww, wh) = (w + 20, h + 20 + lumen_static_widgets::video::CONTROLS_H as u32);
+    let (ww, wh) = (w + 20, h + 20 + fulgurite_widgets::video::CONTROLS_H as u32);
     let mut p = Player::default();
     p.ui.v = Video::new(ImageId(1), Size { w: w as f32, h: h as f32 });
     p.ui.v.duration_ms = 100;
@@ -145,7 +145,7 @@ fn main() {
                 _ => [0.0, 0.0, ww as f32, wh as f32],
             };
             let tr = Instant::now();
-            canvas.render_within_from(&host.list, rect, lumen_static::event::App::images(&host.app));
+            canvas.render_within_from(&host.list, rect, fulgurite::event::App::images(&host.app));
             raster += tr.elapsed();
             presents += 1;
         } else {

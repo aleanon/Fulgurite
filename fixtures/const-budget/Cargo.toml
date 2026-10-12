@@ -8,5 +8,5 @@ publish = false
 # A deliberately large static tree, built to keep `table_is_well_formed`'s
 # const-eval cost measurable. No features: the release shape.
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../crates/lumen-static" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }

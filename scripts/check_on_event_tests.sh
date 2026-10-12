@@ -8,12 +8,12 @@
 #
 # Such a file fails here unless it carries an `// on_event only:` comment
 # saying why a direct call is the right test -- normally, which pass-level
-# test in crates/lumen-static-shell/tests/ covers the delivery.
+# test in crates/fulgurite-shell/tests/ covers the delivery.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 bad=0
-for f in crates/lumen-static-widgets/tests/*.rs; do
+for f in crates/fulgurite-widgets/tests/*.rs; do
   grep -qE 'on_event\(' "$f" || continue
   grep -qE 'PointerDown|PointerUp|Event::Key' "$f" || continue
   grep -qE '\.pump\(|dispatch\(' "$f" && continue

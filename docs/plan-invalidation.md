@@ -23,7 +23,7 @@ reason survives the fix. Each task is one commit; each ends with
 `just test` green.*
 
 **What the review established, so this plan does not re-argue it.**
-lumen-static led every arm that produced a number, at 100, 1000, 3000
+fulgurite led every arm that produced a number, at 100, 1000, 3000
 and 10000 rows, on both a one-row update and a full redraw — 7.7× iced,
 21× egui, 24× masonry, 38× Lumen, 7.9× Qt, 6.4× GTK at 3000 rows. The
 hypothesis that small N might hide a gap was refuted: the margin over
@@ -81,7 +81,7 @@ it lands.
 `focused` and `focus_ring` filling the last four. There is no spare
 padding, so a dirty bit costs 4 bytes on every node of every tree unless
 the three bools are packed into one flags byte, which frees two at zero
-size cost. `crates/lumen-static/tests/focus.rs` and
+size cost. `crates/fulgurite/tests/focus.rs` and
 `fixtures/embedded` assert the 76 against the RAM budget in
 `docs/results-embedded.md`. **Neither number moves in this milestone.**
 
@@ -202,7 +202,7 @@ Four corrections, each citing the measurement that overturned it:
   validation overhead; in release that validation is
   `debug_assertions`-gated and off. What `TestHarness` actually adds is
   an unconditional `EnableAccessTree`, so masonry is charged for an
-  accessibility rebuild every frame that lumen-static and plain Lumen
+  accessibility rebuild every frame that fulgurite and plain Lumen
   are not — 203 AccessKit nodes at 100 rows with it on, 0 with it off.
   `probes/masonry-raw` drives it through the public `RenderRoot` in ~50
   lines and can say what the difference is worth.
@@ -686,7 +686,7 @@ one that can slip the milestone.
 
 ## What this plan does not do
 
-- **It does not chase the ranking.** lumen-static already leads every
+- **It does not chase the ranking.** fulgurite already leads every
   measured arm at every size. Nothing here is aimed at a competitor's
   number; every task is aimed at a stage of our own frame.
 - **It does not touch text shaping**, which is 92% of a full-redraw

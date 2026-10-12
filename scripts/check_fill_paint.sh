@@ -7,14 +7,14 @@
 # and a per-file rule would let `Label`'s call keep `Button` green.
 #
 # 1. Every `border(` call in production code (crates/*/src, tests
-#    excluded), qualified (`ops::border(`, `::lumen_static::ops::border(`)
+#    excluded), qualified (`ops::border(`, `::fulgurite::ops::border(`)
 #    or bare through an import, must be preceded by a `fill(` call in the
 #    same `fn`, unless listed in FILL_ALLOW with a reason. A failure names
 #    the enclosing `impl ... for` type.
 # 2. A file whose paint calls `fill(` must name `BACKGROUND_FILL` in a
 #    seed mask, unless its kind is listed in SEED_ALLOW with a reason. The
 #    per-kind version of this direction is measured, not grepped:
-#    crates/lumen-static-widgets/tests/style_reads.rs renders every kind
+#    crates/fulgurite-widgets/tests/style_reads.rs renders every kind
 #    with and without a fill and compares the result with its mask.
 #
 # Prints `sites N, filled N, allowed A`; N was 29 in 18 files at landing.
@@ -86,7 +86,7 @@ for path, types in sorted(fill_types.items()):
 print(f"fill-paint: sites {sites} in {len(files)} files, filled {filled}, allowed {allowed}")
 if bad:
     print("\n".join(bad))
-    print("\nCall lumen_static::ops::fill(st, i, out) before the node's background, or list the")
+    print("\nCall fulgurite::ops::fill(st, i, out) before the node's background, or list the")
     print("site in scripts/check_fill_paint.sh with the reason it has no fill.")
     sys.exit(1)
 PY

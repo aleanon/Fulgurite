@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # T15.12: the *live* half of the backend comparison.
 #
-# `cargo test -p lumen-static-wgpu` compares the two renderers headlessly,
+# `cargo test -p fulgurite-wgpu` compares the two renderers headlessly,
 # which is the gate. This compares them through the whole stack -- window,
 # swapchain, present, compositor -- by running ONE binary twice, once on each
 # backend, and reading the window back off the X server both times.
@@ -9,14 +9,14 @@
 # It exists because "rendered" and "shown" are different claims, and this
 # project has been caught by the gap between them before: the first partial
 # redraw skipped the present entirely and left another window's pixels on
-# screen (crates/lumen-static-winit/src/surface.rs). A headless test cannot
+# screen (crates/fulgurite-winit/src/surface.rs). A headless test cannot
 # see that. Measured 2026-09-07: worst channel delta 1, docs/results-gpu.md.
 #
 # Needs a display, an adapter, and `xwd`, and skips with exit 77 when any
 # of the three is missing (M43 §2.2). A machine with no adapter is the
 # configuration the CPU fallback exists for, but this gate claims a
 # comparison happened, and until M43/T43.13 it exited 0 without making
-# one; `just live` refuses a 77 unless LUMEN_ALLOW_SKIP=1.
+# one; `just live` refuses a 77 unless FULGURITE_ALLOW_SKIP=1.
 #
 # Each window is launched by `scripts/live/launch.py` (M42/T42.2) with
 # `--no-agent`: the grab runs while the launcher checks the window is
@@ -42,11 +42,11 @@ grab() {
 }
 
 grab gpu "$tmp/gpu.xwd"
-if ! grep -q '^lumen-static: gpu' target/live/gpu-parity-gpu.log; then
+if ! grep -q '^fulgurite: gpu' target/live/gpu-parity-gpu.log; then
     echo "gpu-parity: no adapter on this machine -- skipped (77) ($(cat target/live/gpu-parity-gpu.log))"
     exit 77
 fi
-grab software "$tmp/cpu.xwd" "LUMEN_BACKEND=software"
+grab software "$tmp/cpu.xwd" "FULGURITE_BACKEND=software"
 
 python3 - "$tmp/gpu.xwd" "$tmp/cpu.xwd" <<'PY'
 import struct, sys
@@ -113,13 +113,13 @@ sgrab() {
         -- bash -c "xwd -name showcase -out '$2' 2>/dev/null || true"
 }
 sgrab "$leg-gpu" "$tmp/pb-gpu.xwd"
-sgrab "$leg-software" "$tmp/pb-cpu.xwd" "LUMEN_BACKEND=software"
-k82d=$(grep -m1 '^lumen-static: path masks' "target/live/gpu-parity-$leg-gpu.log" || true)
+sgrab "$leg-software" "$tmp/pb-cpu.xwd" "FULGURITE_BACKEND=software"
+k82d=$(grep -m1 '^fulgurite: path masks' "target/live/gpu-parity-$leg-gpu.log" || true)
 if [ -z "$k82d" ]; then
     echo "gpu-parity: the $name window (entry $entry) logged no path-mask line -- the GPU drew no path" >&2
     exit 1
 fi
-echo "gpu-parity: $name (entry $entry): ${k82d#lumen-static: }"
+echo "gpu-parity: $name (entry $entry): ${k82d#fulgurite: }"
 python3 - "$tmp/pb-gpu.xwd" "$tmp/pb-cpu.xwd" "$k82d" "$name" <<'PY'
 import re, struct, sys
 
@@ -154,20 +154,20 @@ done
 # `Gpu::present` swallowed Outdated/Lost and returned nothing, and the
 # window asks for another frame only while something animates, so an idle
 # window whose present was dropped stayed unpainted until input arrived.
-# A DEBUG build with LUMEN_GPU_DROP_FIRST=n drops the first n presents;
+# A DEBUG build with FULGURITE_GPU_DROP_FIRST=n drops the first n presents;
 # the window is left alone for 3 s and read back once, then compared with
 # the GPU capture above. Not "more than one distinct value", which the
 # plan named: a window that never presented reads back whatever the X
 # server has under it -- 2578 distinct values with every present dropped
 # -- so only a comparison with the real frame can tell. n=0 is the
 # accepting leg: the same debug build with nothing dropped must match.
-# LUMEN_GPU_DROP_MORE=k adds a leg (it fails the comparison when k passes
+# FULGURITE_GPU_DROP_MORE=k adds a leg (it fails the comparison when k passes
 # the retry bound, which is what the last step below is for).
 cargo build -q -p minimal --features gpu
-for n in 0 2 ${LUMEN_GPU_DROP_MORE:-}; do
+for n in 0 2 ${FULGURITE_GPU_DROP_MORE:-}; do
     echo "== dropped the first $n presents, idle =="
     $LAUNCH --no-agent --settle 3 --leg "drop$n" --exe target/debug/minimal \
-        --env LUMEN_GPU_DROP_FIRST=$n \
+        --env FULGURITE_GPU_DROP_FIRST=$n \
         -- bash -c "xwd -name minimal -out '$tmp/drop.xwd' 2>/dev/null || true"
     python3 - "$tmp/drop.xwd" "$tmp/gpu.xwd" "$n" <<'PY'
 import struct, sys
@@ -202,8 +202,8 @@ done
 # picture is the check here.
 echo "== dropped the first 20 presents: the window stops asking =="
 $LAUNCH --no-agent --settle 3 --leg drop20 --exe target/debug/minimal \
-    --env LUMEN_GPU_DROP_FIRST=20 -- true
-tried=$(grep -c "LUMEN_GPU_DROP_FIRST: present dropped" target/live/gpu-parity-drop20.log || true)
+    --env FULGURITE_GPU_DROP_FIRST=20 -- true
+tried=$(grep -c "FULGURITE_GPU_DROP_FIRST: present dropped" target/live/gpu-parity-drop20.log || true)
 echo "gpu-parity: 20 drops armed: the window attempted $tried presents in 3 s idle (bound 8: 1 + 3 retries + exposes)"
 if [ "$tried" -gt 8 ]; then
     echo "gpu-parity: a surface that never came back kept the window retrying ($tried presents)" >&2
@@ -212,7 +212,7 @@ fi
 
 # ---- M51/T51.1 (R9-F1): an atlas give-up reaches app.perf --------------
 # The glyph atlas grows to the device's limit, so no real screen gives up
-# any more; a DEBUG build with LUMEN_GPU_ATLAS_MAX=64 caps it at 64², which
+# any more; a DEBUG build with FULGURITE_GPU_ATLAS_MAX=64 caps it at 64², which
 # the showcase's first frame overflows. The renderer logs its first
 # give-up once; app.perf must report a non-zero running count beside it.
 # The accepting leg, uncapped, must report 0 -- a number, not null, which
@@ -220,7 +220,7 @@ fi
 cargo build -q -p showcase --features gpu,agent
 for cap in 64 none; do
     echo "== glyph atlas cap: $cap =="
-    envs=(); [ "$cap" = none ] || envs=(--env "LUMEN_GPU_ATLAS_MAX=$cap")
+    envs=(); [ "$cap" = none ] || envs=(--env "FULGURITE_GPU_ATLAS_MAX=$cap")
     $LAUNCH --leg "atlas-$cap" --exe target/debug/showcase "${envs[@]}" \
         -- bash -c 'sleep 1; python3 scripts/agent_client.py call app.perf > "$1"' _ "$tmp/perf-$cap.json"
     python3 - "$tmp/perf-$cap.json" "target/live/gpu-parity-atlas-$cap.log" "$cap" <<'PY'

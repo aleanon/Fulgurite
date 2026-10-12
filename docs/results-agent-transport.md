@@ -1,12 +1,12 @@
 # Results: M39 — what the agent endpoint answers
 
 *M39, `docs/plan-agent-transport.md`. Owns every figure that plan and
-`lumen_static_agent::transport` cite. Counts, not timings: nothing here
+`fulgurite_agent::transport` cite. Counts, not timings: nothing here
 depends on the machine.*
 
 ## §1 The browser vectors (T39.0 → T39.1)
 
-Each row is one fixture in `crates/lumen-static-agent/tests/browser/`,
+Each row is one fixture in `crates/fulgurite-agent/tests/browser/`,
 replayed byte for byte on its own connection with the write side left
 open, as a browser leaves it while it waits. **Captured** rows are what a
 real headless browser sent, recorded by
@@ -19,9 +19,9 @@ Every body carries two JSON-RPC lines: a click on counter-window's
 
 "Before" is `b213ae0` (the base; both servers ran the copied loop).
 "After" is T39.1's transport. The same numbers come out of the
-display-free gate (`crates/lumen-static-agent/tests/transport.rs`,
+display-free gate (`crates/fulgurite-agent/tests/transport.rs`,
 `a_browser_request_executes_nothing`) and the event-loop gate
-(`crates/lumen-static-winit/tests/agent_transport.rs`).
+(`crates/fulgurite-winit/tests/agent_transport.rs`).
 
 | vector | source | executed before | replies before, then | executed after | replies after, then |
 |---|---|---|---|---|---|
@@ -70,7 +70,7 @@ pid the script launched.
 ## §2 The bind (T39.2)
 
 `transport::bind` resolves the address and refuses, with
-`PermissionDenied` and a message naming `LUMEN_AGENT_ALLOW_REMOTE`, if
+`PermissionDenied` and a message naming `FULGURITE_AGENT_ALLOW_REMOTE`, if
 any resolved address is not loopback. From
 `a_remote_bind_is_refused`:
 
@@ -141,7 +141,7 @@ result where `-32602` was expected.
 
 ## §5 The agent's own panic (T39.5)
 
-`crates/lumen-static-shell/tests/agent_panic.rs`, a leaf whose
+`crates/fulgurite-shell/tests/agent_panic.rs`, a leaf whose
 `observe` panics when armed (reached through `ui.getTree`) and whose
 `layout` panics on the other arm (application code, reached through
 `input.click`):

@@ -1,12 +1,12 @@
 //! A repeater's rows as the agent and AccessKit see them -- moved from
-//! `crates/lumen-static/tests/scroll_containment.rs` (M43/T43.7), whose
+//! `crates/fulgurite/tests/scroll_containment.rs` (M43/T43.7), whose
 //! header has the containment invariant this pins one surface over. It
 //! needs `observe`, and core's own tests no longer build with it: see this
 //! package's `Cargo.toml`.
 
-use lumen_static::repeat::{noop_bind, Repeat};
-use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
-use lumen_static_widgets::ops::{Fixed, Label};
+use fulgurite::repeat::{noop_bind, Repeat};
+use fulgurite::{pass, Constraints, NodeState, StaticTree, Widget};
+use fulgurite_widgets::ops::{Fixed, Label};
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
@@ -33,7 +33,7 @@ const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, ma
 /// not interact with (F4.7).
 #[test]
 fn observe_announces_only_rows_that_are_actually_on_screen() {
-    use lumen_static::widget::Node;
+    use fulgurite::widget::Node;
 
     let mut ui = Ui { list: Repeat::new(1000, 24.0, noop_bind) };
     ui.list.scroll = 12.0;
@@ -55,10 +55,10 @@ fn observe_announces_only_rows_that_are_actually_on_screen() {
     );
 
     // Every announced row overlaps the list's own rect.
-    let list_rect = lumen_static::ops::rect_of(&st[1]);
+    let list_rect = fulgurite::ops::rect_of(&st[1]);
     for k in 0..materialized {
-        let r = lumen_static::ops::rect_of(&ui.list.row_state(k));
-        let on_screen = lumen_static::hit::rects_overlap(list_rect, r);
+        let r = fulgurite::ops::rect_of(&ui.list.row_state(k));
+        let on_screen = fulgurite::hit::rects_overlap(list_rect, r);
         if !on_screen {
             assert!(
                 r[3] <= list_rect[1] || r[1] >= list_rect[3],

@@ -4,10 +4,10 @@
 > `docs/results-agent-transport.md`.
 > - T39.0: gates first, red at the base; fixtures captured from a real
 >   Firefox 156 and Chrome 145 (16 methods executed by 10 vectors).
-> - T39.1: one transport in `lumen_static_agent::transport`, closing on
+> - T39.1: one transport in `fulgurite_agent::transport`, closing on
 >   any line that is not a JSON object; 0 executed; a static check
 >   refuses a second listener.
-> - T39.2: loopback only unless `LUMEN_AGENT_ALLOW_REMOTE=1`.
+> - T39.2: loopback only unless `FULGURITE_AGENT_ALLOW_REMOTE=1`.
 > - T39.3: a thread per connection (16), a 1 MiB line cap; a refusal
 >   half-closes and drains so its reply arrives.
 > - T39.4: envelope validated at dispatch; coordinates finite within
@@ -38,7 +38,7 @@
 > `input.click` has already run.
 >
 > **The re-triage reproduced it on both servers at `1717808`**, the
-> turnkey one in `lumen-static-winit` and counter-window's own copy.
+> turnkey one in `fulgurite-winit` and counter-window's own copy.
 > M37 did not change the loop; it moved the tree behind `Session`, so a
 > hot window's endpoint now drives whichever library loaded last, and
 > M36's `app.retry` lets a page clear a panic screen and re-run the
@@ -73,7 +73,7 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 A parse error is skipped, so an HTTP body executes (R14-F1, S0)
 
-`crates/lumen-static-winit/src/agent.rs:61-97` (`serve`) and
+`crates/fulgurite-winit/src/agent.rs:61-97` (`serve`) and
 `examples/counter-window/src/agent_socket.rs:121-160` (`serve_agent`)
 are the same loop. Each line that fails `serde_json::from_str` gets a
 `-32700` reply and `continue`; the next line is read on the same
@@ -113,7 +113,7 @@ exits.
 ### 1.4 The envelope is not validated (R14-F7, S3)
 
 `Agent::dispatch` and `Agent::dispatch_input` take the method as
-`as_str().unwrap_or("")` (`crates/lumen-static-agent/src/lib.rs:395`,
+`as_str().unwrap_or("")` (`crates/fulgurite-agent/src/lib.rs:395`,
 `:413`). So a batch, a bare number, or a non-string method falls
 through to `METHOD_NOT_FOUND` with `unknown method ```. A request with
 no `id` is answered. `jsonrpc: "1.0"` is accepted. Coordinates are
@@ -127,11 +127,11 @@ envelope check.
 ### 1.5 The agent's own panic ends the process (R14-F5, S3, PARTIAL)
 
 M36 guards the application code the agent reaches: `Live::pump`
-(`crates/lumen-static-shell/src/session.rs:480-486`, through
+(`crates/fulgurite-shell/src/session.rs:480-486`, through
 `run_guarded`) and `agent_frame_done` (`:422-433`). But
 `Agent::dispatch_input` itself is not guarded. `Session::agent`
 (`session.rs:395-412`) calls it bare, and it is reached from
-`answer_agent` (`crates/lumen-static-winit/src/lib.rs:643`). That call
+`answer_agent` (`crates/fulgurite-winit/src/lib.rs:643`). That call
 covers selector parsing, `get_tree`, `ui.explain` and every widget's
 `observe` impl. The review's injection (`e00c288`, a panic in the
 `ui.waitSettled` arm) exited the process with status 101. No real
@@ -182,7 +182,7 @@ that reopens it.
 
 ### 2.2 Where the transport lives
 
-In `lumen-static-agent`, as a plain module and **not behind a
+In `fulgurite-agent`, as a plain module and **not behind a
 feature**. The crate is already `std` (it depends on `serde_json`), and
 the linker drops an uncalled `serve`, as it drops everything else a
 binary does not name (`docs/results-widget-crate.md`). A feature would
@@ -244,7 +244,7 @@ location from M36's hook, and the endpoint keeps serving.
   `&self`, so a panic inside it cannot leave the journal half-written.
 - **An application panic must not be caught here.** Under
   `Recover::Off` (a release build without `reload`,
-  `crates/lumen-static-winit/src/lib.rs:248-251`), `Live::pump` runs
+  `crates/fulgurite-winit/src/lib.rs:248-251`), `Live::pump` runs
   application code unguarded. An outer `catch_unwind` around dispatch
   would catch that panic and keep a half-updated host running, which
   breaks M36 rule 3 (`docs/plan-panic-recovery.md`): a shipped
@@ -265,7 +265,7 @@ did.
    `fetch('http://127.0.0.1:<port>/', {method: 'POST', mode: 'no-cors',
    body: '<one JSON-RPC line>\n'})` in a real headless browser. It
    posts to a listener that records the raw bytes to a file. Commit the
-   file under `crates/lumen-static-agent/tests/`, with the browser and
+   file under `crates/fulgurite-agent/tests/`, with the browser and
    its version in a header comment. Capture three more the same way:
    a `<form enctype="text/plain">` POST, whose `name=value` body can be
    shaped into a JSON line (the classic trick); a
@@ -274,7 +274,7 @@ did.
    the blank line, and an `HTTP/2` connection preface. **Only the
    captured ones are "byte for byte".**
 2. **The turnkey server, through a real event loop.** Add
-   `crates/lumen-static-winit/tests/agent_transport.rs`,
+   `crates/fulgurite-winit/tests/agent_transport.rs`,
    `harness = false`, `--features agent`, needing a display. This is
    the review's scratch `f927617` shape. It runs `agent::serve` against
    a handler that counts executed methods, and plays each fixture on
@@ -292,7 +292,7 @@ did.
    lands after this milestone.
 4. **Envelope, dispatch level** (R14-F7). Add a table-driven
    "the_envelope_is_validated" to
-   `crates/lumen-static-agent/tests/hostile.rs`. The inputs: `[]`,
+   `crates/fulgurite-agent/tests/hostile.rs`. The inputs: `[]`,
    `[{..}]`, `5`, `{"method": 5}`, `jsonrpc: "1.0"`, no `id`,
    `x: 1e300`, `dy: 1e39`, `ui.probe` with `x: 1e300`, and `ui.explain`
    with `at: [1e300, 0]`. It prints `input -> code (expected)` for
@@ -301,11 +301,11 @@ did.
    the same table is the accept row.
 5. **The agent's own panic** (R14-F5). This needs a method that panics
    on request, compiled only for tests, as M36/T36.0 did with its panic
-   fixture. A `lumen-static-shell` test drives it through
+   fixture. A `fulgurite-shell` test drives it through
    `Session::agent`. **Red today:** the test binary dies with the
    panic, instead of receiving a `-32603` reply.
 6. **The descendant step** (R14-F6). Add "a_descendant_error_names_the_selector_once"
-   to `crates/lumen-static-agent/tests/descendant.rs`. The cases are
+   to `crates/fulgurite-agent/tests/descendant.rs`. The cases are
    `#x >`, `> #x`, `#x >   ` and `#x > e`. It asserts the message
    contains the whole selector exactly once and is shorter than
    `4 × selector + 64` bytes, printing `reply N B / request M B`.
@@ -320,13 +320,13 @@ output.
 
 **Closes:** R14-F1.
 
-**Change.** A transport module in `crates/lumen-static-agent/src/`,
+**Change.** A transport module in `crates/fulgurite-agent/src/`,
 per §2.1–§2.2. It has a bind step (T39.2 adds the policy) and a serve
 loop generic over the handler. It reads a line; skips a blank one; and
 if the line does not parse as a JSON **object**, writes one reply and
 closes. That reply is `-32600` naming HTTP when the line starts with an
 HTTP method token or contains ` HTTP/`, and `-32700` or `-32600`
-otherwise. `lumen_static_winit::agent::serve` becomes a thin call into
+otherwise. `fulgurite_winit::agent::serve` becomes a thin call into
 it, with a proxy-forwarding handler. `examples/counter-window` deletes
 its loop and calls the same function with its own handler.
 `Session::agent`'s own `-32700` path (`session.rs:396-405`) stays, for
@@ -334,7 +334,7 @@ a caller that is not the transport.
 
 **Gate.**
 
-- **Display-free.** Add `crates/lumen-static-agent/tests/transport.rs`,
+- **Display-free.** Add `crates/fulgurite-agent/tests/transport.rs`,
   with "a_browser_request_executes_nothing". It binds `127.0.0.1:0`,
   plays every T39.0 fixture on its own connection against a counting
   handler, reads to EOF with a 2 s timeout, and asserts that nothing
@@ -378,9 +378,9 @@ For the static check, re-add counter-window's loop: the check names
 - A new results doc, `results-agent-transport.md`, holds one row per
   vector with executed-before and executed-after. **Its path goes into
   `scripts/doc-paths.allow` until this commit writes it.**
-- The `lumen-static-winit` `agent` module doc and `Config::agent`'s
+- The `fulgurite-winit` `agent` module doc and `Config::agent`'s
   rustdoc (`lib.rs:191-203`).
-- The header of `crates/lumen-static-agent/tests/hostile.rs`: "an agent
+- The header of `crates/fulgurite-agent/tests/hostile.rs`: "an agent
   is untrusted input" is now true of the socket, not just of dispatch.
 - The port-lifecycle paragraph of `.claude/skills/verifying-apps/SKILL.md`:
   a malformed line now ends the connection.
@@ -396,7 +396,7 @@ For the static check, re-add counter-window's loop: the check names
 
 **Change.** The transport's bind step resolves the address and refuses,
 with a message naming the override, if any resolved address is not
-loopback. The override is the `LUMEN_AGENT_ALLOW_REMOTE=1` environment
+loopback. The override is the `FULGURITE_AGENT_ALLOW_REMOTE=1` environment
 variable. With the override set, it prints a warning that names the
 interfaces and says the endpoint has no authentication. `localhost` is
 accepted because it resolves to loopback. Every script and every
@@ -493,7 +493,7 @@ in `catch_unwind` under `panic = "unwind"`, and reply `-32603` with
 the method and the hook's location. `Live::pump` marks application
 code, and the outer catch re-raises a marked panic.
 
-**Gate.** T39.0's `lumen-static-shell` test goes green: the reply is
+**Gate.** T39.0's `fulgurite-shell` test goes green: the reply is
 `-32603` naming the location, and the next `ui.getTree` is answered.
 It prints `reply code / next call ok`. The **accept direction** has two
 parts. An ordinary call before and after returns a result. And under
@@ -532,7 +532,7 @@ empty-side check: `#x > e` goes red on the "exactly once" assertion,
 even though the three empty cases stay green.
 
 **Docs in the same commit.** The selector grammar block at the top of
-`crates/lumen-static-agent/src/lib.rs` (lines 10–17) states that both
+`crates/fulgurite-agent/src/lib.rs` (lines 10–17) states that both
 sides of `>` are required.
 
 **Effort:** S. **Depends on:** nothing. It touches no transport code
@@ -627,7 +627,7 @@ Recorded as found, rather than folded into the sections above.
   to another, so the page is cross-origin to the endpoint as a page the
   developer happens to have open is. Eight captured files (four vectors
   × two browsers) and the two hand-written ones live in
-  `crates/lumen-static-agent/tests/browser/`, named by browser and
+  `crates/fulgurite-agent/tests/browser/`, named by browser and
   version, since a header comment inside a byte-exact file would stop
   it being byte-exact. Each body carries two JSON-RPC lines, a click on
   counter-window's `#inc` and one on tasks-demo's `#spawn-one`, so one

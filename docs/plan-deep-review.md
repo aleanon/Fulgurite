@@ -109,7 +109,7 @@ Up to 18 reviewers share one machine. The rules:
   holds the bench lock for its whole window.
 - **Live windows:** each task uses its own agent port
   (`76{task number}`, e.g. R13 → 7613) and its own log path under the
-  scratchpad. Both `LUMEN_AGENT` and `LUMEN_AGENT_ADDR` are set, because
+  scratchpad. Both `FULGURITE_AGENT` and `FULGURITE_AGENT_ADDR` are set, because
   the launchers and clients disagree (R13 checks why). Before driving,
   check that the port answers **your** process (compare the pid from
   `ss -ltnp`).
@@ -232,7 +232,7 @@ generated with; each reviewer is handed its record as written. Each
 task's key questions are summarised below.
 
 ### R1 — Boundaries completeness
-**Premise to confirm:** `lumen-static-winit` ignores `host.tick`'s
+**Premise to confirm:** `fulgurite-winit` ignores `host.tick`'s
 result, and `Host::tick` never marks. Then build the table of every Host
 method and frame-loop call against its mark calls. Build the shadow
 oracle that M34/T34.1 promises, *ahead of M34*: one scripted sequence
@@ -465,14 +465,14 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** invalidate.rs: 'reporting a dirty subtree clean costs correctness' and that pointer/focus is marked by the host (T25.0). plan-boundaries-default.md T34.0: widget-drive/agent-drive/tasks-drive already run under both strategies and invalidation_oracle covers hover, press and enum. event.rs App::tick rustdoc says nothing about invalidating. retain.rs: backdrop readers depend on a wider region.
 
 **Scope.**
-- crates/lumen-static-shell/src/lib.rs: pump_with, tick, compose, paste, set_scale, set_palette, adopt, reload, mark_node, PointerFocus block
-- crates/lumen-static-macros/src/lib.rs: the layout skip (~925-990: can_skip && is_clean && constraints==limits), enum hide ranges (~1495)
-- crates/lumen-static/src/invalidate.rs (Boundaries<N>, overflow to mark_all, Changed::can_skip)
-- crates/lumen-static/src/retain.rs (observe_dep, backdrop cap -> Damage::All)
-- crates/lumen-static-winit/src/lib.rs frame loop (~420-468: host.tick result ignored), IME (~640)
-- crates/lumen-static-widgets/src/input.rs compose, glass.rs tick/press, textarea.rs
-- crates/lumen-static/src/gesture.rs, anim.rs, drag.rs, i18n.rs
-- crates/lumen-static-shell/tests/invalidation_oracle.rs, damage_oracle.rs, glass_oracle.rs, banded.rs, enum_relayout.rs, palette_host.rs
+- crates/fulgurite-shell/src/lib.rs: pump_with, tick, compose, paste, set_scale, set_palette, adopt, reload, mark_node, PointerFocus block
+- crates/fulgurite-macros/src/lib.rs: the layout skip (~925-990: can_skip && is_clean && constraints==limits), enum hide ranges (~1495)
+- crates/fulgurite/src/invalidate.rs (Boundaries<N>, overflow to mark_all, Changed::can_skip)
+- crates/fulgurite/src/retain.rs (observe_dep, backdrop cap -> Damage::All)
+- crates/fulgurite-winit/src/lib.rs frame loop (~420-468: host.tick result ignored), IME (~640)
+- crates/fulgurite-widgets/src/input.rs compose, glass.rs tick/press, textarea.rs
+- crates/fulgurite/src/gesture.rs, anim.rs, drag.rs, i18n.rs
+- crates/fulgurite-shell/tests/invalidation_oracle.rs, damage_oracle.rs, glass_oracle.rs, banded.rs, enum_relayout.rs, palette_host.rs
 - docs/plan-boundaries-default.md (T34.0 inventory, T34.1 shadow oracle)
 
 **Questions.**
@@ -501,14 +501,14 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** macros header: 'the spliced table is well-formed' is asserted for every expansion. verification-notes Tier 0: structural facts 'discharged by const-eval'. retain.rs: collision probability '~10^-13 per frame'. text.rs: 'The display scale is in the key'; key 'Required, not defaulted'.
 
 **Scope.**
-- crates/lumen-static/src/widget.rs: splice_child, splice_seeds, table_is_well_formed
-- crates/lumen-static/src/style.rs: subtree_range (~1144), index_of_wid, count_wid, cascade_subtree
-- crates/lumen-static/src/desc.rs: NodeDesc, NO_PARENT
-- crates/lumen-static-macros/src/lib.rs: SUB_TABLE emission, expand_enum STARTS, child_count `as u16`
-- crates/lumen-static/src/hatch.rs (Either/Option tables), assemble.rs concat_table
-- crates/lumen-static/src/display.rs: fold, Cmd::hash_into, hash_from
-- crates/lumen-static/src/text.rs: MeasureKey (~110), Measured, FoldedText
-- crates/lumen-static/src/retain.rs Recording/Incremental; crates/lumen-static-agent/src/journal.rs; spawn.rs, crates/lumen-static-widgets/src/choose.rs (other fold users)
+- crates/fulgurite/src/widget.rs: splice_child, splice_seeds, table_is_well_formed
+- crates/fulgurite/src/style.rs: subtree_range (~1144), index_of_wid, count_wid, cascade_subtree
+- crates/fulgurite/src/desc.rs: NodeDesc, NO_PARENT
+- crates/fulgurite-macros/src/lib.rs: SUB_TABLE emission, expand_enum STARTS, child_count `as u16`
+- crates/fulgurite/src/hatch.rs (Either/Option tables), assemble.rs concat_table
+- crates/fulgurite/src/display.rs: fold, Cmd::hash_into, hash_from
+- crates/fulgurite/src/text.rs: MeasureKey (~110), Measured, FoldedText
+- crates/fulgurite/src/retain.rs Recording/Incremental; crates/fulgurite-agent/src/journal.rs; spawn.rs, crates/fulgurite-widgets/src/choose.rs (other fold users)
 - tests: table_invariants.rs, wid_index.rs, measure_key.rs, measure_scale.rs, text_memo.rs, damage_oracle.rs
 
 **Questions.**
@@ -536,12 +536,12 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** pass.rs C5: hidden focus stops receiving keys. event.rs: `row` in EventCtx 'replaces move |s| s.remove(idx)'. T15.6: Shift+Tab, arrow groups and focus-visible are done, yet pass.rs:419 says Shift+Tab is not implemented. T27.10: Hover synthesis. M27: 94 actions driven, and it is unknown how many of them are keyboard actions.
 
 **Scope.**
-- crates/lumen-static/src/pass.rs: dispatch, dispatch_at, dispatch_overlaid, hit_test_overlaid, focusable, focusable_siblings, next/prev_focusable_in, overlay Tab path (~230), arrow groups (~419-470)
-- crates/lumen-static/src/event.rs: InputState, InputQueue (capacity, overflow), EventCtx, NodeSel, Hover synthesis
-- crates/lumen-static/src/overlay.rs, hit.rs, repeat.rs (hit, handler ~553-655, visible_range, MAX_ADDRESSABLE_EXTENT), hatch.rs List/Dyn hit
-- crates/lumen-static-shell/src/lib.rs: paste (InputQueue::<64>::CAP), copy, compose
-- crates/lumen-static-widgets/src: field.rs, input.rs, choose.rs, pick.rs, select.rs, data.rs, veil.rs
-- crates/lumen-static-agent/src/lib.rs: input.click/fill/key/hover/scrollIntoView
+- crates/fulgurite/src/pass.rs: dispatch, dispatch_at, dispatch_overlaid, hit_test_overlaid, focusable, focusable_siblings, next/prev_focusable_in, overlay Tab path (~230), arrow groups (~419-470)
+- crates/fulgurite/src/event.rs: InputState, InputQueue (capacity, overflow), EventCtx, NodeSel, Hover synthesis
+- crates/fulgurite/src/overlay.rs, hit.rs, repeat.rs (hit, handler ~553-655, visible_range, MAX_ADDRESSABLE_EXTENT), hatch.rs List/Dyn hit
+- crates/fulgurite-shell/src/lib.rs: paste (InputQueue::<64>::CAP), copy, compose
+- crates/fulgurite-widgets/src: field.rs, input.rs, choose.rs, pick.rs, select.rs, data.rs, veil.rs
+- crates/fulgurite-agent/src/lib.rs: input.click/fill/key/hover/scrollIntoView
 - tests: events.rs, focus.rs, overlay.rs, hover.rs, select.rs, agent tests/input.rs
 
 **Questions.**
@@ -572,18 +572,18 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** Handoff Step 4 'DONE 2026-08-30'; §7 DECIDED. step4: 'swap itself is milliseconds; ... ~90-250 ms, comfortably inside the 2 s criterion'. plan-tasks: T28.7 'demonstrated rather than argued'. check_no_unsafe.sh: 'cannot hide a real unsafe token outside a string literal'. verification-notes: miri unusable. M36 §1: any panic in v2 aborts.
 
 **Scope.**
-- crates/lumen-static-reload/src/lib.rs (export_reloadable_app!, 4 shims)
+- crates/fulgurite-reload/src/lib.rs (export_reloadable_app!, 4 shims)
 - fixtures/hot-host/src/main.rs, fixtures/hot-app/src/lib.rs, scripts/hot_reload_demo.sh, justfile hot-demo
-- crates/lumen-static/src/reload.rs (LOG thread_local, take_log, symbols)
-- crates/lumen-static/src/spawn.rs (JobFn, Spawner), inbox.rs (Sender, Waker, epoch)
-- crates/lumen-static-agent server thread / port binding
+- crates/fulgurite/src/reload.rs (LOG thread_local, take_log, symbols)
+- crates/fulgurite/src/spawn.rs (JobFn, Spawner), inbox.rs (Sender, Waker, epoch)
+- crates/fulgurite-agent server thread / port binding
 - scripts/check_no_unsafe.sh, fixtures/miri-smoke
 - docs/00-handoff-static-tree.md §7 and Step 4, docs/step4-hot-reload.md, docs/results-step1-firewall.md, docs/plan-tasks.md T28.7 and §5, docs/plan-panic-recovery.md, book/src/hot-reload.md
 
 **Questions.**
 1. Is there any path from `cargo run -p <example>` or a just recipe to a running window that picks up a source edit without restarting? List every missing piece. Quote each sentence in the book or handoff that implies one exists.
 2. Measured, five runs each with the spread: time from a one-line edit of FOOTER to a new .so for fixtures/hot-app, debug and release, split into frontend, codegen and link; the same for examples/showcase with only its crate-type changed to cdylib; dlopen + new + restore + first frame. Print each against the 2 s criterion and the firewall doc's 165 ms tail.
-3. For each expect/assert in hot-host: which single-line fault in framework code (not fixture code) turns it red? Does T28.7 touch lumen_static::spawn, the inbox or Host::pump at all?
+3. For each expect/assert in hot-host: which single-line fault in framework code (not fixture code) turns it red? Does T28.7 touch fulgurite::spawn, the inbox or Host::pump at all?
 4. Injections: the derive's restore skips Nested fields; Repeat::restore ignores scroll; hot_restore returns 0 without restoring. Which assertions fire? Could any expectation be met by fresh defaults?
 5. Add a v3 that changes the Ui shape (a new widget field, reordered fields), and swap v1->v2->v3->v1 100 times using distinct paths. Report RSS growth per swap, the /proc/self/maps image count, and whether the fallback log is complete.
 6. hot_restore with (null,0): slice::from_raw_parts(null,0) is UB; confirm the contract. A panic in restore, build or hot_frame: record the exit status and signal, and whether the saved bytes survived. A v2 missing hot_step: does the loader fail before or after dropping v1?
@@ -609,12 +609,12 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** step4: 'a field added in the new build is simply missing from old bytes -> fresh default + log, never a hard error'. M31: 'Application::build is the one path now ... Both directions checked'. adopt rustdoc: 'A new application is a new tree'. Shell Cargo.toml: an app that never swaps should not link serde_json.
 
 **Scope.**
-- crates/lumen-static-widgets/src/reload.rs; crates/lumen-static/src/reload.rs (Vec/Option/Repeat impls, log_fallback)
-- crates/lumen-static-macros/src/lib.rs: expand_reloadable (save/restore stmts), is_application, the no_default blanket impl, reload_mode
-- crates/lumen-static-shell/src/lib.rs: Host fields, launch, adopt (~214), reload, new
-- crates/lumen-static-winit/src/lib.rs: Config, run, application, Program (~700-760)
-- crates/lumen-static/src/event.rs App/Application
-- crates/lumen-static-macros/tests/ui/*reloadable*; crates/lumen-static/tests/reload.rs, reload_hostile.rs; crates/lumen-static-shell/tests/reload_sheet.rs
+- crates/fulgurite-widgets/src/reload.rs; crates/fulgurite/src/reload.rs (Vec/Option/Repeat impls, log_fallback)
+- crates/fulgurite-macros/src/lib.rs: expand_reloadable (save/restore stmts), is_application, the no_default blanket impl, reload_mode
+- crates/fulgurite-shell/src/lib.rs: Host fields, launch, adopt (~214), reload, new
+- crates/fulgurite-winit/src/lib.rs: Config, run, application, Program (~700-760)
+- crates/fulgurite/src/event.rs App/Application
+- crates/fulgurite-macros/tests/ui/*reloadable*; crates/fulgurite/tests/reload.rs, reload_hostile.rs; crates/fulgurite-shell/tests/reload_sheet.rs
 - examples/*/src/main.rs; docs/plan-application.md, plan-program.md (prototype 29c1238), step4-hot-reload.md honesty list
 
 **Questions.**
@@ -644,15 +644,15 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** results-competitive: 'No number here comes from a single run', 'summed stages and an independently timed whole frame agree to under 1%', '9x iced', 'Under Boundaries that frame is the 0.01 µs row'. plan-damage-precision §2.5 concedes click frames save zero. workers_for rustdoc: thresholds knowingly off by 1.8-2.4x.
 
 **Scope.**
-- crates/lumen-static-winit/Cargo.toml, src/lib.rs (Inval/Ret aliases, run, application)
-- crates/lumen-static-shell/Cargo.toml features, src/lib.rs pump_with (726-960), timings3
-- crates/lumen-static/src/pass.rs (paint_overlaid, place), retain.rs (Recording, Incremental::finish/align, Regions::push), display.rs hash_from, style.rs cascade_arenas_deep
-- benches-competitive/arms/{frame,stages,raster,lumen-static-app,lumen-static-lean}, competitors.sh, run.sh, bench5.awk
+- crates/fulgurite-winit/Cargo.toml, src/lib.rs (Inval/Ret aliases, run, application)
+- crates/fulgurite-shell/Cargo.toml features, src/lib.rs pump_with (726-960), timings3
+- crates/fulgurite/src/pass.rs (paint_overlaid, place), retain.rs (Recording, Incremental::finish/align, Regions::push), display.rs hash_from, style.rs cascade_arenas_deep
+- benches-competitive/arms/{frame,stages,raster,fulgurite-app,fulgurite-lean}, competitors.sh, run.sh, bench5.awk
 - benches/src/bin/{invalidation,grid,cascade,repeater,paint_sink}.rs
 - docs/results-competitive.md §3 §5b §7, results-gpu.md §1, results-simd.md, results-threading.md, competitive-feature-gaps.md
 
 **Questions.**
-1. Table from cargo metadata (no build): for every example and for lumen-static-app, which of boundaries, simd, threads, gpu and observe are enabled? Which published figure describes a configuration that no example ships?
+1. Table from cargo metadata (no build): for every example and for fulgurite-app, which of boundaries, simd, threads, gpu and observe are enabled? Which published figure describes a configuration that no example ships?
 2. For each figure in results-competitive §5b/§7 and results-gpu §1: what does the timed closure call, and which pump_with steps (dispatch, subscriptions, outbox, bindings update, cascade, place, Scaled, Recording/finish) does it omit? Does the stages arm still mirror pump_with after M28, and is its sum-versus-pump gap printed beside its bound?
 3. Full pump_with cost under Boundaries<256> at 1k, 3k and 10k nodes for (a) nothing changed, (b) the pointer moved with no hover change, (c) a hover change, (d) one bound label changed, split into dispatch, layout, place, paint, hash and finish, eight runs a side.
 4. showcase: what do layout, place and cascade cost for a Toggle click and for a Select open, with and without observe, under both strategies? Does every click re-run cascade_arenas_deep even when no arena was touched (count the calls)?
@@ -664,7 +664,7 @@ fixed in their own milestones, not in this one.
 - read: cargo metadata feature graph; trace each timed closure
 - fault injection: spin Host::place or Incremental::finish 10x slower, and confirm which arms move (the frame arm should not, the stages pump row should); force arenas_dirty every frame and confirm the bench sees it
 - measurement under the bench lock, eight runs a side, the spread printed, machine load recorded
-- build: turnkey lumen-static-app with and without simd,threads at 1080p full redraw
+- build: turnkey fulgurite-app with and without simd,threads at 1080p full redraw
 
 **Evidence required.** A step-diff table per figure. Every measurement carries eight runs, the spread, the configuration, the load at run time, and the quantity printed beside any claim it is compared to. An injection record shows the arm can see the step it claims to cover.
 
@@ -676,12 +676,12 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** winit lib.rs: 'A still UI idles'; 'keeps the idle frame numbers in docs/results-frame-cost.md true'. M28/T28.11-12: WaitUntil fixes timers on idle windows. anim.rs: huge dt 'Guarded rather than trusted'. inbox.rs: a sender 'cannot send and forget to ask for a frame'.
 
 **Scope.**
-- crates/lumen-static-winit/src/lib.rs: redraw, about_to_wait, user_event, window_event_impl (Resized, CloseRequested, CursorMoved), answer_agent
-- crates/lumen-static-winit/src/surface.rs present/sync_size; gpu.rs; backend.rs; dialog.rs
-- crates/lumen-static-wgpu/src/lib.rs present, surface error handling, PresentMode
-- crates/lumen-static-shell/src/lib.rs: tick, drain_outbox, diff_subscriptions, next_deadline_ms, more_deferred, spawner drop
-- crates/lumen-static/src/spawn.rs (Outbox::push, Timers::advance, Threads), inbox.rs, anim.rs, gesture.rs, num.rs clamp
-- crates/lumen-static-shell/src/software.rs Canvas::resize, workers_for at 0 px
+- crates/fulgurite-winit/src/lib.rs: redraw, about_to_wait, user_event, window_event_impl (Resized, CloseRequested, CursorMoved), answer_agent
+- crates/fulgurite-winit/src/surface.rs present/sync_size; gpu.rs; backend.rs; dialog.rs
+- crates/fulgurite-wgpu/src/lib.rs present, surface error handling, PresentMode
+- crates/fulgurite-shell/src/lib.rs: tick, drain_outbox, diff_subscriptions, next_deadline_ms, more_deferred, spawner drop
+- crates/fulgurite/src/spawn.rs (Outbox::push, Timers::advance, Threads), inbox.rs, anim.rs, gesture.rs, num.rs clamp
+- crates/fulgurite-shell/src/software.rs Canvas::resize, workers_for at 0 px
 - examples/wake-gate, scripts/wake_gate.sh, scripts/tasks_drive.sh, tests/inbox_wake.rs, docs/results-tasks.md, results-frame-cost.md
 
 **Questions.**
@@ -710,11 +710,11 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** alloc_gate.rs 'rasterising a frame allocates nothing' (M26/T26.13, 'to zero'). surface.rs: render p95 0.089 ms vs present p95 0.044 ms. results-competitive §3: 24.7 MB idle RSS. results-appearance: no per-node desktop budget.
 
 **Scope.**
-- crates/lumen-static-shell/src/text.rs (FontStack::prepare, place_run, glyphs, rasterize, measure_run)
-- crates/lumen-static-shell/src/software.rs (Surface::render text arm, clipped, blur_plan, render_banded (~1561), workers_for, strip_rows_for, blit_0rgb_within, Canvas::resize)
-- crates/lumen-static-winit/src/surface.rs present, sync_size
-- crates/lumen-static/src/retain.rs Regions/MAX_REGIONS, Incremental slots/prev; desc.rs NodeState; style.rs Style; display.rs Cmd; DisplayList.text capacity
-- crates/lumen-static-shell/tests/alloc_gate.rs (~343), banded.rs, simd_shadow.rs, damage_oracle.rs
+- crates/fulgurite-shell/src/text.rs (FontStack::prepare, place_run, glyphs, rasterize, measure_run)
+- crates/fulgurite-shell/src/software.rs (Surface::render text arm, clipped, blur_plan, render_banded (~1561), workers_for, strip_rows_for, blit_0rgb_within, Canvas::resize)
+- crates/fulgurite-winit/src/surface.rs present, sync_size
+- crates/fulgurite/src/retain.rs Regions/MAX_REGIONS, Incremental slots/prev; desc.rs NodeState; style.rs Style; display.rs Cmd; DisplayList.text capacity
+- crates/fulgurite-shell/tests/alloc_gate.rs (~343), banded.rs, simd_shadow.rs, damage_oracle.rs
 - benches-competitive/resources.sh; docs/results-raster-scaling.md, results-simd.md, results-threading.md, results-allocation.md
 
 **Questions.**
@@ -742,12 +742,12 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** results-gpu: 17.6x at 4K, crossover at 3-5% damage; M26 T26.12: GPU handed 5,000 px2 instead of 452,400. svg.rs: 'exercises the whole command vocabulary'. results-glass: +18%, 148 ms -> 1.44 ms.
 
 **Scope.**
-- crates/lumen-static-wgpu/src/lib.rs (for_window, draw, draw_regions ~643-662, walk, draw_run, present, wait, read_rgba), atlas.rs, shader.wgsl, blit.wgsl
-- crates/lumen-static-winit/src/gpu.rs, backend.rs
-- crates/lumen-static/src/display.rs Cmd variants
-- crates/lumen-static-shell/src/software.rs, svg.rs, golden.rs; tests: border_pixels.rs, clip_depth.rs, simd_shadow.rs, glass_*.rs
-- crates/lumen-static-wgpu/tests/parity.rs, glass_parity.rs, gpu_regions.rs
-- crates/lumen-static-widgets/src/glass.rs; benches/src/bin/glass_cost.rs
+- crates/fulgurite-wgpu/src/lib.rs (for_window, draw, draw_regions ~643-662, walk, draw_run, present, wait, read_rgba), atlas.rs, shader.wgsl, blit.wgsl
+- crates/fulgurite-winit/src/gpu.rs, backend.rs
+- crates/fulgurite/src/display.rs Cmd variants
+- crates/fulgurite-shell/src/software.rs, svg.rs, golden.rs; tests: border_pixels.rs, clip_depth.rs, simd_shadow.rs, glass_*.rs
+- crates/fulgurite-wgpu/tests/parity.rs, glass_parity.rs, gpu_regions.rs
+- crates/fulgurite-widgets/src/glass.rs; benches/src/bin/glass_cost.rs
 - docs/results-gpu.md, results-glass.md §0b-§0h, plan-glass.md, plan-liquid.md §12
 
 **Questions.**
@@ -769,19 +769,19 @@ fixed in their own milestones, not in this one.
 **Evidence required.** The coverage matrix, max diff per variant per renderer pair printed beside each bound, allocation counts, timings with spread. Every GPU finding states the adapter and backend it ran on.
 
 ### R10 — The text pipeline end to end: measurer/painter agreement, shaping, bidi and i18n, and text entry
-*Priority high; cargo yes. Goals: (1) best-in-class desktop and mobile text; (2) lumen-static-text must work when an application names it*
+*Priority high; cargo yes. Goals: (1) best-in-class desktop and mobile text; (2) fulgurite-text must work when an application names it*
 
 **Rationale.** Merges X1, DX-7 and the IME/clipboard half of DX-3. ComplexText shapes for measurement, but the canvas repaints Cmd::Text through fontdue with no shaping and no bidi. Direction and the mirror_* helpers have no caller outside tests. Nothing calls set_ime_cursor_area. Ctrl+C is consumed even with nothing selected. Multi-codepoint key text is dropped.
 
-**Prior claims to test.** plan-capabilities T15.8/T15.9 shipped. i18n.rs: 'an application can have a mirrored Arabic UI before it has an Arabic shaper'. lumen-static-text: 'changes where the glyphs go, not how they are drawn'. T14.8: CJK entry works.
+**Prior claims to test.** plan-capabilities T15.8/T15.9 shipped. i18n.rs: 'an application can have a mirrored Arabic UI before it has an Arabic shaper'. fulgurite-text: 'changes where the glyphs go, not how they are drawn'. T14.8: CJK entry works.
 
 **Scope.**
-- crates/lumen-static-text/src/lib.rs, tests/shaping.rs
-- crates/lumen-static/src/i18n.rs, cx.rs (TextMeasure, GlyphSink, Cluster), font.rs (BakedFace), text.rs (TextBuffer, ClusterBuf)
-- crates/lumen-static-shell/src/text.rs, software.rs text arm; crates/lumen-static-wgpu draw_run
-- crates/lumen-static-widgets/src/input.rs, textarea.rs, field.rs, rich.rs (RichTextEditor)
-- crates/lumen-static-shell/src/lib.rs compose, copy, paste/type_text
-- crates/lumen-static-winit/src/lib.rs clipboard_shortcut (~378), IME handling; translate.rs keyboard() (~67 multi-char drop), ClickCounter
+- crates/fulgurite-text/src/lib.rs, tests/shaping.rs
+- crates/fulgurite/src/i18n.rs, cx.rs (TextMeasure, GlyphSink, Cluster), font.rs (BakedFace), text.rs (TextBuffer, ClusterBuf)
+- crates/fulgurite-shell/src/text.rs, software.rs text arm; crates/fulgurite-wgpu draw_run
+- crates/fulgurite-widgets/src/input.rs, textarea.rs, field.rs, rich.rs (RichTextEditor)
+- crates/fulgurite-shell/src/lib.rs compose, copy, paste/type_text
+- crates/fulgurite-winit/src/lib.rs clipboard_shortcut (~378), IME handling; translate.rs keyboard() (~67 multi-char drop), ClickCounter
 - docs/text-render-adoption-decision.md, plan-capabilities.md T15.8/T15.9, T14.8, text-and-scrolling-decisions.md
 
 **Questions.**
@@ -797,7 +797,7 @@ fixed in their own milestones, not in this one.
 **Methods.**
 - build: a headless test pairing ComplexText with the software painter, comparing measured size with the ink bbox (predicted red)
 - read: every TextMeasure implementor and every place a measurer is constructed
-- fault injection: delete the bidi reorder in lumen-static-text and see whether any test that goes through a painter turns red; make compose a no-op in field.rs
+- fault injection: delete the bidi reorder in fulgurite-text and see whether any test that goes through a painter turns red; make compose a no-op in field.rs
 - headless Host tests per widget for grapheme deletion and compose sequences; a winit translate test for Ctrl+C
 - live drive only if an IME is installed; otherwise record it as not executable
 
@@ -812,10 +812,10 @@ fixed in their own milestones, not in this one.
 
 **Scope.**
 - fixtures/embedded/src/bin/firmware.rs, src/lib.rs (frame, type_char, Checksum)
-- crates/lumen-static/src/desc.rs (MAX_DEPTH, STACK_BYTES_PER_LEVEL, stack_bytes), bind.rs (SCRATCH_CAP, format_into), num.rs, hatch.rs Dyn (~776 runtime assert)
+- crates/fulgurite/src/desc.rs (MAX_DEPTH, STACK_BYTES_PER_LEVEL, stack_bytes), bind.rs (SCRATCH_CAP, format_into), num.rs, hatch.rs Dyn (~776 runtime assert)
 - scripts/check_text.sh, check_bss.sh, bss.allow; justfile thumb, firmware-size, const-budget; root Cargo.toml profiles
-- fixtures/const-budget; crates/lumen-static/src/widget.rs (splice_seeds), style.rs (wid_index!, count_wid)
-- crates/lumen-static/src/retain.rs, invalidate.rs; crates/lumen-static-shell/src/lib.rs, software.rs (tier classification)
+- fixtures/const-budget; crates/fulgurite/src/widget.rs (splice_seeds), style.rs (wid_index!, count_wid)
+- crates/fulgurite/src/retain.rs, invalidate.rs; crates/fulgurite-shell/src/lib.rs, software.rs (tier classification)
 - docs/results-embedded.md, results-const-eval.md, plan-embedded.md, results-monomorphization.md
 
 **Questions.**
@@ -844,16 +844,16 @@ fixed in their own milestones, not in this one.
 
 **Scope.**
 - crates/*/Cargo.toml [features] and [dev-dependencies]; justfile release-shape, dev-shape, thumb, check-extra
-- crates/lumen-static-winit/src/lib.rs Inval alias (~254-257); crates/lumen-static-shell/src/lib.rs cfg(agent) sites; crates/lumen-static-agent/Cargo.toml, audit.rs
-- crates/lumen-static/src/widget.rs (trait Node), bind.rs, text.rs (~274), style.rs (cfg all(debug_assertions, alloc)), invalidate.rs
-- crates/lumen-static-macros/src/lib.rs node/node_mut expansion, fuse, rdyn_opaque
+- crates/fulgurite-winit/src/lib.rs Inval alias (~254-257); crates/fulgurite-shell/src/lib.rs cfg(agent) sites; crates/fulgurite-agent/Cargo.toml, audit.rs
+- crates/fulgurite/src/widget.rs (trait Node), bind.rs, text.rs (~274), style.rs (cfg all(debug_assertions, alloc)), invalidate.rs
+- crates/fulgurite-macros/src/lib.rs node/node_mut expansion, fuse, rdyn_opaque
 - fixtures/embedded, fixtures/binsize; docs/results-widget-crate.md, results-monomorphization.md, plan-observe-cost.md, mobile-decision.md, step5-observability.md
 
 **Questions.**
-1. Does rustc for the lumen-static lib get --cfg feature="observe" in `cargo test -p lumen-static -v --no-run`? Does the hatches test (required-features observe) run under release-shape? Which checks build core with default features and no dev edges?
+1. Does rustc for the fulgurite lib get --cfg feature="observe" in `cargo test -p fulgurite -v --no-run`? Does the hatches test (required-features observe) run under release-shape? Which checks build core with default features and no dev edges?
 2. cargo hack check --feature-powerset --depth 2 --no-dev-deps, one crate per invocation, over std, alloc, observe, reload, truetype, simd, threads, agent, boundaries, gpu, dnd, dialogs, clipboard, with a time budget per crate: which combinations fail, and which build but lose behaviour?
-3. Does `cargo check -p lumen-static-widgets --no-default-features --features alloc --target thumbv7em-none-eabihf` pass, and does clippy -D warnings pass on it?
-4. An app with lumen-static-winit/agent but without widgets/observe: what does ui.getTree report for a Label, and does anything warn? If shell/reload is on and widgets/reload off (or the reverse), is that a loud error or silent state loss? If crate A names Host<_,_,Everything> and B enables winit/boundaries, what happens to A?
+3. Does `cargo check -p fulgurite-widgets --no-default-features --features alloc --target thumbv7em-none-eabihf` pass, and does clippy -D warnings pass on it?
+4. An app with fulgurite-winit/agent but without widgets/observe: what does ui.getTree report for a Label, and does anything warn? If shell/reload is on and widgets/reload off (or the reverse), is that a loud error or silent state loss? If crate A names Host<_,_,Everything> and B enables winit/boundaries, what happens to A?
 5. Run core and widgets unit tests with --no-default-features --features alloc (and with none) on the host. Which tests cannot compile? Is format_into's 256-byte truncation char-boundary safe (255 ASCII + a 4-byte char), and is it documented at #[bind]?
 6. In the linked thumb firmware, which on_event/hit/compose/selection/dismiss symbols exist, and how many bytes do they total? Does #[widget(fuse)] remove them? What is the marginal .text of naming each capability (Repeat, Popup, Either, gesture, anim, cascade, Boundaries, bind)?
 7. In linked x86 release+LTO and thumb builds: the per-type and per-field cost; Button<AppA>+Button<AppB>; Host<Everything>+Host<Boundaries<256>>; Boundaries<16> versus <256>; and Boundaries<256>::mark at full occupancy.
@@ -861,7 +861,7 @@ fixed in their own milestones, not in this one.
 
 **Methods.**
 - build matrix in a separate target dir (target/review-R12), cargo hack with --no-dev-deps, one crate per call
-- fault injection: add `#[cfg(feature="observe")] compile_error!` to a core test and run release-shape (it must go red if observe leaks, and go green once fixed); remove lumen-static/observe from widgets' observe list and see which gate notices; give one widget's on_event a large panic-with-format body and check whether firmware .text grows
+- fault injection: add `#[cfg(feature="observe")] compile_error!` to a core test and run release-shape (it must go red if observe leaks, and go green once fixed); remove fulgurite/observe from widgets' observe list and see which gate notices; give one widget's on_event a large panic-with-format body and check whether firmware .text grows
 - measurement: symbol attribution with nm -C --size-sort -S; binsize/firmware variants; the mark micro-bench, eight runs
 
 **Evidence required.** The rustc -v flag line for the leakage claim, the matrix of failing combinations with their errors, symbol byte totals, and a marginal-cost table. Each claim gives the exact command and target.
@@ -874,12 +874,12 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** SKILL.md: 'a layout right after a click already sees the result'; the app.perf budget table; app.quit listed. lib.rs: 'No animation scheduler exists'. T27.10: (frame, handled) is 'the only direct answer'. session.rs: mismatch is a hard error. Crate doc: 'in-process dispatch only'.
 
 **Scope.**
-- crates/lumen-static-agent/src/lib.rs (handle, handle_input, frame_done, last_change, last_damage, since_param, perf, live_nodes, Index::build, resolve_one, get_tree, input.fill, module doc)
-- crates/lumen-static-agent/src/journal.rs, session.rs, trace.rs, harness.rs
-- crates/lumen-static-winit/src/agent.rs (Live::pump), lib.rs (answer_agent, the frame_done call ~455-468, waitSettled path)
+- crates/fulgurite-agent/src/lib.rs (handle, handle_input, frame_done, last_change, last_damage, since_param, perf, live_nodes, Index::build, resolve_one, get_tree, input.fill, module doc)
+- crates/fulgurite-agent/src/journal.rs, session.rs, trace.rs, harness.rs
+- crates/fulgurite-winit/src/agent.rs (Live::pump), lib.rs (answer_agent, the frame_done call ~455-468, waitSettled path)
 - examples/counter-window/src/agent_socket.rs, window.rs; examples/showcase, tasks-demo (agent_addr)
-- crates/lumen-static/src/observe.rs; widgets observe impls
-- crates/lumen-static-agent/tests/*; .claude/skills/verifying-apps/SKILL.md; scripts/agent_client.py, drive/*
+- crates/fulgurite/src/observe.rs; widgets observe impls
+- crates/fulgurite-agent/tests/*; .claude/skills/verifying-apps/SKILL.md; scripts/agent_client.py, drive/*
 - docs/plan-agent-parity.md, results-agent-cost.md, results-harness.md
 
 **Questions.**
@@ -908,15 +908,15 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** winit Cargo.toml: 'Default-OFF ... a release build does not'. Config::agent: 'without the feature the field is inert'. hostile.rs: 'An agent is untrusted input'. results-agent-cost: 45.7/53.7 µs, 0 allocations steady-state.
 
 **Scope.**
-- crates/lumen-static-winit/src/agent.rs serve(); lib.rs Config::agent and where serve is spawned; Cargo.toml agent feature
+- crates/fulgurite-winit/src/agent.rs serve(); lib.rs Config::agent and where serve is spawned; Cargo.toml agent feature
 - examples/counter-window/src/agent_socket.rs; examples/showcase agent_addr; examples/tasks-demo
-- crates/lumen-static-agent/src/lib.rs dispatch, point_param, selector_param, since_param, MAX_TYPE_CHARS; audit.rs, journal.rs
-- crates/lumen-static/src/desc.rs NodeDesc size; benches/src/bin/agent.rs; docs/results-agent-cost.md, step5-observability.md
-- crates/lumen-static-agent/tests/hostile.rs, protocol.rs
+- crates/fulgurite-agent/src/lib.rs dispatch, point_param, selector_param, since_param, MAX_TYPE_CHARS; audit.rs, journal.rs
+- crates/fulgurite/src/desc.rs NodeDesc size; benches/src/bin/agent.rs; docs/results-agent-cost.md, step5-observability.md
+- crates/fulgurite-agent/tests/hostile.rs, protocol.rs
 
 **Questions.**
 1. Threat model: the endpoint is for local development only. Pass criteria: a non-loopback bind is refused or warned about; a release build cannot enable it without an explicit opt-in; a browser-originated request cannot execute a method. Test each criterion.
-2. LUMEN_AGENT=0.0.0.0:7654: does it bind silently? Does `printf 'GET / HTTP/1.1\r\n\r\n{...ui.getTree}\n' | nc` return the tree after the HTTP lines are rejected? Does a curl POST with a JSON-line body execute input.click?
+2. FULGURITE_AGENT=0.0.0.0:7654: does it bind silently? Does `printf 'GET / HTTP/1.1\r\n\r\n{...ui.getTree}\n' | nc` return the tree after the HTTP lines are rejected? Does a curl POST with a JSON-line body execute input.click?
 3. Can `cargo build --release -p showcase --features agent` ship the endpoint enabled? Are TextInput values that are marked as secrets emitted verbatim?
 4. Does an idle first client block a second one? What is the socket thread's RSS after 1 GB is streamed with no newline? Is a reply to `{"a":"\q"}` valid JSON? After a panic in dispatch, does the endpoint survive for the next client?
 5. What do input.click{x:1e300}, input.scroll{dy:1e39}, params given as an array, a batch array and a notification without an id return? Is anything rejected with the correct JSON-RPC error code?
@@ -938,10 +938,10 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** Handoff: the AccessKit tree DONE 2026-08-30, serving 'screen readers and agents'. T15.10: multi-window. T14.6: cursor. drag.rs: 'Drag<()> is one byte'. gesture.rs: 'a tree that holds none carries nothing'. image.rs: a decoder 'lives behind its default-off image feature'.
 
 **Scope.**
-- crates/lumen-static/src/observe.rs, Cargo.toml observe; crates/lumen-static-widgets/src/*.rs observe impls/set_role
-- crates/lumen-static-winit/src/lib.rs (resumed/resumed_impl, window_event_impl ScaleFactorChanged ~621), windows.rs (Pane/Panes), translate.rs (Touch, Dropped), cursor.rs, dialog.rs, clipboard.rs
-- crates/lumen-static/src/gesture.rs, drag.rs, anim.rs
-- crates/lumen-static-widgets/src/image.rs; ImageSource plumbing; examples/glasswall
+- crates/fulgurite/src/observe.rs, Cargo.toml observe; crates/fulgurite-widgets/src/*.rs observe impls/set_role
+- crates/fulgurite-winit/src/lib.rs (resumed/resumed_impl, window_event_impl ScaleFactorChanged ~621), windows.rs (Pane/Panes), translate.rs (Touch, Dropped), cursor.rs, dialog.rs, clipboard.rs
+- crates/fulgurite/src/gesture.rs, drag.rs, anim.rs
+- crates/fulgurite-widgets/src/image.rs; ImageSource plumbing; examples/glasswall
 - docs/00-handoff-static-tree.md observability (~620-710), step5-observability.md:95, plan-capabilities.md T15.5-T15.10, plan-desktop.md T14.6-T14.8, mobile-decision.md, book/src/platform.md
 
 **Questions.**
@@ -969,10 +969,10 @@ fixed in their own milestones, not in this one.
 **Prior claims to test.** M27: 'thirty-three widgets, checked name by name', 94 actions green both ways, §5's adversary 'passes its own gate'. T26.14: a widget_id typo is a build error. T31.2 E0119 is 'checked both directions'. AGENT.md: the book done 2026-09-10, with prose moving in the same commit.
 
 **Scope.**
-- crates/lumen-static-widgets/src/*.rs (esp. rich.rs, textarea.rs, data.rs, chart.rs, slider.rs, field.rs, split.rs)
-- crates/lumen-static-agent/src/audit.rs (W1001-W1011); crates/lumen-static/src/style.rs (Rule, cascade, lint_sheet_deep, selector matcher, Palette)
-- crates/lumen-static-macros/src/lib.rs (parse_wid, parse_classes, expand_app binds/after_update/tick, attributes list), tests/ui/*
-- crates/lumen-static/src/ops.rs, crates/lumen-static-widgets/src/ops.rs, num.rs; tests paint_containment.rs, sheet_lint.rs
+- crates/fulgurite-widgets/src/*.rs (esp. rich.rs, textarea.rs, data.rs, chart.rs, slider.rs, field.rs, split.rs)
+- crates/fulgurite-agent/src/audit.rs (W1001-W1011); crates/fulgurite/src/style.rs (Rule, cascade, lint_sheet_deep, selector matcher, Palette)
+- crates/fulgurite-macros/src/lib.rs (parse_wid, parse_classes, expand_app binds/after_update/tick, attributes list), tests/ui/*
+- crates/fulgurite/src/ops.rs, crates/fulgurite-widgets/src/ops.rs, num.rs; tests paint_containment.rs, sheet_lint.rs
 - examples/showcase/src/catalog.rs; scripts/drive/widgets/*.py
 - book/src/*.md (gaps.md, leaves.md, input-widgets.md, containers.md, overlays.md, attributes.md, styling.md); scripts/check_attr_table.sh; docs/plan-widget-parity.md §3b §5
 
@@ -1006,7 +1006,7 @@ fixed in their own milestones, not in this one.
 - .github/workflows/ci.yml; justfile (all recipes); rust-toolchain.toml
 - scripts/check_no_unsafe.sh, check_derive_attrs.sh, check_attr_table.sh, check_doc_paths.sh (+allow), check_doc_identifiers.sh (+allow), check_book_includes.sh, check_text.sh, check_bss.sh (+allow)
 - scripts/widget_drive.sh, agent_drive.sh, tasks_drive.sh, wake_gate.sh, gpu_parity.sh, live_gate.sh
-- crates/lumen-static-wgpu/tests/parity.rs, glass_parity.rs; crates/lumen-static-shell/tests/shaping.rs, glyph_placement.rs; crates/lumen-static-text/tests/shaping.rs; crates/lumen-static/Cargo.toml [[test]] required-features
+- crates/fulgurite-wgpu/tests/parity.rs, glass_parity.rs; crates/fulgurite-shell/tests/shaping.rs, glyph_placement.rs; crates/fulgurite-text/tests/shaping.rs; crates/fulgurite/Cargo.toml [[test]] required-features
 - Cargo.toml, Cargo.lock, benches-competitive/Cargo.lock
 - AGENT.md, docs/results-*.md, docs/00-handoff-static-tree.md DECIDED markers
 
@@ -1015,7 +1015,7 @@ fixed in their own milestones, not in this one.
 2. Table: every recipe and script that asserts something, marked as in `test`, in `check`, in CI, or manual-only. Which milestone-defining gates are manual-only? Does anything build benches-competitive?
 3. Per-binary `cargo test -- --list` counts for release-shape, dev-shape, simd, threads and gpu: which binaries report 0 tests where the docs imply they run? On a machine with no font, no adapter and no display, how many tests and gates go green while doing nothing?
 4. One planted violation per drift-check script (8 scripts): does each fire by name? Specifically: unsafe after a "//" literal; a derive attribute missing from both tables; `--bin serde` and `-p nonexistent` cited in a doc; stale allowlist entries.
-5. cargo deny check advisories/licenses/bans/sources and cargo audit on both lockfiles; cargo tree -d per shipping profile; the exact normal-dependency closure of lumen-static --no-default-features on thumb. Can it be pinned?
+5. cargo deny check advisories/licenses/bans/sources and cargo audit on both lockfiles; cargo tree -d per shipping profile; the exact normal-dependency closure of fulgurite --no-default-features on thumb. Can it be pinned?
 6. Numeric claims, from a fixed list chosen in advance: test binary count 151; widgets 33 (and 34 exported); drivable entries 39 and actions 94; App impls 19; firmware .text 27,024 B; Boundaries<256>; bss.allow and doc-identifiers.allow sizes; Cargo.lock package count; the 'six crates' in ci.yml; lint 4.04x and 5.9 ns/node (whose arm still runs); 15 DECIDED markers; 20 cross-file rustdoc paragraphs. How many are stale?
 
 **Methods.**
@@ -1029,22 +1029,22 @@ fixed in their own milestones, not in this one.
 ### R18 — The next vacuous tests: compile_fail doctests, thread-blind allocation counters, disabled debug assertions, strategy-blind drive harness, mutants and flakiness
 *Priority high; cargo yes. Goals: all goals; the two vacuous-test shapes in AGENT.md*
 
-**Rationale.** Merges V4, V5 and V6. Four compile_fail doctests have no error code and pass on any error. The allocation counters are thread-local, so they cannot see the threads rasteriser or task workers. lumen-static-shell runs its tests with debug-assertions=false. widget_drive's strategy is only a label, and nothing asks the binary what it was built with. Ports and /tmp logs are shared across worktrees. The const-budget wall clock and sleep-polling tests flake under load.
+**Rationale.** Merges V4, V5 and V6. Four compile_fail doctests have no error code and pass on any error. The allocation counters are thread-local, so they cannot see the threads rasteriser or task workers. fulgurite-shell runs its tests with debug-assertions=false. widget_drive's strategy is only a label, and nothing asks the binary what it was built with. Ports and /tmp logs are shared across worktrees. The const-budget wall clock and sleep-polling tests flake under load.
 
 **Prior claims to test.** style.rs: 'A misspelled id fails the build'. text.rs: misuse is 'a compile error at the binding site'. results-allocation: 'Every path asserts zero'. M27: 'green both ways'; 'coverage as an assertion'. justfile: `just test` deterministic.
 
 **Scope.**
-- crates/lumen-static/src/text.rs:339, style.rs:314/1250/1265 (compile_fail doctests); crates/lumen-static-macros/tests/ui.rs
-- crates/lumen-static-shell/tests/alloc_gate.rs; crates/lumen-static/tests/enum_alloc.rs; every #[global_allocator] in tests, benches and fixtures
-- Cargo.toml [profile.dev.package.lumen-static-shell]
+- crates/fulgurite/src/text.rs:339, style.rs:314/1250/1265 (compile_fail doctests); crates/fulgurite-macros/tests/ui.rs
+- crates/fulgurite-shell/tests/alloc_gate.rs; crates/fulgurite/tests/enum_alloc.rs; every #[global_allocator] in tests, benches and fixtures
+- Cargo.toml [profile.dev.package.fulgurite-shell]
 - crates/*/tests/*oracle*, *damage*, *invalidation*; fixtures/miri-smoke
 - scripts/widget_drive.sh, drive/run.py, harness.py, widgets/*.py, ui_check.py, live_gate.sh
-- crates/lumen-static-shell/tests/failure.rs, spawner.rs, batch.rs; justfile const-budget
+- crates/fulgurite-shell/tests/failure.rs, spawner.rs, batch.rs; justfile const-budget
 
 **Questions.**
 1. For each compile_fail doctest: does the fixed sibling compile? Does the failing version fail with the intended error? Delete the mechanism (the TextBuffer bound, the wid_index! duplicate refusal): does the doctest go red? Add error codes where one exists.
 2. Under --features threads, make the band workers allocate: does any allocation gate see it? Is there a process-wide counter used anywhere?
-3. With debug-assertions and overflow-checks on for lumen-static-shell, does its suite still pass? Each failure is a latent defect.
+3. With debug-assertions and overflow-checks on for fulgurite-shell, does its suite still pass? Each failure is a latent defect.
 4. Every test that compares two strategies, backends or builds: does it independently assert that its scenario happened (handled, a changed count, the hit node)? List those that do not.
 5. Can the running binary report its strategy and features over the agent? Build the second widget-drive binary identical to the first (drop boundaries): does the drive stay green? Run with a leftover process on 7656: does anything notice? Delete one inventory and one action row: which gate fires? Is there any check that each exported widget has an inventory?
 6. ui_check bounds: print each measured value beside its bound and flag headroom above 5x. Does live_gate fail if the app panics after ui_check? Is the T27.10 planted weakness recorded so it can be re-run?

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M83/T83.0 (docs/plan-gpu-extension.md): lumen-static-shell names no
+# M83/T83.0 (docs/plan-gpu-extension.md): fulgurite-shell names no
 # window and no GPU. D1(b) moves `Backend` and `Frame` into the shell
 # (T83.1) on the premise that the shell can hold the trait without
 # pulling in what implements it -- winit, softbuffer, wgpu. Nothing
@@ -32,7 +32,7 @@ err=$(mktemp) || exit 1
 trap 'rm -f "$err"' EXIT
 
 for build in default truetype; do
-    args=(-p lumen-static-shell -e normal --locked --offline --prefix none)
+    args=(-p fulgurite-shell -e normal --locked --offline --prefix none)
     [ "$build" = truetype ] && args+=(--features truetype)
     if ! out=$(cargo tree "${args[@]}" 2>"$err"); then
         echo "check_shell_headless: cargo tree failed for the $build build -- not a pass:" >&2

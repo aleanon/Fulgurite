@@ -31,10 +31,10 @@ use core::panic::PanicInfo;
 use core::ptr::{read_volatile, write_volatile};
 
 use embedded::{frame_changed, Checksum, Device, DeviceUi, Ui, DEVICE_NODES};
-use lumen_static::event::InputState;
-use lumen_static::invalidate::{Boundaries, Changed, Invalidation};
-use lumen_static::prelude::*;
-use lumen_static::{pass, stack_bytes, wid_index, NodeState, Style};
+use fulgurite::event::InputState;
+use fulgurite::invalidate::{Boundaries, Changed, Invalidation};
+use fulgurite::prelude::*;
+use fulgurite::{pass, stack_bytes, wid_index, NodeState, Style};
 
 // ---- the machine: vector table, reset, semihosting ----------------------
 
@@ -198,7 +198,7 @@ struct D6 {
 
 /// A cold frame of `W`, measured. Arrays are sized for the deepest.
 #[inline(never)]
-fn sweep<W: lumen_static::Widget + Default>() -> (usize, usize) {
+fn sweep<W: fulgurite::Widget + Default>() -> (usize, usize) {
     let mut w = W::default();
     let mut st = [NodeState::default(); 32];
     let mut sty = [Style::default(); 32];
@@ -217,8 +217,8 @@ const FIELD: usize = wid_index!(DeviceUi, "field");
 #[inline(never)]
 fn run() -> ! {
     let profile = if cfg!(debug_assertions) { "dev" } else { "release" };
-    let model = stack_bytes(<DeviceUi as lumen_static::Widget>::DEPTH);
-    say(format_args!("fwq: profile {profile}, depth {}, stack region {} B", <DeviceUi as lumen_static::Widget>::DEPTH, sp() - bottom()));
+    let model = stack_bytes(<DeviceUi as fulgurite::Widget>::DEPTH);
+    say(format_args!("fwq: profile {profile}, depth {}, stack region {} B", <DeviceUi as fulgurite::Widget>::DEPTH, sp() - bottom()));
 
     let cal = measure(&mut || calibrate());
     say(format_args!("calibrate: {cal} B (known local 2000 B)"));
@@ -243,12 +243,12 @@ fn run() -> ! {
 
     dev.clicks = 7;
     inv.clear();
-    let mut wrote = lumen_static::event::Wrote::Nothing;
+    let mut wrote = fulgurite::event::Wrote::Nothing;
     let bind = measure(&mut || wrote = dev.update_marked(&mut |r| inv.mark(r)));
     say(format_args!("stack: bound update {bind} B / 4096 (model {model})"));
 
     // The setup must have happened, or the figures above priced no-ops.
-    let landed = typed && dev.ui.field.as_str() == "q" && matches!(wrote, lumen_static::event::Wrote::Marked);
+    let landed = typed && dev.ui.field.as_str() == "q" && matches!(wrote, fulgurite::event::Wrote::Marked);
     say(format_args!(
         "landed: typed {typed} (field {:?}), bind wrote {wrote:?} ({} ranges marked), {} cmds painted",
         dev.ui.field.as_str(),

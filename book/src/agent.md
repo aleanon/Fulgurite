@@ -250,12 +250,12 @@ come from the laid-out tree rather than from guesses.
 
 The agent's tree is the screen reader's tree, so a widget's role, name
 and state are one answer for both. The table the role test holds every
-widget to (`crates/lumen-static-widgets/tests/a11y_roles.rs`, M54/T54.3)
+widget to (`crates/fulgurite-widgets/tests/a11y_roles.rs`, M54/T54.3)
 — `row(id, impl, role, named)`, where `named` means the control carries
 a name when it is built with one (its `label`, or an image's `alt`):
 
 ```text
-{{#include ../../crates/lumen-static-widgets/tests/a11y_roles.rs:rows}}
+{{#include ../../crates/fulgurite-widgets/tests/a11y_roles.rs:rows}}
 ```
 
 A control with no visible text of its own — a checkbox, a slider, a
@@ -289,7 +289,7 @@ is gated — which is what makes the release cost genuinely zero rather
 than small.
 
 **It is two features, and the build insists on both.** A widget's
-`observe` impl is gated on `lumen-static-widgets/observe`, not on the
+`observe` impl is gated on `fulgurite-widgets/observe`, not on the
 core's, so an agent build that turned on only the core's reported every
 widget as `GenericContainer`. The widgets crate now refuses to compile in
 that graph and names the feature to add (M48/T48.9,

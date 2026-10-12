@@ -5,7 +5,7 @@
 # was no `suspended` handler and the image source was taken once, so a
 # second `resumed` drew every image as nothing. A desktop never sends
 # that pair, so the window runs it on itself: a DEBUG build started with
-# LUMEN_TEST_RESUME=4000 suspends and resumes once, 4 s in. The drive
+# FULGURITE_TEST_RESUME=4000 suspends and resumes once, 4 s in. The drive
 # screenshots `examples/glasswall` (the example with images) before and
 # after and prints the differing pixels beside a 0.1% bound.
 #
@@ -35,9 +35,9 @@ $LAUNCH --display-only || exit $?
 cargo build -q -p glasswall --features agent
 for leg in software-resume software-still; do
     echo "== $leg =="
-    env=(--env LUMEN_BACKEND=software)
+    env=(--env FULGURITE_BACKEND=software)
     mode=still
-    if [ "$leg" = software-resume ]; then env+=(--env LUMEN_TEST_RESUME=4000); mode=resume; fi
+    if [ "$leg" = software-resume ]; then env+=(--env FULGURITE_TEST_RESUME=4000); mode=resume; fi
     $LAUNCH --leg "$leg" --exe target/debug/glasswall "${env[@]}" \
         --expect-strategy Boundaries --expect-features "" \
         -- python3 scripts/resume_drive.py {port} "$leg" "$mode"
@@ -45,20 +45,20 @@ done
 
 # M83/T83.2: a program's own backend (`Program::backend_with`), built
 # without `gpu`, so `pick_backend`'s `not(gpu)` branch is the one that asks
-# the factory. `LUMEN_BACKEND=auto` because `software` skips a factory.
+# the factory. `FULGURITE_BACKEND=auto` because `software` skips a factory.
 # One leg, not one per strategy: the factory runs in `resumed` before the
 # session's first frame, where the host's strategy cannot reach.
 echo "== custom-resume =="
 cargo build -q -p glasswall --features agent,custom-backend
 $LAUNCH --leg custom-resume --exe target/debug/glasswall \
-    --env LUMEN_BACKEND=auto --env LUMEN_TEST_RESUME=4000 \
+    --env FULGURITE_BACKEND=auto --env FULGURITE_TEST_RESUME=4000 \
     --expect-strategy Boundaries --expect-features "" \
     -- python3 scripts/resume_drive.py {port} custom-resume resume
 
 echo "== gpu-resume =="
 cargo build -q -p glasswall --features agent,gpu
 $LAUNCH --leg gpu-resume --exe target/debug/glasswall \
-    --env LUMEN_BACKEND=gpu --env LUMEN_TEST_RESUME=4000 \
+    --env FULGURITE_BACKEND=gpu --env FULGURITE_TEST_RESUME=4000 \
     --expect-strategy Boundaries --expect-features "" \
     -- python3 scripts/resume_drive.py {port} gpu-resume resume xwd
 
@@ -71,7 +71,7 @@ cargo build -q -p two-windows --features gpu
 (
     . scripts/drive_window.sh
     $LAUNCH --leg two-windows-gpu --exe target/debug/two-windows \
-        --env LUMEN_BACKEND=gpu --env LUMEN_TEST_RESUME=8000 \
+        --env FULGURITE_BACKEND=gpu --env FULGURITE_TEST_RESUME=8000 \
         --expect-strategy Boundaries --expect-features shaping \
         -- python3 scripts/resume_windows.py {port} {pid} {log}
 )

@@ -13,13 +13,13 @@ In order, for one leg:
 
 1. **A display**, or exit 77 — M43 §2's skip code. What 77 means to an
    aggregate is M43's policy; this is only where the code lives.
-2. **A port**: `--port`, else `LUMEN_LIVE_PORT`, else a free one —
-   from `LUMEN_LIVE_PORT_RANGE` (`7880-7899`) when set, from the kernel
+2. **A port**: `--port`, else `FULGURITE_LIVE_PORT`, else a free one —
+   from `FULGURITE_LIVE_PORT_RANGE` (`7880-7899`) when set, from the kernel
    otherwise — and **a port that already answers is refused** before
    anything is launched: `port already answering on 127.0.0.1:P (owner
    pid Q)`.
 3. **The binary itself**, not `cargo run` (whose pid is cargo's), with
-   `LUMEN_AGENT_ADDR` set (M48/T48.11 settled on the one name, R13-F10),
+   `FULGURITE_AGENT_ADDR` set (M48/T48.11 settled on the one name, R13-F10),
    and its log at `target/live/<script>-<leg>.log` — per
    worktree, per leg, so two worktrees or two legs never share one.
    Its windows are asked onto the monitor the user is not reading, without
@@ -39,14 +39,14 @@ In order, for one leg:
    binaries that predate it (T42.8's re-run of old commits).
    It prints: `drove pid P (socket owner P), strategy S, features F, exe E`.
    Then **where its windows opened**: each must sit on the monitor
-   `LUMEN_WINDOW_POS` names, or the leg fails (`check_placement` says
+   `FULGURITE_WINDOW_POS` names, or the leg fails (`check_placement` says
    when it cannot look).
    A child that dies between binding and answering is reported as step 4's
    death, with its status and log tail (M83/T83.7).
 6. **The drive**, with `{port}`, `{addr}`, `{pid}`, `{log}` substituted in
-   its argv and `LUMEN_AGENT_ADDR`, `LUMEN_LIVE_PORT`, `LUMEN_LIVE_PID`,
-   `LUMEN_LIVE_STRATEGY` (the process's, not the script's),
-   `LUMEN_LIVE_FEATURES` and `LUMEN_LIVE_EXPECT_FEATURES` in its
+   its argv and `FULGURITE_AGENT_ADDR`, `FULGURITE_LIVE_PORT`, `FULGURITE_LIVE_PID`,
+   `FULGURITE_LIVE_STRATEGY` (the process's, not the script's),
+   `FULGURITE_LIVE_FEATURES` and `FULGURITE_LIVE_EXPECT_FEATURES` in its
    environment.
 7. **Stop** (M42/T42.3, R18-F9): the child must still be alive — one
    that died mid-drive fails the leg with its status — and its log must
@@ -163,7 +163,7 @@ def owners(port: int) -> tuple[list[int], str]:
 
 
 def free_port() -> int:
-    rng = os.environ.get("LUMEN_LIVE_PORT_RANGE")
+    rng = os.environ.get("FULGURITE_LIVE_PORT_RANGE")
     if rng:
         lo, hi = (int(x) for x in rng.split("-"))
         for p in range(lo, hi + 1):
@@ -175,7 +175,7 @@ def free_port() -> int:
                 return p
             except OSError:
                 continue
-        raise SystemExit(f"launch: no free port in LUMEN_LIVE_PORT_RANGE={rng}")
+        raise SystemExit(f"launch: no free port in FULGURITE_LIVE_PORT_RANGE={rng}")
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -219,15 +219,15 @@ def placement(env: dict) -> None:
     that did not source it: the first monitor xrandr does not mark
     primary, and no focus. Whatever the environment already says wins,
     as it does in the helper, which stays the one place the rule lives."""
-    if "LUMEN_WINDOW_POS" in env and "LUMEN_WINDOW_INACTIVE" in env:
+    if "FULGURITE_WINDOW_POS" in env and "FULGURITE_WINDOW_INACTIVE" in env:
         return
-    r = subprocess.run(["bash", "-c", '. "$1" && printf "%s\\n%s\\n" "${LUMEN_WINDOW_POS-}" '
-                        '"$LUMEN_WINDOW_INACTIVE"', "_", str(ROOT / "scripts" / "drive_window.sh")],
+    r = subprocess.run(["bash", "-c", '. "$1" && printf "%s\\n%s\\n" "${FULGURITE_WINDOW_POS-}" '
+                        '"$FULGURITE_WINDOW_INACTIVE"', "_", str(ROOT / "scripts" / "drive_window.sh")],
                        env=env, capture_output=True, text=True)
     pos, _, inactive = r.stdout.partition("\n")
     if pos:
-        env.setdefault("LUMEN_WINDOW_POS", pos)
-    env.setdefault("LUMEN_WINDOW_INACTIVE", inactive.strip() or "1")
+        env.setdefault("FULGURITE_WINDOW_POS", pos)
+    env.setdefault("FULGURITE_WINDOW_INACTIVE", inactive.strip() or "1")
 
 
 def monitors(env: dict) -> list[tuple[str, int, int, int, int]]:
@@ -271,7 +271,7 @@ def windows_of(pid: int, env: dict) -> list[tuple[str, int, int, int, int]]:
 
 
 def check_placement(tag: str, pid: int, env: dict) -> None:
-    """**Every window a leg opens is on the monitor `LUMEN_WINDOW_POS`
+    """**Every window a leg opens is on the monitor `FULGURITE_WINDOW_POS`
     names** -- the secondary one, by `placement`'s default -- and not in
     front of what the user is reading. A window manager may refuse the
     request, so this looks: the centre of each of the child's windows
@@ -279,12 +279,12 @@ def check_placement(tag: str, pid: int, env: dict) -> None:
     at all with a second monitor there. Not checked, and said so, with
     no position asked for (one monitor), no `wmctrl`/`xwininfo`
     or no EWMH window manager (Xvfb, a bare Xephyr), or no window."""
-    pos = env.get("LUMEN_WINDOW_POS", "")
+    pos = env.get("FULGURITE_WINDOW_POS", "")
     m = re.fullmatch(r"\s*(-?\d+)\s*,\s*(-?\d+)\s*", pos)
-    if "LUMEN_WINDOW_POS" not in env and len(monitors(env)) > 1:
+    if "FULGURITE_WINDOW_POS" not in env and len(monitors(env)) > 1:
         # `placement` sets it whenever there is a monitor to move to; an
         # empty value is a script's own choice (motion_present's Xephyr).
-        fail(tag, "LUMEN_WINDOW_POS is unset with more than one monitor -- the window "
+        fail(tag, "FULGURITE_WINDOW_POS is unset with more than one monitor -- the window "
                   "opens wherever the window manager likes, maybe in front of the user")
     if not m:
         say(tag, "placement: no position asked for, not checked")
@@ -312,7 +312,7 @@ def check_placement(tag: str, pid: int, env: dict) -> None:
            if not (x0 <= x + w // 2 < x0 + w0 and y0 <= y + h // 2 < y0 + h0)]
     if off:
         fail(tag, f"window {off[0][0]} opened at ({off[0][1]}, {off[0][2]}), off monitor {n} "
-                  f"({w0}x{h0}+{x0}+{y0}) that LUMEN_WINDOW_POS={pos} asked for")
+                  f"({w0}x{h0}+{x0}+{y0}) that FULGURITE_WINDOW_POS={pos} asked for")
     say(tag, f"placement: {len(wins)} window(s) on {n} at "
              + ", ".join(f"({x}, {y})" for _, x, y, _, _ in wins))
 
@@ -380,14 +380,14 @@ def main() -> int:
     # 2. a port nobody else answers on
     port = None
     if not a.no_agent:
-        port = a.port or int(os.environ.get("LUMEN_LIVE_PORT") or 0) or free_port()
+        port = a.port or int(os.environ.get("FULGURITE_LIVE_PORT") or 0) or free_port()
         if answering(port):
             o, how = owners(port)
             fail(tag, f"port already answering on 127.0.0.1:{port} "
                       f"(owner pid {', '.join(map(str, o)) or '?'}, by {how}) -- refusing to "
                       f"launch into it: whatever answers is not the build this leg names")
         addr = f"127.0.0.1:{port}"
-        env["LUMEN_AGENT_ADDR"] = addr
+        env["FULGURITE_AGENT_ADDR"] = addr
 
     # 3. the binary itself, its log per script and leg
     logdir = ROOT / "target" / "live"
@@ -482,13 +482,13 @@ def main() -> int:
                 say(tag, f"drove pid {child.pid} (socket owner {o[0]}, by {how}), "
                          f"identity: socket only")
         check_placement(tag, child.pid, env)
-        env["LUMEN_LIVE_PID"] = str(child.pid)
-        env["LUMEN_LIVE_STRATEGY"] = strategy
-        env["LUMEN_LIVE_FEATURES"] = ",".join(features)
-        env["LUMEN_LIVE_EXPECT_FEATURES"] = ",".join(sorted(expect))
-        env["LUMEN_LIVE_LOG"] = str(log)
+        env["FULGURITE_LIVE_PID"] = str(child.pid)
+        env["FULGURITE_LIVE_STRATEGY"] = strategy
+        env["FULGURITE_LIVE_FEATURES"] = ",".join(features)
+        env["FULGURITE_LIVE_EXPECT_FEATURES"] = ",".join(sorted(expect))
+        env["FULGURITE_LIVE_LOG"] = str(log)
         if port:
-            env["LUMEN_LIVE_PORT"] = str(port)
+            env["FULGURITE_LIVE_PORT"] = str(port)
 
         # 6. the drive
         rc = 0

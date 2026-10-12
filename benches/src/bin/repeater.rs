@@ -5,10 +5,10 @@
 //! Run: `cargo run --release -p benches --bin repeater`
 
 use benches::{bench, Item};
-use lumen_static::assemble::Assembled;
-use lumen_static::desc::NodeDesc;
-use lumen_static::repeat::Repeat;
-use lumen_static::{pass, Constraints, NodeState, Widget};
+use fulgurite::assemble::Assembled;
+use fulgurite::desc::NodeDesc;
+use fulgurite::repeat::Repeat;
+use fulgurite::{pass, Constraints, NodeState, Widget};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 800.0 };
 
@@ -23,7 +23,7 @@ fn repeat_arm(rows: usize, iters: usize) {
     let sty = pass::default_styles(&list);
     bench(&format!("repeat/{rows}-rows"), iters, || {
         pass::layout(&mut list, &sty, &mut st, ROOT_C);
-        let mut out = lumen_static::DisplayList::new();
+        let mut out = fulgurite::DisplayList::new();
         pass::paint(&list, &st, &mut out);
         out.len() as u64
     });
@@ -43,7 +43,7 @@ fn materialized_arm(rows: usize, iters: usize) {
     }
     bench(&format!("materialized/{rows}-rows"), iters, || {
         a.layout(ROOT_C);
-        let mut out = lumen_static::DisplayList::new();
+        let mut out = fulgurite::DisplayList::new();
         a.paint(&mut out);
         out.len() as u64
     });

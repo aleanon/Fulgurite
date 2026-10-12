@@ -128,22 +128,22 @@
 //!
 //! ```text
 //! cd benches-competitive
-//! cargo run --release -p lumen-static-stages -- [Ns] [iters] [warm]
-//! # e.g. cargo run --release -p lumen-static-stages -- 100,1000 50 5
-//! # LUMEN_NO_GPU=1 skips the GPU stage without skipping the rest.
+//! cargo run --release -p fulgurite-stages -- [Ns] [iters] [warm]
+//! # e.g. cargo run --release -p fulgurite-stages -- 100,1000 50 5
+//! # FULGURITE_NO_GPU=1 skips the GPU stage without skipping the rest.
 //! ```
 
 use std::fmt::Write as _;
 use std::time::Instant;
 
-use lumen_static::event::InputState;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::{Damage, DisplayList, Incremental, LayoutCx, Rebuild, Recording, Retention, Scaled};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{FontMetrics, FontStack};
-use lumen_static_shell::{Host, CLEAR};
-use lumen_static_wgpu::Gpu;
+use fulgurite::event::InputState;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::{Damage, DisplayList, Incremental, LayoutCx, Rebuild, Recording, Retention, Scaled};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{FontMetrics, FontStack};
+use fulgurite_shell::{Host, CLEAR};
+use fulgurite_wgpu::Gpu;
 
 /// The raster surface: the same 400x800 the frame arm and
 /// `docs/results-competitive.md` use, so `raster.sw` here and
@@ -186,9 +186,9 @@ struct Ui {
 /// and its six-stage sum could claim to be "exactly what
 /// `Host::pump_with` does" while a real application's pump paid a stage
 /// the sum never saw. A colour, so the geometry is what it was.
-fn sheet() -> [lumen_static::style::Rule; 1] {
-    use lumen_static::style::{Patch, Rule, Selector};
-    [Rule::new(Selector::Kind("label"), Patch::new().color(lumen_static::display::Color(20, 20, 30, 255)))]
+fn sheet() -> [fulgurite::style::Rule; 1] {
+    use fulgurite::style::{Patch, Rule, Selector};
+    [Rule::new(Selector::Kind("label"), Patch::new().color(fulgurite::display::Color(20, 20, 30, 255)))]
 }
 
 /// Every pass `Host::pump_with` ran in loop C must be a stage of the
@@ -222,7 +222,7 @@ fn host_gap_bound(pump: f64) -> f64 {
 /// because there is no binding attribute for a list — but it does
 /// exactly what a generated binding does, `set_if_changed` per target,
 /// comparing the *formatted output* rather than trusting a dirty bit
-/// (`lumen_static::bind`). That comparison is why the `update` stage
+/// (`fulgurite::bind`). That comparison is why the `update` stage
 /// costs O(N) even in the `one_row` workload, and reporting that is half
 /// the point of having the stage.
 #[derive(Default)]
@@ -239,7 +239,7 @@ impl App for Rows {
     // M28/T28.2: this fixture defers no work. `Never` is
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
-    type Msg = lumen_static::event::Never;
+    type Msg = fulgurite::event::Never;
     fn apply(_: &mut Self, m: Self::Msg) -> bool {
         match m {}
     }
@@ -259,7 +259,7 @@ impl App for Rows {
         // this is the binding step the profiler is timing.
         let mut changed = false;
         for (dst, src) in self.ui.rows.items.iter_mut().zip(self.model.iter()) {
-            changed |= lumen_static::bind::set_if_changed(dst, src);
+            changed |= fulgurite::bind::set_if_changed(dst, src);
         }
         changed
     }
@@ -358,7 +358,7 @@ impl<R: Retention> Rig<R> {
         app.ui.rows.items = items;
         let mut styles = pass::default_styles(&app.ui);
         // The same sheet the host gets, cascaded once: table and arenas.
-        lumen_static::style::cascade_deep(&mut app.ui, &sheet(), &mut styles);
+        fulgurite::style::cascade_deep(&mut app.ui, &sheet(), &mut styles);
         Rig {
             styles,
             states: vec![NodeState::default(); <Ui as Widget>::NODE_COUNT],
@@ -404,10 +404,10 @@ impl<R: Retention> Rig<R> {
         //    `Everything` for a `true`), so the rows in the `List`'s
         //    arena are re-styled every frame the model changed.
         if wrote {
-            lumen_static::style::cascade_arenas_deep(
+            fulgurite::style::cascade_arenas_deep(
                 &mut self.app.ui,
                 &sheet(),
-                &lumen_static::style::Palette::LIGHT,
+                &fulgurite::style::Palette::LIGHT,
             );
         }
         ts[3] = Instant::now();
@@ -477,7 +477,7 @@ struct Cell {
     host_cascades: u64,
     /// That host's own stages and whole pump, at its fastest iteration
     /// (M53/T53.1).
-    host_stages: lumen_static_shell::frame_cost::StageTimes,
+    host_stages: fulgurite_shell::frame_cost::StageTimes,
     /// Minimum `Gpu::draw` + `Gpu::wait`; `None` when there is no
     /// adapter, or when every frame's damage was empty and the stage
     /// therefore never ran. `gpu_available` tells the two apart.
@@ -585,7 +585,7 @@ fn run_cell<R: Retention>(
     // minimum — M53/T53.1. One iteration, so stages and pump describe
     // the same frame and their gap is what no stage covers, not the
     // difference between two loops' minima.
-    let mut host_stages = lumen_static_shell::frame_cost::StageTimes::default();
+    let mut host_stages = fulgurite_shell::frame_cost::StageTimes::default();
     for k in 0..(warm + iters) {
         mutate(&mut host.app.model, load, k);
         host.post(Event::down(HIT.0, HIT.1));
@@ -793,7 +793,7 @@ fn main() {
     // The GPU is optional by construction, not by feature: no adapter is
     // the configuration the software canvas exists for, and this arm
     // reports it as a `no-adapter` note rather than failing.
-    let mut gpu = if std::env::var_os("LUMEN_NO_GPU").is_some() {
+    let mut gpu = if std::env::var_os("FULGURITE_NO_GPU").is_some() {
         None
     } else {
         Gpu::headless(W, H).map(|mut g| {
@@ -803,8 +803,8 @@ fn main() {
     };
     let adapter = gpu.as_ref().map_or_else(
         || {
-            if std::env::var_os("LUMEN_NO_GPU").is_some() {
-                "disabled (LUMEN_NO_GPU)".to_string()
+            if std::env::var_os("FULGURITE_NO_GPU").is_some() {
+                "disabled (FULGURITE_NO_GPU)".to_string()
             } else {
                 "none (no adapter)".to_string()
             }
@@ -812,7 +812,7 @@ fn main() {
         |g| g.adapter().to_owned(),
     );
 
-    println!("# lumen-static per-stage frame profiler (benches-competitive/arms/stages)");
+    println!("# fulgurite per-stage frame profiler (benches-competitive/arms/stages)");
     println!("# method: min of {iters} iterations after {warm} warm-ups, per stage, per cell");
     println!("# raster surface: {W}x{H}; layout limits: {W} x {LAYOUT_H} (natural row heights)");
     println!("# gpu adapter: {adapter}");

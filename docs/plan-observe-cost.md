@@ -66,7 +66,7 @@ and prints the measured quantity beside its bound.*
   ever get a derived walk. T35.1 recounts them mechanically and puts the
   command in its commit.
 - **The `benches` crate enables `observe` unconditionally**, both
-  through `lumen-static-widgets` and through its dependency on the agent
+  through `fulgurite-widgets` and through its dependency on the agent
   crate. So `just grid` cannot currently be built without it.
 
 ## 2. The decision: one table-driven walk, statically dispatched where a widget exists
@@ -119,14 +119,14 @@ Rejected, with reasons:
 1. **Make `observe` and the agent optional features of `benches`**, and
    mark with `required-features` the bins that need them (`agent`, and
    any others). Build `just grid` both ways, with
-   `lumen-static-widgets/observe` only, to match the frame arm. **Record
+   `fulgurite-widgets/observe` only, to match the frame arm. **Record
    the grid's cost before T35.1 here**, because T35.2 cannot take a
    baseline after the fix. **Write the prediction down first.** The
    grid's `BodyRow` is a non-`fuse` derived row whose labels are
    coerced by `call_child` in every build, so the mechanism predicts
    that `observe` adds only the rows' own vtable, and a small cost.
 2. **The symbol gate**, which is the committed gate. Build unstripped,
-   plain and with `lumen-static-widgets/observe`, for **two arms**: the
+   plain and with `fulgurite-widgets/observe`, for **two arms**: the
    frame arm (`List<Label<String>>`) and a new `Repeat<Label<String>>`
    arm. Assert that no row widget's `layout` or `paint` appears as a
    standalone symbol in either build, and print each symbol's size when
@@ -152,7 +152,7 @@ plain builds and watch it pass.
 >   out)` has a default that walks `table` through `node(i)` — correct
 >   for every widget, only slower as a row — and `leaf_common!` and the
 >   derive override it with static calls, gated through
->   `lumen_static::__observe_items!` because they expand in the user's
+>   `fulgurite::__observe_items!` because they expand in the user's
 >   crate. Review finding 1's objection was to a default that *drops* a
 >   wrapper's children; this one drops nothing, and it spared ~30
 >   hand-written impls a mechanical forwarding body.
@@ -169,7 +169,7 @@ plain builds and watch it pass.
 > `just test`. *Injection:* the coercion back in `Repeat::observe` alone
 > — the `Repeat` arm fails with `Label`'s `layout` and `paint` named, the
 > `List` arm stays green. Equivalence:
-> `crates/lumen-static-widgets/tests/observe_walk.rs` — `None`, `Some`,
+> `crates/fulgurite-widgets/tests/observe_walk.rs` — `None`, `Some`,
 > `Either`, an enum's inactive variant, `List`, `Repeat`, `Glass<W>` and
 > a hand-written leaf, 40 entries identical to `emit_table`'s.
 > *Injections:* the derive skipping a field, and a leaf emitting

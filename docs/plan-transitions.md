@@ -16,7 +16,7 @@ is deferred with its reason below. Depends on nothing in this plan.
 It contends with M80 and M82 for the spare bytes of `Style` and
 `NodeState`, and it adds no `Session` method, `Cmd` variant, `Event`
 variant or `Painter` method. Read against `553fa5e`, the tip of
-`lumen-static-merge`, which is `92a4033` plus the M61 merge. `.lss`
+`fulgurite-merge`, which is `92a4033` plus the M61 merge. `.lss`
 exists there, so the new property's declaration is unconditional.*
 
 **Decisions.**
@@ -29,12 +29,12 @@ exists there, so the new property's declaration is unconditional.*
   `pass::dispatch` (`pass.rs:1015-1026`, `set_hovered`,
   `release_press`). The one place that already sees every flip is
   `Host::pump_with`'s `PointerFocus` before/after comparison
-  (`lumen-static-shell/src/lib.rs:1803`, M25/T25.0), and it already
+  (`fulgurite-shell/src/lib.rs:1803`, M25/T25.0), and it already
   marks the old node and the new one. An entry starts there, after
   dispatch and before layout, when `self.styles[n].transition > 0`.
   The frame that flips the bit is drawn at the entry's start levels.
 - **The clock: `Host::tick`, the path every animation already takes.**
-  `Transitions<8>` is a field of `Host`, in `lumen-static-shell`. Each
+  `Transitions<8>` is a field of `Host`, in `fulgurite-shell`. Each
   entry is `Transition { node: u32, from: u16, elapsed_ms: u16,
   dur_ms: u16 }`, 12 B, 96 B for the table, per host and not per node.
   - `tick(dt)` advances every entry. It computes the eased levels from
@@ -49,7 +49,7 @@ exists there, so the new property's declaration is unconditional.*
   (X3, G21). `Session::frame` returns the second `h.tick(0.0)`
   (`session.rs:606-625`). `ui.waitSettled`'s `animating` term is that
   same value (`session.rs:1008`). The window's redraw request reads it
-  too (`lumen-static-winit/src/lib.rs:838`). A non-empty table ORs
+  too (`fulgurite-winit/src/lib.rs:838`). A non-empty table ORs
   into the tick's return value, and all three follow from that one
   line. S1 is untouched: nothing crosses the `Hot` boundary that did
   not before. A swap builds a new `Host` (M37), so a transition in
@@ -137,7 +137,7 @@ exists there, so the new property's declaration is unconditional.*
   - `Cmd` (60 B) and `Event` (16 B) are not per-node and do not move.
     T86.1 asserts that they did not.
 - **The firmware: the blend sits behind an additive core feature,
-  `transitions`** (B6). `lumen-static-shell` enables it and fixtures
+  `transitions`** (B6). `fulgurite-shell` enables it and fixtures
   do not.
   - `firmware_interactive` links 61,922 B, 19,998 B under the 80 KB
     ceiling (`docs/results-embedded.md`, the M56-merge section; D5,
@@ -170,9 +170,9 @@ exists there, so the new property's declaration is unconditional.*
     `grep -rlE 'HOVER_DIM|PRESSED_DIM' --include=*.rs` at landing and
     printed in the commit body. At `553fa5e` that is twelve sites:
     - the derive's container seed
-      (`lumen-static-macros/src/lib.rs:1032`);
-    - core `Repeat`'s seed (`lumen-static/src/repeat.rs:472-473`);
-    - nine `lumen-static-widgets` files: `chart.rs`, `input.rs`,
+      (`fulgurite-macros/src/lib.rs:1032`);
+    - core `Repeat`'s seed (`fulgurite/src/repeat.rs:472-473`);
+    - nine `fulgurite-widgets` files: `chart.rs`, `input.rs`,
       `ops.rs`, `pick.rs`, `scroll.rs`, `slider.rs`, `textarea.rs`,
       `toggle.rs`, `trim.rs`;
     - `examples/showcase/src/nav.rs:120-121`.
@@ -195,7 +195,7 @@ exists there, so the new property's declaration is unconditional.*
 - **T86.0 — the stepped oracle, and the baselines.** Everything here
   compiles at HEAD and is green at HEAD. It is the harness T86.1–T86.3
   can break, so it has to be standing before them.
-  - `crates/lumen-static-shell/tests/transition_oracle.rs`: a
+  - `crates/fulgurite-shell/tests/transition_oracle.rs`: a
     `Host<_, Incremental, Everything>` and a
     `Host<_, Incremental, Boundaries<256>>`, each on its own tree of a
     `Button`, a `Switch` and a `TextInput`.
@@ -218,7 +218,7 @@ exists there, so the new property's declaration is unconditional.*
     - `cargo run --release -p benches --bin appearance`, rows `still`
       and `hover`, eight runs a side under `just bench-lock`, spread
       printed;
-    - `benches-competitive/run.sh -p lumen-static-frame`, row
+    - `benches-competitive/run.sh -p fulgurite-frame`, row
       `idle (floor)`.
   - Docs, same commit: `docs/results-transitions.md` (baseline table;
     thresholds K86a–K86d copied in before anything is built), and its
@@ -233,13 +233,13 @@ exists there, so the new property's declaration is unconditional.*
       `ops::MIX_LEVELS` constant;
     - `.lss` `transition-duration`, at the four sites a property
       touches: a `PROPERTIES` row and a new `Takes::Millis` in
-      `lumen-static-lss/src/lower.rs` (with a `describe` arm), a new
+      `fulgurite-lss/src/lower.rs` (with a `describe` arm), a new
       `Val::Millis(u16)` variant that lowering produces (beside the
       `Takes::Byte` arm, `lower.rs:513`), the macro's `val` arm
-      (`lumen-static-macros/src/lss.rs:223`), and the shell's
+      (`fulgurite-macros/src/lss.rs:223`), and the shell's
       run-time `set` arm `("transition_ms", Val::Millis(x))`
-      (`lumen-static-shell/src/lss.rs:90`);
-    - `ui.getAppliedStyles` (`lumen-static-agent/src/lib.rs:1519`,
+      (`fulgurite-shell/src/lss.rs:90`);
+    - `ui.getAppliedStyles` (`fulgurite-agent/src/lib.rs:1519`,
       which lists its fields by hand) reports `transition` and
       `state.pointer_mix`, so T86.3's live setup can be asserted
       without reading pixels.
@@ -302,11 +302,11 @@ exists there, so the new property's declaration is unconditional.*
         firmware_bind=0 firmware_cascade=32
         firmware_interactive=32`.
       - Injection: add `features = ["transitions"]` to
-        `fixtures/embedded`'s `lumen-static` line. The blend links and
+        `fixtures/embedded`'s `fulgurite` line. The blend links and
         the Δ exceeds the bound, printed.
       - Accept: removing the injection restores the bound's figure,
         printed per binary.
-    - `.lss`: the `lumen-static-lss` unit tests.
+    - `.lss`: the `fulgurite-lss` unit tests.
       - `transition-duration: 150ms` lowers to `transition_ms(150)`.
       - `155ms` and `2560ms` are refused with the `Takes::Millis`
         description.
@@ -317,9 +317,9 @@ exists there, so the new property's declaration is unconditional.*
         `transition-duration: 150ms`, so `include_lss!` and
         `lss::load` are compared on it. Injection: drop the shell's
         `set` arm; `load` panics on the sheet, by setter name.
-    - Lint: a `justfile` line `cargo clippy -p lumen-static
+    - Lint: a `justfile` line `cargo clippy -p fulgurite
       --features transitions --all-targets -- -D warnings` and
-      `RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
+      `RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite --no-deps
       --features transitions` (§3.1, second review X7). The workspace
       line already unifies the feature through the shell; this line
       keeps it linted if that ever changes. Injection: an unused
@@ -471,7 +471,7 @@ exists there, so the new property's declaration is unconditional.*
       with `hovered`/`pressed`/`.bg`/`PointerMove` under
       `crates/*/tests`, the list printed in the commit body. At
       `553fa5e` it includes at least
-      `lumen-static-shell/tests/pointer_invalidation.rs:97-116`
+      `fulgurite-shell/tests/pointer_invalidation.rs:97-116`
       (hover, `assert_eq!(painted, expected)`) and `:146-163`
       (press), and `damage_scale.rs:249-256` (the hover step, which
       asserts at `:206-209` that it damages a set of regions; a
@@ -545,7 +545,7 @@ exists there, so the new property's declaration is unconditional.*
 - **K86b — unused costs nothing.** Every tree has
   `transition == 0`, but the shell enables `transitions`. Measured by
   `benches --bin appearance`'s `still` and `hover` rows and
-  `benches-competitive/run.sh -p lumen-static-frame`'s
+  `benches-competitive/run.sh -p fulgurite-frame`'s
   `idle (floor)`, eight runs a side under `just bench-lock`. It fires
   if a row leaves its T86.0 spread. When it fires, the blend moves out
   of line (`#[cold]`) behind the `pointer_mix != 0` test and is
@@ -604,7 +604,7 @@ exists there, so the new property's declaration is unconditional.*
   line stays green under an unused binding in the feature's code; for
   `transitions` it does not, because the shell unifies the feature into
   every workspace build. The default-feature `cargo clippy -p
-  lumen-static` is the line that stays green, and was the one checked.
+  fulgurite` is the line that stays green, and was the one checked.
 - **K86b fired, after its response, on `idle (floor)`.** Inlined, the
   blend put `appearance`'s `still` above its spread (18,664 against
   14,779–17,524 ns). `#[cold] #[inline(never)]` brought `still` and

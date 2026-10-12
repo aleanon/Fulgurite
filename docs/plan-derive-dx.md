@@ -68,7 +68,7 @@ and prints the measured quantity beside its bound.*
 ### 1.1 The `App` derive's `changed` local is visible to the user's tokens (R16-F3)
 
 M33/T33.1 and M29 rewrote `#[bind]`'s expansion, and the hazard
-survived. `update_marked` in `crates/lumen-static-macros/src/lib.rs`
+survived. `update_marked` in `crates/fulgurite-macros/src/lib.rs`
 declares `let mut changed = false;` at call-site span (`:2089-2090`),
 then splices the bindings. A format binding writes the user's extra
 arguments into `format_args!(#fmt, &#src #(, #extra)*)` (`:1937`),
@@ -108,7 +108,7 @@ evidence is the review's `examples/m08.rs` and `m13.rs` (R16-F3;
 
 ### 1.3 A non-finite or negative length is accepted and breaks the frame silently (R16-F5, R16-F6)
 
-`Patch::apply_to` (`crates/lumen-static/src/style.rs:781`) copies
+`Patch::apply_to` (`crates/fulgurite/src/style.rs:781`) copies
 lengths into a `Style` unchecked, and nothing in `style.rs` or
 `pass.rs` tests finiteness. One NaN spacing, padding or font size makes
 most of the tree's `NodeState` non-finite, and every `contains` against
@@ -118,7 +118,7 @@ panic and no diagnostic (R16-F5; `docs/results-deep-review.md`).
 S3: the only source is an author-written length in Rust, and no
 stylesheet in the repository can produce one.
 
-Padding is also copied unclamped (`crates/lumen-static/src/ops.rs:348`),
+Padding is also copied unclamped (`crates/fulgurite/src/ops.rs:348`),
 and `inner_limits` (`:161-168`) clamps only the *result* of subtracting
 it, so a negative padding widens the content box and `place` offsets
 children outside their parent. They are painted and cannot be clicked,
@@ -126,7 +126,7 @@ because hit testing assumes children lie inside parents (R16-F6).
 
 ### 1.4 Two lints do not know about clipping (R16-F1, R16-F2)
 
-W1002 (`OFFSCREEN`, `crates/lumen-static-agent/src/audit.rs:99-100`,
+W1002 (`OFFSCREEN`, `crates/fulgurite-agent/src/audit.rs:99-100`,
 emitted at `:711`) compares each node against the **root's** bounds, with
 no clip or scroll ancestor considered, so it fires on the rows of an
 unscrolled `ScrollView` whose content runs past the window. It has no
@@ -141,22 +141,22 @@ first construct that can exceed its constraints: a scrollable content
 region". `ScrollView` is that construct and has shipped. The tripwire
 meant to announce it,
 `overflow_is_impossible_here_so_squeezing_surfaces_as_truncation`
-(`crates/lumen-static-agent/tests/lint.rs:207`), builds only the healthy
+(`crates/fulgurite-agent/tests/lint.rs:207`), builds only the healthy
 fixture, with no scroller and no negative padding, so it cannot fire —
 the "setup silently did not happen" shape (R16-F2).
 
 ### 1.5 A diagnostic feature changes another crate's types (R12-F5)
 
-`lumen-static-shell`'s `Inval` is `Boundaries<256>` unless the
+`fulgurite-shell`'s `Inval` is `Boundaries<256>` unless the
 `everything` feature is on, in which case it is `Everything`
-(`crates/lumen-static-shell/src/session.rs:48-51`). `Session::host`
+(`crates/fulgurite-shell/src/session.rs:48-51`). `Session::host`
 (`:171`), `Live::host` (`:457`) and `Pane::host`
-(`crates/lumen-static-winit/src/windows.rs:37`) are public fields of type
+(`crates/fulgurite-winit/src/windows.rs:37`) are public fields of type
 `Host<A, Ret, Inval>`. Cargo unifies features across a build graph, so
 one crate turning `everything` on changes those fields' types for every
 other crate. **The shape inverted with M34** (re-triage, at 1717808):
 `Boundaries<256>` is now also `Host`'s default type parameter
-(`crates/lumen-static-shell/src/lib.rs:61`), so the most natural
+(`crates/fulgurite-shell/src/lib.rs:61`), so the most natural
 spelling, plain `Host<A>`, is exactly the one that stops compiling when
 anything in the graph turns the diagnostic on. The re-triage re-ran the
 review's probe adapted to that spelling: green without the feature,
@@ -169,8 +169,8 @@ stays S3.
 `Menu` is `Chooser<MENU>` since T27.9), rich text as having "no spans
 within a run" (`:40-41`; `RichText` and `Markdown` since T27.12), and
 the drawing vocabulary as "nine commands" (`:44-47`; `Cmd` has eleven
-variants in `crates/lumen-static/src/display.rs`). The attribute tables
-(`crates/lumen-static/src/lib.rs:40-57`, `book/src/attributes.md:3-20`)
+variants in `crates/fulgurite/src/display.rs`). The attribute tables
+(`crates/fulgurite/src/lib.rs:40-57`, `book/src/attributes.md:3-20`)
 omit `#[widget(wrap)]`, `#[widget(grid, columns = N)]` and
 `#[app(tick = f)]`. **It is WORSE than the review found**: T33.0 and
 T33.1 added the `#[state]` and `#[bind]` rows correctly, and left both
@@ -179,26 +179,26 @@ eight attribute names (`widget`, `widget_id`, `widget_class`, `reload`,
 `tree`, `state`, `bind`, `app`). The count became wrong a second way in
 the same pass that updated the rows. `scripts/check_attr_table.sh`
 compares the two tables with each other and nothing else, so it cannot
-see either kind of drift. `crates/lumen-static-widgets/src/textarea.rs:27`
+see either kind of drift. `crates/fulgurite-widgets/src/textarea.rs:27`
 still says "No selection and no IME" about a widget with both.
 
 ### 1.7 Numeric edges in the range widgets (R16-F11)
 
-`clamp_finite` (`crates/lumen-static-widgets/src/field.rs:131-136`)
+`clamp_finite` (`crates/fulgurite-widgets/src/field.rs:131-136`)
 returns `lo` for a non-finite value, while its own rustdoc (`:125-130`)
 says "the last good value is the honest answer". With `min > max` it
 clamps to `hi.max(lo)`, which is `lo`, above the stated maximum.
 `SplitPane::set_split` (`split.rs:70-75`) clamps through
-`lumen_static::num::clamp` (`crates/lumen-static/src/num.rs:109-117`),
+`fulgurite::num::clamp` (`crates/fulgurite/src/num.rs:109-117`),
 which passes a NaN straight through, so `split()` can report NaN
 (R16-F11; `docs/results-deep-review.md`).
 
 ### 1.8 Three stated numbers that drifted (R8-F9, R9-F11, R9-F12)
 
-- `crates/lumen-static-winit/src/surface.rs:157` cites "present p95
+- `crates/fulgurite-winit/src/surface.rs:157` cites "present p95
   0.044 ms" to `docs/results-frame-cost.md`, which says 0.039 ms
   (`:138`). `docs/results-appearance.md:64` and `:73` price a node with
-  `NodeState` and `Style` sizes that `crates/lumen-static/tests/cursor.rs:33`
+  `NodeState` and `Style` sizes that `crates/fulgurite/tests/cursor.rs:33`
   no longer asserts (R8-F9).
 - `benches/src/bin/glass_cost.rs:221` labels its comparison "so only the
   bevel differs", and compares `FROSTED` with the full `LIQUID`
@@ -226,12 +226,12 @@ The three options:
   (`application(boot).invalidation::<Everything>()`, spelled however
   T55.4 settles it). **The shell already has the shape**:
   `Program::host` is generic over the strategy
-  (`crates/lumen-static-shell/src/program.rs:271`), so only the window
+  (`crates/fulgurite-shell/src/program.rs:271`), so only the window
   side hard-codes `Inval`. The window runs a `Box<dyn Session>`, so the
   parameter never reaches `run`'s signature. The applications that
   build both strategies — showcase and tasks-demo — already have their
   own `everything` feature (`examples/showcase/Cargo.toml:25`); it stops
-  forwarding to `lumen-static-winit/everything` and instead selects the
+  forwarding to `fulgurite-winit/everything` and instead selects the
   type in the application's `main`. That is additive, because an
   application's own feature changes only that application's code.
 - **(c) Make `everything` additive** by turning the strategy into a
@@ -241,8 +241,8 @@ The three options:
   the diagnostic path, so a defect in that bookkeeping could survive the
   very build meant to expose it.
 
-**What (b) breaks.** `lumen-static-winit/everything` and
-`lumen-static-shell/everything` go away. `scripts/panic_drive.sh`
+**What (b) breaks.** `fulgurite-winit/everything` and
+`fulgurite-shell/everything` go away. `scripts/panic_drive.sh`
 names the winit feature directly and moves to the application's own.
 Two places read the feature today and must stop: the ABI stamp's
 feature list at `session.rs:561`, which reads
@@ -321,11 +321,11 @@ items are T55.8.
 
 Each is committed red at 1717808, with the red state in the commit body.
 
-1. `crates/lumen-static-macros/tests/ui/pass_bind_names_like_locals.rs`:
+1. `crates/fulgurite-macros/tests/ui/pass_bind_names_like_locals.rs`:
    an application with a field `changed: u32` bound as an extra format
    argument, and a free function named `changed` used as `with =
    changed`. **Red today**: it fails to compile on the `with` case. A
-   runtime twin in `crates/lumen-static/tests/derive_app.rs` asserts the
+   runtime twin in `crates/fulgurite/tests/derive_app.rs` asserts the
    label reads `3 42`; with the `with` case removed it compiles and
    prints `3 false`.
 2. The thirteen `fail_` cases of T55.2. **Red today** for the eight new
@@ -334,7 +334,7 @@ Each is committed red at 1717808, with the red state in the commit body.
    second-tree and zero-column checks — that red run is recorded. The
    coverage script prints `syn::Error sites: n, pinned by a .stderr: m`
    and fails while `m < n`.
-3. `crates/lumen-static-shell/tests/non_finite_style.rs` (the review's
+3. `crates/fulgurite-shell/tests/non_finite_style.rs` (the review's
    `r16_nan` cases): NaN spacing, infinite and NaN padding, NaN font
    size, NaN radius, and padding −50, under both strategies. **Red
    today** on non-finite state counts, on child escapes, and on the
@@ -342,12 +342,12 @@ Each is committed red at 1717808, with the red state in the commit body.
 4. `tests/lint.rs`: `w1002_quiet_on_scrolled_out_content` (the review's
    40 px window with a `ScrollView` of four labels, unscrolled and
    scrolled) **red today** at 2 and 1 findings against 0.
-5. `crates/lumen-static-widgets/tests/numeric_edges.rs` (the review's
+5. `crates/fulgurite-widgets/tests/numeric_edges.rs` (the review's
    `r16_num`): **red today** on the NaN-step and `min > max` rows and on
    `set_split(NaN)`.
 6. A two-invocation compile test for R12-F5: a function taking a pane
    and returning `&mut Host<A>`, built without and with
-   `lumen-static-winit/everything`. **Red today** in the second build
+   `fulgurite-winit/everything`. **Red today** in the second build
    with E0308.
 7. `scripts/check_attr_table.sh`'s key check (T55.3). **Red today**,
    naming `wrap`, `grid`, `columns` and `tick`. This item is committed
@@ -397,7 +397,7 @@ only.
 errors; `#[tree]` and `#[state]` refuse arguments
 (`require_path_only`); a repeated `#[app]` key is an error. A small
 script, `scripts/check_derive_errors.sh` in `just static`, extracts the
-sentence of every `syn::Error` in `crates/lumen-static-macros/src/lib.rs`
+sentence of every `syn::Error` in `crates/fulgurite-macros/src/lib.rs`
 and requires each to appear in some `tests/ui/*.stderr`.
 
 **Gate.** `fail_axis_twice`, `fail_widget_id_twice`,
@@ -470,7 +470,7 @@ report takes the strategy from the session's type and drops
 it too; `scripts/panic_drive.sh` builds with the application's
 feature.
 
-**Gate.** `crates/lumen-static-winit/tests/inval_param.rs`: a function
+**Gate.** `crates/fulgurite-winit/tests/inval_param.rs`: a function
 from `&mut Pane<A>` to `&mut Host<A>` compiles, and so does one from
 `&mut Pane<A, Everything>` to `&mut Host<A, Incremental, Everything>`.
 `just dev-shape` builds the workspace with showcase's `everything`
@@ -489,7 +489,7 @@ input:* both builds of the test compile in the same session.
 `docs/plan-boundaries-default.md` (T34.2's feature, and rule 2's
 spelling); both manifests' feature comments; `AGENT.md`'s description
 of how the drive runs "both strategies" if it names the feature; the
-book, wherever `lumen-static-winit/everything` appears (grep first).
+book, wherever `fulgurite-winit/everything` appears (grep first).
 
 **Effort:** M. **Depends on:** M42 (T42.1's process report and T42.2's
 launcher); M52/T52.7, which changes `Local`'s parameters first.
@@ -594,7 +594,7 @@ no-op.
 **Change.** `surface.rs:157` drops its number and cites the section of
 `docs/results-frame-cost.md`. `docs/results-appearance.md:64` and `:73`
 are annotated as the 2026-09-15 sizes, with today's sizes cited to
-`crates/lumen-static/tests/cursor.rs` rather than restated.
+`crates/fulgurite/tests/cursor.rs` rather than restated.
 `glass_cost.rs` compares `FROSTED` with the bevel-only material its own
 M21 arm already builds, or its row is relabelled "the rest of
 `LIQUID`"; either way the row is re-measured, eight runs a side under

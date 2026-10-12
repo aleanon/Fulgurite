@@ -1,7 +1,7 @@
-# T43.1's presence check: every crate but lumen-static-reload carries
+# T43.1's presence check: every crate but fulgurite-reload carries
 # `#![forbid(unsafe_code)]`, and one that loses it is named.
 CHECK='./scripts/check_no_unsafe.sh'
-EXPECT='lumen-static-widgets.*forbid|forbid.*lumen-static-widgets'
+EXPECT='fulgurite-widgets.*forbid|forbid.*fulgurite-widgets'
 plant() {
-    drop_lines crates/lumen-static-widgets/src/lib.rs '#![forbid(unsafe_code)]'
+    drop_lines crates/fulgurite-widgets/src/lib.rs '#![forbid(unsafe_code)]'
 }

@@ -36,7 +36,7 @@ feature:
 
 ## 1. Where things stand, at `7d58aad`
 
-- `.lss` accepts 18 properties (`crates/lumen-static-lss/src/lower.rs`,
+- `.lss` accepts 18 properties (`crates/fulgurite-lss/src/lower.rs`,
   `PROPERTIES`): `width height padding spacing align visible cursor
   focus-ring color background border-width border-color border-radius
   font-size font-weight box-shadow pressed-dim hover-dim`. Values are
@@ -51,7 +51,7 @@ feature:
   order.
 - **States the framework already has:** `InputState::hovered`,
   `capture` (the pressed node), `focus` and `focus_visible`
-  (`crates/lumen-static/src/event.rs`). Hover and press reach paint as
+  (`crates/fulgurite/src/event.rs`). Hover and press reach paint as
   `hover_dim` and `pressed_dim`, which are paint-time dims, not rules.
 - **Widget states** (`toggled`, `expanded` and so on) are published
   only through `observe`, for the agent and a11y (M48, M54). A default
@@ -161,7 +161,7 @@ M54's contrast helper.
 
 **Gate:** a `.lss` theme's roles equal the palette the program shows
 after `app.setPalette { name: "dark" }`, pixel-checked through
-`LUMEN_SHOT`. **Injection:** swap two roles in the lowering.
+`FULGURITE_SHOT`. **Injection:** swap two roles in the lowering.
 
 #### T62.4 — did-you-mean and CSS aliases for properties
 
@@ -247,7 +247,7 @@ eight runs a side.
 |---|---|---|
 | T62.1 | shorthand/longhand order resolves as in CSS | shorthand ignores a set longhand |
 | T62.2 | functions against known values; errors at file:line:col | drop oklch's gamut clamp |
-| T62.3 | `.lss` theme equals the shown palette (LUMEN_SHOT) | swap two roles |
+| T62.3 | `.lss` theme equals the shown palette (FULGURITE_SHOT) | swap two roles |
 | T62.4 | a misspelling suggests the real name; aliases refused | return no suggestion |
 | T62.5 | compound needs all parts; specificity tuple; old sheets identical | match on any one part |
 | T62.6 | `>` is one level, space is any depth | treat `>` as descendant |
@@ -269,9 +269,9 @@ left as written, so the record shows what changed.
    at `7d58aad`. K1 is unchanged.
 2. **T62.4 is mostly built.** M61 already suggests property names by
    edit distance. It also keeps an `ALIASES` hint table in
-   `crates/lumen-static-lss/src/lower.rs`, covering `gap`, `radius`,
+   `crates/fulgurite-lss/src/lower.rs`, covering `gap`, `radius`,
    `background-color`, `shadow`, `margin` and `opacity`. Its errors are
-   tested in `crates/lumen-static-lss/src/tests.rs`. What is left is
+   tested in `crates/fulgurite-lss/src/tests.rs`. What is left is
    extending that table from Lumen's CSS_ALIASES table.
 3. **Adopting Lumen's table as-is would refuse `box-shadow`.** Lumen
    maps `box-shadow` → `shadow`, because its property is `shadow`.

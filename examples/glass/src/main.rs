@@ -27,11 +27,11 @@
 //!    is a flat background. The rows carry colour swatches and real
 //!    glyphs so there is something to smear.
 
-use lumen_static::display::{Color, Material};
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static_widgets::{Glass, ScrollView};
-use lumen_static_winit::{application, Program, Run};
+use fulgurite::display::{Color, Material};
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite_widgets::{Glass, ScrollView};
+use fulgurite_winit::{application, Program, Run};
 
 // ---- palette ---------------------------------------------------------
 
@@ -306,9 +306,9 @@ fn btn() -> Patch {
 /// `scroll` argument moves the list under the panel, which is the state
 /// the whole example exists to show.
 fn shot(path: &str, scroll: f32, sigma: f32) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     let (w, h) = (W, H);
     // The same `host()` the window drives (M32), so this frame is the
@@ -420,9 +420,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lumen_static::event::{Event, PointerButton};
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite::event::{Event, PointerButton};
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     fn driven() -> Host<Demo> {
         let mut host: Host<Demo> = program(14.0).host();
@@ -441,7 +441,7 @@ mod tests {
     }
 
     fn wid_at(host: &Host<Demo>, x: f32, y: f32) -> &'static str {
-        lumen_static::pass::hit_test(&host.app.ui, &host.states, x, y)
+        fulgurite::pass::hit_test(&host.app.ui, &host.states, x, y)
             .map(|h| Screen::SUB_TABLE[h.node as usize].wid)
             .unwrap_or("<none>")
     }

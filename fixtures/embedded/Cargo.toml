@@ -15,13 +15,13 @@ publish = false
 # host under an aborting allocator. The `firmware*` bins are real thumb
 # links, with a #[panic_handler] and an entry symbol but no board.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", default-features = false }
+fulgurite = { path = "../../crates/fulgurite", default-features = false }
 # **M30.** The widgets moved out of the core, so the leaf profile names
 # this crate to get a button. That is the split working as its own
 # Cargo.toml argues it — "an application opts in by naming this crate" —
 # and it is why the crate had to be made `no_std`-capable first: it
 # offered an `alloc` tier that could never build.
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", default-features = false }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", default-features = false }
 
 # The T13.7 gate re-rasterises the baked face and compares every byte.
 # `fontdue` is a dev-dependency here and only here: it is the thing the
@@ -84,4 +84,4 @@ firmware = []
 # leaf tier). Pairs with a refusing global allocator in src/lib.rs, which
 # a `no_std` + `alloc` link requires. Thumb builds only: the host bin has
 # its own allocator.
-alloc-tier = ["lumen-static/alloc", "lumen-static-widgets/alloc"]
+alloc-tier = ["fulgurite/alloc", "fulgurite-widgets/alloc"]

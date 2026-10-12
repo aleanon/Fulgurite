@@ -35,7 +35,7 @@ if command -v Xephyr >/dev/null; then
     # every live window.
     . scripts/drive_window.sh
     at=""
-    [ -n "${LUMEN_WINDOW_POS:-}" ] && at="+${LUMEN_WINDOW_POS%,*}+${LUMEN_WINDOW_POS#*,}"
+    [ -n "${FULGURITE_WINDOW_POS:-}" ] && at="+${FULGURITE_WINDOW_POS%,*}+${FULGURITE_WINDOW_POS#*,}"
     Xephyr :$n -screen "1280x900$at" -ac -nolisten tcp >target/live/motion-present-xephyr.log 2>&1 &
     xephyr=$!
     trap 'kill $xephyr 2>/dev/null || true' EXIT
@@ -45,7 +45,7 @@ if command -v Xephyr >/dev/null; then
     unset WAYLAND_DISPLAY
     # Inside it, the host's monitor origin means nothing: no position, so
     # the window opens at Xephyr's origin as it always has.
-    export LUMEN_WINDOW_POS=
+    export FULGURITE_WINDOW_POS=
     echo "motion-present: on a private Xephyr display :$n"
 fi
 

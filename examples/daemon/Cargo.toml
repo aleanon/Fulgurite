@@ -11,11 +11,11 @@ publish = false
 # tick 40. `just windows-drive` phase 5 drives it, and `just idle-count`'s
 # daemon leg counts what it costs idle.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"], optional = true }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["observe"] }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", features = ["agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload", features = ["window"], optional = true }
 
 [features]
 default = []
@@ -26,9 +26,9 @@ everything = []
 # `just hot-window-drive`'s daemon leg, with no window open. As
 # fixtures/hot-window's `hot`.
 hot = [
-    "lumen-static-winit/hot",
-    "lumen-static/reload",
-    "lumen-static-widgets/reload",
-    "lumen-static-shell/reload",
-    "dep:lumen-static-reload",
+    "fulgurite-winit/hot",
+    "fulgurite/reload",
+    "fulgurite-widgets/reload",
+    "fulgurite-shell/reload",
+    "dep:fulgurite-reload",
 ]

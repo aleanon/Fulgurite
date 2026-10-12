@@ -15,8 +15,8 @@
 
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList, Material};
-use lumen_static_shell::software::Canvas;
+use fulgurite::display::{Color, DisplayList, Material};
+use fulgurite_shell::software::Canvas;
 
 /// Requested sigma against what the renderer will actually deliver.
 ///
@@ -24,7 +24,7 @@ use lumen_static_shell::software::Canvas;
 /// computed from a duplicate of the code it describes goes wrong
 /// silently, and this one exists precisely to publish a number a caller
 /// cannot otherwise see.
-use lumen_static_shell::software::blur_plan as delivered;
+use fulgurite_shell::software::blur_plan as delivered;
 
 /// Frosted at `sigma`: the material M19 shipped, so these numbers stay
 /// comparable with the table already in `docs/results-glass.md`.

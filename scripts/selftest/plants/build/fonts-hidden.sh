@@ -4,9 +4,9 @@
 # recipe's requirement. Fonts are hidden with a user namespace and an empty
 # tmpfs over /usr/share/fonts.
 CHECK='just fonts'
-EXPECT='LUMEN_REQUIRE_FONTS=1 but no system face'
+EXPECT='FULGURITE_REQUIRE_FONTS=1 but no system face'
 hidden() {
-    unshare -rm bash -c 'mount -t tmpfs none /usr/share/fonts && env -u LUMEN_ALLOW_SKIP "$@"' _ "$@"
+    unshare -rm bash -c 'mount -t tmpfs none /usr/share/fonts && env -u FULGURITE_ALLOW_SKIP "$@"' _ "$@"
 }
 plant() { :; }
 applied() {

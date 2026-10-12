@@ -37,7 +37,7 @@ re-measure honestly, because:
 | **the probe** (T29.1) | the grid fixture: one cell edited, `mark_all` against a hand-narrowed mark, **layout, paint and raster reported separately** | the *frame* moves by more than the arm's fast-cluster spread | it does not — the finding closes as promoted-but-not-worth-building |
 | frame correctness | the invalidation oracle on the grid fixture | byte-identical frames under `Everything` and `Boundaries` | any divergence |
 | rustc time | the figure `just const-budget` prints, four builds, with the grid fixture in the tree | no regression beyond that spread | the per-field items of T29.2 exceed it |
-| allocation | `crates/lumen-static-shell/tests/alloc_gate.rs` — **which has no such arm today**; T29.3 adds one | zero on a frame that edits a cell | anything allocates |
+| allocation | `crates/fulgurite-shell/tests/alloc_gate.rs` — **which has no such arm today**; T29.3 adds one | zero on a frame that edits a cell | anything allocates |
 | embedded `.text` | `scripts/check_text.sh` | unchanged — a leaf profile has no bindings to narrow | it moves |
 
 **Why rustc time is a gate and not a note.** T29.2 emits a marker and an
@@ -133,7 +133,7 @@ missed. A review found it. The table is the only statement of the
 number now.)*
 
 `Host::pump_with` calls `mark_all()` for a consumed event at
-`crates/lumen-static-shell/src/lib.rs` (`if handled { … mark_all() }`
+`crates/fulgurite-shell/src/lib.rs` (`if handled { … mark_all() }`
 in `pump_with`, at `:694` when this was written), and asks `App::update`
 anything eighty lines later, in the same pump. `Boundaries::mark`
 returns early once `all` is set. So **on the frame a click produces, the
@@ -192,7 +192,7 @@ allocates is.**
 
 ### Why nothing caught it
 
-`crates/lumen-static-shell/tests/alloc_gate.rs` asserts zero allocations
+`crates/fulgurite-shell/tests/alloc_gate.rs` asserts zero allocations
 per steady-state frame and has two repeater arms — **both binding with
 `noop_bind`**. So the zero it proved for a repeater was a zero for a
 list whose rows are never filled in, which is `AGENT.md`'s first vacuous
@@ -542,7 +542,7 @@ item, a `Dyn`'s content) with the dirty set treated as everything changed.
 The set is indexed by the table, and an arena's nodes are not in it, so the
 derive's skip had been asking about the main table's first nodes. Rows the
 bind rewrote kept last frame's size (`docs/widget-audit.md` X3). The gate
-is `crates/lumen-static/tests/repeat_rebind.rs`. With the frame's set
+is `crates/fulgurite/tests/repeat_rebind.rs`. With the frame's set
 passed through instead, it measured 3 of 11 visible rows stale after a
 three-row scroll.
 

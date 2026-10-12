@@ -18,7 +18,7 @@
 # Prints `probe: <cap> present (<evidence>)` or `probe: <cap> absent --
 # skipped (77): <how to get it>`. What a 77 means to a caller is the
 # caller's policy: `just ci` counts it as a failure unless
-# LUMEN_ALLOW_SKIP=1, and records it as a skip either way.
+# FULGURITE_ALLOW_SKIP=1, and records it as a skip either way.
 #
 # **`xclip` is a prerequisite, not a capability** (owner decision D7,
 # docs/plan-iced-roadmap.md §3.4): the plan has decided the reference

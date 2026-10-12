@@ -5,7 +5,7 @@
 > - T49.0: every finding a committed gate, red where the plan said; the
 >   planned R5-F8 count (`nm`) could not see the finding and was replaced.
 > - T49.1: the stamp hashes the source of the three crossing crates (a
->   reordered `Cmd` is refused by `source lumen-static`; a widgets-only
+>   reordered `Cmd` is refused by `source fulgurite`; a widgets-only
 >   edit is accepted); hot-host resolves every symbol and boots v2 first.
 > - T49.2: every pointer operation in `raw.rs`; `(null, 0)` and null
 >   accepted by every shim.
@@ -96,14 +96,14 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 The stamp cannot see a layout change (R4-F5)
 
-`abi::stamp` (`crates/lumen-static-reload/src/lib.rs:240-262`) lists the
+`abi::stamp` (`crates/fulgurite-reload/src/lib.rs:240-262`) lists the
 compiler, target, panic strategy, debug assertions and features, the
 shell's hash of `session.rs` (`abi_fields`,
-`crates/lumen-static-shell/src/session.rs:554-580`), and the size and
+`crates/fulgurite-shell/src/session.rs:554-580`), and the size and
 alignment of six core types (`build_fields`,
-`crates/lumen-static/src/reload.rs:179-205`). A reordering changes no
+`crates/fulgurite/src/reload.rs:179-205`). A reordering changes no
 size. **The re-triage built the `reload-host` loader, moved `Cmd::Rect`
-after `Cmd::Text` in `crates/lumen-static/src/display.rs`, rebuilt only
+after `Cmd::Text` in `crates/fulgurite/src/display.rs`, rebuilt only
 the library, and the loader printed "stamp … agreed", then read no Text
 commands at all** and exited on its own assertion. It is reachable in
 ordinary use: the hot builder compiles the library from the workspace's
@@ -123,35 +123,35 @@ The legacy loader, `fixtures/hot-host/src/main.rs`, still drops v1
 ### 1.2 Unguarded shims, and a miri job that reaches none of them (R4-F6, R4-F8)
 
 `export_reloadable_app!`'s `hot_restore` calls `from_raw_parts(ptr, len)`
-unguarded (`crates/lumen-static-reload/src/lib.rs:105`), so `(null, 0)`
+unguarded (`crates/fulgurite-reload/src/lib.rs:105`), so `(null, 0)`
 is undefined behaviour, while `SAVE` and the stamp accept it. The
-window's replacement, `export_program!`'s `lumen_boot`, checks for null
+window's replacement, `export_program!`'s `fulgurite_boot`, checks for null
 (`:839-843`), so the unguarded shim now serves only `fixtures/hot-app`
 and no caller passes null: S4. The same shape remains in `hot_drop` and
-`lumen_drop` (`Box::from_raw` with no null check, `:64`, `:856-857`) and
+`fulgurite_drop` (`Box::from_raw` with no null check, `:64`, `:856-857`) and
 `hot_save`'s dereference (`:79`).
 
-**WORSE (R4-F8):** `unsafe` lines in `crates/lumen-static-reload/src/lib.rs`
+**WORSE (R4-F8):** `unsafe` lines in `crates/fulgurite-reload/src/lib.rs`
 went from 11 at the review's commit to 36 at `1717808` — `panic::take`
 and `abi::read` (two-call buffer protocols), `export_abi_stamp!`,
 `export_program!`'s boot and drop, and `hot::Build`/`Hot`'s round trip of
 a `Box<dyn Session>`. The CI miri job (`.github/workflows/ci.yml:186-195`)
-runs only `fixtures/miri-smoke`, which depends on `lumen-static` and
-`lumen-static-widgets` with no features. The in-process pieces are
+runs only `fixtures/miri-smoke`, which depends on `fulgurite` and
+`fulgurite-widgets` with no features. The in-process pieces are
 checkable by miri; `dlopen` is not.
 
 ### 1.3 Two construction paths again (R5-F10, R5-F9)
 
 The style half of R5-F10 was fixed by `8625828`: `Host::adopt` re-asks
 the program's sheet. **The build half recurs.** `Application::build` is
-still required (`crates/lumen-static/src/event.rs:641`). The
+still required (`crates/fulgurite/src/event.rs:641`). The
 `Reloadable` derive's `fresh()` calls it for every struct with a
-`#[tree]` field (`crates/lumen-static-macros/src/lib.rs:1271-1275`), and
+`#[tree]` field (`crates/fulgurite-macros/src/lib.rs:1271-1275`), and
 M37's `hot` feature requires `A: Reloadable`
-(`crates/lumen-static-winit/src/lib.rs:825`). So every hot application
+(`crates/fulgurite-winit/src/lib.rs:825`). So every hot application
 implements `Application::build`, which the window swap never calls:
-`hot::boot` (`crates/lumen-static-reload/src/lib.rs:399-415`) boots the
-library's `program()`. `Host::reload` (`crates/lumen-static-shell/src/lib.rs:488-495`)
+`hot::boot` (`crates/fulgurite-reload/src/lib.rs:399-415`) boots the
+library's `program()`. `Host::reload` (`crates/fulgurite-shell/src/lib.rs:488-495`)
 calls `A::fresh()`. **The re-triage replaced `impl Application for
 Counter` in `fixtures/hot-window` with a free `boot` passed to
 `application`, and `cargo check --features hot` failed with E0277 from
@@ -169,9 +169,9 @@ and `fresh()` is `Application::build`, not `Default`.
 ### 1.4 What a swap loses (R5-F1, R5-F2, R5-F3, R5-F4)
 
 **WORSE (R5-F2).** The only `Reloadable` impls are `Label`, `Button`,
-`Toggle`, `Fixed`, `Spacer` (`crates/lumen-static-widgets/src/reload.rs:20-110`)
-and `Repeat`, `Vec`, `Option` (`crates/lumen-static/src/reload.rs:79-150`).
-The derive refuses enums (`crates/lumen-static-macros/src/lib.rs:1200-1206`),
+`Toggle`, `Fixed`, `Spacer` (`crates/fulgurite-widgets/src/reload.rs:20-110`)
+and `Repeat`, `Vec`, `Option` (`crates/fulgurite/src/reload.rs:79-150`).
+The derive refuses enums (`crates/fulgurite-macros/src/lib.rs:1200-1206`),
 so a `StaticTree` enum cannot be a reload field at all. The re-triage
 re-ran the review's probe unchanged: **7 of 9 user-state values lost**
 (text and caret, slider value, scroll, popup and collapsible open, tab
@@ -229,12 +229,12 @@ or reordered.
 
 The derive's errors land on the derive, not the field, and never name
 `#[reload(keep|fresh)]`: `expand_reloadable` uses plain `quote!`, and
-`Reloadable` (`crates/lumen-static/src/reload.rs:42`) has no
+`Reloadable` (`crates/fulgurite/src/reload.rs:42`) has no
 `diagnostic::on_unimplemented`. M37 put these errors in front of every
 application that turns on hot reload (R5-F7). And with `reload` off, an
 application that derives `Reloadable` does not build, because
-`lumen_static::reload` is `cfg(feature = "reload")`
-(`crates/lumen-static/src/lib.rs:141-142`) and the derive names it
+`fulgurite::reload` is `cfg(feature = "reload")`
+(`crates/fulgurite/src/lib.rs:141-142`) and the derive names it
 unconditionally. `fixtures/hot-window/Cargo.toml` sidesteps this by
 enabling `reload` unconditionally, so the only shipped hot crate links
 serde_json into its release binary (R5-F8).
@@ -247,7 +247,7 @@ T37.4 added a real windowed measurement, on `fixtures/hot-window`, a
 64-line crate; the re-triage re-ran it at 0.64, 0.44 and 0.45 s. No real
 application exports a program. The library's profile follows the
 window's (`Crate::at(…, !cfg!(debug_assertions), …)`,
-`crates/lumen-static-winit/src/lib.rs:964`), and the stamp requires the
+`crates/fulgurite-winit/src/lib.rs:964`), and the stamp requires the
 two to agree on debug assertions, so a release window rebuilds its
 library in release. The review measured that on a showcase-sized crate
 and missed 2 s (R4-F2; `docs/results-deep-review.md`); the re-triage did
@@ -267,9 +267,9 @@ not re-measure it.
   sound without care. And the derive would be needed on every crossing
   type and, transitively, every type in their fields. It is the most
   work and still incomplete.
-- **(c) A source hash.** `lumen-static-reload`'s build script, which
+- **(c) A source hash.** `fulgurite-reload`'s build script, which
   already exists for the compiler version, also hashes the `src/` trees
-  of `lumen-static`, `lumen-static-shell` and `lumen-static-reload`, the
+  of `fulgurite`, `fulgurite-shell` and `fulgurite-reload`, the
   workspace's `Cargo.lock`, and the encoded rustflags, and the stamp
   carries one line per crate. A reordered variant, a changed field type
   or a dependency bump then changes the stamp. The cost: at `1717808`
@@ -283,7 +283,7 @@ What it breaks: **any** edit to those three crates during a hot session
 — a comment included — refuses every later build until the window
 restarts. That is the right answer, because the loader is still running
 the old framework, and the refusal says so: "the framework was edited
-since this window started; restart it". `lumen-static-widgets` is **not**
+since this window started; restart it". `fulgurite-widgets` is **not**
 hashed, because no widget type crosses the boundary; editing a widget
 while a hot window runs keeps working. That exclusion is itself a claim,
 and T49.1 tests it (§5).
@@ -375,12 +375,12 @@ commit body. The re-triage's scratch probes become committed tests.
 |---|---|---|
 | R4-F5 (stamp) | `fixtures/stamp-host` (`just abi-stamp`) gains a case: a library built after a framework source file changed must be refused, naming the field and printing both values. The case builds the reordered-`Cmd` library the re-triage built | "agreed", then no Text commands |
 | R4-F5 (boot) | `fixtures/reload-host` (`just window-reload-demo`): `fixtures/reload-app`'s boot panics under a switch; assert the swap did not happen, a click still counts, and the error contains "panicked while booting" and `lib.rs:`, printed beside the assertion | green (the window path is fixed); committed as the missing gate, with its injection recorded |
-| R4-F6 | a `#[cfg(test)]` module in `lumen-static-reload` that exports a tiny `Reloadable` in-process and calls restore with `(null, 0)` and drop with null, in a debug build | aborts on the precondition check |
-| R4-F8 | `cargo +nightly miri test -p lumen-static-reload --lib` over that module; prints the number of shim calls exercised against the expected count | not run by anything; the job is added to M43's runner, where a red run fails the record like any other step (M43 §2.1), and to the dormant ci.yml, non-blocking as today |
+| R4-F6 | a `#[cfg(test)]` module in `fulgurite-reload` that exports a tiny `Reloadable` in-process and calls restore with `(null, 0)` and drop with null, in a debug build | aborts on the precondition check |
+| R4-F8 | `cargo +nightly miri test -p fulgurite-reload --lib` over that module; prints the number of shim calls exercised against the expected count | not run by anything; the job is added to M43's runner, where a red run fails the record like any other step (M43 §2.1), and to the dormant ci.yml, non-blocking as today |
 | R5-F10 | a trybuild pass case: a `#[tree]` application booted by `application(boot)` with **no** `Application` impl derives `Reloadable` and compiles with `export_program!` | E0277 from the derive |
-| R5-F2 | `crates/lumen-static-shell/tests/reload_widget_state.rs` (the re-triage's probe, promoted): asserts, per widget, "kept, or a log line"; prints the before/after table | 7 of 9 lost, 0 lines |
-| R5-F1 | `crates/lumen-static-shell/tests/reload_code_data.rs`: v1 and v2 differ only in `build()`; after restore, `Button`'s label, a static `Label` and `Repeat`'s item extent equal v2's, and a `#[state]`-bound value keeps v1's. Prints "v2 says X, after reload Y" per row | four rows keep v1 |
-| R5-F3, R5-F4 | `crates/lumen-static-shell/tests/reload_schema.rs`: every row must end at the fresh value or log; `Settings {a,b} → {a,b,c}` must keep `a` and `b`. Prints change, before, after and log count | the `Option` rows and the nested row |
+| R5-F2 | `crates/fulgurite-shell/tests/reload_widget_state.rs` (the re-triage's probe, promoted): asserts, per widget, "kept, or a log line"; prints the before/after table | 7 of 9 lost, 0 lines |
+| R5-F1 | `crates/fulgurite-shell/tests/reload_code_data.rs`: v1 and v2 differ only in `build()`; after restore, `Button`'s label, a static `Label` and `Repeat`'s item extent equal v2's, and a `#[state]`-bound value keeps v1's. Prints "v2 says X, after reload Y" per row | four rows keep v1 |
+| R5-F3, R5-F4 | `crates/fulgurite-shell/tests/reload_schema.rs`: every row must end at the fresh value or log; `Settings {a,b} → {a,b,c}` must keep `a` and `b`. Prints change, before, after and log count | the `Option` rows and the nested row |
 | R5-F7 | a trybuild fail case with an untagged `u32` field and an untagged `TextInput` field; its `.stderr` must put the span on the field line and show the note | span on the derive line, no note |
 | R5-F8 | a `just` recipe builds `fixtures/hot-window` with and without `hot` and prints the count of serde_json symbols in each (`nm -C`); without `hot` it must be 0 and the build must succeed | does not build without `reload` |
 | R4-F3 | `fixtures/reload-host`: v1 starts a two-step chain whose first step is in flight at the swap; after the swap and a drain, the frame must show v2's step result. Prints the ledger's length before and after | the chain never completes |
@@ -397,7 +397,7 @@ R5-F9 is prose and has no check (T49.13).
 >   An unchanged copy is accepted (the stamp must describe source, not
 >   where it lives); `Cmd::Rect` moved after `Cmd::Text` is **accepted**
 >   at HEAD, "all 12 fields agree" — known red, printed, until T49.1; and
->   an edit to `lumen-static-widgets` alone is accepted. `stamp-lib` now
+>   an edit to `fulgurite-widgets` alone is accepted. `stamp-lib` now
 >   names a widget type, so that crate is in its graph at all.
 > - **R4-F5, boot.** Green, as the re-triage found. Two injections:
 >   dropping the library's report from `Reloader::swap`'s error fires
@@ -450,7 +450,7 @@ checks print.
 
 **Closes:** R4-F5.
 
-**Change:** §2.1(c) in `crates/lumen-static-reload/build.rs` and
+**Change:** §2.1(c) in `crates/fulgurite-reload/build.rs` and
 `abi::stamp`; `build_fields` and `abi_fields` keep their size lines, and
 the `session.rs` hash is replaced by the crate hashes. The `Mismatch`
 message names the edited crate and says to restart. `fixtures/hot-host`'s
@@ -467,12 +467,12 @@ case fires "a panicking boot lost the session".
 
 **Accepts good input:** an unchanged rebuild is accepted, and
 `just window-reload-demo`'s v1 → v2 swap stays green. **An edit to
-`lumen-static-widgets` alone is accepted**, which is §2.1's exclusion
+`fulgurite-widgets` alone is accepted**, which is §2.1's exclusion
 checked rather than assumed.
 
 **Docs in the same commit:** `docs/step4-hot-reload.md` (the stamp
 section, and what it does and does not cover); `docs/plan-window-reload.md`
-§2.3; the rustdoc on `lumen_static_reload::abi`; the `fixtures/hot-host`
+§2.3; the rustdoc on `fulgurite_reload::abi`; the `fixtures/hot-host`
 header.
 
 **Effort:** M. **Depends on:** T49.0.
@@ -494,7 +494,7 @@ into `fixtures/hot-app`'s hand-written title setter.
 **Accepts good input:** a real `(ptr, len)` restore returns 0.
 
 **Docs in the same commit:** the Safety sections on the restore and drop
-shims; the `symbols` constants' comments in `crates/lumen-static/src/reload.rs`
+shims; the `symbols` constants' comments in `crates/fulgurite/src/reload.rs`
 ("`(null, 0)` is accepted").
 
 **Effort:** S. **Depends on:** T49.0.
@@ -537,7 +537,7 @@ the job goes red.
 > reach is the `libloading` calls themselves. `just miri-reload` exists,
 > the dormant CI job runs it, and since M43/T43.13 (2026-09-26) it is a
 > step of `just ci`, probed first: a machine without nightly miri skips it
-> with exit 77, which `just ci` refuses unless LUMEN_ALLOW_SKIP=1.
+> with exit 77, which `just ci` refuses unless FULGURITE_ALLOW_SKIP=1.
 
 ### T49.4 — one construction path
 
@@ -564,7 +564,7 @@ the frame comparison differs, because handlers become placeholders.
 
 **Docs in the same commit:** `docs/plan-program.md` §2.3 (close "the one
 place two constructors remain"); the `Application` rustdoc in
-`crates/lumen-static/src/event.rs`; the M31 comment block in the derive;
+`crates/fulgurite/src/event.rs`; the M31 comment block in the derive;
 `book/src/first-tree.md`; `examples/counter-window/src/app.rs`.
 
 **Effort:** M. **Depends on:** T49.0.
@@ -585,7 +585,7 @@ place two constructors remain"); the `Application` rustdoc in
 **Closes:** R5-F1, R5-F2.
 
 **Change:** §2.3(c). `Reloadable` impls in
-`crates/lumen-static-widgets/src/reload.rs` for every widget with
+`crates/fulgurite-widgets/src/reload.rs` for every widget with
 user-mutable state; `Button` and `Label` save nothing; `Repeat` saves
 its scroll only. The derive accepts enums. `fixtures/hot-window`,
 `fixtures/reload-app` and the book drop `#[reload(fresh)]` from the tree.
@@ -787,7 +787,7 @@ hooks into is rewritten there).
 > exactly that.
 >
 > - **What is carried.** `hot::save` writes
->   `{"$lumen": {"in_flight": [[kind, step, payload], …]}, "state": …}`
+>   `{"$fulgurite": {"in_flight": [[kind, step, payload], …]}, "state": …}`
 >   (`hot::RESERVED`). The work in flight belongs to the host, not the
 >   application, so it goes beside the kept state and not inside it, where
 >   a `#[reload(keep)]` field could collide with it. `Saver` is now handed
@@ -895,7 +895,7 @@ derive `Reloadable`); T49.4 (showcase's boot takes arguments).
 
 **Closes:** R5-F9.
 
-**Change:** `crates/lumen-static/src/event.rs:615-632`: a *reloadable*
+**Change:** `crates/fulgurite/src/event.rs:615-632`: a *reloadable*
 application that implements `Default` is a compile error, and the window
 reload boots the program. `docs/step4-hot-reload.md`'s honesty list
 (`:112-125`): item 1 becomes the stamp and what it misses (T49.1); item
@@ -945,7 +945,7 @@ not built.
 Risks, and what would reveal each:
 
 - **The source hash refuses too much.** A window that refuses every
-  build after a framework edit is correct, but if `lumen-static-widgets`
+  build after a framework edit is correct, but if `fulgurite-widgets`
   turns out to define a crossing type after all, its edits would be let
   through wrongly. Revealed by T49.1's accepting case, which must pass
   **and** by a check in the same test that no type in `build_fields` is

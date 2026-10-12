@@ -8,7 +8,7 @@ class. The demo printed PASS on the reference machine.*
 
 ## The shape of the implementation
 
-- **`Reloadable`** (`crates/lumen-static/src/reload.rs`): `save()` returns
+- **`Reloadable`** (`crates/fulgurite/src/reload.rs`): `save()` returns
   a `serde_json::Value` of the keep-half; `fresh()` is
   `Default::default()` — the constructor from whichever dylib is loaded;
   `restore()` grafts saved values onto a fresh tree.
@@ -29,8 +29,8 @@ class. The demo printed PASS on the reference machine.*
 > never a label's text, a button's label, a fixed size or a repeater's
 > count and row height, which are code and must show an edit. The tree's
 > default mode is keep, so `#[tree] #[reload(fresh)]` is no longer the
-> taught pattern; `lumen-static-widgets`' `reload.rs` has the table, and
-> `crates/lumen-static-shell/tests/reload_widget_state.rs` a row per
+> taught pattern; `fulgurite-widgets`' `reload.rs` has the table, and
+> `crates/fulgurite-shell/tests/reload_widget_state.rs` a row per
 > widget (24 kept, 0 lost, where the taught pattern lost 23 of 23).
 
 ## Decisions (and two the handoff left open)
@@ -58,7 +58,7 @@ and the save's own line is the old library's, drained before the
 restore. `reload::save_keep` now leaves a failed value out (the restore
 logs it missing), and `reload::restore_keep` refuses a `null` over a
 non-null fresh value, logged "serialized as null".
-`crates/lumen-static-shell/tests/reload_schema.rs` has the rows.
+`crates/fulgurite-shell/tests/reload_schema.rs` has the rows.
 
 **A kept struct restores field by field (M49/T49.7, R5-F4).** A struct
 that gained a field no longer deserializes whole, and used to fall back
@@ -102,7 +102,7 @@ discipline held with no rework.
 > an extent below `MIN_ITEM_EXTENT` — keeping the fresh value, per this
 > section's own per-field fallback rule — and `visible_range` caps the
 > window at `MAX_WINDOW` regardless of how the fields were set.
-> `crates/lumen-static/tests/reload_hostile.rs`.
+> `crates/fulgurite/tests/reload_hostile.rs`.
 
 
 `Repeat` keeps `count`, `scroll`, `item_extent` (the user's place in the
@@ -154,7 +154,7 @@ comfortably inside the 2 s criterion end to end.
    section above says why each is acceptable).
 2. **The reload surface is cfg-gated** (M49/T49.9). `#[derive(Reloadable)]`
    expands through the core's `__reloadable!`, which is nothing without
-   `lumen-static/reload`, so an application that derives it builds with
+   `fulgurite/reload`, so an application that derives it builds with
    reload off and carries no serde_json: `fixtures/hot-window` forwards
    its `hot` feature to the reload features instead of enabling them
    always, and `just reload-gating` counts serde_json in its graph (0
@@ -177,10 +177,10 @@ design; this is what it means for a reload.
 — input, applied messages, `update`, layout, paint, `tick`, the agent's
 `Live::pump` — goes through one guard, `Host::guard`. That is compiled
 in for debug builds and for release builds with
-`lumen-static-winit/reload`; a release build without it dies, so a crash
+`fulgurite-winit/reload`; a release build without it dies, so a crash
 reporter can see it. Across the dylib seam: every generated shim in
 `export_reloadable_app!`, and any app verb that wraps its body in
-`lumen_static_reload::panic::guard`, as `fixtures/hot-app`'s `hot_frame`
+`fulgurite_reload::panic::guard`, as `fixtures/hot-app`'s `hot_frame`
 does. That catch has to be **inside the library**: a `cdylib` links its
 own std, so it has its own panic hook, and a hook installed by the loader
 never sees the library's panic — the location, which exists only inside
@@ -214,7 +214,7 @@ tree is retained and it holds code.** Handler `fn` pointers live in it,
 and every widget's `layout` and `paint` is monomorphised over the
 application's types. A `Host<A>` compiled into the loader would be the
 loader's code forever. So **the `Host` lives in the library**, and the
-window drives it through `lumen_static_shell::session::Session`.
+window drives it through `fulgurite_shell::session::Session`.
 
 The window itself is no longer generic over the application: input
 goes in and a frame comes out, along with the title, the cursor and the
@@ -256,7 +256,7 @@ The frame arm is T34.2's instrument: a hover that moves, `Host::timings3`
 measures two copies. A `memcpy` of the commands and text into buffers
 already allocated is the lower bound of any copy, but it is **not** a byte
 boundary, because `repr(Rust)` promises no layout across builds. The
-second is `lumen_static::wire`, a tagged little-endian encoding, which is
+second is `fulgurite::wire`, a tagged little-endian encoding, which is
 what a byte boundary would actually ship. It is encoded and then decoded
 into a reused list.
 
@@ -275,7 +275,7 @@ choice can be revisited on its own evidence. The absolute cost is
 0.12–0.45 µs, which is nothing next to a raster pass. And the frame arm
 is showcase's, whose frames are small enough that 0.15 µs is 23% of one.
 
-**The stamp** (`lumen_static_reload::abi`): each image describes itself
+**The stamp** (`fulgurite_reload::abi`): each image describes itself
 as `name=value` lines covering:
 
 - the compiler (from a build script);
@@ -283,16 +283,16 @@ as `name=value` lines covering:
 - the core's version and **feature set**;
 - the size and alignment of the core types that cross;
 - **the source** (M49/T49.1): a hash of `src/` and `Cargo.toml` of each
-  crate whose types cross — `lumen-static`, `lumen-static-shell`,
-  `lumen-static-reload` — plus the locked versions of the external
+  crate whose types cross — `fulgurite`, `fulgurite-shell`,
+  `fulgurite-reload` — plus the locked versions of the external
   crates those manifests name, and the encoded rustflags. It is taken by
-  `lumen-static-reload`'s build script, so it costs nothing at run time.
+  `fulgurite-reload`'s build script, so it costs nothing at run time.
 
 The loader refuses a library whose lines differ, naming the first field
 that differs. `just abi-stamp` builds `fixtures/stamp-lib` twice: once as
 `fixtures/stamp-host` was built, which is accepted with (at M49) 17 fields
 agreeing, and once with the core's `observe` on, which is refused with
-`lumen-static features` named.
+`fulgurite features` named.
 
 **The feature field is load-bearing, and the sizes are not enough.** With
 it removed, the `observe` build was *accepted*, because none of the seven
@@ -305,15 +305,15 @@ because values are allocated on one side and freed on the other.
 then misread command by command. `just abi-stamp` now builds a copy of
 the workspace three ways: unchanged (accepted — the hash is of content
 and relative paths, not of where the workspace lives), with the two
-variants reordered (refused by `source lumen-static`, and the message
+variants reordered (refused by `source fulgurite`, and the message
 says the framework was edited and the window must restart), and with
-only `lumen-static-widgets` edited (accepted, because no widget type
+only `fulgurite-widgets` edited (accepted, because no widget type
 crosses; `every_crossing_type_is_defined_in_a_hashed_crate` checks that
 claim against `type_name`). *Injection:* the source lines left out of
 the stamp, and the reordered library is accepted again.
 
 **Two crossing types since M88/T88.3**: `Session::take_requests` returns
-`Vec<lumen_static_shell::request::Outgoing>`, each a core `Request` with an
+`Vec<fulgurite_shell::request::Outgoing>`, each a core `Request` with an
 owned `Payload` (`None`, or a clipboard write's text or HTML, copied out of
 the application at the drain), and `Session::answer` takes a core
 `request::Answer<'_>` that borrows the window's pixels or text for the call.
@@ -334,7 +334,7 @@ What it deliberately does not cover, and why:
   workspace: a lockfile lists a member's dev-dependencies, and resolves
   a registry crate's optional dependencies only where a member turns
   them on. No crossing type holds a third-party type today.
-- **`lumen-static-macros` is not hashed.** A derive's output lands in
+- **`fulgurite-macros` is not hashed.** A derive's output lands in
   the application's own types, which live in the library alone.
 
 ## Reloading inside a window: latency and memory (M37/T37.4)
@@ -365,7 +365,7 @@ about, so it crosses the way item 1 requires: **as primitives**.
 
 A `Descriptor` is `(kind, step, payload)` — three `u64`s — and it
 crosses as three arguments to an `extern "C"` verb, reassembled on the
-far side. It is never passed as a `lumen_static::spawn::Descriptor`
+far side. It is never passed as a `fulgurite::spawn::Descriptor`
 value, even though both builds nominally have that type: v1 and v2 each
 link their own copy and no layout agreement is promised, which is item
 1's whole point.
@@ -391,7 +391,7 @@ on it (R4-F3, corrected 2026-09-27).
 
 **In a window (M49/T49.10)** the descriptor crosses inside the saved
 bytes, as JSON integers: `hot::save` writes
-`{"$lumen": {"in_flight": [[kind, step, payload], …]}, "state": …}`.
+`{"$fulgurite": {"in_flight": [[kind, step, payload], …]}, "state": …}`.
 The in-flight list is the old host's ledger, less settled entries and
 running subscriptions (`Host::reissuable`). The new build's `hot::boot`
 restores the state and then spawns each descriptor through its own

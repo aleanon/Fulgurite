@@ -54,7 +54,7 @@ tree today.
 | [`results-simd.md`](results-simd.md) | SIMD in the shadow's distance field: 1.12x, against 1.26x for the free row rewrite that enabled it | **live**, measured 2026-09-09 | yes — `just profile` / `just profile-simd` |
 | [`results-wide-stores.md`](results-wide-stores.md) | writing pixels four at a time: 5.6x on `clear`, 1.58x on a whole frame, no `unsafe` | **live**, measured 2026-09-09 | yes — `benches --bin stores`, `just profile` |
 | [`results-threading.md`](results-threading.md) | would a second thread help, and which one? (band-split raster yes, pipelining no) | **live**, measured 2026-09-08 | yes — `raster-scaling --bin bands` |
-| [`results-gpu.md`](results-gpu.md) | what the wgpu backend buys (20× at 4K), what it costs, and how closely it matches the software canvas | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling`, `cargo test -p lumen-static-wgpu` |
+| [`results-gpu.md`](results-gpu.md) | what the wgpu backend buys (20× at 4K), what it costs, and how closely it matches the software canvas | **live**, measured 2026-09-07 | yes — `benches-competitive -p raster-scaling`, `cargo test -p fulgurite-wgpu` |
 | [`results-retention.md`](results-retention.md) | streaming retention vs a copied display list (M13/T13.8) | **live** | yes — `benches --bin retain` |
 | [`results-cascade-cost.md`](results-cascade-cost.md) | what a stylesheet swap costs, and why M8c inverted | **live** | yes — `benches --bin cascade` |
 | [`results-frame-cost.md`](results-frame-cost.md) | frame cost and input latency, before/after M8b | **live** | yes — `just profile`, `just live-gate` |

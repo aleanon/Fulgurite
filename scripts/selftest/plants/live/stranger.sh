@@ -7,8 +7,8 @@
 # The port comes from scripts/selftest/live.sh, which keeps it out of the
 # range the launcher picks from (M43/T43.13: `just ci` runs this inside a
 # port range it was given).
-PORT=${LUMEN_SELFTEST_STRANGER_PORT:-7890}
-CHECK="LUMEN_LIVE_PORT=$PORT ./scripts/widget_drive.sh Switch"
+PORT=${FULGURITE_SELFTEST_STRANGER_PORT:-7890}
+CHECK="FULGURITE_LIVE_PORT=$PORT ./scripts/widget_drive.sh Switch"
 EXPECT="port already answering on 127\.0\.0\.1:$PORT"
 plant() { :; }
 applied() {
@@ -17,7 +17,7 @@ applied() {
 }
 run_check() {
     cp target/release/showcase target/selftest-stranger
-    LUMEN_AGENT="127.0.0.1:$PORT" LUMEN_AGENT_ADDR="127.0.0.1:$PORT" \
+    FULGURITE_AGENT="127.0.0.1:$PORT" FULGURITE_AGENT_ADDR="127.0.0.1:$PORT" \
         target/selftest-stranger >/dev/null 2>&1 &
     local s=$!
     local up=0

@@ -3,9 +3,9 @@
 //! container.
 
 use benches::Item;
-use lumen_static_widgets::ops::Label;
-use lumen_static::repeat::Repeat;
-use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
+use fulgurite_widgets::ops::Label;
+use fulgurite::repeat::Repeat;
+use fulgurite::{pass, Constraints, NodeState, StaticTree, Widget};
 
 /// A list screen: NODE_COUNT is 3 — header, repeater, root — no matter
 /// how many rows the repeater displays.
@@ -104,12 +104,12 @@ fn paint_covers_the_window_and_tracks_scroll() {
     let mut app = ListApp { list: Repeat::new(10_000, 24.0, bind_icon), ..Default::default() };
     let mut st = [NodeState::default(); ListApp::NODE_COUNT];
     run(&mut app, &mut st);
-    let mut a = lumen_static::DisplayList::new();
+    let mut a = fulgurite::DisplayList::new();
     pass::paint(&app, &st, &mut a);
 
     app.list.scroll = 480.0;
     run(&mut app, &mut st);
-    let mut b = lumen_static::DisplayList::new();
+    let mut b = fulgurite::DisplayList::new();
     pass::paint(&app, &st, &mut b);
     assert_ne!(a.hash_from(0), b.hash_from(0), "scrolled content must paint differently");
 }

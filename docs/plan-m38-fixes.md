@@ -209,7 +209,7 @@ milestone will see.
    token protects only against other local users, and every client would
    have to read it. The plan states the condition for reopening this.
 3. **A skipped live gate exits 77 and counts as a failure** unless
-   LUMEN_ALLOW_SKIP=1 is set, and `just ci` runs in a clean worktree,
+   FULGURITE_ALLOW_SKIP=1 is set, and `just ci` runs in a clean worktree,
    because there is no git remote (M43 §2).
 4. **Arabic and other complex scripts are honestly downgraded now.** The
    plan does not build a shaped painter. `ComplexText` stops claiming to

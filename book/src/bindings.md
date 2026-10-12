@@ -12,28 +12,28 @@ cannot be forgotten.
 
 ## All four forms, in one struct
 
-This is `crates/lumen-static/tests/derive_app.rs`, which exists to pin
+This is `crates/fulgurite/tests/derive_app.rs`, which exists to pin
 exactly this behaviour down — so every line below is compiled *and run*
 by `just test`, and by this page.
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static_widgets::ops::{Button, Label, Spacer};
-use lumen_static::{App as AppDerive, EventCtx, StaticTree};
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite_widgets::ops::{Button, Label, Spacer};
+use fulgurite::{App as AppDerive, EventCtx, StaticTree};
 
-{{#include ../../crates/lumen-static/tests/derive_app.rs:tree}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:tree}}
 
-{{#include ../../crates/lumen-static/tests/derive_app.rs:projection}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:projection}}
 
-{{#include ../../crates/lumen-static/tests/derive_app.rs:hook}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:hook}}
 
-{{#include ../../crates/lumen-static/tests/derive_app.rs:state}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:state}}
 
-{{#include ../../crates/lumen-static/tests/derive_app.rs:handler}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:handler}}
 
 fn main() {
-{{#include ../../crates/lumen-static/tests/derive_app.rs:assertions}}
+{{#include ../../crates/fulgurite/tests/derive_app.rs:assertions}}
 
     // A handler is a bare fn over the state type, and wiring one is
     // assignment — no registration, no dispatch table.
@@ -62,10 +62,10 @@ stored. One piece of state, two things on screen, no update method.
 The projection takes the target widget and a reference to the source:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static_widgets::ops::Label;
-{{#include ../../crates/lumen-static/tests/derive_app.rs:projection}}
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite_widgets::ops::Label;
+{{#include ../../crates/fulgurite/tests/derive_app.rs:projection}}
 # fn main() { let _: fn(&mut Label<String>, &str) = shout; }
 ```
 
@@ -79,9 +79,9 @@ the comparison sits here rather than at the call site, and what it costs.
 
 There is a trait `App` and a derive `App`, and you will meet both:
 
-* `lumen_static::event::App` — the trait. The frame loop calls
+* `fulgurite::event::App` — the trait. The frame loop calls
   `update()` on it.
-* `lumen_static::App` — the derive that *writes* that impl.
+* `fulgurite::App` — the derive that *writes* that impl.
 
 The prelude re-exports the derive as `DeriveApp` to keep them apart, and
 the file above spells its own alias `AppDerive`. Both are the same

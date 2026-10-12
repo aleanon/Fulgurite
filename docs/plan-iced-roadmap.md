@@ -29,7 +29,7 @@
 >
 > **Owner decisions, binding on every section (2026-09-29):**
 > - **D1** — no new crate. Four moves break the crate-boundary blockers
->   instead (§2.7), and a `lumen-static-core` crate was considered and
+>   instead (§2.7), and a `fulgurite-core` crate was considered and
 >   not chosen (see "Considered and not chosen").
 > - **D2** — on Linux the framework draws its own menu bar from the same
 >   `MenuEntry` data; native `muda` only on macOS and Windows. **M90
@@ -42,9 +42,9 @@
 >   default-off cargo feature. **The variants are gated too, at every
 >   use site (owner, 2026-09-30).** `Cmd::Shader`/`Cmd::ShaderEnd` and
 >   `Painter::shader`/`shader_end` exist only under
->   `cfg(feature = "shader")` in `lumen-static`, and every match arm or
+>   `cfg(feature = "shader")` in `fulgurite`, and every match arm or
 >   method that names them carries that `cfg` in the core and
->   `cfg(lumen_shader)` in every other crate, a cfg the core's build
+>   `cfg(fulgurite_shader)` in every other crate, a cfg the core's build
 >   script hands its direct dependents (M83, "Feature placement"). So
 >   each match shows the variant is behind a feature, and K83b's +0 B
 >   holds by construction. Paths and the widened gradient are accepted
@@ -100,13 +100,13 @@ performance, only-what-is-used compiled in, the agent, and hot reload.
 Concretely, each capability below is:
 
 - **default-off** where it costs a dependency, behind a feature
-  measured in crates and bytes, following `lumen-static-winit`'s
+  measured in crates and bytes, following `fulgurite-winit`'s
   manifest. Its figures are cited, not restated: `a11y`'s from
   `docs/results-a11y-platform.md` (95 → 166 crates, +4.12 MiB stripped),
   the GPU's
   from `docs/results-gpu.md` §5–§6. The manifest's three crate deltas
   (clipboard "11", 207 → 218; a11y "62"; dialogs "79", 218 → 297;
-  `crates/lumen-static-winit/Cargo.toml`:47, :90–91, :115) were
+  `crates/fulgurite-winit/Cargo.toml`:47, :90–91, :115) were
   counted by another method than K2's, so T80.0 re-measures all three
   by K2's command, records them in `docs/results-a11y-platform.md`,
   and rewrites the three comments with the method named. At `553fa5e`
@@ -136,8 +136,8 @@ Concretely, each capability below is:
     variants included, and the firmware links none of it (K4, bound
     0 B);
   - features of the shell, text and window crates cannot reach the
-    firmware at all (`fixtures/embedded` depends on `lumen-static` and
-    `lumen-static-widgets` only), so they are judged by K2 and never by
+    firmware at all (`fixtures/embedded` depends on `fulgurite` and
+    `fulgurite-widgets` only), so they are judged by K2 and never by
     a firmware delta (review B7);
 - **per-node state and style grow only where §2.1 assigns them (D4).**
   Widget structs, the embedded budget's third resident array, grow
@@ -178,10 +178,10 @@ Status letters: **F** finished, **P** in progress, **—** pending,
 | Gaussian blur | P | `Glass` (M19, M22) |
 | Shadows for quads | F | `Cmd::Shadow`, `Style.shadow` |
 | Quad pixel snapping | F | `Scaled::snapped` (M40/T40.3, M57/A15) |
-| Off-screen rendering / screenshots | F | headless `Canvas`, `ui.screenshot`, `LUMEN_SHOT` |
+| Off-screen rendering / screenshots | F | headless `Canvas`, `ui.screenshot`, `FULGURITE_SHOT` |
 | Headless mode | F | `Program::host()` |
 | Explicit text caching | F | `Measured`, `FoldedText`, `MeasureKey::new` (M45/T45.2) |
-| Text shaping and font fallback | F | fallback faces (M45/T45.3); `lumen-static-text` shapes for measuring and editing; shaped *paint* is M81 |
+| Text shaping and font fallback | F | fallback faces (M45/T45.3); `fulgurite-text` shapes for measuring and editing; shaped *paint* is M81 |
 | Dynamically-sized glyph cache | F | GPU atlas grows (M51/T51.1); software `GlyphCache` (M50/T50.2) |
 | Cursor availability | F | `Style.cursor`, 8 shapes |
 | Nested overlays; overlays for tooltips | F | `overlay.rs` `MAX_ROUNDS = 4`; `Tooltip` |
@@ -209,7 +209,7 @@ Status letters: **F** finished, **P** in progress, **—** pending,
 | Text selection (read-only text) | — | inputs only | **M80** |
 | IME candidate window placement | (part of IME, F) | `set_ime_cursor_area` is never called | **M80** |
 | RTL text (painted) | — | measured and edited, not painted | **M81** |
-| Shaping strategy selection | F | no seam on `Program`; `lumen-static-text` depends on the shell, so the shell cannot name its measurer (D1a) | **M81** |
+| Shaping strategy selection | F | no seam on `Program`; `fulgurite-text` depends on the shell, so the shell cannot name its measurer (D1a) | **M81** |
 | Subpixel glyph positioning | F | missing by design: `GlyphId` has no phase, and nothing rasterises at a fractional pen | **M81** (M81b, T81.7–T81.8: fontdue's public `rasterize_indexed_subpixel`, with `ab_glyph` as K81d's fallback; no M82 dependency) |
 | Background gradients (radial, in `Style`) | F | linear `Cmd` only; `Style.background` is a `Color`; `Gradient`'s 56 B payload already sets `Cmd`'s 60 | **M82** |
 | Vectorial text; paths | F | no path or transform command | **M82** |
@@ -226,7 +226,7 @@ Status letters: **F** finished, **P** in progress, **—** pending,
 | Customizable Markdown rendering and images | F | fixed subset, no images, no links | **M87** |
 | Incremental Markdown parsing | F | whole document re-parsed on `set_str` | **M87** (probe first) |
 | `Sipper` abstraction | F | deferred (`docs/plan-tasks.md` §4) | **M88** |
-| Screenshot as a task | F | agent and `LUMEN_SHOT` only; a `Job` runs on a worker and nothing lets the window answer it | **M88** (as a `Request`, §2.8) |
+| Screenshot as a task | F | agent and `FULGURITE_SHOT` only; a `Job` runs on a worker and nothing lets the window answer it | **M88** (as a `Request`, §2.8) |
 | Rich clipboard | F | text only, through `Session::copy`/`paste`; the application cannot reach the clipboard | **M88** (as a `Request`) |
 | Multi-window | F | `Pane`/`Panes` (`windows.rs`) hold a loader-side `Host<A>` and cannot be a hot window's state; M89 deletes them | **M89** |
 | `Daemon` API | F | missing; `KeyOutcome::Quit` and `Session::wants_quit` end the whole loop | **M89** |
@@ -258,7 +258,7 @@ cites this section rather than restating it.
 
 ### 2.1 Byte inventory
 
-**`Style`: 80 B, 78 used, 2 spare** (`crates/lumen-static/src/style.rs`).
+**`Style`: 80 B, 78 used, 2 spare** (`crates/fulgurite/src/style.rs`).
 
 | fields | bytes |
 |---|---:|
@@ -270,7 +270,7 @@ cites this section rather than restating it.
 | `visible`, `disabled` (`bool`) | 2 |
 | **used / size** | **78 / 80** |
 
-**`NodeState`: 84 B, 82 used, 2 spare** (`crates/lumen-static/src/desc.rs`).
+**`NodeState`: 84 B, 82 used, 2 spare** (`crates/fulgurite/src/desc.rs`).
 
 | fields | bytes |
 |---|---:|
@@ -305,9 +305,9 @@ takes the next free byte and prints the size either way:
 ceiling (`docs/results-embedded.md`). A task that moves either size
 edits every assertion of it in the same commit (second review C9,
 B14), and every milestone that moves either size cites this list:
-- `crates/lumen-static/tests/cursor.rs:32` (`Style == 80`) and `:33`
+- `crates/fulgurite/tests/cursor.rs:32` (`Style == 80`) and `:33`
   (`NodeState == 84`);
-- `crates/lumen-static/tests/focus.rs:203` (`Style == 80`) and `:204`
+- `crates/fulgurite/tests/focus.rs:203` (`Style == 80`) and `:204`
   (`NodeState == 84`);
 - `fixtures/embedded/src/lib.rs:409`/`:415`/`:416` (`NODE_STATE == 84`,
   `STYLE == 80`, `PER_NODE_RAM == 164`).
@@ -328,7 +328,7 @@ attributed, and **K1 requires every task that moves `Ui` to print
 old and new `Ui` sizes** beside `Style` and `NodeState`.
 
 **`Cmd`: 60 B, `Copy`; `Gradient`'s 56 B payload sets it**
-(`crates/lumen-static/tests/glass_cmd.rs:15`, which prints each other
+(`crates/fulgurite/tests/glass_cmd.rs:15`, which prints each other
 payload against the 56). `Cmd` is not per node: it is per display-list
 command. **This plan does not grow it** (K1). A new variant's payload
 is printed against 56 B the way `Glass`'s is. What does not fit goes
@@ -337,14 +337,14 @@ headroom** today (inline `Stops`, `MAX_STOPS = 4`), so M82 chooses a
 layout that fits (for example `u8` stop offsets, or stops out of line
 under §2.9) and prints the arithmetic.
 
-**`Event`: 16 B** (`crates/lumen-static/tests/gesture.rs:21`,
-`crates/lumen-static/tests/modifiers.rs:101`). It is per `InputQueue`
+**`Event`: 16 B** (`crates/fulgurite/tests/gesture.rs:21`,
+`crates/fulgurite/tests/modifiers.rs:101`). It is per `InputQueue`
 slot (`CAP * size_of::<Event>()`), not per node. New variants (M85's
 visibility, M90's context request and `Event::Menu { id: u32 }`, whose
 16 B fit M90/T90.4 asserts) fit in 16 B or the task stops (K1).
 
 **`GlyphId`: 8 B** (`u32` px bits + `u16` index + `u8` face, padded;
-`crates/lumen-static-shell/src/text.rs`). It is a shell type with a
+`crates/fulgurite-shell/src/text.rs`). It is a shell type with a
 private constructor, which is why the core cannot hold one (§2.7c).
 
 **Firmware** (`docs/results-embedded.md`, re-measured at the M56 merge,
@@ -410,7 +410,7 @@ cap of 1,000 B, which the owner kept.
 
 ### 2.2 `Painter`: implementors and consumers
 
-`Painter` (`crates/lumen-static/src/display.rs:805`) has seven required
+`Painter` (`crates/fulgurite/src/display.rs:805`) has seven required
 methods (`rect`, `text_weighted`, `rounded_rect`, `shadow`,
 `stroked_rect`, `push_clip`, `pop_clip`) and provided `line`,
 `gradient`, `image`, `glass`, `text`, `clip_bounds`, `defer`. Every
@@ -419,18 +419,18 @@ found by grep on `553fa5e`:
 
 | implementor | where | kind |
 |---|---|---|
-| `DisplayList` | `lumen-static/src/display.rs:1358` | leaf collector |
-| `Scaled` | `lumen-static/src/display.rs:1220` | **wrapper** |
-| `Deferring` | `lumen-static/src/overlay.rs:190` | **wrapper** |
-| `retain::Recording` | `lumen-static/src/retain.rs:923` | **wrapper** (streams `(hash, ink)`, holds no list) |
-| `CullTo` (M85/T85.8) | `lumen-static/src/display.rs` | **wrapper** (narrows `clip_bounds` to the viewport) |
+| `DisplayList` | `fulgurite/src/display.rs:1358` | leaf collector |
+| `Scaled` | `fulgurite/src/display.rs:1220` | **wrapper** |
+| `Deferring` | `fulgurite/src/overlay.rs:190` | **wrapper** |
+| `retain::Recording` | `fulgurite/src/retain.rs:923` | **wrapper** (streams `(hash, ink)`, holds no list) |
+| `CullTo` (M85/T85.8) | `fulgurite/src/display.rs` | **wrapper** (narrows `clip_bounds` to the viewport) |
 | `Checksum` | `fixtures/embedded/src/lib.rs:247` | leaf, the firmware's |
 | `Sink` | `benches/src/bin/retain.rs:215` | leaf |
-| `Plain`, `Null`, `Echo`, `Counting`, `Flat`, `Surfaced` | `lumen-static/tests/{glass_cmd,retain_align,painter,container_fill,vector,overlay}.rs` | test leaves |
+| `Plain`, `Null`, `Echo`, `Counting`, `Flat`, `Surfaced` | `fulgurite/tests/{glass_cmd,retain_align,painter,container_fill,vector,overlay}.rs` | test leaves |
 
 **Not implementors**, and the first draft's list confused them (review
 C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
-(`lumen-static-wgpu`) are `Renderer`s, and consume `Cmd`. `wire.rs`,
+(`fulgurite-wgpu`) are `Renderer`s, and consume `Cmd`. `wire.rs`,
 `contrast.rs`, `Cmd::hash_into`, `DisplayList::hash_from` and
 `benches/src/bin/retain.rs` match on `Cmd` too. The hatches
 (`hatch.rs`) and clip helpers call a painter; none implements one.
@@ -449,7 +449,7 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
   gates its
   *existence* in every implementor above. The gate for *forwarding it
   correctly* is `deferring_forwards_every_command`
-  (`crates/lumen-static/tests/overlay.rs:435`). Each task extends it
+  (`crates/fulgurite/tests/overlay.rs:435`). Each task extends it
   with the new call, updates its asserted count (5 today, 6 after T80.1's
   `text_spaced`) and prints
   it. For a required method, "`Deferring` inherits a default" does not
@@ -464,11 +464,11 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
   the mechanics (`docs/plan-gpu-extension.md`). A required method
   behind a feature cannot work here: `fixtures/embedded` and `benches`
   are workspace members, so a unified build that turns
-  `lumen-static/shader` on would make every leaf in a crate that does
+  `fulgurite/shader` on would make every leaf in a crate that does
   not forward the feature fail to compile. A provided method is right
   for a leaf and wrong for a wrapper, and the four wrappers
   (`Scaled`, `Deferring`, `Recording` and, once M85b lands, `CullTo`)
-  live in `lumen-static`, so they all override both under the same
+  live in `fulgurite`, so they all override both under the same
   `cfg`. M82's K82b fallback, if the owner ever moves paths out of the
   firmware, uses the same shape under `cfg(feature = "alloc")`:
   provided `path`/`fills` with leaf defaults, overridden by the
@@ -476,31 +476,31 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
   outside the core that matches `Cmd` builds with `std`
   (`docs/plan-paint-vocabulary.md`, K82b). **`Cmd::Shader`/`Cmd::ShaderEnd`
   are gated too, at every use site** (D3, owner, 2026-09-30):
-  - in `lumen-static` every arm or method that names them carries
+  - in `fulgurite` every arm or method that names them carries
     `#[cfg(feature = "shader")]` (`display.rs`: the enum, `DisplayList`,
     `Scaled`, `CullTo`, `hash_into`, `hash_from`; `wire.rs`; `retain.rs`'s
     `Recording`; `overlay.rs`'s `Deferring`; the core's tests);
   - a crate outside the core cannot test the core's feature: its own
     `cfg(feature = "shader")` tests *its* feature, so under unification
     it would drop its arm while the variant exists and fail E0004. So
-    `lumen-static` gains `links = "lumen_static"` and a `build.rs` that
+    `fulgurite` gains `links = "fulgurite"` and a `build.rs` that
     prints `cargo:shader=1` when `CARGO_FEATURE_SHADER` is set, and
-    each crate that matches `Cmd` reads `DEP_LUMEN_STATIC_SHADER` in
-    its own `build.rs` and emits `cargo:rustc-cfg=lumen_shader`. Its
-    arms are `#[cfg(lumen_shader)] Cmd::Shader { .. } => …`. M83 lists
-    the crates and sites (`lumen-static-shell`, `lumen-static-wgpu`,
+    each crate that matches `Cmd` reads `DEP_FULGURITE_SHADER` in
+    its own `build.rs` and emits `cargo:rustc-cfg=fulgurite_shader`. Its
+    arms are `#[cfg(fulgurite_shader)] Cmd::Shader { .. } => …`. M83 lists
+    the crates and sites (`fulgurite-shell`, `fulgurite-wgpu`,
     `benches`);
   - the gate is two workspace builds, feature off and
-    `--features lumen-static/shader`, so exhaustiveness is
+    `--features fulgurite/shader`, so exhaustiveness is
     compiler-checked both ways (M83/T83.3). The firmware links none of
     it by construction (K83b, 0 B).
 
   The forwarding gate is `deferring_forwards_the_bracket`
-  (`crates/lumen-static/tests/shader_cmd.rs`), whose injection deletes
+  (`crates/fulgurite/tests/shader_cmd.rs`), whose injection deletes
   `Deferring`'s override. `dev-shape` gains the core's and the shell's
   `--features shader` test lines, so `--workspace` unification does not
   decide whether they run.
-- **`crates/lumen-static-shell/tests/svg.rs`'s exhaustive `match` over
+- **`crates/fulgurite-shell/tests/svg.rs`'s exhaustive `match` over
   `Cmd` names every new kind.**
 - **`Deferring` repaints deferred subtrees outside every clip scope**
   (`overlay.rs`, module doc). That does not touch transforms: M82
@@ -512,8 +512,8 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
 
 - **Every `Session` method is required.** All 29 (30 since M80/T80.5's
   `caret_rect`, 31 since M81/T81.4's `shaping`) at
-  `crates/lumen-static-shell/src/session.rs:148` end in `;`, and
-  `impl Session for Hot` (`crates/lumen-static-reload/src/lib.rs:833`)
+  `crates/fulgurite-shell/src/session.rs:148` end in `;`, and
+  `impl Session for Hot` (`crates/fulgurite-reload/src/lib.rs:833`)
   writes each one out. **A missing forward is a compile error (E0046),
   so the compiler is the Hot-forward gate.** Every new method in this
   plan stays required. No task writes a "drop the Hot forward"
@@ -525,8 +525,8 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
 - **The stamp is not a method list.** `abi_fields()`
   (`session.rs:1123`) holds the shell version, the shell's feature list
   and `size_of::<Box<dyn Session>>()`. The vtable is covered by the
-  source hash in `crates/lumen-static-reload/build.rs`, which hashes
-  `src/` and the manifests of `lumen-static`, `lumen-static-shell` and
+  source hash in `crates/fulgurite-reload/build.rs`, which hashes
+  `src/` and the manifests of `fulgurite`, `fulgurite-shell` and
   the reload crate. Any edit changes it, so a per-method stamp test
   cannot tell one change from another.
 - **The feature list is load-bearing** (M37: sizes alone missed an
@@ -534,7 +534,7 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
   `abi_fields`' list in the task that adds it**, starting with
   `shaping` (§2.7a) and `shader`. `shader` changes `Cmd`'s variant
   set, and the core's feature can be on while the shell's is off, so
-  shader has **two entries**: `lumen_shader` reads `cfg!(lumen_shader)`
+  shader has **two entries**: `fulgurite_shader` reads `cfg!(fulgurite_shader)`
   (the core's variant set), and `shader` reads the shell's own
   `cfg!(feature = "shader")` (`ShaderTable`'s layout, which crosses
   `Session::shaders` by value). Both are added in M83/T83.3, and `just
@@ -547,7 +547,7 @@ C24): `Svg` (`svg.rs:113`), `Canvas` (`software.rs:1842`) and `Gpu`
   `&dyn ImageSource`, a core trait under the source hash, so an entry
   would refuse a swap that is safe; T84.6 checks the accept
   direction).
-- `lumen-static-text` joins `build.rs`'s hash list only if one of its
+- `fulgurite-text` joins `build.rs`'s hash list only if one of its
   types crosses the seam. In this design none does, because the
   measurer lives in the library's `Local`.
 
@@ -566,17 +566,17 @@ draft's conditional "if M61 has landed" wording is gone.
 `check_lss_setters.sh` compares only `Patch` setters with the
 `PROPERTIES` table. Two lowering sites have one explicit arm per
 pairing and are not checked by it (second review M7):
-- the runtime lowering, `set` in `crates/lumen-static-shell/src/lss.rs`,
+- the runtime lowering, `set` in `crates/fulgurite-shell/src/lss.rs`,
   one arm per (setter, `Val`), ending in `panic!("… no setter …")`.
   A sheet loaded through `lss::load` (hot reload, `showcase.lss`) that
   uses a setter with no arm panics;
-- the macro lowering, `val` in `crates/lumen-static-macros/src/lss.rs`,
+- the macro lowering, `val` in `crates/fulgurite-macros/src/lss.rs`,
   one arm per `Val` variant.
 
 So a new setter lands, in one commit, with its `PROPERTIES` row, its
 arm in the shell's `set`, and, for a new value kind, the `Val`/`Takes`
-variant in `crates/lumen-static-lss/src/lower.rs` plus the macro's
-`val` arm, with a sheet in `crates/lumen-static-shell/tests/lss_parity.rs`
+variant in `crates/fulgurite-lss/src/lower.rs` plus the macro's
+`val` arm, with a sheet in `crates/fulgurite-shell/tests/lss_parity.rs`
 that uses it (so the runtime arm is exercised, not only declared).
 The sites are named in T80.2 (`line_height`), T80.3 (`overflow`, a
 new keyword kind), T82.3 (`background_fill`) and T86.1
@@ -598,22 +598,22 @@ x16)`, T87.1) is added by its own task and is not a K3 arm.
 
 | move | what | performed in |
 |---|---|---|
-| **a** | `lumen-static-text`'s `[dependencies]` entry on `lumen-static-shell` becomes `[dev-dependencies]` (with `features = ["truetype"]`). Only `tests/paint_shaped.rs` uses it (2 lines). The shell then depends on `lumen-static-text` behind a **default-off `shaping` feature**, which joins `abi_fields`. The crate count and stripped size with and without it are recorded under K2, and the default window build links zero `rustybuzz` symbols. `deny.toml`'s `RUSTSEC-2026-0206` acceptance, which calls rustybuzz "lumen-static-text's shaper (T15.8), a default-off crate", is reworded in the same commit: rustybuzz is then reached through the shell's default-off `shaping` feature (second review X5) | **M81** (T81.1) |
-| **b** | `Backend` (`lumen-static-winit/src/backend.rs:43`) and `Frame` (`surface.rs:25`) move into a new `lumen_static_shell::backend` module beside `Screen`, behind the shell's `truetype` (as `session` and `text` are; `raw-window-handle` is optional under it, and `Program::backend_with` is gated the same way), and `fetch_rgba`, `set_images` and `frame_rgba` become required in the move (M83/T83.1), with `BackendTarget` and `WindowHandles`. None of them names a winit type. `AsScreen`, `frame_times`, `Software`, `GpuBackend` and `pick_backend` stay in the winit crate (M83 owns the list). **`Backend` and `Screen` stay separate traits**: `Screen` has 9 implementors (`Offscreen` at `session.rs:109`, winit's `AsScreen` at `backend.rs:166`, whose receiver M88/T88.2 changes, and 7 test `Blind`s in `lumen-static-shell/tests/`; second review C10, M25) with no `resize`, `take_images` or `name`, and merging would give each four stubs. `Frame` is not merged into `FrameTimes`: `Frame` is the window's non-optional record (with `dropped`), `FrameTimes` the agent's optional view, and the conversion (`frame_times`) stays in the winit crate. `Software` stays there too, because it holds softbuffer and the window. The factory takes the window as `raw-window-handle` (`HasWindowHandle + HasDisplayHandle`, 0.6.2, already in `Cargo.lock`), plus `accept_cpu`, and returns `Option` so the software fallback still applies. It can be declared on `Program` now that it names no winit type. It is a boxed `FnMut` (M83/T83.2), **taken once by `run` into the window's `Config` at start, called once per window and per `resumed`** (a factory backend makes its own device; M89b/T89.10 shares the built-in backend's device through `Weak<GpuContext>`, not through the factory), **and never reloadable**: a swap re-runs `program()` but never re-reads `Config`, and a hot library's factory is ignored | **M83** (T83.1 the move, T83.2 the factory) |
-| **c** | a core **`GlyphKey`** in `lumen-static`: `px_bits: u32`, `index: u16`, `face: u8`, `phase: u8` (M81's order), 8 B. The shell's `GlyphId` converts to and from it. M81's shaped run (`ShapedGlyph { key: GlyphKey, .. }`) carries it inside the shell's paint path and no core store holds one, so no widget can choose a face through it (M87's italic probe records that) | **M81** (T81.1) |
-| **d** | programs and windows are named by **data**. A program is a `u16` index into a table the hot library exports, resolved by the current build on every swap: `export_program!`'s one boot symbol (`lumen_boot` today) gains the index. A window is a `u32` key. Neither is ever a `fn` pointer or a foreign type (rule 3, `docs/events-decision.md`) | **M89** (the `u32` window key and the program table; M88's `Request` carries no window key) |
+| **a** | `fulgurite-text`'s `[dependencies]` entry on `fulgurite-shell` becomes `[dev-dependencies]` (with `features = ["truetype"]`). Only `tests/paint_shaped.rs` uses it (2 lines). The shell then depends on `fulgurite-text` behind a **default-off `shaping` feature**, which joins `abi_fields`. The crate count and stripped size with and without it are recorded under K2, and the default window build links zero `rustybuzz` symbols. `deny.toml`'s `RUSTSEC-2026-0206` acceptance, which calls rustybuzz "fulgurite-text's shaper (T15.8), a default-off crate", is reworded in the same commit: rustybuzz is then reached through the shell's default-off `shaping` feature (second review X5) | **M81** (T81.1) |
+| **b** | `Backend` (`fulgurite-winit/src/backend.rs:43`) and `Frame` (`surface.rs:25`) move into a new `fulgurite_shell::backend` module beside `Screen`, behind the shell's `truetype` (as `session` and `text` are; `raw-window-handle` is optional under it, and `Program::backend_with` is gated the same way), and `fetch_rgba`, `set_images` and `frame_rgba` become required in the move (M83/T83.1), with `BackendTarget` and `WindowHandles`. None of them names a winit type. `AsScreen`, `frame_times`, `Software`, `GpuBackend` and `pick_backend` stay in the winit crate (M83 owns the list). **`Backend` and `Screen` stay separate traits**: `Screen` has 9 implementors (`Offscreen` at `session.rs:109`, winit's `AsScreen` at `backend.rs:166`, whose receiver M88/T88.2 changes, and 7 test `Blind`s in `fulgurite-shell/tests/`; second review C10, M25) with no `resize`, `take_images` or `name`, and merging would give each four stubs. `Frame` is not merged into `FrameTimes`: `Frame` is the window's non-optional record (with `dropped`), `FrameTimes` the agent's optional view, and the conversion (`frame_times`) stays in the winit crate. `Software` stays there too, because it holds softbuffer and the window. The factory takes the window as `raw-window-handle` (`HasWindowHandle + HasDisplayHandle`, 0.6.2, already in `Cargo.lock`), plus `accept_cpu`, and returns `Option` so the software fallback still applies. It can be declared on `Program` now that it names no winit type. It is a boxed `FnMut` (M83/T83.2), **taken once by `run` into the window's `Config` at start, called once per window and per `resumed`** (a factory backend makes its own device; M89b/T89.10 shares the built-in backend's device through `Weak<GpuContext>`, not through the factory), **and never reloadable**: a swap re-runs `program()` but never re-reads `Config`, and a hot library's factory is ignored | **M83** (T83.1 the move, T83.2 the factory) |
+| **c** | a core **`GlyphKey`** in `fulgurite`: `px_bits: u32`, `index: u16`, `face: u8`, `phase: u8` (M81's order), 8 B. The shell's `GlyphId` converts to and from it. M81's shaped run (`ShapedGlyph { key: GlyphKey, .. }`) carries it inside the shell's paint path and no core store holds one, so no widget can choose a face through it (M87's italic probe records that) | **M81** (T81.1) |
+| **d** | programs and windows are named by **data**. A program is a `u16` index into a table the hot library exports, resolved by the current build on every swap: `export_program!`'s one boot symbol (`fulgurite_boot` today) gains the index. A window is a `u32` key. Neither is ever a `fn` pointer or a foreign type (rule 3, `docs/events-decision.md`) | **M89** (the `u32` window key and the program table; M88's `Request` carries no window key) |
 
 ### 2.8 Platform requests are data (S1, normative)
 
 A `Job` is a `Copy` descriptor and `fn` pointers, and `Host::spawn`
 hands every job to a `Spawner` that runs it on a worker
-(`crates/lumen-static/src/spawn.rs`). Nothing lets a window answer one,
+(`crates/fulgurite/src/spawn.rs`). Nothing lets a window answer one,
 a handler cannot build one, and a clipboard image is not `Copy`. So
 platform work is **not a `Job`** (reviews C14, A14, M12, P17). M88
 builds the mechanism (T88.3 in its section, which is authoritative for
 the details), and M89 and M90 extend it:
 
-- **`Request`**, a `Copy` enum in a new `lumen-static/src/request.rs`
+- **`Request`**, a `Copy` enum in a new `fulgurite/src/request.rs`
   behind `std`, as `Outbox` is, so the firmware links none of it. M88's
   variants are `Screenshot { tag }`, `ClipboardWrite { tag, kind }` and
   `ClipboardRead { tag, kind, format }`. **`tag` is a `u64`**, chosen
@@ -691,7 +691,7 @@ lives in a buffer the display list owns for one frame. Any index into
 that buffer shifts when an earlier node's entry changes. When
 `Cmd::Text`'s hash folded its buffer offset, one byte of text reported
 **61,056 px² of phantom damage** (M27/T27.3,
-`crates/lumen-static/src/display.rs`, `Cmd::hash_into`). So, for every
+`crates/fulgurite/src/display.rs`, `Cmd::hash_into`). So, for every
 store:
 
 - the `Painter` method takes the **content by reference** (`&[..]`), so
@@ -702,7 +702,7 @@ store:
   **content**. A content-derived key in the command is equivalent;
 - **the gate** is two entries in one list, modelled on
   `a_text_length_change_does_not_report_later_nodes`
-  (`crates/lumen-static-agent/tests/damage_shape.rs:261`). When the
+  (`crates/fulgurite-agent/tests/damage_shape.rs:261`). When the
   first entry changes content and length, the second reports no damage,
   and the count is printed. **Injection:** fold the start index, and
   the second entry reports damage. **Accept direction:** change the
@@ -746,9 +746,9 @@ Each task is one commit and ends with `just test` green.
   -D warnings` (the precedent is `--features simd`,
   `threads,truetype`, `gpu`), and `RUSTDOCFLAGS="-D warnings" cargo doc
   -p <crate> --no-deps --features <f>` where the feature adds public
-  items (precedent: `lumen-static --features a11y`). For `shader`, the
-  clippy line is a workspace one with `--features lumen-static/shader`,
-  so the `cfg(lumen_shader)` arms are linted. This covers `shaping`
+  items (precedent: `fulgurite --features a11y`). For `shader`, the
+  clippy line is a workspace one with `--features fulgurite/shader`,
+  so the `cfg(fulgurite_shader)` arms are linted. This covers `shaping`
   (T81.1), `vector-text` (T82.7), `shader` (M83), `image` (T84.1),
   `transitions` (M86), `clipboard-image` (T88.5) and `tray` (T90.7).
   **Injection:** add an unused binding inside the feature's code; the
@@ -796,9 +796,9 @@ Each task is one commit and ends with `just test` green.
   - gives each new **drive inventory name** a row in
     `scripts/drive/roles.py` (M54/T54.3; `scripts/drive/run.py` refuses
     an inventory with no row and a row with no inventory);
-  - gives each new **`impl Node for`** in `lumen-static-widgets/src` a
+  - gives each new **`impl Node for`** in `fulgurite-widgets/src` a
     `ROWS` entry and a catalogue field in
-    `crates/lumen-static-widgets/tests/a11y_roles.rs`
+    `crates/fulgurite-widgets/tests/a11y_roles.rs`
     (`every_node_impl_has_a_row` scans `src/` and fails by name on a
     missing row; injection: delete the row). This is a different table
     from `roles.py`, keyed by type, not by inventory (second review M3).
@@ -846,7 +846,7 @@ The reference machine's tools are recorded by the capability probe,
 `scripts/probe.sh`, which `scripts/ci.sh` runs first (`probe.sh thumb
 qemu miri`) and whose findings it writes into `target/ci/<sha>.json`.
 Its capabilities are optional: an absent one exits 77, a skip, which
-`just ci` counts as a failure unless `LUMEN_ALLOW_SKIP=1`. A
+`just ci` counts as a failure unless `FULGURITE_ALLOW_SKIP=1`. A
 **prerequisite** is a tool the plan has decided the machine has; its
 absence is a failure, never a skip.
 
@@ -894,10 +894,10 @@ the results doc that owns it.
     had 80 B/node of headroom against a plan that adds at most 8
     (review B8).
 - **K2 — default-off stays default-off.**
-  - The default `lumen-static-winit` crate count, measured as
+  - The default `fulgurite-winit` crate count, measured as
     `docs/results-a11y-platform.md` measures it (`cargo tree -e
     normal`, deduplicated; 95 on 2026-09-27, 96 at `553fa5e`), does not
-    move. Bound 0. The command is `cargo tree -p lumen-static-winit -e
+    move. Bound 0. The command is `cargo tree -p fulgurite-winit -e
     normal --prefix none [--features F] | sed 's/ (\*)$//' | sort -u |
     wc -l`; without the `sed` step a `(*)` repeat counts twice (117
     default), which is not K2's count (second review B8).
@@ -926,7 +926,7 @@ the results doc that owns it.
   the minimum over `R` runs (default 5), so it is invoked with `R=1`
   and the eight invocations are the spread (second review B15). The
   arms are:
-  - `R=1 benches-competitive/run.sh -p lumen-static-frame`, rows
+  - `R=1 benches-competitive/run.sh -p fulgurite-frame`, rows
     `idle (floor)`, `ALL rows: +paint` and `+render (damage)`. The
     rows that change one row are the printed `layout`, `+paint` and
     `+render (damage)`; no row is called "one-row-change", and a
@@ -950,7 +950,7 @@ the results doc that owns it.
     decides: accept it, or move that surface behind a default-off core
     feature as `shader` is. §2.1's programme tally fits the ceiling,
     so this cap, not the ceiling, is what a task is expected to meet.
-  - Every task that touches `lumen-static` or `lumen-static-widgets`
+  - Every task that touches `fulgurite` or `fulgurite-widgets`
     prints the exact `.text`/`.rodata` delta for all four binaries
     against the parent commit's build. The comparator is
     `scripts/firmware_delta.sh BASE [BIN=B ...] [print]`, wrapped by
@@ -1046,7 +1046,7 @@ Milestone-specific kill rules live in their sections:
 
 - **M80 first.** It is small and touches only text. T80.0 corrects
   `docs/competitive-feature-gaps.md` and the manifest's three crate
-  deltas (`lumen-static-winit/Cargo.toml`'s clipboard "11" → 5,
+  deltas (`fulgurite-winit/Cargo.toml`'s clipboard "11" → 5,
   `a11y` "62" → 71 and `dialogs` "79" → 10, all re-measured by K2's
   command, §0;
   M80's own T80.0 list must carry it, second review B8, B9, M17,
@@ -1138,7 +1138,7 @@ Milestone-specific kill rules live in their sections:
   `cfg(feature = "shader")` outside the core names that crate's own
   feature, so a unified build with the core's on fails E0004 there.
   **Revealed by** M83/T83.3's feature-on workspace build, and avoided
-  by the `lumen_shader` cfg from each such crate's `build.rs` (§2.2).
+  by the `fulgurite_shader` cfg from each such crate's `build.rs` (§2.2).
 - **A per-frame store folds an index.** This is the T27.3 defect again.
   **Revealed by** §2.9's two-entry gate in each store's task.
 - **Byte budget taken out of order.** **Revealed by** every size
@@ -1203,8 +1203,8 @@ found" list mapping its findings to their resolution.
 
 ## Considered and not chosen
 
-- **A new `lumen-static-core` crate** to hold the backend, glyph and
-  request types (D1). `lumen-static` already *is* the `no_std` common
+- **A new `fulgurite-core` crate** to hold the backend, glyph and
+  request types (D1). `fulgurite` already *is* the `no_std` common
   crate. A `std` crate cannot serve the firmware. `Program<Renderer>`
   would make backend choice compile-time, pull wgpu into hot dylibs
   across M37's loader/library split, and spread into the `Session` ABI.
@@ -1223,7 +1223,7 @@ found" list mapping its findings to their resolution.
 - **Constructing `ComplexText` from the shell without the feature and
   the dependency move** (the first draft's
   `Program::text(Shaping::{Basic, Complex})`). It either cycles through
-  `lumen-static-text` or links rustybuzz into every shell user.
+  `fulgurite-text` or links rustybuzz into every shell user.
   Replaced by D1a (reviews A18, B18). A `Shaping` enum in the shell is
   not what was rejected: M81 has one, with `Complex` existing only
   under the default-off `shaping` feature after D1a's move.
@@ -1287,7 +1287,7 @@ One line per finding in the cross-cutting digest, with its resolution.
   → K1 has exact sizes and end-of-plan maxima.
 - **B9** — K2 bound 4.12 MiB → 3 MB.
 - **B10** — no typing arm; the idle floor is in another workspace → K3
-  names `lumen-static-frame`, `textarea` and `cascade` rows (the `grid`
+  names `fulgurite-frame`, `textarea` and `cascade` rows (the `grid`
   row was dropped: neither M85 nor M86 uses it).
 - **B23** — figures restated without their owner; 62 vs 71 crates → §0
   cites results docs; T80.0 fixes the manifest comment (second review
@@ -1424,7 +1424,7 @@ applied too.
   §2.2 states K82b's fallback as provided methods under
   `cfg(feature = "alloc")` with wrapper overrides.
 - **A7** (from `plan-gpu-extension.md`) → adopted: §2.3 gives shader
-  two stamp entries, `lumen_shader` and `shader`, both in T83.3.
+  two stamp entries, `fulgurite_shader` and `shader`, both in T83.3.
 - **M6** (from `plan-gpu-extension.md`) → adopted: the allowlist
   deletion is a per-task rule under "There is no trailing docs task",
   for both allowlists, not a widget-only item.

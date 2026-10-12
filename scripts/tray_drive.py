@@ -39,7 +39,7 @@ import time
 from gi.repository import GLib
 
 port = int(sys.argv[1])
-PID = int(os.environ["LUMEN_LIVE_PID"])
+PID = int(os.environ["FULGURITE_LIVE_PID"])
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
 f = s.makefile("rwb")
 n = [0]
@@ -166,12 +166,12 @@ def alive(pid):
 
 
 def quit_lines():
-    log = open(os.environ["LUMEN_LIVE_LOG"], errors="replace").read()
+    log = open(os.environ["FULGURITE_LIVE_LOG"], errors="replace").read()
     return [ln for ln in log.splitlines() if "Request::Quit" in ln]
 
 
 def drive():
-    strategy = os.environ.get("LUMEN_LIVE_STRATEGY")
+    strategy = os.environ.get("FULGURITE_LIVE_STRATEGY")
     print(f"== tray-drive: pid {PID}, strategy {strategy} ==")
 
     # (a) the windowless session, and the tray as the window reports it.

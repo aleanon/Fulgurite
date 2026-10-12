@@ -1,5 +1,0 @@
-error: fail_child.lss:1:1: child combinator `>` in `#title > label`: v1 matches a node by its own id, class or kind, not by its parent (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_child.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_child.lss");
-   |                                                       ^^^^^^^^^^^^^^^^

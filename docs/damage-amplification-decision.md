@@ -133,7 +133,7 @@ nothing asked a per-widget damage question until a drive script did.
 | **after T27.3, all three** | the widget's own rect | — | **1.00×** |
 
 691 200 px² is 960 × 720 — the whole window, for every interaction.
-Three causes, all in `lumen-static-agent`, none in the renderer:
+Three causes, all in `fulgurite-agent`, none in the renderer:
 
 1. **`journal::measure_into` folded a container's signature from its
    children's.** One leaf's repaint flipped every ancestor's hash, and
@@ -164,7 +164,7 @@ surface was never updated, so the agent kept answering the pre-M18
 question — `regions` now reports the set, and `rect` is documented as
 the weaker answer.
 
-`crates/lumen-static-agent/tests/damage_shape.rs` holds all four, and
+`crates/fulgurite-agent/tests/damage_shape.rs` holds all four, and
 **two of its five tests were themselves vacuous on the first attempt**,
 each proved so by the injection aimed at it: a sibling that paints a
 rect cannot notice a shifted *text* offset, and `summed <= hull` is an
@@ -250,7 +250,7 @@ commands, **328 → 295 ns**.
 `List` culls its rows against the surface, so its command count changes
 as it scrolls, and `Incremental`'s prefix-and-suffix alignment then
 charges every unchanged command between the culled range and the next
-real change after it (`crates/lumen-static-shell/tests/cull_damage.rs`:
+real change after it (`crates/fulgurite-shell/tests/cull_damage.rs`:
 a label beside the scroller, 1,792 px on each shifted step). A rule was
 built and closed it — every clip scope keyed by its per-depth ordinals,
 and the two frames re-synchronised at every scope end both have — but it
@@ -274,6 +274,6 @@ The journal now records whether each node drew anything — a leaf that
 emitted commands, a container whose ground, shadow or border is visible —
 and only those contribute damage. The move is still a change;
 `ui.lastChange` still reports it. Gate:
-`crates/lumen-static-agent/tests/damage_paints.rs`, where a spacer and a
+`crates/fulgurite-agent/tests/damage_paints.rs`, where a spacer and a
 transparent row move a short label: damage is the label's two boxes,
 1,280 px², and **84,800 px²** without the filter.

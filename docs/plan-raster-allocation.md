@@ -11,7 +11,7 @@
 > 8 and 32 bands, byte-identical to pre-M50. **T50.4:** the pool's kill
 > rule fired (two row copies 615 µs against a 216 µs frame); the budget
 > ships — frame thread exactly 3w + 1, worker code 0. **T50.5:**
-> `lumen-static-winit/simd` and `/threads`; each vector branch counted
+> `fulgurite-winit/simd` and `/threads`; each vector branch counted
 > and I8 red on all three. **T50.6:** exact growth (33,186,240 for
 > 33,186,240) and a 720p shrink returns the rest. **T50.7:** bold parsed
 > on first use (a regular-only stack holds one face). **T50.9:** closed as
@@ -82,7 +82,7 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 Truetype text allocates on every frame, and the gate draws block glyphs (R8-F1)
 
-`FontStack::glyphs` (`crates/lumen-static-shell/src/text.rs:236`) calls
+`FontStack::glyphs` (`crates/fulgurite-shell/src/text.rs:236`) calls
 `place_run` and then `rasterize` per glyph. `place_run` builds a fontdue
 `Layout` per run through `FontStack::run` (`text.rs:137`). It calls
 `cap_shift` (`text.rs:164`), which builds a second `Layout` to find
@@ -90,14 +90,14 @@ where an `H` lands (`text.rs:382`). It collects a `Vec<Placed>`.
 `glyphs` then collects a `Vec<Glyph>`, and `rasterize` (`text.rs:221`)
 returns fontdue's coverage `Vec<u8>` for each glyph. fontdue allocates
 twice per glyph (its accumulator and the bitmap). `draw_run`
-(`crates/lumen-static-shell/src/software.rs:122`) runs all of this for
+(`crates/fulgurite-shell/src/software.rs:122`) runs all of this for
 every visible run on every frame. On the layout side,
 `FontMetrics::measure_weighted` calls `measure_run` (`text.rs:268`),
 which builds one more `Layout` per measure.
 
 The gate that is supposed to catch this is
 `rasterising_a_frame_allocates_nothing`
-(`crates/lumen-static-shell/tests/alloc_gate.rs:343`). It renders on
+(`crates/fulgurite-shell/tests/alloc_gate.rs:343`). It renders on
 `Canvas::new` (`:348`), so it draws block glyphs. The handoff's "What
 survives from §3" (`docs/00-handoff-static-tree.md:306-313`) says "the
 gate covers a rasterised frame". `docs/results-allocation.md` §"The
@@ -141,12 +141,12 @@ threaded frame is still faster than one thread.
 
 ### 1.3 The `simd` and `threads` features: not reachable from the window, and not provably compiled (R6-F5, R18-F10)
 
-`lumen-static-winit`'s `[features]` has no `simd` and no `threads`
+`fulgurite-winit`'s `[features]` has no `simd` and no `threads`
 passthrough. Only `examples/counter-window` exposes them, through its
 own shell dependency line. Cargo's feature unification makes both
 reachable, so this is a configuration and documentation gap (R6-F5,
 S3). But the benchmark manifest that calls itself "the default shape"
-(`benches-competitive/arms/lumen-static-app/Cargo.toml:7`) is the row
+(`benches-competitive/arms/fulgurite-app/Cargo.toml:7`) is the row
 the docs compare with Qt and GTK. No user-facing doc says how to turn
 the fast raster path on. Whether `threads` should be on by default for
 desktop has no recorded answer.
@@ -186,7 +186,7 @@ gap to GPU contexts and says nothing about the font heap (R8-F10, S4).
 whatever `bounds` it is given. On its own, that makes a small damage
 rect cost the whole panel's blur. The verifier found it is not the
 binding cause. Through the real `Host`, `dilate`
-(`crates/lumen-static/src/retain.rs:543-566`) grows any damage that
+(`crates/fulgurite/src/retain.rs:543-566`) grows any damage that
 touches a source region into the whole source before the renderer sees
 it. So bounding the capture alone saves nothing (R8-F6, lowered to
 S3). A damage-bounded blur is only correct for a material whose
@@ -196,7 +196,7 @@ clipped region changes every pixel of the panel.
 
 **One correction to the re-triage's fix.** It proposes widening damage
 by "the kernel reach (3σ+4)". The region a panel reads is
-`glass_source` (`crates/lumen-static/src/display.rs:160-183`). Its
+`glass_source` (`crates/fulgurite/src/display.rs:160-183`). Its
 reach also includes the bevel's refraction, scaled by the dispersion
 spread. A reach of 3σ+4 would leave a refracting frosted panel's rim
 stale, which is the exact hole that function's rustdoc says it closed.
@@ -259,7 +259,7 @@ that drops glyphs to keep a zero is the defect M51 is fixing.
 
 **What (b) breaks.** Nothing public. `FontStack::glyphs` is
 crate-private. `FontStack::place_run` is public and used by
-`lumen-static-wgpu`, and it keeps its signature. A scratch-taking
+`fulgurite-wgpu`, and it keeps its signature. A scratch-taking
 variant is added beside it, which M51/T51.4 then uses for the GPU
 path.
 
@@ -269,7 +269,7 @@ path.
 spawn buys is the right to borrow the frame's `&DisplayList` and pixel
 slice. A persistent pool cannot hold those borrows safely, because they
 are not `'static`. `scripts/check_no_unsafe.sh` covers
-`crates/lumen-static-shell/src`, so the usual lifetime-erasing pool is
+`crates/fulgurite-shell/src`, so the usual lifetime-erasing pool is
 not available. The options:
 
 - **(A) A persistent pool with owned inputs.** Workers are created once,
@@ -298,12 +298,12 @@ process-wide and its setup asserts that the canvas banded.
 
 ### 2.3 `threads` stays default-off. `simd` and `threads` become window features
 
-`lumen-static-winit` gains `simd` and `threads` features that forward
+`fulgurite-winit` gains `simd` and `threads` features that forward
 to the shell. **Neither is on by default.** The recorded answer for
 full redraws on desktop is the GPU (`docs/results-gpu.md`), and the
 banded path allocates until T50.4 lands. The default question is
 reopened only after T50.4, and only with a measurement. The
-`lumen-static-app` manifest stops calling itself the comparison row
+`fulgurite-app` manifest stops calling itself the comparison row
 for a full 4K CPU redraw, and says which features the fast path needs.
 
 ### 2.4 Proving the vector path ran: a counter, not a constant
@@ -348,7 +348,7 @@ finding, so that nothing claims to be red when it is not.
   `--features truetype` for this binary explicitly and asserts its test
   count is above zero, so that a feature split cannot compile the arms
   out silently. M43/R17-F1 found that shape twice.
-- **R18-F4.** `crates/lumen-static-shell/tests/alloc_gate_threads.rs`,
+- **R18-F4.** `crates/fulgurite-shell/tests/alloc_gate_threads.rs`,
   its own binary, `required-features = ["threads"]`, counting with an
   armed process-wide atomic. It renders a 1920×1080 list, asserts
   `bands_for(None) >= 2` first, and then asserts zero per frame. **Red
@@ -363,7 +363,7 @@ finding, so that nothing claims to be red when it is not.
   green. That is the finding's evidence, and T50.5 turns it into a
   gate.
 - **R6-F5.** `cargo build -p minimal --features
-  lumen-static-winit/threads` fails to resolve the feature. **Red
+  fulgurite-winit/threads` fails to resolve the feature. **Red
   today.** Recorded, since there is no test file to commit until the
   feature exists.
 - **R8-F7.** A resize arm with the counting allocator: 4K, then one
@@ -447,7 +447,7 @@ them. The claim was re-measured instead of assumed, with a throwaway
 probe (not committed) on the gate's own fixture: block glyphs 0/0 per
 frame, truetype 4.60 pump + 25.80 raster per frame. That table is in
 `docs/results-allocation.md`. The docs list above was also short: the
-book (`index.md`, `topology.md`, `costs.md`) and `lumen-static`'s crate
+book (`index.md`, `topology.md`, `costs.md`) and `fulgurite`'s crate
 rustdoc made the same unqualified claim and are qualified in the same
 commit. The old arm name went on `scripts/doc-identifiers.allow` as a
 recorded rename, since this plan and the history cite it.
@@ -617,10 +617,10 @@ the worker's body changes there.
 
 **Closes:** R6-F5, R18-F10.
 
-**Change:** `lumen-static-winit` gains `simd` and `threads` features
+**Change:** `fulgurite-winit` gains `simd` and `threads` features
 that forward to the shell (§2.3). The three vector branches increment
 per-branch counters under a test-only feature (§2.4), which the `simd`
-recipe enables. A test in `crates/lumen-static-winit/tests` builds
+recipe enables. A test in `crates/fulgurite-winit/tests` builds
 with `--features threads` and asserts that the shell reports banding
 compiled in. It prints the worker count `Canvas::bands_for` gives a 4K
 canvas.
@@ -640,9 +640,9 @@ plain `--features simd` build passes, and the default winit build
 reports banding off and passes its own default-arm assertion.
 
 **Docs in the same commit:** the justfile's `simd` comment; the
-`simd_shadow.rs` header; `lumen-static-winit`'s `Cargo.toml` feature
+`simd_shadow.rs` header; `fulgurite-winit`'s `Cargo.toml` feature
 comments; the handoff's threading paragraph (how to turn it on, and
-that it is default-off by decision); the `lumen-static-app` manifest's
+that it is default-off by decision); the `fulgurite-app` manifest's
 "default shape" note; `docs/results-competitive.md`'s raster rows (say
 which features the fast row used).
 
@@ -842,7 +842,7 @@ with T51.3's gate green.
 Written before any build.
 
 - **T50.4, the pool (§2.2).** Kill (A) and ship (B) if the pool needs
-  `unsafe` anywhere in `crates/lumen-static-shell/src`, or if its
+  `unsafe` anywhere in `crates/fulgurite-shell/src`, or if its
   1080p banded frame is slower than the scoped version by more than the
   scoped version's own run-to-run spread, over 8 interleaved runs a
   side. Eight, not four, because four runs a side could not separate a

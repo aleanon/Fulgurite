@@ -5,7 +5,7 @@
 CHECK='just const-budget >/dev/null 2>&1; r2=0; just const-budget || r2=1; r3=0; just const-budget || r3=1; echo "run2 red=$r2 run3 red=$r3"; [ "$r2$r3" = 00 ]'
 EXPECT='run2 red=1 run3 red=1'
 plant() {
-    replace crates/lumen-static/src/widget.rs \
+    replace crates/fulgurite/src/widget.rs \
         '    while j < src.len() {
         dst[write_at + j] = src[j];' \
         '    while j < src.len() {

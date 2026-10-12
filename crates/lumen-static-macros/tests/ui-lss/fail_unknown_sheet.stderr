@@ -1,5 +1,0 @@
-error: include_lss!: fail_unknown_sheet.lss: no `@sheet huge`: the file has `big`
-  --> tests/ui-lss/fail_unknown_sheet.rs:13:81
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_unknown_sheet.lss", huge);
-   |                                                                                 ^^^^

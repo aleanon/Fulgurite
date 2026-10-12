@@ -6,7 +6,7 @@
 > 2026-09-02, when it turned out no results doc had said.
 
 *2026-09-02, plan `docs/plan-review-fixes.md` F6.9. Harness:
-`crates/lumen-static-shell/tests/alloc_gate.rs`, a counting
+`crates/fulgurite-shell/tests/alloc_gate.rs`, a counting
 `#[global_allocator]` in its own test binary. Machine-independent: the
 numbers here are integers.*
 
@@ -207,8 +207,8 @@ which is the application's data and not the frame.
   stated budget of `std`'s spawns (the section below).
 - **The GPU path's encoding.** wgpu allocates to encode and submit
   every frame, and that floor is not this workspace's: 61 allocations a
-  frame on the RTX 4070. What `lumen-static-wgpu` itself adds is gated
-  at **0** since M51/T51.4 by `crates/lumen-static-wgpu/tests/alloc.rs`,
+  frame on the RTX 4070. What `fulgurite-wgpu` itself adds is gated
+  at **0** since M51/T51.4 by `crates/fulgurite-wgpu/tests/alloc.rs`,
   twice: a caret frame against an empty frame, and the empty frame
   against wgpu's submission alone (`Gpu::submit_floor`). Before T51.4 the
   caret frame read 10 over the floor (R9-F8).

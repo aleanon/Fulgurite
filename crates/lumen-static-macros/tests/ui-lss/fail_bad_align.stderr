@@ -1,5 +1,0 @@
-error: fail_bad_align.lss:1:17: `align` takes `start`, `center`, `end` or `fill`, not `middle`
-  --> tests/ui-lss/fail_bad_align.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_bad_align.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^

@@ -25,7 +25,7 @@
 >   it found the shell's, winit's and stamp-lib's graphs.
 > - **T48.10** — a diverging replay is `Diverged { step }`; the sheet is
 >   checked; an export asserts every step and a final tree digest.
-> - **T48.11** — `LUMEN_AGENT_ADDR`, read by the window alone; 8 → 0
+> - **T48.11** — `FULGURITE_AGENT_ADDR`, read by the window alone; 8 → 0
 >   readers (and glasswall's, after the rebase).
 > - **T48.12** — no endpoint, no journal (3 → 0 of 3 frames); 0 agent
 >   symbols without the feature (66 with).
@@ -91,9 +91,9 @@ and prints the measured quantity beside its bound.*
 
 - **One frame, two counters** (R13-F3, S2). An `input.*` reply takes
   its `frame` from `Live::pump`, which returns
-  `self.host.frame_number()` (`crates/lumen-static-shell/src/session.rs:497`).
+  `self.host.frame_number()` (`crates/fulgurite-shell/src/session.rs:497`).
   `ui.lastChange` and `ui.lastDamage` count `Agent::frame`, which
-  advances once per `frame_done` (`crates/lumen-static-agent/src/lib.rs:380-381`).
+  advances once per `frame_done` (`crates/fulgurite-agent/src/lib.rs:380-381`).
   The host counter moves twice per input RPC, once for the pump inside
   the RPC and once for the redraw after it, so the two drift apart.
   The re-triage clicked `#spawn-one` three times. The replies said
@@ -105,19 +105,19 @@ and prints the measured quantity beside its bound.*
   `#start-slow` and got `settled: true` while `#status` still read
   `last: `; 1.2 s later it read `last: slow=99`. Since the comment was
   written, the window loop has gained both reasons to be unsettled,
-  `animating || more_deferred()` (`crates/lumen-static-winit/src/lib.rs:532`)
+  `animating || more_deferred()` (`crates/fulgurite-winit/src/lib.rs:532`)
   and `next_deadline_ms()`, and it reports neither.
 - **`app.perf` reports zeros in every turnkey window** (R13-F2, S2).
   `Session::agent_frame_done` builds `FrameTiming::default()`
   (`session.rs:429`). The window's `redraw` throws away the filled
-  frame that `present` returns (`crates/lumen-static-winit/src/lib.rs:500-504`).
+  frame that `present` returns (`crates/fulgurite-winit/src/lib.rs:500-504`).
   So every stage reads 0, and `scripts/ui_check.py`'s frame and
   regression budgets pass on those zeros (R13-F2).
 - **Nothing notices a stale journal** (R13-F8, S2). `answer_agent`
   ends with `request_redraw()` (`lib.rs:650-652`), and that redraw is
   the only thing that runs `frame_done` after an input. No cargo test
   drives `answer_agent → redraw → frame_done`:
-  `crates/lumen-static-winit/tests/` holds only `gpu_regions.rs` and
+  `crates/fulgurite-winit/tests/` holds only `gpu_regions.rs` and
   `translate.rs`. The drive harness skips its damage bound when no
   region overlaps the widget (`scripts/drive/harness.py:389-390`,
   `mine = ..; if mine:`). So the review's injection `1beed32`, which
@@ -130,7 +130,7 @@ and prints the measured quantity beside its bound.*
 - **Two hand copies of one serialiser, both lossy** (R15-F10, S3).
   M35 moved `get_tree` onto `observe::emit_root`
   (`lib.rs:820-857`), so the agent and `observe::dump`
-  (`crates/lumen-static/src/observe.rs:179-214`) walk one way. The
+  (`crates/fulgurite/src/observe.rs:179-214`) walk one way. The
   JSON is still built twice, and both copies write only id, role,
   value, label, bounds, children, src and wid. Several things are set
   on the node and dropped on output: `toggled` (`toggle.rs:274`),
@@ -160,14 +160,14 @@ and prints the measured quantity beside its bound.*
 - **Four allocations per `frame_done`, against a documented zero**
   (R14-F4, S2). `live_nodes` allocates its identity `Vec` on every
   call, and both callers make a fresh `live` vector
-  (`crates/lumen-static-agent/src/journal.rs:170`, `audit.rs:557`).
+  (`crates/fulgurite-agent/src/journal.rs:170`, `audit.rs:557`).
   The re-triage's `benches --bin agent` printed 4.00 with and without
   findings. The bench prints; nothing asserts.
 - **A second feature is silently required** (R12-F3, S3). The
-  `lumen-static-winit` `agent` feature
-  (`crates/lumen-static-winit/Cargo.toml:48`) builds a working agent
+  `fulgurite-winit` `agent` feature
+  (`crates/fulgurite-winit/Cargo.toml:48`) builds a working agent
   that reports every crate widget as `GenericContainer` unless the
-  application also turns on `lumen-static-widgets/observe`. The
+  application also turns on `fulgurite-widgets/observe`. The
   re-triage re-ran probe `3635061`: `GenericContainer` without the
   second feature, `Label` with it, and no warning in either build.
   `docs/results-widget-crate.md` ("One feature seam the move exposed")
@@ -176,7 +176,7 @@ and prints the measured quantity beside its bound.*
 ### 1.3 A replay that cannot fail
 
 **R13-F6, S2.** `Recording::replay` discards every reply
-(`crates/lumen-static-agent/src/session.rs:171`, `let _ =`).
+(`crates/fulgurite-agent/src/session.rs:171`, `let _ =`).
 `Recording::check` (`:136`) takes no stylesheet, although the module
 doc lists the stylesheet as one of the header fields whose mismatch is
 "a hard error rather than a diff". `Recording::export_test` emits
@@ -194,14 +194,14 @@ compiles and passes.
   `{"ok": True}` (`scripts/agent_client.py:138-142`). Only
   counter-window implements the method.
 - **Two environment variables for one address** (R13-F10, S3).
-  Launchers read `LUMEN_AGENT`: showcase (`examples/showcase/src/main.rs:737`,
+  Launchers read `FULGURITE_AGENT`: showcase (`examples/showcase/src/main.rs:737`,
   defaulting to 7654), tasks-demo (`examples/tasks-demo/src/main.rs:328`),
   `fixtures/hot-window/src/main.rs:9`, and
   `fixtures/panic-app/src/main.rs:13`. The re-triage missed the last
   one. counter-window (`examples/counter-window/src/window.rs:410`),
   `scripts/agent_client.py` and `scripts/drive/run.py` read
-  `LUMEN_AGENT_ADDR`, and the skill names only `LUMEN_AGENT_ADDR`. So
-  `LUMEN_AGENT_ADDR=… showcase` binds 7654 while the client dials
+  `FULGURITE_AGENT_ADDR`, and the skill names only `FULGURITE_AGENT_ADDR`. So
+  `FULGURITE_AGENT_ADDR=… showcase` binds 7654 while the client dials
   somewhere else.
 - **The documented method list is stale, and WORSE since the review**
   (R13-F11, S4). The agent crate's module doc (`lib.rs:5-8`, "In-process
@@ -216,7 +216,7 @@ compiles and passes.
   nor `app.setPalette`. It still lists `app.quit`.
 - **An agent build pays for the journal with no endpoint** (R14-F8,
   S3). `redraw` calls `agent_frame_done` on every frame
-  (`crates/lumen-static-winit/src/lib.rs:525`). `Local` runs it under
+  (`crates/fulgurite-winit/src/lib.rs:525`). `Local` runs it under
   `cfg(feature = "live-agent")` alone (`session.rs:422-433`), with no
   check that `Config::agent` is set. The rustdoc on `Config::agent`
   claims inertness only "without the feature", so the doc is accurate.
@@ -293,33 +293,33 @@ without coercing any row. T48.7 runs it.
 
 ### 2.4 How the feature seam fails
 
-Options: (a) a compile-time assertion in `lumen-static-widgets`: if
-`lumen-static` has `observe` and this crate does not, stop with a
-message naming `lumen-static-widgets/observe`; (b) make the winit
+Options: (a) a compile-time assertion in `fulgurite-widgets`: if
+`fulgurite` has `observe` and this crate does not, stop with a
+message naming `fulgurite-widgets/observe`; (b) make the winit
 `agent` feature forward it, which needs winit to depend on the widgets
 crate only for that; (c) a runtime warning in `ui.getTree`. **(a).**
 It fires in exactly the unified graph that has the defect, and it is
 as loud as the reload seam's E0277, which the review cited as the
 contrast (R12-F3). (b) adds a dependency to fix a flag. (c) is a
-fallback, not a fix. For (a), `lumen-static` exports a public boolean
+fallback, not a fix. For (a), `fulgurite` exports a public boolean
 constant that says whether `observe` is on, since a dependent crate's
 `cfg` cannot see another crate's features.
 
-What it breaks: `cargo test -p lumen-static-agent`. That build's
+What it breaks: `cargo test -p fulgurite-agent`. That build's
 dev-dependency on the widgets crate lacks `observe`, which is M43's
 R13-F7 (19 tests red). With the assertion in place it would fail to
 **compile** instead. So T48.9 lands after M43's fix, and says so.
 
 ### 2.5 One name for the address
 
-`LUMEN_AGENT_ADDR`. It is what the client library, the drive runner,
+`FULGURITE_AGENT_ADDR`. It is what the client library, the drive runner,
 counter-window and the skill already use, so a developer following the
 skill reaches the right port. The window reads it in one place:
-`lumen-static-winit`'s `start`, under the `agent` feature. The
+`fulgurite-winit`'s `start`, under the `agent` feature. The
 variable overrides the program's own `Program::agent` address, so a
 script can choose a port. A program's address is the default. With
 neither set, there is no endpoint. The examples drop their own
-`std::env::var` reads. `LUMEN_AGENT` is still honoured for one
+`std::env::var` reads. `FULGURITE_AGENT` is still honoured for one
 release, with a deprecation line on stderr, and the scripts set only
 the new name.
 
@@ -331,18 +331,18 @@ marked expected-to-fail until the task that closes it lands.
 
 | finding | the check | red today |
 |---|---|---|
-| R13-F3 | `crates/lumen-static-shell/tests/agent_frames.rs`: five clicks on a headless session, each followed by `frame` and `agent_frame_done`; `ui.lastChange` with `since = reply.frame - 1` must name the changed label | `click k: reply frame F, changes 0 (must be >= 1)` from click 2 |
-| R13-F1 | `crates/lumen-static-shell/tests/agent_settled.rs`: an animating app, and a task sleeping 100 ms | `settled=true animating=true`, `settled=true pending=1` |
+| R13-F3 | `crates/fulgurite-shell/tests/agent_frames.rs`: five clicks on a headless session, each followed by `frame` and `agent_frame_done`; `ui.lastChange` with `since = reply.frame - 1` must name the changed label | `click k: reply frame F, changes 0 (must be >= 1)` from click 2 |
+| R13-F1 | `crates/fulgurite-shell/tests/agent_settled.rs`: an animating app, and a task sleeping 100 ms | `settled=true animating=true`, `settled=true pending=1` |
 | R13-F2 | a step in `scripts/tasks_drive.py`: ten clicks, then `app.perf` | `frame p50 0 ns (must be > 0), n=N` |
 | R13-F8 | the redraw deleted (`1beed32`) against the event-loop test M39/T39.0 added, plus the harness | with the injection: `lastChange after click: 0`, and `widget-drive` exits 0 |
-| R15-F10 | `crates/lumen-static-agent/tests/tree_fields.rs`: a checked `CheckBox`, a `Slider` at 0.25, an open `Chooser`, a `Modal`, an inactive `Either` branch | `fields present: 0 / 6` |
+| R15-F10 | `crates/fulgurite-agent/tests/tree_fields.rs`: a checked `CheckBox`, a `Slider` at 0.25, an open `Chooser`, a `Modal`, an inactive `Either` branch | `fields present: 0 / 6` |
 | R13-F4 | the same file: `ui.resolve` on the `CheckBox` before and after a click; a coverage walk over the showcase entries | `checked: null -> null`; eight kinds named `GenericContainer` |
-| R13-F5 | `crates/lumen-static-agent/tests/nested_wrappers.rs`, from probe `c9d6760`: `Glass<Glass<Label>>`, `Card<Card<Label>>`, `ScrollView<ScrollView<Label>>` | `live=[true,true,false,false], changes=0/1` |
-| R14-F4 | `crates/lumen-static-agent/tests/alloc_frame_done.rs`, its own binary with a counting allocator | `allocs/frame_done 4.00 / bound 0` |
-| R12-F3 | a `just static` step: `cargo check -p lumen-static-widgets --features lumen-static/observe` must **fail** | the build succeeds |
-| R13-F6 | `crates/lumen-static-agent/tests/session_replay_fails.rs`, from probes `580f9f6` | `replay -> Ok, fresh n=1 / recorded 3` |
+| R13-F5 | `crates/fulgurite-agent/tests/nested_wrappers.rs`, from probe `c9d6760`: `Glass<Glass<Label>>`, `Card<Card<Label>>`, `ScrollView<ScrollView<Label>>` | `live=[true,true,false,false], changes=0/1` |
+| R14-F4 | `crates/fulgurite-agent/tests/alloc_frame_done.rs`, its own binary with a counting allocator | `allocs/frame_done 4.00 / bound 0` |
+| R12-F3 | a `just static` step: `cargo check -p fulgurite-widgets --features fulgurite/observe` must **fail** | the build succeeds |
+| R13-F6 | `crates/fulgurite-agent/tests/session_replay_fails.rs`, from probes `580f9f6` | `replay -> Ok, fresh n=1 / recorded 3` |
 | R13-F9 | `scripts/tasks_drive.sh`'s last step: `quit`, then the pid must exit | `still alive after 2000 ms` |
-| R13-F10 | a `just static` script: no file outside the winit crate reads `LUMEN_AGENT` | five files named |
+| R13-F10 | a `just static` script: no file outside the winit crate reads `FULGURITE_AGENT` | five files named |
 | R14-F8 | a debug counter of journaled frames, on tasks-demo with no address set, over three frames | `journaled 3 / bound 0` |
 | R13-F11 | a `just static` script comparing the method names in dispatch and `answer_agent` against the skill and `book/src/agent.md` | `missing: [app.failure, app.retry, app.shadow, app.reloads, app.setPalette]`, `extra: [app.quit]` |
 
@@ -397,7 +397,7 @@ clause, rewritten to expect `null` from a host that cannot say, goes
 red.
 
 **Docs in the same commit.** The comment at `lib.rs:809`; the "no
-auto-wait" rationale in `crates/lumen-static-agent/src/harness.rs:29`
+auto-wait" rationale in `crates/fulgurite-agent/src/harness.rs:29`
 and `docs/results-harness.md` (whose premise, that there is no
 scheduler, was false); the skill's synchronisation section; and
 `docs/00-handoff-static-tree.md` §9.
@@ -460,7 +460,7 @@ after `input.click`, `ui.lastChange` with `since = reply.frame - 1` is
 non-empty, which holds only if the redraw ran. That test's handler only
 counts methods (M39/T39.0 item 2), so this step runs it against a
 `Session`-backed window instead, which is the new part. That makes it
-the cargo-level gate `crates/lumen-static-winit/tests/` never had.
+the cargo-level gate `crates/fulgurite-winit/tests/` never had.
 
 The damage line also names what it measures. `ui.lastDamage`'s ratio
 is journal damage in logical pixels (M40 §2.1), so the harness prints
@@ -569,7 +569,7 @@ identity is removed.
 **Gate.** `nested_wrappers.rs` goes green on all three nestings. It
 asserts `live == [true; n]` and exactly one `lastChange` change after
 the label's text is set, and prints `live=<vec>, changes=N/1` per
-case. The existing `crates/lumen-static-agent/tests/hidden_subtree.rs`,
+case. The existing `crates/fulgurite-agent/tests/hidden_subtree.rs`,
 `off_table_visibility.rs` and `changes.rs` stay green. That is the
 accept direction: hidden nodes are still hidden, and a zero-sized
 first field is still live. `just observe-inlining` stays green.
@@ -619,13 +619,13 @@ rustdoc (`lib.rs:~376`).
 
 **Closes:** R12-F3.
 
-**Change.** Per §2.4. `lumen-static` exports whether `observe` is on,
-and `lumen-static-widgets` asserts at compile time that it has
+**Change.** Per §2.4. `fulgurite` exports whether `observe` is on,
+and `fulgurite-widgets` asserts at compile time that it has
 `observe` whenever the core does, with a message that names the
 feature to enable.
 
 **Gate.** The T48.0 step in `just static`: `cargo check -p
-lumen-static-widgets --features lumen-static/observe` must fail with
+fulgurite-widgets --features fulgurite/observe` must fail with
 the assertion's message, and `--features observe` must build. It
 prints the message it got. **Accept direction:** the same session
 builds the showcase with its `agent` feature and reads `role: Label`
@@ -636,12 +636,12 @@ from `ui.getTree`, via `scripts/tasks_drive.py`.
 session.
 
 **Docs in the same commit.** The comment on the `agent` feature in
-`crates/lumen-static-winit/Cargo.toml`; `docs/results-widget-crate.md`'s
+`crates/fulgurite-winit/Cargo.toml`; `docs/results-widget-crate.md`'s
 "One feature seam" section (now enforced); and the book's agent
 chapter if it names the feature.
 
 **Effort:** S. **Depends on:** M43/T43.6 (R13-F7). Without it,
-`cargo test -p lumen-static-agent` stops compiling instead of running
+`cargo test -p fulgurite-agent` stops compiling instead of running
 19 red tests. M54/T54.1 later splits `a11y` out of `observe`, and
 extends this assertion to the new feature.
 
@@ -664,7 +664,7 @@ their expectations inverted. A corrupted recording gives a divergence
 at step 2. A stylesheet mismatch gives `Mismatch`. An exported test
 with a missing selector, run as a generated function, panics naming
 its step. It prints `replay -> <result>, fresh n=X / recorded Y`.
-**Accept direction:** `crates/lumen-static-agent/tests/session.rs`'s
+**Accept direction:** `crates/fulgurite-agent/tests/session.rs`'s
 round trip still replays `Ok`, and an untouched export passes.
 
 **Injection.** Restore `let _ =` in `replay`: the corrupted case
@@ -672,7 +672,7 @@ returns `Ok` and the test fails by name. Drop the stylesheet
 comparison: the mismatch case goes red.
 
 **Docs in the same commit.** The module doc of
-`crates/lumen-static-agent/src/session.rs` and `export_test`'s
+`crates/fulgurite-agent/src/session.rs` and `export_test`'s
 rustdoc; `docs/plan-harness.md` T12.3 and `docs/results-harness.md`.
 
 **Effort:** M. **Depends on:** nothing. **It can run before Phase 3**:
@@ -684,22 +684,22 @@ the phase order apply to it.
 
 **Closes:** R13-F10.
 
-**Change.** Per §2.5. The window's `start` reads `LUMEN_AGENT_ADDR`
+**Change.** Per §2.5. The window's `start` reads `FULGURITE_AGENT_ADDR`
 when the `agent` feature is on. showcase, tasks-demo, hot-window and
 panic-app drop their own reads. The drive scripts
 (`scripts/agent_drive.sh`, `tasks_drive.sh`, `widget_drive.sh`,
 `panic_drive.sh`, `hot_window_drive.sh`), and M42's launcher, which
-passes both names until this task (M42 §4), set only `LUMEN_AGENT_ADDR`.
-`LUMEN_AGENT` is still honoured for one release, with a deprecation
+passes both names until this task (M42 §4), set only `FULGURITE_AGENT_ADDR`.
+`FULGURITE_AGENT` is still honoured for one release, with a deprecation
 line on stderr.
 
 **Gate.** A `just static` script: no file outside
-`crates/lumen-static-winit` reads `LUMEN_AGENT`, and it prints any line
+`crates/fulgurite-winit` reads `FULGURITE_AGENT`, and it prints any line
 that does. Positive control: it finds the deprecation shim itself, or
 it fails as blind. The live drives listed in M39/T39.7 stay green, and
 that is the accept direction.
 
-**Injection.** Re-add showcase's `std::env::var("LUMEN_AGENT")`: the
+**Injection.** Re-add showcase's `std::env::var("FULGURITE_AGENT")`: the
 script names `examples/showcase/src/main.rs`.
 
 **Docs in the same commit.** The skill's port lifecycle;
@@ -725,14 +725,14 @@ counted: M54 may make a screen-reader tree default-on for desktop
 (M54 §2.3), and then accesskit is linked without the agent on purpose.
 
 **Gate.** (1) The script prints
-`lumen_static_agent symbols: 0 / bound 0 (agent build: N)`, and fails
+`fulgurite_agent symbols: 0 / bound 0 (agent build: N)`, and fails
 if the agent build's N is 0, because a blind count would pass
 anything. (2) The T48.0 debug counter, on tasks-demo with no address
 set, prints `journaled 0 / bound 0` over three frames. With an address
 set, it journals every frame: that is the accept direction.
 
 **Injection.** Drop the endpoint check: the counter reads `3 / 0`. Add
-`lumen-static-winit/agent` to showcase's default features: the symbol
+`fulgurite-winit/agent` to showcase's default features: the symbol
 count is no longer 0.
 
 **Docs in the same commit.** `Config::agent`'s rustdoc (`None` is now
@@ -929,7 +929,7 @@ rewritten.
   had a first request seed the journal and report `reset: true`. With
   the endpoint configured the window journals every frame from the
   first, so there is nothing to seed; with none, no request can arrive.
-  The debug counter is `LUMEN_FRAME_REPORT=N` — after N frames the
+  The debug counter is `FULGURITE_FRAME_REPORT=N` — after N frames the
   window prints `N frames drawn, M journaled` and exits — read by the
   event-loop test on a spinning window rather than on tasks-demo, which
   draws no frame unasked.

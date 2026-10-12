@@ -14,7 +14,7 @@
 //! display list) and quoting only layout flatters Qt.
 //!
 //! This arm reports **seven** rows (eight under `observe`), because
-//! lumen-static has stages the others do not. Four of them are the
+//! fulgurite has stages the others do not. Four of them are the
 //! one-row-change ladder below; the other three are an idle floor and the
 //! all-rows pair, which is the workload Lumen's criterion benches use
 //! against masonry and iced. The doc said "four" until T16.3 counted them.
@@ -26,7 +26,7 @@
 //! - `+render (full)`  — plus rasterising the whole 400x800 viewport. This is
 //!                       the apples-to-apples with Qt's `+paint`.
 //! - `+render (damage)`— plus rasterising **only what changed**. This is what
-//!                       lumen-static actually does per frame (M8b/T13.8), and
+//!                       fulgurite actually does per frame (M8b/T13.8), and
 //!                       it is reported *beside* the full number rather than
 //!                       instead of it, because a comparison that quoted only
 //!                       this one would be measuring an optimisation the other
@@ -39,13 +39,13 @@
 
 use std::time::Instant;
 
-use lumen_static::hatch::List;
-use lumen_static_widgets::ops::Label;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::{pass, Constraints, DisplayList, Incremental, LayoutCx, Recording, Retention};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{FontMetrics, FontStack};
+use fulgurite::hatch::List;
+use fulgurite_widgets::ops::Label;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::{pass, Constraints, DisplayList, Incremental, LayoutCx, Recording, Retention};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{FontMetrics, FontStack};
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
@@ -82,7 +82,7 @@ fn main() {
     // A pinned width is also the more representative case: a list in a
     // window is the window's width, not its content's.
     let mut styles = pass::default_styles(&ui);
-    lumen_static::style::cascade_deep(
+    fulgurite::style::cascade_deep(
         &mut ui,
         &[
             // The **list node**, not its parent: `List::paint` clips to
@@ -96,7 +96,7 @@ fn main() {
         ],
         &mut styles,
     );
-    let mut st = vec![lumen_static::NodeState::default(); Ui::NODE_COUNT];
+    let mut st = vec![fulgurite::NodeState::default(); Ui::NODE_COUNT];
     // Natural height, as Qt's harness is careful to give its rows: squashing
     // 3000 rows into 800 px is a different and much cheaper layout problem.
     let view = Constraints { min_w: 0.0, max_w: W as f32, min_h: 0.0, max_h: f32::INFINITY };
@@ -105,7 +105,7 @@ fn main() {
     let mut canvas = Canvas::with_font(W, H, font);
     let mut retain = Incremental::default();
 
-    let layout = |ui: &mut Ui, st: &mut Vec<lumen_static::NodeState>, m: &mut FontMetrics| {
+    let layout = |ui: &mut Ui, st: &mut Vec<fulgurite::NodeState>, m: &mut FontMetrics| {
         let mut cx = LayoutCx::new(m);
         pass::layout_with(ui, &mut cx, &styles, st, view);
     };
@@ -139,12 +139,12 @@ fn main() {
         }
         let d = retain.finish();
         if let Some(area) = d.clip_to([0.0, 0.0, W as f32, H as f32]) {
-            canvas.clear_within(area, lumen_static_shell::CLEAR);
+            canvas.clear_within(area, fulgurite_shell::CLEAR);
             canvas.render_within(&list, area);
         }
         floor = floor.min(t.elapsed().as_secs_f64() * 1e6);
     }
-    println!("lumen-static/{:<22} {floor:9.1} us   ({n} rows)", "idle (floor)");
+    println!("fulgurite/{:<22} {floor:9.1} us   ({n} rows)", "idle (floor)");
 
     // The **all-rows-change** workload, which is what Lumen's criterion
     // benches (`vs_toolkits`, `vs_iced`) measure against masonry and iced.
@@ -169,8 +169,8 @@ fn main() {
         pass::paint(&ui, &st, &mut list);
         best_all[1] = best_all[1].min(t.elapsed().as_secs_f64() * 1e6);
     }
-    println!("lumen-static/{:<22} {:9.1} us   ({n} rows)", "ALL rows: layout", best_all[0]);
-    println!("lumen-static/{:<22} {:9.1} us   ({n} rows)", "ALL rows: +paint", best_all[1]);
+    println!("fulgurite/{:<22} {:9.1} us   ({n} rows)", "ALL rows: layout", best_all[0]);
+    println!("fulgurite/{:<22} {:9.1} us   ({n} rows)", "ALL rows: +paint", best_all[1]);
 
     let mut best = [f64::INFINITY; 4];
     for k in 0..iters {
@@ -202,7 +202,7 @@ fn main() {
         layout(&mut ui, &mut st, &mut metrics);
         list.clear();
         pass::paint(&ui, &st, &mut list);
-        canvas.clear(lumen_static_shell::CLEAR);
+        canvas.clear(fulgurite_shell::CLEAR);
         canvas.render_within(&list, [0.0, 0.0, W as f32, H as f32]);
         best[2] = best[2].min(t.elapsed().as_secs_f64() * 1e6);
 
@@ -219,7 +219,7 @@ fn main() {
         }
         let d = retain.finish();
         if let Some(area) = d.clip_to([0.0, 0.0, W as f32, H as f32]) {
-            canvas.clear_within(area, lumen_static_shell::CLEAR);
+            canvas.clear_within(area, fulgurite_shell::CLEAR);
             canvas.render_within(&list, area);
         }
         best[3] = best[3].min(t.elapsed().as_secs_f64() * 1e6);
@@ -232,7 +232,7 @@ fn main() {
     // assumed, and reported as its own row (T14/BENCH note).
     #[cfg(feature = "observe")]
     {
-        let mut agent = lumen_static_agent::Agent::new();
+        let mut agent = fulgurite_agent::Agent::new();
         let mut best_obs = f64::INFINITY;
         for k in 0..iters {
             ui.rows.items[0].set(format!("obs {k}"));
@@ -241,12 +241,12 @@ fn main() {
             list.clear();
             pass::paint(&ui, &st, &mut list);
             {
-                let mut tree = lumen_static_agent::TreeMut::of_root(&mut ui, &styles, &st);
-                agent.frame_done(&mut tree, lumen_static_agent::FrameTiming::passes(0, 0));
+                let mut tree = fulgurite_agent::TreeMut::of_root(&mut ui, &styles, &st);
+                agent.frame_done(&mut tree, fulgurite_agent::FrameTiming::passes(0, 0));
             }
             best_obs = best_obs.min(t.elapsed().as_secs_f64() * 1e6);
         }
-        println!("lumen-static/{:<22} {best_obs:9.1} us   ({n} rows)", "+paint +observe");
+        println!("fulgurite/{:<22} {best_obs:9.1} us   ({n} rows)", "+paint +observe");
     }
 
     assert!(!list.cmds.is_empty(), "the frame drew nothing, so it measured nothing");
@@ -331,7 +331,7 @@ fn main() {
     for (what, us) in
         ["layout", "+paint", "+render (full)", "+render (damage)"].iter().zip(best)
     {
-        println!("lumen-static/{what:<22} {us:9.1} us   ({n} rows)");
+        println!("fulgurite/{what:<22} {us:9.1} us   ({n} rows)");
     }
 
     // **Culled paint, reported apart and never mixed in** (T16.12).
@@ -360,7 +360,7 @@ fn main() {
     }
     list.set_bounds(None);
     println!(
-        "lumen-static/{:<22} {culled:9.1} us   ({n} rows, {culled_cmds} of {} cmds)",
+        "fulgurite/{:<22} {culled:9.1} us   ({n} rows, {culled_cmds} of {} cmds)",
         "+paint (culled)",
         n + 2
     );

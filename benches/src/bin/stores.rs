@@ -13,8 +13,8 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use lumen_static::display::Color;
-use lumen_static_shell::software::Canvas;
+use fulgurite::display::Color;
+use fulgurite_shell::software::Canvas;
 
 fn best(n: u32, mut f: impl FnMut()) -> f64 {
     let mut lo = f64::INFINITY;

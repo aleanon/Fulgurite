@@ -9,6 +9,6 @@
 CHECK='./scripts/check_default_crates.sh'
 EXPECT='cargo tree failed in the work tree'
 plant() {
-    replace crates/lumen-static-winit/Cargo.toml \
+    replace crates/fulgurite-winit/Cargo.toml \
         '[dependencies]' $'[dependencies]\nplanted-edge = { package = "planted-no-such-crate", version = "1" }'
 }

@@ -6,10 +6,10 @@
 //! structural, not cosmetic: the tree is a `struct`, so its shape is
 //! fixed at compile time and `NODE_COUNT` is a constant.
 
-use lumen_static::display::Color;
-use lumen_static::prelude::*;
-use lumen_static_shell::program::KeyOutcome;
-use lumen_static_widgets::prelude::*;
+use fulgurite::display::Color;
+use fulgurite::prelude::*;
+use fulgurite_shell::program::KeyOutcome;
+use fulgurite_widgets::prelude::*;
 
 // ---- palette ---------------------------------------------------------
 
@@ -101,7 +101,7 @@ impl Count {
 /// **The program, described once** — M32 (`docs/plan-program.md`), and
 /// since M60 (`docs/plan-tally-slim.md`) everything the window needs:
 ///
-/// - the agent endpoint's default address, which `LUMEN_AGENT_ADDR`
+/// - the agent endpoint's default address, which `FULGURITE_AGENT_ADDR`
 ///   overrides (read by the window, M48/T48.11);
 /// - **the tally's keys** — [`keys`], through `Program::on_key`: a key
 ///   press no widget took;
@@ -113,9 +113,9 @@ impl Count {
 /// Until M60 the last two needed a hand-written event loop, and the
 /// sign re-cascade was written twice in it — once for the window's pump
 /// and once for the agent's.
-pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Program<Tally> {
-    lumen_static_shell::program::application(move || Tally { count: Count { n: count }, ..build() })
-        .title("lumen-static — tally")
+pub fn program(count: i64, w: u32, h: u32) -> fulgurite_shell::program::Program<Tally> {
+    fulgurite_shell::program::application(move || Tally { count: Count { n: count }, ..build() })
+        .title("fulgurite — tally")
         .size(w, h)
         .page(PAGE)
         .agent("127.0.0.1:9230")
@@ -131,17 +131,17 @@ pub fn program(count: i64, w: u32, h: u32) -> lumen_static_shell::program::Progr
 /// **Only a key nothing else took** (`docs/plan-tally-slim.md` §2.1): with
 /// a step button focused, Up and Down move focus along the row of four,
 /// as arrows do in any toolbar, and do not reach this.
-pub fn keys(c: &mut Count, key: lumen_static::Key, _: lumen_static::Mods) -> KeyOutcome {
+pub fn keys(c: &mut Count, key: fulgurite::Key, _: fulgurite::Mods) -> KeyOutcome {
     match key {
-        lumen_static::Key::Up => {
+        fulgurite::Key::Up => {
             c.n += 1;
             KeyOutcome::Handled
         }
-        lumen_static::Key::Down => {
+        fulgurite::Key::Down => {
             c.n -= 1;
             KeyOutcome::Handled
         }
-        lumen_static::Key::Escape => KeyOutcome::Quit,
+        fulgurite::Key::Escape => KeyOutcome::Quit,
         _ => KeyOutcome::Ignored,
     }
 }
@@ -173,9 +173,9 @@ pub const SHEET_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/app.lss");
 /// `docs/plan-lss.md`): the top-level rules, then the sign's `@sheet`.
 /// Every `#id` in the file is checked against [`Page`] here, so a typo
 /// is a build error at the file's line.
-const POS_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", pos);
-const NEG_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", neg);
-const ZERO_SHEET: &[Rule] = lumen_static::include_lss!(Page, "../app.lss", zero);
+const POS_SHEET: &[Rule] = fulgurite::include_lss!(Page, "../app.lss", pos);
+const NEG_SHEET: &[Rule] = fulgurite::include_lss!(Page, "../app.lss", neg);
+const ZERO_SHEET: &[Rule] = fulgurite::include_lss!(Page, "../app.lss", zero);
 
 /// The stylesheet for a given sign.
 ///
@@ -215,16 +215,16 @@ pub fn sheet_block(sign: i64) -> Option<&'static str> {
 mod tests {
     use super::*;
     use hand::{NEG, POS};
-    use lumen_static::{Event, Key};
-    use lumen_static_shell::Host;
+    use fulgurite::{Event, Key};
+    use fulgurite_shell::Host;
 
     /// **The sheet the pilot replaced, kept as its reference** — M61/T61.6
     /// (`docs/plan-lss.md`). This was `stylesheet_for` until `app.lss`
     /// took over, verbatim; the two tests after it hold `app.lss` to it,
     /// rule by rule and pixel by pixel.
     mod hand {
-        use lumen_static::display::Color;
-        use lumen_static::prelude::*;
+        use fulgurite::display::Color;
+        use fulgurite::prelude::*;
 
         pub const PAGE: Color = Color(0x0e, 0x11, 0x18, 0xff);
         pub const SURFACE: Color = Color(0x16, 0x1c, 0x28, 0xff);
@@ -310,7 +310,7 @@ mod tests {
         for sign in SIGNS {
             let compiled = stylesheet_for(sign);
             let hand = hand::stylesheet_for(sign);
-            let read = lumen_static_shell::lss::load(SHEET_PATH, sheet_block(sign)).unwrap_or_else(|e| panic!("{e}"));
+            let read = fulgurite_shell::lss::load(SHEET_PATH, sheet_block(sign)).unwrap_or_else(|e| panic!("{e}"));
             println!(
                 "sign {sign:>2}: include_lss! {} rules, hand-written {}, lss::load {}",
                 compiled.len(),
@@ -340,8 +340,8 @@ mod tests {
     /// much moved.
     #[test]
     fn the_lss_frames_are_the_hand_written_frames() {
-        use lumen_static_shell::software::Canvas;
-        fn frame(program: lumen_static_shell::program::Program<Tally>) -> Vec<u8> {
+        use fulgurite_shell::software::Canvas;
+        fn frame(program: fulgurite_shell::program::Program<Tally>) -> Vec<u8> {
             let (w, h) = (program.width, program.height);
             let mut host: Host<Tally> = program.host();
             host.pump();
@@ -376,7 +376,7 @@ mod tests {
     }
 
     fn value_colour(h: &Host<Tally>) -> Color {
-        let i = lumen_static::style::index_of_wid(<Page as Widget>::SUB_TABLE, "value").expect("#value");
+        let i = fulgurite::style::index_of_wid(<Page as Widget>::SUB_TABLE, "value").expect("#value");
         h.styles[i].color
     }
 

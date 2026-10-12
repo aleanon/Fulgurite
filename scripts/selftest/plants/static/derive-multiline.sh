@@ -3,7 +3,7 @@
 CHECK='./scripts/check_derive_attrs.sh'
 EXPECT='planted_unused'
 plant() {
-    replace crates/lumen-static-macros/src/lib.rs \
+    replace crates/fulgurite-macros/src/lib.rs \
         '#[proc_macro_derive(Reloadable, attributes(reload))]' \
         $'#[proc_macro_derive(\n    Reloadable,\n    attributes(\n        reload,\n        planted_unused,\n    )\n)]'
 }

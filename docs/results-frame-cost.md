@@ -3,7 +3,7 @@
 **Date:** 2026-09-03. **Machine:** i9-13900KF, governor `powersave`
 (the reference machine in `justfile`). **Subject:** `examples/
 counter-window`, 440×520, `truetype` feature, Noto Sans. Per-stage
-numbers from `LUMEN_PROFILE=1 just tally-frame 12` (median of 50);
+numbers from `FULGURITE_PROFILE=1 just tally-frame 12` (median of 50);
 live numbers from `app.perf` over the last 128 frames after 140 agent
 clicks (`scripts/ui_check.py latency`).
 
@@ -37,7 +37,7 @@ Three causes, in order of size:
    than 1 px inside the shape are skipped; what cast the shadow paints
    over them next.
 2. **An unoptimised rasteriser.** `cargo run` is a dev build. With
-   `opt-level = 3` on `lumen-static-shell` and `fontdue`, `clear` was
+   `opt-level = 3` on `fulgurite-shell` and `fontdue`, `clear` was
    still 800 µs, because `debug-assertions` also switch on std's
    `ub_checks` inside every slice operation the inner loops are made
    of. With both off for those two packages: 96 µs, equal to release.
@@ -205,8 +205,8 @@ process to compare them (`docs/plan-architecture-v2.md` T8b.0).
 ## Idle — what a window costs when nothing happens (M47/T47.8, 2026-09-26)
 
 The figures four comments cite ("the idle frame numbers in this file",
-`crates/lumen-static-winit/src/lib.rs`, `crates/lumen-static/src/event.rs`,
-`crates/lumen-static/src/anim.rs`). Until M47 this file had none;
+`crates/fulgurite-winit/src/lib.rs`, `crates/fulgurite/src/event.rs`,
+`crates/fulgurite/src/anim.rs`). Until M47 this file had none;
 `scripts/check_idle_citations.sh`, in `just static`, now refuses a
 comment that cites idle numbers from a file with no Idle heading.
 
@@ -300,7 +300,7 @@ focus after the event instead of before it.
 **The gate is a count, not this clock** (M35's rule 3): one
 `PointerMove` on a 1,728-node table writes **2** states against a bound
 of 4, where it wrote 3,457 before
-(`crates/lumen-static/tests/hover.rs`, `InputState::state_writes`).
+(`crates/fulgurite/tests/hover.rs`, `InputState::state_writes`).
 
 **The clock, as a record.** `benches --bin invalidation`, rows
 "dispatch, one PointerMove" (901 nodes, `Ten10`) and "(tiny)" (2 nodes),

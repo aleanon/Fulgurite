@@ -1,6 +1,6 @@
-diff --git a/crates/lumen-static-widgets/src/data.rs b/crates/lumen-static-widgets/src/data.rs
---- a/crates/lumen-static-widgets/src/data.rs
-+++ b/crates/lumen-static-widgets/src/data.rs
+diff --git a/crates/fulgurite-widgets/src/data.rs b/crates/fulgurite-widgets/src/data.rs
+--- a/crates/fulgurite-widgets/src/data.rs
++++ b/crates/fulgurite-widgets/src/data.rs
 @@ -387,7 +387,7 @@
          match ev {
              Event::PointerDown { .. } => match self.slot_at(cx.local.x) {

@@ -6,38 +6,38 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static = { path = "../crates/lumen-static" }
+fulgurite = { path = "../crates/fulgurite" }
 # Optional since M35/T35.0: see the `observe` feature.
-lumen-static-agent = { path = "../crates/lumen-static-agent", optional = true }
+fulgurite-agent = { path = "../crates/fulgurite-agent", optional = true }
 # T7.3 measures the memo against the *real* measurer; the stand-in cannot
 # answer what the memo is worth (docs/text-render-adoption-decision.md).
-lumen-static-shell = { path = "../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite-shell = { path = "../crates/fulgurite-shell", features = ["truetype"] }
 # M26/T26.0: `Badge` and `Chip` shape on every layout with no memo at all
 # (M26/T26.8), and the memo arms live here — so the widgets that lack one
 # have to be measurable beside the ones that have it.
-lumen-static-widgets = { path = "../crates/lumen-static-widgets" }
+fulgurite-widgets = { path = "../crates/fulgurite-widgets" }
 
 [features]
 # M50/T50.4: `--bin banded_pool` measures the threaded rasteriser.
-threads = ["lumen-static-shell/threads"]
+threads = ["fulgurite-shell/threads"]
 # M81/T81.1: the shell's default-off shaper, so K3's arms can be run with
 # it compiled in and `Basic` selected, and T81.3's `--shaping` rows built.
-shaping = ["lumen-static-shell/shaping"]
+shaping = ["fulgurite-shell/shaping"]
 # M82/T82.8: K82e's arm of `--bin vocabulary` -- a `VectorText` drawn from
 # outlines, which the shell's measurer answers only under its default-off
 # `vector-text`. Off by default, so K3's arms build as before.
-vector-text = ["lumen-static-shell/vector-text"]
+vector-text = ["fulgurite-shell/vector-text"]
 # M84/T84.8: K84e's `--bin video_rate` plays a `GifFeed`, which is behind
 # the shell's default-off `image`.
-image = ["lumen-static-shell/image"]
+image = ["fulgurite-shell/image"]
 # **Default-on, and optional since M35/T35.0** (`docs/plan-observe-cost.md`).
 # It was unconditional, so no bench here could be built without the
 # widgets' observability compiled in — and `--bin grid` could not say what
 # an application pays for it. `--no-default-features` builds without it;
 # `--bin agent` requires it.
 default = ["observe"]
-observe = ["dep:lumen-static-agent", "lumen-static-widgets/observe"]
-rdyn_opaque = ["lumen-static/rdyn_opaque"]
+observe = ["dep:fulgurite-agent", "fulgurite-widgets/observe"]
+rdyn_opaque = ["fulgurite/rdyn_opaque"]
 # M25/T25.12: which variant `--bin appearance` is built against. None is
 # `main`; `look` is the pilot (a look resolved on every layout); `cached`
 # is the pilot with its look cached, and adds the palette generation.

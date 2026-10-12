@@ -20,7 +20,7 @@ use embedded::face::FACE;
 /// this test exists to catch.
 const PX: f32 = 16.0;
 
-#[path = "../../../crates/lumen-static-shell/tests/fonts/pinned.rs"]
+#[path = "../../../crates/fulgurite-shell/tests/fonts/pinned.rs"]
 mod pinned;
 
 fn font() -> fontdue::Font {

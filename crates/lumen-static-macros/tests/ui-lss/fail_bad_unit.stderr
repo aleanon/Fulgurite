@@ -1,5 +1,0 @@
-error: fail_bad_unit.lss:1:21: unknown unit in `12em`: v1 takes `px`, `ms` or a bare number
-  --> tests/ui-lss/fail_bad_unit.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_bad_unit.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^

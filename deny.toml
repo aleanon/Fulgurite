@@ -10,13 +10,13 @@
 # not listed -- fails the check.
 [advisories]
 ignore = [
-    # rustybuzz is unmaintained. It is lumen-static-text's shaper (T15.8),
+    # rustybuzz is unmaintained. It is fulgurite-text's shaper (T15.8),
     # which a window reaches only through the shell's default-off `shaping`
     # feature (M81/T81.1, docs/plan-shaped-paint.md D1 a) -- the window's
     # `Complex` paint; a default build links none of it
     # (scripts/release_window_shape.sh). Its successor is harfrust, and the
     # port is not scheduled. Accepted 2026-09-25, reworded 2026-10-04.
-    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: the shell's default-off `shaping` feature (the window's `Complex` paint, via lumen-static-text); the harfrust port is not scheduled" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: the shell's default-off `shaping` feature (the window's `Complex` paint, via fulgurite-text); the harfrust port is not scheduled" },
     # ttf-parser is unmaintained. It arrives through fontdue (the shell's
     # `truetype` rasteriser), rustybuzz, and winit's sctk-adwaita window
     # decorations; none is ours to replace in place. Accepted 2026-09-25.

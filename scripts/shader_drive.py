@@ -10,10 +10,10 @@ Usage: shader_drive.py PORT LEG MODE
   MODE gpu       the same two reads by `xwd` (the GPU backend cannot answer
                  ui.screenshot): the centre is plasma (its distance from
                  the field printed against a floor), nothing outside
-                 changed; then, after the window's own LUMEN_TEST_RESUME
+                 changed; then, after the window's own FULGURITE_TEST_RESUME
                  round trip, the centre is plasma again -- the second
                  backend was handed the table by `resume_backend`.
-  MODE bad       LUMEN_GPU_BAD_SHADER=1: after 3 s the window still
+  MODE bad       FULGURITE_GPU_BAD_SHADER=1: after 3 s the window still
                  answers, the centre is the field (the fallback), and the
                  log names the refused shader.
 Every bound is printed beside its quantity.
@@ -24,7 +24,7 @@ from PIL import Image
 
 port, leg, mode = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 TAG = f"shader-drive[{leg}]"
-LOG = os.environ.get("LUMEN_LIVE_LOG", "")
+LOG = os.environ.get("FULGURITE_LIVE_LOG", "")
 # examples/shader's `FIELD`: the fallback's colour at the view's centre.
 FIELD = (0x1A, 0x1D, 0x2B)
 # The plasma's brightest channel is at least 191 (`PLASMA`'s rustdoc), so
@@ -206,9 +206,9 @@ elif mode == "gpu":
     time.sleep(0.4)
     b = xwd_shot()
     log = log_text()
-    if resume_at and "LUMEN_TEST_RESUME" in log:
+    if resume_at and "FULGURITE_TEST_RESUME" in log:
         sys.exit(f"{TAG}: setup: the round trip fired before the first two reads -- raise RESUME_MS")
-    if "lumen-static: gpu" not in log:
+    if "fulgurite: gpu" not in log:
         sys.exit(f"{TAG}: setup: the window is not on the GPU backend: {log.strip().splitlines()[:3]}")
     if "refused" in log:
         sys.exit(f"{TAG}: setup: a shader was refused: {[l for l in log.splitlines() if 'refused' in l]}")
@@ -229,8 +229,8 @@ elif mode == "gpu":
         time.sleep(max(0.0, resume_at + 3.0 - (time.time() - t0)))
         c = xwd_shot()
         log = log_text()
-        hooks = log.count("LUMEN_TEST_RESUME: suspend and resume")
-        backends = sum(1 for l in log.splitlines() if l.startswith("lumen-static: gpu"))
+        hooks = log.count("FULGURITE_TEST_RESUME: suspend and resume")
+        backends = sum(1 for l in log.splitlines() if l.startswith("fulgurite: gpu"))
         cc = c.getpixel((cx, cy))
         print(f"  ..  resume: round trips {hooks} (want 1), GPU backends made {backends} (want 2); "
               f"centre {cc}, distance {dist(cc, FIELD)} (floor {PLASMA_FLOOR})")
@@ -251,7 +251,7 @@ elif mode == "bad":
     print(f"  ..  after 3 s: app.diagnostics answered (frame {d['frame']}); centre {centre}, field {FIELD}, "
           f"distance {dist(centre, FIELD)} (bound {FALLBACK_TOL}: the fallback); refusals naming the shader "
           f"{len(named)} (want 1): {named[0][:120] if named else '-'}")
-    if "lumen-static: gpu" not in log:
+    if "fulgurite: gpu" not in log:
         sys.exit(f"{TAG}: setup: the window is not on the GPU backend")
     if len(named) != 1:
         sys.exit(f"{TAG}: the log does not name the refused shader once")

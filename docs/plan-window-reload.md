@@ -79,7 +79,7 @@ the loader is the *loader's* code and would never change. So:
 ### 2.1 The application crate is a library and a binary
 
 `src/lib.rs` defines `pub fn program() -> Program<App>` (M32) and
-invokes `lumen_static_reload::export_program!(program)`. `src/main.rs` is
+invokes `fulgurite_reload::export_program!(program)`. `src/main.rs` is
 `fn main() { app::program().run() }`. Without the `reload` feature
 that is the whole story: the application is statically linked. With
 it, `run()` starts the **static** application at once, as hot_ice's
@@ -104,7 +104,7 @@ Two options, and T37.0 chooses **by measurement**:
   borrows the library's `DisplayList` for the frame. Nothing is copied,
   but this is sound only if both sides lay out the types identically.
   So the library exports an **ABI stamp**: the rustc version, the
-  `lumen-static` version and feature set, and the `size_of` and
+  `fulgurite` version and feature set, and the `size_of` and
   `align_of` of every type that crosses. The loader refuses a library
   whose stamp differs and shows why. *(M49/T49.1: sizes cannot see a
   reordered enum, so the stamp now also hashes the source of the crates
@@ -176,12 +176,12 @@ does not compile:
 ## T37.0 — the boundary, measured
 
 > **DONE 2026-09-24 — pointers, behind a stamp.** A real byte encoding
-> (`lumen_static::wire`) exceeds the frame arm's spread on three of
+> (`fulgurite::wire`) exceeds the frame arm's spread on three of
 > showcase's four probed entries. A `memcpy` would not, but it is no byte
 > boundary at all. The numbers and the two things the rule did not count
-> are in `docs/step4-hot-reload.md` (T37.0). `lumen_static_reload::abi`
+> are in `docs/step4-hot-reload.md` (T37.0). `fulgurite_reload::abi`
 > is the stamp, and `just abi-stamp` is the gate: an identical build is
-> accepted, and an `observe` build is refused by `lumen-static features`.
+> accepted, and an `observe` build is refused by `fulgurite features`.
 > *Injections:* the feature field removed makes the `observe` build
 > accepted, because no listed size moves. A check that refuses
 > everything refuses the identical build.
@@ -198,7 +198,7 @@ differs. *Other direction:* an identical build is accepted.
 
 > **Landing 1, 2026-09-24: the window drives a `Session`.** The winit
 > handler is no longer generic over the application. Everything it asks
-> of one goes through `lumen_static_shell::session::Session`, which is
+> of one goes through `fulgurite_shell::session::Session`, which is
 > object-safe and passes only `Copy` or caller-owned values, plus the
 > display list a renderer borrows. `Local<A>` is the statically linked
 > implementation. `Backend` takes a `&mut dyn FrameSource` in place of a
@@ -231,14 +231,14 @@ which is M28/T28.7's injection. The frame answers with v1's text, and
 the gate prints both strings.
 
 > **Landing 2, 2026-09-24: `export_program!` and the headless gate.**
-> `lumen_static_reload::hot` has both sides (feature `window`). The
+> `fulgurite_reload::hot` has both sides (feature `window`). The
 > library side is `boot`: the library's own `program()`, with the saved
 > bytes grafted on through the new `Host::restore`, so construction is
 > the new build's. The loader side is `Build::open`, which checks the
 > stamp (now with the shell's fields, including a hash of `session.rs`,
 > since the trait's vtable is part of the ABI), then `Build::boot`. A
 > `Hot` hands its session back to the library to be dropped there,
-> caught. `export_program!` exports the stamp, `lumen_boot`, `lumen_drop`
+> caught. `export_program!` exports the stamp, `fulgurite_boot`, `fulgurite_drop`
 > and `hot_take_panic`.
 >
 > The gate is `just window-reload-demo`. `fixtures/reload-app` has v1
@@ -248,13 +248,13 @@ the gate prints both strings.
 > disagreed**: the direct session still had the pointer over its button
 > and drew it hover-shaded. Hover is not kept state, so the pointer
 > leaves before the comparison, and the assertion has fired on something
-> real. *Injections:* constructing through **v1's** `lumen_boot` after
+> real. *Injections:* constructing through **v1's** `fulgurite_boot` after
 > the swap (the plan's injection) gives a frame reading `count 1`, v1's
 > format; skipping the restore gives `clicks: 0`.
 
-## T37.2 — the loader, in `lumen-static-winit`
+## T37.2 — the loader, in `fulgurite-winit`
 
-> **DONE 2026-09-24.** `lumen-static-winit`'s `hot` feature, which
+> **DONE 2026-09-24.** `fulgurite-winit`'s `hot` feature, which
 > implies `reload`, has these parts:
 >
 > - **Builder.** `hot::builder` is a thread running `Crate::build`
@@ -263,7 +263,7 @@ the gate prints both strings.
 >   exactly one more.
 > - **Watcher.** `hot::watch` uses `notify` on the crate's `src/`.
 > - **Swap.** It happens in `redraw` before the frame, through
->   `lumen_static_reload::hot::Reloader`. That hashes the library, skips
+>   `fulgurite_reload::hot::Reloader`. That hashes the library, skips
 >   an unchanged one, copies a changed one to a path of its own, and boots
 >   the new session **before** dropping the old, so a refused or
 >   panicking build leaves the old one running.
@@ -274,7 +274,7 @@ the gate prints both strings.
 > - **Start-up.** With `hot`, `Program::run` requires a `Reloadable`
 >   application. It starts the static one at once and fires the first
 >   build (§2.1).
-> - **Features.** The library is built with `LUMEN_HOT_FEATURES`
+> - **Features.** The library is built with `FULGURITE_HOT_FEATURES`
 >   (default `hot`). The stamp refuses a library built otherwise, naming
 >   the field. The stamp gained `debug_assertions`, since the loader and
 >   library are two invocations that could be given two profiles.

@@ -78,7 +78,7 @@ moves. The clock is `Playback`, beside `Animated<T>`, behind `alloc`
 because its delays are a `Vec`:
 
 ```text
-{{#include ../../crates/lumen-static/src/anim.rs:playback}}
+{{#include ../../crates/fulgurite/src/anim.rs:playback}}
 ```
 
 Two of its answers carry the design. `tick` answers a frame **only when

@@ -1,9 +1,9 @@
 //! What a runtime stylesheet swap costs, at scale — the operation a
 //! class toggle performs (M8c T8c.4).
 use benches::{bench, Ten10};
-use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
-use lumen_static::{pass, Color, StaticTree, Style, Widget};
-use lumen_static_widgets::Markdown;
+use fulgurite::style::{Edges, Length, Patch, Rule, Selector};
+use fulgurite::{pass, Color, StaticTree, Style, Widget};
+use fulgurite_widgets::Markdown;
 
 /// **Sixteen `Markdown`s in a derived column** — K87c's arm (M87/T87.1,
 /// `docs/plan-markdown.md`). `Ten10`, which every other row times, holds no
@@ -34,7 +34,7 @@ fn main() {
     let mut styles: Vec<Style> = pass::default_styles(&app);
     println!("cascade: a runtime stylesheet swap, {} nodes\n", Ten10::NODE_COUNT);
     bench("cascade_deep (whole table)", 20_000, || {
-        lumen_static::style::cascade_deep(&mut app, &sheet, &mut styles);
+        fulgurite::style::cascade_deep(&mut app, &sheet, &mut styles);
         styles.len() as u64
     });
 
@@ -48,9 +48,9 @@ fn main() {
         .find(|(i, d)| *i > 0 && d.is_container())
         .map(|(i, _)| i)
         .expect("a container below the root");
-    let span = lumen_static::style::subtree_range(table, root).len();
+    let span = fulgurite::style::subtree_range(table, root).len();
     bench(&format!("cascade_subtree ({span} of {} nodes)", table.len()), 20_000, || {
-        lumen_static::style::cascade_subtree(&mut app, &sheet, &mut styles, root);
+        fulgurite::style::cascade_subtree(&mut app, &sheet, &mut styles, root);
         span as u64
     });
     println!("   the scoped form is what a `#[widget_id]` toggle should call");
@@ -96,7 +96,7 @@ fn main() {
         table.len()
     );
     bench("cascade_deep (showcase-shaped sheet)", 20_000, || {
-        lumen_static::style::cascade_deep(&mut app, &showcase, &mut styles);
+        fulgurite::style::cascade_deep(&mut app, &showcase, &mut styles);
         styles.len() as u64
     });
 
@@ -109,7 +109,7 @@ fn main() {
     let mut found = 0u64;
     bench("lint_sheet_deep (showcase-shaped sheet)", 20_000, || {
         found = 0;
-        lumen_static::style::lint_sheet_deep(&mut app, &showcase, &mut |_| found += 1);
+        fulgurite::style::lint_sheet_deep(&mut app, &showcase, &mut |_| found += 1);
         found
     });
     println!(
@@ -133,7 +133,7 @@ fn main() {
     println!("\nmarkdown x16: NODE_COUNT {} (expected {MD16_NODES})", Md16::NODE_COUNT);
     assert_eq!(Md16::NODE_COUNT, MD16_NODES, "setup: the arm's tree is not the one K87c names");
     bench("cascade_deep (markdown x16)", 20_000, || {
-        lumen_static::style::cascade_deep(&mut md, &md_sheet, &mut md_styles);
+        fulgurite::style::cascade_deep(&mut md, &md_sheet, &mut md_styles);
         md_styles.len() as u64
     });
 }

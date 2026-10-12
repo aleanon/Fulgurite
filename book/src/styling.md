@@ -10,10 +10,10 @@ per frame**.
 A `Rule` is a `Selector` and a `Patch`:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
 
 fn main() {
     let sheet = vec![
@@ -83,9 +83,9 @@ entry's stops may name palette roles, so a fill themes the way a
 `background_role` does — `Host::set_palette` re-resolves the table:
 
 ```rust
-# extern crate lumen_static;
-use lumen_static::display::{Color, GradShape, Stops};
-use lumen_static::style::{Fields, Fill, Palette, Patch, Role};
+# extern crate fulgurite;
+use fulgurite::display::{Color, GradShape, Stops};
+use fulgurite::style::{Fields, Fill, Palette, Patch, Role};
 
 const FILLS: [Fill; 1] = [Fill::new(
     Stops::two(Color(255, 255, 255, 255), Color(0, 0, 0, 255)),
@@ -149,11 +149,11 @@ The walk is O(rules × nodes) and re-walks every arena once per rule —
 costs over the same sheet (`docs/results-frame-and-types.md` T26.0) —
 and its only consumer is the agent. A build with no agent was paying it
 on every sheet swap for findings nothing could read. Turn it on with
-`lumen-static-shell`'s `agent` feature, which `lumen-static-winit`'s
+`fulgurite-shell`'s `agent` feature, which `fulgurite-winit`'s
 `agent` feature already implies.
 
 Which fields a kind reads is declared beside its kind name and **measured
-rather than trusted**: `crates/lumen-static-widgets/tests/style_reads.rs`
+rather than trusted**: `crates/fulgurite-widgets/tests/style_reads.rs`
 renders every kind with and without each field and fails if a declared
 mask disagrees with what the output did (`docs/results-appearance.md`).
 
@@ -166,10 +166,10 @@ A `style::Palette` is the colours a theme is made of, named by role —
 where it would have named a colour:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::style::{Palette, Patch, Role, Rule, Selector};
-use lumen_static::Color;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::style::{Palette, Patch, Role, Rule, Selector};
+use fulgurite::Color;
 
 fn sheet() -> [Rule; 2] {
     [
@@ -195,7 +195,7 @@ rules apply after. Until M57 the palette reached a widget only through a
 rule, and every widget's defaults were light-palette literals. An
 application had to restyle every kind for dark mode, and the showcase did
 it for four (`docs/widget-audit.md` X6).
-`lumen-static-widgets/tests/palette_defaults.rs` checks every kind in both
+`fulgurite-widgets/tests/palette_defaults.rs` checks every kind in both
 palettes: each colour it paints must be a role, and each pair it shows
 must meet its bound. Colours that are *data*, such as a chart's series or
 a colour picker's swatches, stay literal.
@@ -208,7 +208,7 @@ laid out again; a rule that named a value keeps its value. The lint
 counts a role as the field it sets, so a `background_role` on a kind
 that paints no background is reported like a `background` would be.
 
-`examples/showcase` is written this way: `LUMEN_PALETTE=dark just
+`examples/showcase` is written this way: `FULGURITE_PALETTE=dark just
 showcase` starts it dark, and its `every_role_rule_follows_the_palette`
 test checks every field a role decides against both palettes;
 `chrome_text_meets_contrast` checks that every text colour its chrome
@@ -331,7 +331,7 @@ compiles, and the `W1010` lint names it when the sheet is applied.
 
 **In a debug window the file is live.** `Program::style_lss` and
 `Program::style_lss_by` take the compiled sheet *and* the file's path; a
-debug build (or one with `lumen-static-winit/reload`) reads the file
+debug build (or one with `fulgurite-winit/reload`) reads the file
 instead, and again whenever it is saved, so a colour change needs no
 rebuild. A file that does not lower draws with the compiled sheet and
 prints why. A release window without `reload` links none of the reader
@@ -343,10 +343,10 @@ includes it.
 This is the whole sheet from `examples/counter`, unedited:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 {{#include ../../examples/counter/src/main.rs:style}}
 # fn main() { assert_eq!(stylesheet().len(), 2); }
 ```
@@ -387,6 +387,6 @@ Every field on `Style` is paid per node, in every tree, and the M15
 gating policy treats that as a budget rather than an afterthought:
 `focus_ring` is a `u8` because as an `f32` it pushed the struct over a
 size boundary, and `cursor` is free only because it fits in the tail
-padding. `crates/lumen-static/tests/cursor.rs` is where that budget is
+padding. `crates/fulgurite/tests/cursor.rs` is where that budget is
 asserted. If you are adding a property, that test is the gate you have to
 argue with.

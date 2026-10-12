@@ -96,7 +96,7 @@ under, and prints its measured quantity beside its bound.*
   was never the repeater but the *bind it is given*, which allocates if
   written the obvious way.
 - **And none of this is on by default.**
-  `lumen_static_winit::Inval` is `Everything` unless the non-default
+  `fulgurite_winit::Inval` is `Everything` unless the non-default
   `boundaries` feature is set, so a turnkey window marks everything
   anyway and *nothing in this milestone changes its frame*. M26/T26.x
   found the same thing — no example, fixture or test had ever
@@ -362,7 +362,7 @@ assertion fires.
 > as their parent. Address alone is wrong, because a struct's first
 > field shares its address.
 >
-> **Gate:** `crates/lumen-static/tests/bind_index.rs`. The oracle is
+> **Gate:** `crates/fulgurite/tests/bind_index.rs`. The oracle is
 > the table's **author ids**, which no address arithmetic can move with
 > an injection. The cases are a nested label, a single-field parent, an
 > enum's active variant followed by an inactive one, and a field inside
@@ -419,7 +419,7 @@ a budget.
 > `Invalidation::marks` and `Host::last_marks` let a test see *whether*
 > a frame narrowed, which frame equality alone cannot.
 >
-> **Gate:** `crates/lumen-static-shell/tests/bind_marks.rs` — four
+> **Gate:** `crates/fulgurite-shell/tests/bind_marks.rs` — four
 > host-driven writes of differing widths, byte-identical under
 > `Everything` and `Boundaries<16>`, each asserting exactly one range was
 > marked. *Injections:* an empty mark (`i..i`) — the Boundaries frame
@@ -466,7 +466,7 @@ land where the hand-narrowed scaffold did.
 
 ## T29.4 — the conservative paths, asserted — **DONE 2026-09-24**
 
-> `crates/lumen-static-shell/tests/conservative_marks.rs`, each path
+> `crates/fulgurite-shell/tests/conservative_marks.rs`, each path
 > asserting `Host::last_marks`: `with =` (all), `after_update` that
 > changed something (all — and one that changed nothing marks nothing),
 > a handled event (all, until T29.6), an applied message (all), and the
@@ -546,7 +546,7 @@ down the wrong path, and it should not outlive the correction.
 > handled-event assertion is rescoped to unsplit applications, both
 > halves asserted.
 >
-> **Gate:** `crates/lumen-static-shell/tests/handled_narrowing.rs`, a
+> **Gate:** `crates/fulgurite-shell/tests/handled_narrowing.rs`, a
 > click-driven session — focus and type twelve characters, press a
 > slider's track, close two selects with one outside press, a handler
 > writing a bound label outside its button — every frame byte-identical

@@ -4,6 +4,6 @@
 CHECK='./scripts/check_attr_table.sh'
 EXPECT='planted_ghost.*declared, not documented|declared, not documented.*planted_ghost'
 plant() {
-    replace crates/lumen-static-macros/src/lib.rs \
+    replace crates/fulgurite-macros/src/lib.rs \
         'attributes(reload))]' 'attributes(reload, planted_ghost))]'
 }

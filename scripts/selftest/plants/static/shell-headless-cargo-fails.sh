@@ -9,6 +9,6 @@
 CHECK='./scripts/check_shell_headless.sh'
 EXPECT='cargo tree failed for the default build'
 plant() {
-    replace crates/lumen-static-shell/Cargo.toml \
+    replace crates/fulgurite-shell/Cargo.toml \
         '[dependencies]' $'[dependencies]\nplanted-edge = { package = "planted-no-such-crate", version = "1" }'
 }

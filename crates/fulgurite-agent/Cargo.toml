@@ -1,0 +1,65 @@
+[package]
+name = "fulgurite-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "fulgurite_agent"
+
+[dependencies]
+# `observe` is not optional here, and that has a consequence worth
+# stating rather than discovering.
+#
+# Cargo unifies features across a selection, so **any binary that links
+# this crate builds `fulgurite` with `observe` on** — `NodeDesc` grows
+# 48 B -> 72 B and the accesskit dependency comes with it. (`observe`
+# implies `a11y` since M54/T54.1: the screen-reader tree alone costs a
+# release build accesskit and nothing in `NodeDesc`, and this crate's
+# `observe` is what adds the rest.) That is not
+# the mutually-exclusive size-dial pattern handoff §8 rejects; it is the
+# additive dev gate §9 blesses, used as intended. But §9's "off in
+# release builds" holds only for a binary that does not link the agent,
+# and `docs/step5-observability.md`'s zero-release-cost claim inherits
+# that condition. `fixtures/binsize` deliberately depends on neither, so
+# the recorded release size stays a release size.
+#
+# Making it optional was considered and rejected: `src` provenance drives
+# `@file:line` selectors, `ui.getTree` and the AccessKit snapshot, and
+# provenance on every node is one of the two things this framework has
+# that Lumen's semantics tree does not (`docs/plan-lumen-parity.md`).
+# An agent without it is not the surface this crate exists to provide.
+# `docs/plan-review-fixes.md` F2.5.
+fulgurite = { path = "../fulgurite", features = ["observe"] }
+serde_json = "1"
+
+[dev-dependencies]
+# `observe` is on because the tests read the roles and values widgets
+# publish, and those impls are gated on THIS crate's `observe`, not on
+# fulgurite's (`docs/results-widget-crate.md`, "One feature seam").
+# Without it a `Label` reports `GenericContainer` with no value.
+#
+# **Until M43/T43.6 it was off here and the tests passed only through
+# feature unification**: `cargo test --workspace` built widgets with
+# `observe` because core's own dev-dependency asked for it, and
+# `cargo test -p fulgurite-agent` alone failed 19 tests (R13-F7).
+# `just test-crates` builds every library alone so a manifest cannot lean
+# on its neighbours again.
+fulgurite-widgets = { path = "../fulgurite-widgets", features = ["observe"] }
+# M41/T41.0: `tests/audit_is_inert.rs` drives the audit against a real
+# `Host` under the `Boundaries` default, in the window's order -- pump,
+# `frame_done`, an unrelated hover, pump. A dev-dependency cycle (the
+# shell depends on this crate under `live-agent`), which cargo permits
+# for integration tests; no feature is asked for here, so the shell is
+# built without the oracle (plan-boundaries-repair.md §0 rule 2).
+fulgurite-shell = { path = "../fulgurite-shell" }
+
+[features]
+# **M83/T83.6: the `ShaderView` damage gates** in `tests/damage_shape.rs`
+# (`docs/plan-gpu-extension.md`). A feature of this crate rather than
+# `shader` on the widgets dev-dependency itself: a dev-dependency's
+# features are unified into every `--workspace --all-targets` build, so the
+# core's `shader` would be on in the build `dev-shape` checks with the
+# variants *absent*, and that exhaustiveness check would compare the "on"
+# build with itself. `dev-shape` runs the file with `--features shader`.
+shader = ["fulgurite-widgets/shader"]

@@ -411,7 +411,7 @@ def listeners(pid):
 
 def phase2():
     print("== phase 2 (T89.3): two windows, opened and closed ==")
-    pid = int(os.environ["LUMEN_LIVE_PID"])
+    pid = int(os.environ["FULGURITE_LIVE_PID"])
     if keys() != [1]:
         fail(f"setup: app.windows {keys()} at start, want [1]")
 
@@ -787,7 +787,7 @@ def phase5():
     d = raw("app.diagnostics")
     pid = (d.get("result") or {}).get("process", {}).get("pid")
     print(f"  ..  (a) app.diagnostics with no window: answered by window {d.get('window')!r} (want 0), "
-          f"pid {pid} (want {os.environ.get('LUMEN_LIVE_PID')})")
+          f"pid {pid} (want {os.environ.get('FULGURITE_LIVE_PID')})")
     if "error" in d or d.get("window") != 0:
         fail(f"(a) app.diagnostics on a daemon answered {d.get('error') or d.get('window')!r}, want window 0")
     if keys()[:1] != [0]:
@@ -845,7 +845,7 @@ def phase5():
     except PortLost:
         fail("(d) the agent's port was lost after Escape on window 0: a windowless KeyOutcome::Quit ended "
              "the process, which only Request::Quit may do")
-    log = open(os.environ["LUMEN_LIVE_LOG"], errors="replace").read()
+    log = open(os.environ["FULGURITE_LIVE_LOG"], errors="replace").read()
     lines = [ln for ln in log.splitlines() if "KeyOutcome::Quit" in ln and "Request::Quit" in ln]
     print(f"  ..  (d) after Escape on window 0: app.windows {k} (want [0]); stderr lines naming "
           f"Request::Quit: {len(lines)} (want 1)")

@@ -29,7 +29,7 @@ reproducibility note below; machine and profile as in
 
 ## What was built
 
-`crates/lumen-static/src/safe.rs` plus a `SafeTree` derive: the same
+`crates/fulgurite/src/safe.rs` plus a `SafeTree` derive: the same
 architecture with the *erasure mechanism* swapped.
 
 | | unsafe path (shipped) | safe path (prototype) |

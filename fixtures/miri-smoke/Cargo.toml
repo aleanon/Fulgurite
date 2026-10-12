@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# No dev-dependencies and no lumen-static features: this crate is shaped
+# No dev-dependencies and no fulgurite features: this crate is shaped
 # exactly like a release build, which is the surface worth checking for
 # undefined behaviour (`docs/verification-notes.md`).
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../crates/lumen-static" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }

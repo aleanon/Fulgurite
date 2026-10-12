@@ -78,7 +78,7 @@ provokes an eighth came later, M47/T47.1).
 | `6116a8b` | T34.2 | tasks | boundaries | `(none)` | `45027630` | 1275962 = 1275962 | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 0, 'ticks': 3, 'failed': 0, 'sub': 'off'} | pass |
 | `da19334` | T35.1/T35.2 | widget | Everything | `agent,everything` | `b4914cd5` | 1278009 = 1278009 | widget-drive [Everything]: 39 widgets, 94 actions, 31 without an isolate, 0 failed | pass |
 | `da19334` | T35.1/T35.2 | widget | Boundaries | `agent` | `ee068a35` | 1326409 = 1326409 | widget-drive [Boundaries]: 39 widgets, 94 actions, 31 without an isolate, 0 failed | pass |
-| `2677168` | T36.3 | panic | everything | `agent,reload,lumen-static-winit/everything` | `5db17b0b` | 1391677 = 1391677 | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
+| `2677168` | T36.3 | panic | everything | `agent,reload,fulgurite-winit/everything` | `5db17b0b` | 1391677 = 1391677 | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
 | `2677168` | T36.3 | panic | boundaries | `agent,reload` | `55fc582a` | 1391963 = 1391963 | panic-drive [boundaries]: all seven sites caught, shown and recovered | pass |
 | `2677168` | T36.3 | panic | norecover | `agent` | `5e833f49` | 1392388 = 1392388 | app exit status: 101 (expected nonzero) | pass |
 | `6b5a292` | T37.1 | widget | Everything | `agent,everything` | `f9ebfa7b` | 1339765 = 1339765 | widget-drive [Everything]: 39 widgets, 94 actions, 31 without an isolate, 0 failed | pass |
@@ -87,7 +87,7 @@ provokes an eighth came later, M47/T47.1).
 | `6b5a292` | T37.1 | agent | Boundaries | `agent,shadow-oracle` | `83e3437a` | 1389857 = 1389857 | agent-drive: shadow oracle compared 28 frames, none diverged | pass |
 | `6b5a292` | T37.1 | tasks | everything | `everything` | `b0038e93` | 1390761 = 1390761 | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 0, 'ticks': 3, 'failed': 0, 'sub': 'off'} | pass |
 | `6b5a292` | T37.1 | tasks | boundaries | `(none)` | `aba84bfd` | 1390945 = 1390945 | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 0, 'ticks': 3, 'failed': 0, 'sub': 'off'} | pass |
-| `6b5a292` | T37.1 | panic | everything | `agent,reload,lumen-static-winit/everything` | `3f308ff8` | 1392746 = 1392746 | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
+| `6b5a292` | T37.1 | panic | everything | `agent,reload,fulgurite-winit/everything` | `3f308ff8` | 1392746 = 1392746 | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
 | `6b5a292` | T37.1 | panic | boundaries | `agent,reload` | `06c378e5` | 1393078 = 1393078 | panic-drive [boundaries]: all seven sites caught, shown and recovered | pass |
 | `6b5a292` | T37.1 | panic | norecover | `agent` | `ee8a1a77` | 1393494 = 1393494 | app exit status: 101 (expected nonzero) | pass |
 
@@ -105,16 +105,16 @@ worktree).
 
 | drive | leg | identity line | what the drive printed | verdict |
 |---|---|---|---|---|
-| widget-drive | Everything | `drove pid 1393837 (socket owner 1393837), strategy lumen_static::invalidate::Everything, features agent,everything, exe target/release/showcase` | widget-drive [Everything]: 39 widgets, 94 actions, 31 without an isolate, 0 failed; actions 94, l... | pass |
-| widget-drive | Boundaries | `drove pid 1400629 (socket owner 1400629), strategy lumen_static::invalidate::Boundaries<256>, features agent, exe target/release/showcase` | widget-drive [Boundaries<256>]: 39 widgets, 94 actions, 31 without an isolate, 0 failed; actions ... | pass |
-| agent-drive | Everything | `drove pid 1426274 (socket owner 1426274), strategy lumen_static::invalidate::Everything, features agent,everything, exe target/release/showcase` | agent-drive: shadow: supported=False expected=False, compared 0 | pass |
-| agent-drive | Boundaries | `drove pid 1426637 (socket owner 1426637), strategy lumen_static::invalidate::Boundaries<256>, features agent,shadow-oracle, exe target/release/showcase` | agent-drive: shadow: supported=True expected=True, compared 30 | pass |
-| tasks-drive | everything | `drove pid 1426759 (socket owner 1426759), strategy lumen_static::invalidate::Everything, features agent,everything, exe target/release/tasks-demo` | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 1, 'ticks': 29, 'failed': 0, 's... | pass |
-| tasks-drive | boundaries | `drove pid 1427112 (socket owner 1427112), strategy lumen_static::invalidate::Boundaries<256>, features agent, exe target/release/tasks-demo` | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 1, 'ticks': 29, 'failed': 0, 's... | pass |
-| panic-drive | everything | `drove pid 1427744 (socket owner 1427744), strategy lumen_static::invalidate::Everything, features agent,everything,reload, exe target/release/panic-app` | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
-| panic-drive | boundaries | `drove pid 1428170 (socket owner 1428170), strategy lumen_static::invalidate::Boundaries<256>, features agent,reload, exe target/release/panic-app` | panic-drive [boundaries]: all seven sites caught, shown and recovered | pass |
-| panic-drive | norecover | `drove pid 1428492 (socket owner 1428492), strategy lumen_static::invalidate::Boundaries<256>, features agent, exe target/release/panic-app` | panic-drive [norecover]: app exit status: 101 (expected nonzero) | pass |
-| hot-window-drive | only | `drove pid 1429179 (socket owner 1429179), strategy lumen_static::invalidate::Boundaries<256>, features agent,reload, exe target/hot-live/ws/target/release/hot-window` | hot-window-drive: PASS | pass |
+| widget-drive | Everything | `drove pid 1393837 (socket owner 1393837), strategy fulgurite::invalidate::Everything, features agent,everything, exe target/release/showcase` | widget-drive [Everything]: 39 widgets, 94 actions, 31 without an isolate, 0 failed; actions 94, l... | pass |
+| widget-drive | Boundaries | `drove pid 1400629 (socket owner 1400629), strategy fulgurite::invalidate::Boundaries<256>, features agent, exe target/release/showcase` | widget-drive [Boundaries<256>]: 39 widgets, 94 actions, 31 without an isolate, 0 failed; actions ... | pass |
+| agent-drive | Everything | `drove pid 1426274 (socket owner 1426274), strategy fulgurite::invalidate::Everything, features agent,everything, exe target/release/showcase` | agent-drive: shadow: supported=False expected=False, compared 0 | pass |
+| agent-drive | Boundaries | `drove pid 1426637 (socket owner 1426637), strategy fulgurite::invalidate::Boundaries<256>, features agent,shadow-oracle, exe target/release/showcase` | agent-drive: shadow: supported=True expected=True, compared 30 | pass |
+| tasks-drive | everything | `drove pid 1426759 (socket owner 1426759), strategy fulgurite::invalidate::Everything, features agent,everything, exe target/release/tasks-demo` | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 1, 'ticks': 29, 'failed': 0, 's... | pass |
+| tasks-drive | boundaries | `drove pid 1427112 (socket owner 1427112), strategy fulgurite::invalidate::Boundaries<256>, features agent, exe target/release/tasks-demo` | ok  no failures; final {'one': 2, 'batch': 3, 'chain': 3, 'slow': 1, 'ticks': 29, 'failed': 0, 's... | pass |
+| panic-drive | everything | `drove pid 1427744 (socket owner 1427744), strategy fulgurite::invalidate::Everything, features agent,everything,reload, exe target/release/panic-app` | panic-drive [everything]: all seven sites caught, shown and recovered | pass |
+| panic-drive | boundaries | `drove pid 1428170 (socket owner 1428170), strategy fulgurite::invalidate::Boundaries<256>, features agent,reload, exe target/release/panic-app` | panic-drive [boundaries]: all seven sites caught, shown and recovered | pass |
+| panic-drive | norecover | `drove pid 1428492 (socket owner 1428492), strategy fulgurite::invalidate::Boundaries<256>, features agent, exe target/release/panic-app` | panic-drive [norecover]: app exit status: 101 (expected nonzero) | pass |
+| hot-window-drive | only | `drove pid 1429179 (socket owner 1429179), strategy fulgurite::invalidate::Boundaries<256>, features agent,reload, exe target/hot-live/ws/target/release/hot-window` | hot-window-drive: PASS | pass |
 
 Every leg also printed `app log: N panics` equal to its declared count
 (0; panic-drive 8 and 8 and 1; hot-window-drive 1).

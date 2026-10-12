@@ -90,7 +90,7 @@ escape hatch for the person *running* the program rather than the person
 who wrote it:
 
 ```text
-LUMEN_BACKEND=software   # or =gpu
+FULGURITE_BACKEND=software   # or =gpu
 ```
 
 A driver bug on one machine should not need a rebuild to work around. An
@@ -104,7 +104,7 @@ the session measures with, and whether a CPU adapter is acceptable — and
 answers `Some(backend)`, or `None` to fall through to the built-in
 GPU-then-software choice. It is asked on every `resumed`, before that
 choice, in a build with or without the `gpu` feature;
-`LUMEN_BACKEND=software` skips it, so the escape hatch still works.
+`FULGURITE_BACKEND=software` skips it, so the escape hatch still works.
 
 `examples/glasswall`'s `custom-backend` feature is the smallest real one:
 the software backend inside a counter whose name says which backend of
@@ -135,7 +135,7 @@ shader over its box with its uniform bytes, its *fallback* drawn with
 ordinary `Painter` calls, then the end.
 
 ```text
-{{#include ../../crates/lumen-static-widgets/src/shader.rs:bracket}}
+{{#include ../../crates/fulgurite-widgets/src/shader.rs:bracket}}
 ```
 
 The GPU backend runs the shader and skips the fallback. Everything that

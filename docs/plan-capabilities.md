@@ -321,7 +321,7 @@ predictable cost.
 
 **Still to do here:** the embedded fixture drawing from a `const` slice.
 **Decoding is built (M84/T84.1, 2026-10-06)**: PNG and GIF behind the
-shell's default-off `image` feature, into `lumen_static_shell::image`'s
+shell's default-off `image` feature, into `fulgurite_shell::image`'s
 `ImageStore` (`docs/results-images.md` T84.1). JPEG and WebP are not
 decoded; an application with them decodes itself.
 
@@ -547,7 +547,7 @@ gets re-budgeted" is what forced the question.
 ### T15.7 — drag and drop — **within-application half DONE 2026-09-07; platform half: types shipped, never assembled (2026-09-27)**
 
 > **Types shipped, never assembled — 2026-09-27** (M54/T54.7, R15-F5).
-> The within-application half (`lumen_static::Drag`) stands. The platform half does not: `translate::dropped` has no caller, `run` and `Program` translate no file event, so a `dnd` build of either discards every drop. `Dropped::Files(Vec)` is now `Dropped::File(PathBuf)`, one per event, as winit delivers them. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
+> The within-application half (`fulgurite::Drag`) stands. The platform half does not: `translate::dropped` has no caller, `run` and `Program` translate no file event, so a `dnd` build of either discards every drop. `Dropped::Files(Vec)` is now `Dropped::File(PathBuf)`, one per event, as winit delivers them. `docs/plan-a11y-platform.md` §2.5 has the reasoning and §4 names
 > what would reopen it. The rest of this entry is the record as written.
 
 Two halves that should not be conflated:
@@ -556,7 +556,7 @@ Two halves that should not be conflated:
   feedback. Payload type is a **type parameter on the host**, so it is
   the application's enum and costs nothing when unused.
 - **Across the platform boundary**: files and text in and out. Lives in
-  `lumen-static-winit`, behind a default-off `dnd` feature.
+  `fulgurite-winit`, behind a default-off `dnd` feature.
 
 **Gate:** an internal drag reorders a list; a file dropped on the window
 reaches a handler behind the feature; neither path allocates in steady
@@ -593,20 +593,20 @@ is what routes `PointerMove` to the node that started the gesture.
 > (Shaping::Complex)` chooses it for a whole program: `Local` builds its
 > measurer and the agent's audit from one stack in that mode, the window
 > reads `Session::shaping` before its first backend is built and again
-> after every swap (`Backend::set_font`), and `LUMEN_SHOT`,
+> after every swap (`Backend::set_font`), and `FULGURITE_SHOT`,
 > `Offscreen::with_shaping` and the showcase's `--shot`/`--demo` render
-> with it (`crates/lumen-static-shell/tests/program.rs`, `just
+> with it (`crates/fulgurite-shell/tests/program.rs`, `just
 > hot-window-drive`). Per-widget shaping is not built
 > (`docs/plan-shaped-paint.md`, "Not in M81").
 
 > **Painted since M81/T81.3 (2026-10-04).** A `FontStack` in
 > `Shaping::Complex` (the shell's `shaping` feature) lays runs out with
-> `lumen-static-text`'s `Shaper` for the measure, the clusters **and the
+> `fulgurite-text`'s `Shaper` for the measure, the clusters **and the
 > paint** — renderer-side, in `FontStack::place_run_into`, which both
 > backends place glyphs through; no glyph command was added
 > (`docs/plan-shaped-paint.md`, first decision). Arabic is painted joined
 > and right to left, inside its box; the pins moved to
-> `crates/lumen-static-shell/tests/paint_shaped.rs` without their
+> `crates/fulgurite-shell/tests/paint_shaped.rs` without their
 > `should_panic`. Selectable in a window since M81/T81.4 (above). A run with nothing to shape
 > keeps fontdue's layout even under `Complex` (K81a,
 > `docs/results-text.md` M81/T81.3).
@@ -630,7 +630,7 @@ seam already exists — `TextMeasure` — and
 `docs/text-render-adoption-decision.md` recorded declining this twice,
 with reasons that still hold for the default.
 
-**Gating.** A **separate crate**, `lumen-static-text-complex`, providing
+**Gating.** A **separate crate**, `fulgurite-text-complex`, providing
 a `TextMeasure` implementation over rustybuzz or swash. Nothing in the
 core changes; nothing enters the graph unless named. `BakedFace` and
 `FontMetrics` remain, and the embedded profile never sees it.
@@ -638,7 +638,7 @@ core changes; nothing enters the graph unless named. `BakedFace` and
 **Gate:** an Arabic string measures and paints right-to-left; the
 default build's dependency count is unchanged; `just thumb` unaffected.
 
-**Done as `lumen-static-text`**, a separate crate implementing
+**Done as `fulgurite-text`**, a separate crate implementing
 `TextMeasure` over `rustybuzz` and `unicode-bidi`. Both halves of the
 gate hold: **the core's graph is unchanged at 20 entries and the
 shell's at 11**, while the new crate's is 33 — so shaping is about a
@@ -723,7 +723,7 @@ and it was in a doc comment about the same function's own behaviour.
 > `Pane`/`Panes` are deleted by T89.1.
 
 `Host` is already one tree and one surface, which is the right unit. The
-work is in `lumen-static-winit`: a window map, per-window `Surface` and
+work is in `fulgurite-winit`: a window map, per-window `Surface` and
 `Host`, and routing events by `WindowId`.
 
 **Gating.** None needed — it is additive in the windowing crate and the
@@ -756,7 +756,7 @@ the caller decides.
 
 File, colour and font pickers.
 
-**Gating.** Default-off feature on `lumen-static-winit`, measured in
+**Gating.** Default-off feature on `fulgurite-winit`, measured in
 crates the way `clipboard` and `a11y` were, with the number in the
 manifest comment beside the decision.
 
@@ -782,7 +782,7 @@ Without the feature the type still exists and every call returns
 
 ### T15.12 — a GPU renderer — **DONE 2026-09-07**
 
-**A separate crate**, `lumen-static-wgpu`, implementing `Renderer`.
+**A separate crate**, `fulgurite-wgpu`, implementing `Renderer`.
 M10a built the seam for exactly this and nothing has used it from the
 GPU side; T13.8's numbers showed the seam itself is free.
 
@@ -835,7 +835,7 @@ rather than from a table.
 
 **What the deferral got right and keeps:** it must stay a *choice*. The
 GPU-backed arms in `docs/results-competitive.md` §3 carry 68–321 MB
-resident against lumen-static's 24.6, and most of that gap is a GPU
+resident against fulgurite's 24.6, and most of that gap is a GPU
 context. The embedded profile has no GPU at all. A separate crate is
 still the right gate — the change is that it moves from "if a number
 asks" to "before a complex application does".
@@ -843,7 +843,7 @@ asks" to "before a complex application does".
 **And the survey found the real work item, which neither the plan nor
 the deferral had named.** `Renderer` is the right seam and the SVG
 backend proves it admits a second implementation — but
-`lumen-static-winit`'s `Surface` is **softbuffer-specific**: it acquires
+`fulgurite-winit`'s `Surface` is **softbuffer-specific**: it acquires
 a CPU buffer, blits `Canvas::pixels` into it and presents. A GPU
 backend needs its own surface and swapchain, so the work is *two*
 seams, not one, and the second does not exist yet. That is the honest
@@ -878,7 +878,7 @@ And the payoff: a full 4K redraw at **1.10 ms against the CPU's 22.87** —
 
 1. **The second seam was smaller than feared.** It was called out as
    "bigger than implementing `Renderer` on wgpu", and it is one trait —
-   `lumen_static_winit::Backend`, generic in `A` so `present` can still
+   `fulgurite_winit::Backend`, generic in `A` so `present` can still
    take a `&mut Host<A>` — with two implementations. `Surface` and
    `Pane` were not touched.
 2. **The window handle became an `Arc`.** wgpu's *safe* surface
@@ -891,7 +891,7 @@ And the payoff: a full 4K redraw at **1.10 ms against the CPU's 22.87** —
    crate is the gate". It is, but it turned out not to be enough: an
    adapter can be absent on a machine the binary was built for. So the
    choice is per-build (the `gpu` feature), per-application
-   (`Config::backend`), and per-run (`LUMEN_BACKEND`) — and it falls
+   (`Config::backend`), and per-run (`FULGURITE_BACKEND`) — and it falls
    back rather than failing. The measurement that justifies the layering
    is that compiling the backend in and *not* using it costs 0.6 MB
    resident, while opening an adapter costs 174 MB. The price is the

@@ -1,0 +1,15 @@
+[package]
+name = "fulgurite-lss"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# `.lss` stylesheets: the lexer, the parser and the lowering to rules --
+# M61 (docs/plan-lss.md). **No dependencies, and not fulgurite**: the
+# `include_lss!` proc macro runs this at build time, and fulgurite
+# depends on the macro crate, so a dependency on the core here would be
+# a cycle. The lowering therefore produces its own rule type (`Sheet`),
+# which the macro turns into `Rule::new(..)` tokens and
+# `fulgurite_shell::lss` into `Rule` values -- two independent
+# lowerings of one IR, which is what T61.5's parity gate compares.
+[dependencies]

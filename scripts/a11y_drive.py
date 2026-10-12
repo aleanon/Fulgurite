@@ -5,7 +5,7 @@ launched window and compare it with what the agent sees.
 A unit test of the tree we *would* send proves the builder; only a walk
 of the bus proves the window sent it (`docs/plan-a11y-platform.md` §0
 rule 1). Run by `scripts/a11y_drive.sh` through `scripts/live/launch.py`,
-which puts the window's pid in LUMEN_LIVE_PID.
+which puts the window's pid in FULGURITE_LIVE_PID.
 
     a11y_drive.py PORT --expect present|absent [--button NAME] [--timeout S]
 
@@ -110,9 +110,9 @@ def main() -> int:
     ap.add_argument("--act", help="perform the named push button's AT-SPI action, and require the "
                                    "application's tree to change (M54/T54.4)")
     a = ap.parse_args()
-    pid = int(os.environ.get("LUMEN_LIVE_PID", "0"))
+    pid = int(os.environ.get("FULGURITE_LIVE_PID", "0"))
     if pid == 0:
-        fail("LUMEN_LIVE_PID is not set; run through scripts/a11y_drive.sh")
+        fail("FULGURITE_LIVE_PID is not set; run through scripts/a11y_drive.sh")
 
     listed = apps()
     if not listed:

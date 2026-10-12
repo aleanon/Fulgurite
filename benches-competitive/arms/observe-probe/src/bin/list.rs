@@ -1,9 +1,9 @@
 //! A `List<Label<String>>` of rows, laid out and painted — the frame arm's
 //! shape, the container `List::observe` walks.
-use lumen_static::hatch::List;
-use lumen_static::prelude::*;
-use lumen_static_shell::Host;
-use lumen_static_widgets::ops::Label;
+use fulgurite::hatch::List;
+use fulgurite::prelude::*;
+use fulgurite_shell::Host;
+use fulgurite_widgets::ops::Label;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

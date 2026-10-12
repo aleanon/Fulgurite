@@ -33,10 +33,10 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{pass, Constraints, DisplayList, NodeState, StaticTree, Widget};
-use lumen_static_widgets::ops::Fixed;
-use lumen_static_widgets::ScrollView;
+use fulgurite::style::{Length, Patch, Rule, Selector};
+use fulgurite::{pass, Constraints, DisplayList, NodeState, StaticTree, Widget};
+use fulgurite_widgets::ops::Fixed;
+use fulgurite_widgets::ScrollView;
 
 /// Ten 24 px rows.
 #[derive(StaticTree, Default)]
@@ -131,7 +131,7 @@ fn main() {
         Selector::Id("scroll"),
         Patch::new().width(Length::Fixed(400.0)).height(Length::Fixed(VIEWPORT_H)),
     )];
-    lumen_static::style::cascade(<Ui as Widget>::SUB_TABLE, <Ui as Widget>::SEEDS, &sheet, &mut styles);
+    fulgurite::style::cascade(<Ui as Widget>::SUB_TABLE, <Ui as Widget>::SEEDS, &sheet, &mut styles);
     let mut st = vec![NodeState::default(); <Ui as Widget>::NODE_COUNT];
     let view = Constraints { min_w: 0.0, max_w: WINDOW, min_h: 0.0, max_h: WINDOW };
     pass::layout(&mut ui, &styles, &mut st, view);

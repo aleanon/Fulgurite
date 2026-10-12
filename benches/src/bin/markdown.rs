@@ -27,10 +27,10 @@
 
 use std::time::Instant;
 
-use lumen_static::widget::{Node, Widget};
-use lumen_static::{Constraints, LayoutCx, NodeState, Point};
-use lumen_static_shell::text::{FontMetrics, FontStack};
-use lumen_static_widgets::Markdown;
+use fulgurite::widget::{Node, Widget};
+use fulgurite::{Constraints, LayoutCx, NodeState, Point};
+use fulgurite_shell::text::{FontMetrics, FontStack};
+use fulgurite_widgets::Markdown;
 
 /// Lines of Markdown: headings, bullets, bold and code words, prose. No
 /// blank lines, so every span is a word (a blank line is an empty span).
@@ -58,7 +58,7 @@ fn words(src: &str) -> usize {
     src.split_whitespace().filter(|w| !matches!(*w, "#" | "##" | "###" | "-")).count()
 }
 
-fn lay(m: &mut Markdown, metrics: &mut FontMetrics, styles: &[lumen_static::Style], st: &mut [NodeState]) {
+fn lay(m: &mut Markdown, metrics: &mut FontMetrics, styles: &[fulgurite::Style], st: &mut [NodeState]) {
     let limits = Constraints { min_w: 0.0, max_w: 640.0, min_h: 0.0, max_h: f32::INFINITY };
     {
         let mut cx = LayoutCx::new(metrics);
@@ -83,7 +83,7 @@ fn main() {
         let mut src = doc(kb * 1024);
         let mut m = Markdown::new(&src);
         let mut metrics = FontMetrics::new(font.clone());
-        let styles = lumen_static::pass::default_styles(&m);
+        let styles = fulgurite::pass::default_styles(&m);
         let mut st = vec![NodeState::default(); <Markdown as Widget>::NODE_COUNT];
         lay(&mut m, &mut metrics, &styles, &mut st);
 

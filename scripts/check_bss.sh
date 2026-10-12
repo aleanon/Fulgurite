@@ -64,7 +64,7 @@ for name in $FIRMWARE_BINS; do
 
     # B/b = bss, D/d = data, G/g and S/s = small-object variants of each.
     # The name is EVERYTHING after the third field, not `$4`: a demangled
-    # name has spaces in it (`<embedded::Device as lumen_static::event::App>
+    # name has spaces in it (`<embedded::Device as fulgurite::event::App>
     # ::update_marked::__ln_site`), and `$4` cut it at the first -- a
     # rejection that named only a prefix, which no exemption could match
     # (M52/T52.1, docs/plan-embedded-footprint.md §1.1).

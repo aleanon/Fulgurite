@@ -1,6 +1,6 @@
 # The book lives in this repository — decision and measurements
 
-*2026-09-10. Question: should the mdBook for lumen-static be a directory
+*2026-09-10. Question: should the mdBook for fulgurite be a directory
 here or a repository of its own?*
 
 **Verdict: here, in `book/`.** Built with mdBook v0.5.4, gated by
@@ -69,7 +69,7 @@ only.
 ## Two tooling traps, recorded so they are not rediscovered
 
 **`-L target/debug/deps` does not work in this workspace.** That
-directory holds 6818 files and **36** distinct `liblumen_static-*.rlib`
+directory holds 6818 files and **36** distinct `libfulgurite-*.rlib`
 built with different feature sets; rustdoc refuses to choose (E0464) and
 the error names neither the cause nor the fix. `just book-deps` builds
 exactly one of each into `target/book`, and **wipes that directory
@@ -80,8 +80,8 @@ directory a function of one line.
 
 **rustdoc compiles book snippets as edition 2015 unless told otherwise.**
 Without `[rust] edition = "2021"` in `book.toml`,
-`use lumen_static::prelude::*` cannot resolve and the compiler's
-suggestion ("you might be missing a crate named `lumen_static`") points
+`use fulgurite::prelude::*` cannot resolve and the compiler's
+suggestion ("you might be missing a crate named `fulgurite`") points
 away from the cause.
 
 ## Rules this establishes

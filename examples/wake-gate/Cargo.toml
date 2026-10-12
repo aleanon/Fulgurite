@@ -9,6 +9,6 @@ publish = false
 # *itself* — see the crate docs in src/main.rs for why it cannot be a
 # `cargo test`.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-winit = { path = "../../crates/fulgurite-winit" }
 winit = "0.30"

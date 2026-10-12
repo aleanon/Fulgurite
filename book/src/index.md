@@ -1,4 +1,4 @@
-# lumen-static
+# fulgurite
 
 A GUI framework where the widget tree's **shape lives in the type** and only
 its values live in memory. A `#[derive(StaticTree)]` struct *is* the tree:
@@ -7,9 +7,9 @@ passes allocate nothing, truetype text included since M50
 (`docs/results-allocation.md`), and a tree that could overflow the stack does not compile.
 
 ```rust,no_run
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# extern crate lumen_static_winit;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# extern crate fulgurite_winit;
 {{#include ../../examples/minimal/src/main.rs:app}}
 ```
 

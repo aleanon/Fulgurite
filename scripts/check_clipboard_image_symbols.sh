@@ -3,12 +3,12 @@
 # a window built without `clipboard-image` links no `image` crate.
 #
 # Modelled on scripts/check_agent_symbols.sh. Builds examples/showcase for
-# release twice -- as it ships, then with `lumen-static-winit/clipboard-image`
+# release twice -- as it ships, then with `fulgurite-winit/clipboard-image`
 # -- and counts symbols from the `image` crate in each with `nm -C`. The
 # first must be 0; the second is the positive control and must not be, or
 # the count is blind and would pass anything. The pattern is anchored at
 # the crate root (`image::` at the start of a path, after a space or a
-# `<`), because `lumen_static_shell::image::` is this workspace's own
+# `<`), because `fulgurite_shell::image::` is this workspace's own
 # module and is not the crate counted.
 #
 # It also prints the stripped size of each and the delta beside K2's 3 MB
@@ -25,7 +25,7 @@ mkdir -p "$out"
 count() { nm -C "$1" 2>/dev/null | grep -cE '(^|[ <(&*,])image::' || true; }
 cargo build -q --release -p showcase
 cp target/release/showcase "$out/plain"
-cargo build -q --release -p showcase --features lumen-static-winit/clipboard-image
+cargo build -q --release -p showcase --features fulgurite-winit/clipboard-image
 cp target/release/showcase "$out/image"
 plain=$(count "$out/plain")
 image=$(count "$out/image")

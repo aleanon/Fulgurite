@@ -48,10 +48,10 @@ depends on are in; the dependencies are named in each B entry.
   caret lag one event (Button, Slider, TextInput).
 - **Cause.**
   - `pass::dispatch` writes `st[i].focused` at the start of the event
-    (`crates/lumen-static/src/pass.rs:497-499`). The press, Tab or arrow
+    (`crates/fulgurite/src/pass.rs:497-499`). The press, Tab or arrow
     then moves `*focus`, and nothing writes it again.
   - The host then zeroes the ring on `input.focus`, which is the *new*
-    node (`crates/lumen-static-shell/src/lib.rs:1235`).
+    node (`crates/fulgurite-shell/src/lib.rs:1235`).
   - So the old node keeps `focused = true` with its ring intact, and
     paints it.
 - **Fix.** Publish focus **after** dispatch has finished moving it, once,
@@ -84,7 +84,7 @@ depends on are in; the dependencies are named in each B entry.
 
 ### A3. The agent's audit leaves estimated layout behind (X1)
 
-- **Symptom.** With `LUMEN_AGENT` set:
+- **Symptom.** With `FULGURITE_AGENT` set:
   - RichText, Markdown and the editor preview collapse and split words.
   - Click-to-caret is dead in TextInput and RichTextEditor.
   - Tab, BottomNav and Rail labels wrap mid-word.
@@ -109,7 +109,7 @@ depends on are in; the dependencies are named in each B entry.
      per-widget override. `Repeat`'s override stays, because its probe
      must not clamp scroll.
   2. **The audit measures with the real face.**
-     `lumen-static-winit`'s agent setup, and `AgentHost`, install the
+     `fulgurite-winit`'s agent setup, and `AgentHost`, install the
      host's own `TextMeasure` through `set_text_measure`. `W1005` then
      judges what is drawn.
 
@@ -172,7 +172,7 @@ depends on are in; the dependencies are named in each B entry.
   laid out for "1 KB", so the Size column garbles after scrolling.
 - **Cause (read).**
   - The derive's clean-subtree skip
-    (`lumen-static-macros/src/lib.rs:953-958`) asks
+    (`fulgurite-macros/src/lib.rs:953-958`) asks
     `cx.changed.is_clean(i..i+N)`.
   - `Repeat::layout` lays each row out at local index 0
     (`repeat.rs:448`), so the question is asked about the main table's
@@ -201,7 +201,7 @@ depends on are in; the dependencies are named in each B entry.
   - Slider and RangeSlider become solid blue bars.
   - Primary's ring is white on a white card.
   - A checked toggle's ring is the same blue as its body.
-- **Cause.** `ops::focus_ring` (`crates/lumen-static/src/ops.rs:59`)
+- **Cause.** `ops::focus_ring` (`crates/fulgurite/src/ops.rs:59`)
   fills a rect 2 px larger than the node, in `s.fg`, under the widget. It
   relies on every widget painting an opaque full-box body over it. The
   palette's `focus` role exists and is never used.
@@ -231,7 +231,7 @@ depends on are in; the dependencies are named in each B entry.
 
 - **Symptom.** After a choice or Escape, PickList and Combobox stay open.
 - **Cause.**
-  - `Chooser::layout` (`crates/lumen-static-widgets/src/choose.rs`
+  - `Chooser::layout` (`crates/fulgurite-widgets/src/choose.rs`
     ~505–572) first applies `take_picked()` or `dismiss()`, which closes
     the list. It then runs
     `if st[trigger].focused { list.open = true }`.
@@ -297,7 +297,7 @@ depends on are in; the dependencies are named in each B entry.
       the field border at 2.2:1 (B15), and the light tracks at
       1.23–1.38:1 (B14, B25, B27);
     - AppBar 4.499:1 and Pagination 4.12:1 raised to ≥ 4.5:1.
-  - Every widget in `lumen-static-widgets` moves its hard-coded colours
+  - Every widget in `fulgurite-widgets` moves its hard-coded colours
     to roles. Colours that are *data* stay literal: chart series and
     colour-picker swatches.
 - **Gate.**
@@ -466,7 +466,7 @@ depends on are in; the dependencies are named in each B entry.
   Skeleton.
 - **Cause.** None of them implements `observe`.
 - **Fix.**
-  - Every widget in `lumen-static-widgets` implements `observe`.
+  - Every widget in `fulgurite-widgets` implements `observe`.
   - Add a static check to `just static`: a `Widget` impl in the crate
     without `observe` fails. This is the same shape as M35's required
     table-driven walk, so the walk is extended rather than a check
@@ -517,7 +517,7 @@ depends on are in; the dependencies are named in each B entry.
 - **Symptom.** With unequal cells, the columns are jagged.
 - **Cause.**
   - A grid is the wrap lowering with a break every N children
-    (`lumen-static-macros/src/lib.rs:403-406`).
+    (`fulgurite-macros/src/lib.rs:403-406`).
   - `place` advances `cur += s.w + spacing` separately on each line
     (`lib.rs:689-715`).
 - **Fix.**
@@ -1018,7 +1018,7 @@ Each is a standing check, so this class of defect cannot pass again.
     repainting.
   - Injection: C2's unbound `on`.
 - **D2. Unit tests of pass behaviour go through `pump`.** A lint in
-  `just static` flags a test in `lumen-static-widgets/tests/` that calls
+  `just static` flags a test in `fulgurite-widgets/tests/` that calls
   `on_event` with a `PointerDown`, `PointerUp` or `Key` and never calls
   `pump`/`dispatch` in the same file. Such a test is allowed with an
   `// on_event only:` comment saying why.

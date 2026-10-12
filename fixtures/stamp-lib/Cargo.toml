@@ -15,27 +15,27 @@ crate-type = ["cdylib"]
 [features]
 # The widgets' too, since M48/T48.9: the widgets crate refuses to build
 # with the core's `observe` on and its own off.
-observe = ["lumen-static/observe", "lumen-static-widgets/observe"]
+observe = ["fulgurite/observe", "fulgurite-widgets/observe"]
 # M81/T81.1: stamp with the shell's fields too (`session::abi_fields`), as
 # a window library does, so the shell's feature list can be shown to
 # refuse: `shaping` is the first shell feature `just abi-stamp` pairs.
-shell = ["dep:lumen-static-shell"]
-shaping = ["shell", "lumen-static-shell/shaping"]
+shell = ["dep:fulgurite-shell"]
+shaping = ["shell", "fulgurite-shell/shaping"]
 # M83/T83.3: the two shader entries (`session::abi_fields`). `shader-core`
 # turns the core's `shader` on with the shell's off -- the build where only
-# `lumen_shader` (the core's variant set, read through the shell's
+# `fulgurite_shader` (the core's variant set, read through the shell's
 # `build.rs`) tells it apart; `shader` turns the shell's on as well.
-shader-core = ["shell", "lumen-static/shader"]
-shader = ["shader-core", "lumen-static-shell/shader"]
+shader-core = ["shell", "fulgurite/shader"]
+shader = ["shader-core", "fulgurite-shell/shader"]
 # M84/T84.6 (review A25): the shell's `image` is NOT in the stamp -- the
 # application's store crosses only as `&dyn ImageSource`, a core trait the
 # source hash covers -- so a library built with it is ACCEPTED by a loader
 # built without (`just abi-stamp` asserts it).
-image = ["shell", "lumen-static-shell/image"]
+image = ["shell", "fulgurite-shell/image"]
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload" }
+fulgurite = { path = "../../crates/fulgurite", features = ["reload"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload" }
 # M49/T49.1: in the graph so an edit to it alone can be shown to be accepted.
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"], optional = true }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "reload"], optional = true }

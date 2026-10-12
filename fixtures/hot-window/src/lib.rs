@@ -40,12 +40,12 @@
 //! not — the accelerators are the new build's, installed by
 //! `Program::host`, never a table the loader kept.
 
-use lumen_static::event::EventCtx;
-use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
-use lumen_static_shell::program::{application, Program};
-use lumen_static_shell::text::Shaping;
-use lumen_static_widgets::prelude::*;
+use fulgurite::event::EventCtx;
+use fulgurite::style::{Length, Patch, Rule, Selector};
+use fulgurite::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
+use fulgurite_shell::program::{application, Program};
+use fulgurite_shell::text::Shaping;
+use fulgurite_widgets::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(StaticTree, Default, DeriveReloadable)]
@@ -81,7 +81,7 @@ pub struct Ui {
 /// `#swatch`: a `ShaderView` running [`SHADERS`]'s one entry with the
 /// `shader` feature (M83/T83.8)…
 #[cfg(feature = "shader")]
-pub type Swatch = lumen_static_widgets::ShaderView<16>;
+pub type Swatch = fulgurite_widgets::ShaderView<16>;
 /// …and an empty spacer in its slot without it.
 #[cfg(not(feature = "shader"))]
 pub type Swatch = Spacer;
@@ -95,7 +95,7 @@ pub type Swatch = Spacer;
 const SWATCH: &str = "
 struct U { gain: vec4<f32> }
 @group(0) @binding(1) var<uniform> u: U;
-@fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> {
+@fragment fn fs_main(in: FulguriteVarying) -> @location(0) vec4<f32> {
     let c = vec3(0.86, 0.12, 0.16); // EDIT colour
     return vec4(c * u.gain.rgb, 1.0);
 }
@@ -103,20 +103,20 @@ struct U { gain: vec4<f32> }
 
 /// The program's shader table: `#swatch` names entry 0.
 #[cfg(feature = "shader")]
-pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] =
-    [lumen_static_shell::shader::ShaderDesc::new("swatch", SWATCH, 16)];
+pub static SHADERS: [fulgurite_shell::shader::ShaderDesc; 1] =
+    [fulgurite_shell::shader::ShaderDesc::new("swatch", SWATCH, 16)];
 
 /// What `#swatch` draws where the shader does not run: grey, neither of
 /// the colours the drive edits between.
 #[cfg(feature = "shader")]
-fn swatch_fallback(out: &mut dyn lumen_static::Painter, r: [f32; 4], _: &[u8]) {
-    out.rect(r, lumen_static::Color(0x80, 0x80, 0x80, 0xff));
+fn swatch_fallback(out: &mut dyn fulgurite::Painter, r: [f32; 4], _: &[u8]) {
+    out.rect(r, fulgurite::Color(0x80, 0x80, 0x80, 0xff));
 }
 
 /// `#star`'s callback: one filled path, placed by its transform.
-fn star(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
-    use lumen_static::display::{PathEl, PathPaint};
-    use lumen_static::Point;
+fn star(out: &mut dyn fulgurite::Painter, r: [f32; 4]) {
+    use fulgurite::display::{PathEl, PathPaint};
+    use fulgurite::Point;
     let mut els = [PathEl::Close; 11];
     for (i, e) in els.iter_mut().take(10).enumerate() {
         let rr = if i % 2 == 0 { 1.0 } else { 0.4 };
@@ -125,12 +125,12 @@ fn star(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
         *e = if i == 0 { PathEl::Move(p) } else { PathEl::Line(p) };
     }
     let k = 0.45 * (r[3] - r[1]);
-    let paint = PathPaint { fill: STAR_INK, stroke: lumen_static::Color(0, 0, 0, 0), width: 0.0 };
+    let paint = PathPaint { fill: STAR_INK, stroke: fulgurite::Color(0, 0, 0, 0), width: 0.0 };
     out.path(&els, [k, 0.0, 0.0, k, (r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0], paint);
 }
 
 /// `#star`'s colour, which the drive looks for at the box's centre.
-pub const STAR_INK: lumen_static::Color = lumen_static::Color(0xc2, 0x41, 0x0c, 0xff);
+pub const STAR_INK: fulgurite::Color = fulgurite::Color(0xc2, 0x41, 0x0c, 0xff);
 
 /// What `#hebrew` says.
 pub const HEBREW: &str = "שלום עולם";
@@ -143,11 +143,11 @@ pub struct Tally {
     /// request is answered inside the drain that took it, so none is
     /// pending at a swap.
     #[serde(skip)]
-    pub requests: lumen_static::request::Requests,
+    pub requests: fulgurite::request::Requests,
 }
 
 /// `#pic`'s id in the application's store.
-pub const PIC: lumen_static::ImageId = lumen_static::ImageId(1);
+pub const PIC: fulgurite::ImageId = fulgurite::ImageId(1);
 
 #[derive(DeriveApp, DeriveReloadable)]
 #[app(images = images, requests = requests)]
@@ -161,21 +161,21 @@ pub struct Counter {
     /// The images this build owns: `#pic`'s pixels. Fresh on a swap — the
     /// new build's boot fills it, which is how an edited asset arrives.
     #[reload(fresh)]
-    pub store: lumen_static_shell::image::ImageStore,
+    pub store: fulgurite_shell::image::ImageStore,
 }
 
 /// The store the renderer reads through the frame (`App::images`).
-fn images(c: &Counter) -> Option<&dyn lumen_static::ImageSource> {
+fn images(c: &Counter) -> Option<&dyn fulgurite::ImageSource> {
     Some(&c.store)
 }
 
 /// The queue `#open-panel` pushes onto (`App::requests`, M89/T89.7).
-fn requests(c: &mut Counter) -> Option<&mut lumen_static::request::Requests> {
+fn requests(c: &mut Counter) -> Option<&mut fulgurite::request::Requests> {
     Some(&mut c.tally.requests)
 }
 
 fn on_open(t: &mut Tally, _: &EventCtx) {
-    t.requests.push(lumen_static::request::Request::OpenWindow { program: PANEL, tag: 1 });
+    t.requests.push(fulgurite::request::Request::OpenWindow { program: PANEL, tag: 1 });
 }
 
 /// `#pic`'s colour in this build: the line the drive edits.
@@ -185,20 +185,20 @@ pub fn pic_ink() -> [u8; 4] {
 
 /// The program's menu (M90/T90.5): one entry, its accelerator on the line
 /// the drive edits.
-const TOOLS: [lumen_static::menu::MenuEntry; 1] = [
-    lumen_static::menu::MenuEntry::new("Bump", 1).accel(lumen_static::Key::Char('k'), lumen_static::Mods::CTRL), // EDIT accel
+const TOOLS: [fulgurite::menu::MenuEntry; 1] = [
+    fulgurite::menu::MenuEntry::new("Bump", 1).accel(fulgurite::Key::Char('k'), fulgurite::Mods::CTRL), // EDIT accel
 ];
-pub const MENU: [lumen_static::menu::MenuSection; 1] = [lumen_static::menu::MenuSection { title: "Tools", entries: &TOOLS }];
+pub const MENU: [fulgurite::menu::MenuSection; 1] = [fulgurite::menu::MenuSection { title: "Tools", entries: &TOOLS }];
 
 /// Every entry enabled.
-fn menu_enabled(_: &Tally) -> lumen_static::menu::MenuMask {
-    lumen_static::menu::MenuMask::ALL
+fn menu_enabled(_: &Tally) -> fulgurite::menu::MenuMask {
+    fulgurite::menu::MenuMask::ALL
 }
 
 /// A chosen entry: handled, so the drive reads `handled: true` for the
 /// accelerator and `false` for a key no entry answers.
-fn on_menu(_: &mut Tally, _id: u32) -> lumen_static_shell::program::KeyOutcome {
-    lumen_static_shell::program::KeyOutcome::Handled
+fn on_menu(_: &mut Tally, _id: u32) -> fulgurite_shell::program::KeyOutcome {
+    fulgurite_shell::program::KeyOutcome::Handled
 }
 
 fn on_inc(t: &mut Tally, _: &EventCtx) {
@@ -212,9 +212,9 @@ fn boot() -> Counter {
     let mut c = Counter { ui: Ui::default(), tally: Tally::default(), store: Default::default() };
     let ink = pic_ink();
     c.store.insert(PIC, 8, 8, vec![ink.iter().copied().cycle().take(8 * 8 * 4).collect()]);
-    c.ui.pic = Image::new(PIC, lumen_static::desc::Size { w: 8.0, h: 8.0 });
-    c.ui.pic.fit = lumen_static_widgets::Fit::Stretch;
-    c.ui.pic.tint = lumen_static::Color(0xff, 0xff, 0xff, 0xff);
+    c.ui.pic = Image::new(PIC, fulgurite::desc::Size { w: 8.0, h: 8.0 });
+    c.ui.pic.fit = fulgurite_widgets::Fit::Stretch;
+    c.ui.pic.tint = fulgurite::Color(0xff, 0xff, 0xff, 0xff);
     c.ui.inc.label = "+";
     c.ui.inc.on_click = on_inc;
     c.ui.hebrew.set(HEBREW.to_owned());
@@ -227,7 +227,7 @@ fn boot() -> Counter {
         for k in 0..4 {
             gain[k * 4..k * 4 + 4].copy_from_slice(&1.0f32.to_le_bytes());
         }
-        let mut v = lumen_static_widgets::ShaderView::new(lumen_static::display::ShaderId(0), swatch_fallback);
+        let mut v = fulgurite_widgets::ShaderView::new(fulgurite::display::ShaderId(0), swatch_fallback);
         v.set_uniforms(&gain);
         c.ui.swatch = v;
     }
@@ -273,9 +273,9 @@ pub struct Panel {
     #[reload(fresh)]
     ticks: u64,
     #[reload(fresh)]
-    outbox: lumen_static::spawn::Outbox,
+    outbox: fulgurite::spawn::Outbox,
     #[reload(fresh)]
-    timers: lumen_static::spawn::Timers,
+    timers: fulgurite::spawn::Timers,
 }
 
 /// The panel's timer: a `Timers` firing is a job whose result wakes the
@@ -285,7 +285,7 @@ pub const PANEL_TICK: u64 = 7;
 /// The panel's message: a tick arrived.
 pub struct PanelTick;
 
-fn panel_tick(_: lumen_static::spawn::Descriptor, tx: &lumen_static::inbox::Sender<PanelTick>) {
+fn panel_tick(_: fulgurite::spawn::Descriptor, tx: &fulgurite::inbox::Sender<PanelTick>) {
     let _ = tx.send(PanelTick);
 }
 
@@ -293,7 +293,7 @@ fn panel_text(p: &Panel) -> String {
     format!("panel {}", p.kept.count) // EDIT panel
 }
 
-impl lumen_static::event::App for Panel {
+impl fulgurite::event::App for Panel {
     type State = Self;
     fn state_mut(&mut self) -> &mut Self {
         self
@@ -306,14 +306,14 @@ impl lumen_static::event::App for Panel {
     fn tree_mut(&mut self) -> &mut PanelUi {
         &mut self.ui
     }
-    fn outbox(&mut self) -> Option<&mut lumen_static::spawn::Outbox> {
+    fn outbox(&mut self) -> Option<&mut fulgurite::spawn::Outbox> {
         Some(&mut self.outbox)
     }
-    fn timers(&mut self) -> Option<&mut lumen_static::spawn::Timers> {
+    fn timers(&mut self) -> Option<&mut fulgurite::spawn::Timers> {
         Some(&mut self.timers)
     }
-    fn job_for(d: lumen_static::spawn::Descriptor) -> Option<lumen_static::spawn::JobFn<PanelTick>> {
-        (d.kind == PANEL_TICK).then_some(panel_tick as lumen_static::spawn::JobFn<PanelTick>)
+    fn job_for(d: fulgurite::spawn::Descriptor) -> Option<fulgurite::spawn::JobFn<PanelTick>> {
+        (d.kind == PANEL_TICK).then_some(panel_tick as fulgurite::spawn::JobFn<PanelTick>)
     }
     fn apply(this: &mut Self, _: PanelTick) -> bool {
         this.ticks += 1;
@@ -358,7 +358,7 @@ pub fn panel() -> Program<Panel, Strategy> {
 }
 
 /// The window table: entry 1 is the panel.
-pub fn windows(index: u16) -> Option<Box<dyn lumen_static_shell::program::OpenProgram>> {
+pub fn windows(index: u16) -> Option<Box<dyn fulgurite_shell::program::OpenProgram>> {
     match index {
         PANEL => Some(Box::new(panel())),
         _ => None,
@@ -370,11 +370,11 @@ pub fn windows(index: u16) -> Option<Box<dyn lumen_static_shell::program::OpenPr
 /// line before it builds (M81/T81.4), so both strategies see a swap that
 /// changes the program's shaping.
 #[cfg(not(feature = "everything"))]
-pub type Strategy = lumen_static_shell::program::DefaultInval; // EDIT strategy
+pub type Strategy = fulgurite_shell::program::DefaultInval; // EDIT strategy
 /// …and `Everything` with the `everything` feature (M89/T89.7), for the
 /// drive's windows leg under both strategies.
 #[cfg(feature = "everything")]
-pub type Strategy = lumen_static::Everything;
+pub type Strategy = fulgurite::Everything;
 
 /// The program, described once: the binary runs it, the library exports
 /// it, and a reload boots the new build's copy of it (§2.2).
@@ -415,5 +415,5 @@ fn with_shaders(p: Program<Counter, Strategy>) -> Program<Counter, Strategy> {
 
 // Only a hot build is a library a window loads (M49/T49.9).
 #[cfg(feature = "hot")]
-lumen_static_reload::export_program!(program);
+fulgurite_reload::export_program!(program);
 // ANCHOR_END: program

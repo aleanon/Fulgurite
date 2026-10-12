@@ -123,7 +123,7 @@ made the old instance-method spelling wrong rather than merely untidy
 report. Follow the convention: a **leaf** gets a lowercase name, matching
 `label`, `button`, `fixed`, `spacer`. See [Styling](./styling.md) for why
 the convention is not uniform. Two widgets must not share one, which
-`lumen-static/tests/seeds.rs` checks, because a copied `const KIND` is
+`fulgurite/tests/seeds.rs` checks, because a copied `const KIND` is
 how a `Kind` rule ends up styling a widget it was never written for.
 
 `SEEDS` has one entry per node of the subtree, in `SUB_TABLE` order. For

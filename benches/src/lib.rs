@@ -5,8 +5,8 @@
 //! is now recursive descent over the derived `Widget` impls
 //! (`docs/results-traversal.md`).
 
-use lumen_static_widgets::ops::{Fixed, Label, Spacer};
-use lumen_static::{Constraints, Point, Size, StaticTree};
+use fulgurite_widgets::ops::{Fixed, Label, Spacer};
+use fulgurite::{Constraints, Point, Size, StaticTree};
 
 // ---- static arm shapes -----------------------------------------------------
 
@@ -575,7 +575,7 @@ pub struct FusedCard {
 /// `pass::dispatch` is generic over `event::App`, not over `Widget`, so
 /// the per-event work it does (publishing hover, press and focus over
 /// every node) cannot be measured against a bare tree.
-#[derive(lumen_static::App, Default)]
+#[derive(fulgurite::App, Default)]
 pub struct Ten10App {
     #[tree]
     pub ui: Ten10,
@@ -591,7 +591,7 @@ pub struct Ten10App {
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 pub struct EitherCard {
-    pub switch: lumen_static::hatch::Either<Card, Card>,
+    pub switch: fulgurite::hatch::Either<Card, Card>,
 }
 
 /// ~1k nodes of ordinary static tree, for measuring anything that walks

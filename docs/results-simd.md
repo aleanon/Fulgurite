@@ -74,12 +74,12 @@ a safe wrapper and `no_std`-clean.
 **A cargo feature and not a separate crate.** The M15 gating policy
 ranks a crate first, then a type parameter, then a feature — and this is
 one dependency and one code path inside an existing file, not a new
-capability. Its cost: **+3 crates** on `lumen-static-shell` (7 → 10),
+capability. Its cost: **+3 crates** on `fulgurite-shell` (7 → 10),
 default-off.
 
 ## Why the vector path is trusted
 
-`crates/lumen-static-shell/tests/simd_shadow.rs` writes out the loop
+`crates/fulgurite-shell/tests/simd_shadow.rs` writes out the loop
 `shadow_within` had before T17.1 — per-pixel distance, per-pixel `blend`
 with its own bounds check — and compares rendered pixels against it over
 nine shapes: every eight-lane tail, runs narrower than one lane,

@@ -1,5 +1,5 @@
 [package]
-name = "lumen-static-frame"
+name = "fulgurite-frame"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -11,27 +11,27 @@ publish = false
 # `docs/results-competitive.md` §7, which owns them). The whole point of the
 # two arms is that one of them is observe-free, so the feature belongs
 # in the `observe` feature below, beside the other two.
-lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../../crates/lumen-static" }
+fulgurite-widgets = { path = "../../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../../crates/fulgurite" }
 # `truetype` deliberately: every other arm shapes text for real, and measuring
 # this one against the half-em-per-byte stand-in would compare fontdue shaping
 # to arithmetic.
-lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite-shell = { path = "../../../crates/fulgurite-shell", features = ["truetype"] }
 # The dev surface, so the harness can measure BOTH profiles: `observe` turns
 # on the agent's per-frame journal and ambient audit, which is the right
 # default for `cargo run` and the wrong thing to compare against Qt and GTK,
 # which run no such pass. Lumen's harness draws the same line and for the same
 # reason (its BENCH5 note).
-lumen-static-agent = { path = "../../../crates/lumen-static-agent", optional = true }
+fulgurite-agent = { path = "../../../crates/fulgurite-agent", optional = true }
 
 [features]
 # Passed through so the rasteriser's SIMD path can be measured on the
 # same workload as the scalar one (M17, docs/results-simd.md). The
 # cross-arm rows stop before rasterising, so this cannot move them.
-simd = ["lumen-static-shell/simd"]
+simd = ["fulgurite-shell/simd"]
 # M81/T81.1: the shell's default-off shaper, forwarded so K3's frame rows
 # can be measured with it compiled in and `Basic` selected
 # (docs/plan-shaped-paint.md, K3 for this milestone).
-shaping = ["lumen-static-shell/shaping"]
+shaping = ["fulgurite-shell/shaping"]
 default = []
-observe = ["dep:lumen-static-agent", "lumen-static/observe", "lumen-static-widgets/observe"]
+observe = ["dep:fulgurite-agent", "fulgurite/observe", "fulgurite-widgets/observe"]

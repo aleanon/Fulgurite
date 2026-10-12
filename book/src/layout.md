@@ -51,11 +51,11 @@ The order matters and it is short:
 Which is predictable enough to assert:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::pass;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::pass;
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 10.0)]
@@ -108,12 +108,12 @@ does, with a loop, and this layout has none
 `docs/results-layout-input.md` T85.1 has the counts).
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::pass;
-use lumen_static::style::Length;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::pass;
+use fulgurite::style::Length;
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
@@ -164,11 +164,11 @@ not configured: put a `Fill` spacer on each side and they split the
 leftover evenly.
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::pass;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::pass;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
@@ -214,11 +214,11 @@ first. Every other container may walk forwards, because its children
 cannot overlap.
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static_widgets::ops::Fixed;
-# use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
-{{#include ../../crates/lumen-static/tests/stack.rs:stack}}
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite_widgets::ops::Fixed;
+# use fulgurite::{pass, Constraints, NodeState, StaticTree, Widget};
+{{#include ../../crates/fulgurite/tests/stack.rs:stack}}
 # fn main() {
 #     let mut ui = Panel::default();
 #     ui.under = Fixed { w: 80.0, h: 40.0 };
@@ -236,7 +236,7 @@ cannot overlap.
 ```
 
 A stack sizes to the largest child **on each axis independently** — not
-to the sum, and not to one child's box. `crates/lumen-static/tests/stack.rs`
+to the sum, and not to one child's box. `crates/fulgurite/tests/stack.rs`
 asserts each of those separately.
 
 ## Two traps
@@ -255,6 +255,6 @@ count, a `handled` flag — and not only that two results match.
 zero size, is not cross-stretched by its parent, records no drawing
 commands and fails every hit test. All four clauses are asserted, for a
 hidden container and a hidden leaf, in
-`crates/lumen-static/tests/visible.rs` — because until 2026-09-02 none of
+`crates/fulgurite/tests/visible.rs` — because until 2026-09-02 none of
 them held: no leaf read the flag at all, so hiding a `Label` left it
 sized and painting (`docs/plan-review-fixes.md` F1.6).

@@ -19,8 +19,8 @@ v3 = ["v2"]
 v4 = ["v2"]
 
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
-lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["reload"] }
+fulgurite = { path = "../../crates/fulgurite", features = ["reload"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

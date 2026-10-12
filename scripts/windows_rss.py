@@ -1,7 +1,7 @@
 """M89b/T89.9: one launch of `just windows-rss`. See scripts/windows_rss.sh.
 
 `VmRSS` of `examples/two-windows` (release, the GPU or the software
-backend as the leg's LUMEN_BACKEND says) 4 s after the process started
+backend as the leg's FULGURITE_BACKEND says) 4 s after the process started
 with one window, then 4 s after a click on `#row2` opened the second --
 `docs/results-gpu.md` §5's method (`VmRSS` from `/proc/<pid>/status`,
 4 s in), applied once per window. Prints one machine-readable line,

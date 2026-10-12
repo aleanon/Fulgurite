@@ -15,7 +15,7 @@
 CHECK='./scripts/live_gate.sh'
 EXPECT='live-gate.*app exited 101'
 plant() {
-    sub crates/lumen-static-winit/src/lib.rs \
+    sub crates/fulgurite-winit/src/lib.rs \
         '^(\s*"app\.quit" => \{\n(?:.*\n)*?)(\s*)self\.quit = true;\n' \
         '\1\2panic!("quit-panic plant");\n'
 }

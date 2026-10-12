@@ -395,7 +395,7 @@ def _pop_loaded(c):
     over the view is the scroll's. The harness bounds that frame against
     the placeholder's box and where it was (4.0); the load's own damage,
     1.00x the placeholder, is gated per frame headlessly
-    (`crates/lumen-static-widgets/tests/pop.rs`)."""
+    (`crates/fulgurite-widgets/tests/pop.rs`)."""
     item, v = _box(c, "#d_pop_item"), _box(c, "#d_pop_a")
     regions, frame, now = _last_changed(c, c._s0)
     over = [r for r in regions if _meets(r, v)]

@@ -95,22 +95,22 @@ macro_rules! body_for {
 
 /// Open a veil, because a shut one is absent and a demo of nothing is
 /// not a demo.
-fn veil<W: lumen_static::widget::Widget, const K: u8>(
-    mut v: lumen_static_widgets::Veil<W, K>,
-) -> lumen_static_widgets::Veil<W, K> {
+fn veil<W: fulgurite::widget::Widget, const K: u8>(
+    mut v: fulgurite_widgets::Veil<W, K>,
+) -> fulgurite_widgets::Veil<W, K> {
     v.open();
     v
 }
 
 /// A small file tree, flattened — which is how `Tree` holds one.
-const TREE_ROWS: [lumen_static_widgets::Branch; 7] = [
-    lumen_static_widgets::Branch::new("crates", 0),
-    lumen_static_widgets::Branch::new("lumen-static", 1),
-    lumen_static_widgets::Branch::new("src", 2),
-    lumen_static_widgets::Branch::new("tests", 2),
-    lumen_static_widgets::Branch::new("lumen-static-widgets", 1),
-    lumen_static_widgets::Branch::new("docs", 0),
-    lumen_static_widgets::Branch::new("README.md", 0),
+const TREE_ROWS: [fulgurite_widgets::Branch; 7] = [
+    fulgurite_widgets::Branch::new("crates", 0),
+    fulgurite_widgets::Branch::new("fulgurite", 1),
+    fulgurite_widgets::Branch::new("src", 2),
+    fulgurite_widgets::Branch::new("tests", 2),
+    fulgurite_widgets::Branch::new("fulgurite-widgets", 1),
+    fulgurite_widgets::Branch::new("docs", 0),
+    fulgurite_widgets::Branch::new("README.md", 0),
 ];
 
 /// One grid row. A plain `fn`, so it cannot capture — which is the whole
@@ -138,19 +138,19 @@ colour.";
 /// text is one word, so the drive can name it with `~=`, which takes no
 /// spaces. And M87/T87.4's image: `spin` names [`SPIN`], the id the Image
 /// demo registers, through [`md_images`].
-const MDLINKS: &str = "Read the [guide](https://lumen.example/guide) or the \
-[changelog](https://lumen.example/changes) before you file an issue.\n\n\
+const MDLINKS: &str = "Read the [guide](https://fulgurite.example/guide) or the \
+[changelog](https://fulgurite.example/changes) before you file an issue.\n\n\
 ![The showcase's spinning ring](spin)";
 
 /// What the linked markdown's `![..](spin)` names — M87/T87.4: the Image
 /// demo's GIF, at its own size. A Markdown passes frame 0, so it is the
 /// GIF's first frame, still.
-fn md_images() -> [lumen_static_widgets::ImageRef; 1] {
+fn md_images() -> [fulgurite_widgets::ImageRef; 1] {
     let g = spin();
-    [lumen_static_widgets::ImageRef {
+    [fulgurite_widgets::ImageRef {
         name: "spin",
         id: SPIN,
-        size: lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 },
+        size: fulgurite::desc::Size { w: g.w as f32, h: g.h as f32 },
     }]
 }
 
@@ -174,11 +174,11 @@ fn follow_link(s: &mut Store, cx: &EventCtx) {
 /// 16-byte block below. Registered by `program()` through
 /// `Program::shaders`; the id a `ShaderView` names is its index here.
 #[cfg(feature = "shader")]
-pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] = [lumen_static_shell::shader::ShaderDesc::new(
+pub static SHADERS: [fulgurite_shell::shader::ShaderDesc; 1] = [fulgurite_shell::shader::ShaderDesc::new(
     "blend",
     "struct U { top: u32, bottom: u32, _pad: vec2<u32> }
      @group(0) @binding(1) var<uniform> u: U;
-     @fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> {
+     @fragment fn fs_main(in: FulguriteVarying) -> @location(0) vec4<f32> {
          return mix(unpack4x8unorm(u.top), unpack4x8unorm(u.bottom), clamp(in.local.y, 0.0, 1.0));
      }",
     16,
@@ -188,9 +188,9 @@ pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] = [lumen_static_
 /// surface, 320 x 120. Its fallback is the same blend as a linear gradient,
 /// so the software backend shows what the GPU would.
 #[cfg(feature = "shader")]
-fn shader_view() -> lumen_static_widgets::ShaderView<16> {
+fn shader_view() -> fulgurite_widgets::ShaderView<16> {
     let (top, bottom) = (Color(0x25, 0x63, 0xeb, 0xff), Color(0x93, 0xc5, 0xfd, 0xff));
-    let mut v = lumen_static_widgets::ShaderView::new(lumen_static::display::ShaderId(0), blend).sized(320.0, 120.0);
+    let mut v = fulgurite_widgets::ShaderView::new(fulgurite::display::ShaderId(0), blend).sized(320.0, 120.0);
     v.set_uniforms(&[top.0, top.1, top.2, top.3, bottom.0, bottom.1, bottom.2, bottom.3, 0, 0, 0, 0, 0, 0, 0, 0]);
     v.set_label("A blue blend");
     v
@@ -199,12 +199,12 @@ fn shader_view() -> lumen_static_widgets::ShaderView<16> {
 /// The demo's fallback: `SHADERS[0]`'s blend as a vertical linear gradient
 /// from the block's two packed colours.
 #[cfg(feature = "shader")]
-fn blend(out: &mut dyn lumen_static::Painter, r: [f32; 4], u: &[u8]) {
+fn blend(out: &mut dyn fulgurite::Painter, r: [f32; 4], u: &[u8]) {
     if let [r0, g0, b0, a0, r1, g1, b1, a1, ..] = *u {
         out.gradient(
             r,
-            lumen_static::display::Stops::two(Color(r0, g0, b0, a0), Color(r1, g1, b1, a1)),
-            lumen_static::display::GradShape::Linear { angle: core::f32::consts::FRAC_PI_2 },
+            fulgurite::display::Stops::two(Color(r0, g0, b0, a0), Color(r1, g1, b1, a1)),
+            fulgurite::display::GradShape::Linear { angle: core::f32::consts::FRAC_PI_2 },
             0.0,
         );
     }
@@ -213,15 +213,15 @@ fn blend(out: &mut dyn lumen_static::Painter, r: [f32; 4], u: &[u8]) {
 /// The `PaintBox` demo's callback: a `fn`, which is the whole point. A
 /// sparkline of lines and dots, then (M82/T82.5) a star and an arc drawn
 /// as paths over it.
-fn sparkline(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
+fn sparkline(out: &mut dyn fulgurite::Painter, r: [f32; 4]) {
     let (w, h) = (r[2] - r[0], r[3] - r[1]);
     let pts = [0.25f32, 0.55, 0.35, 0.8, 0.6, 0.95, 0.45, 0.7];
-    let ink = lumen_static::Color(0x25, 0x63, 0xeb, 0xff);
+    let ink = fulgurite::Color(0x25, 0x63, 0xeb, 0xff);
     let step = w / (pts.len() - 1) as f32;
     for k in 1..pts.len() {
         out.line(
-            lumen_static::Point { x: r[0] + step * (k - 1) as f32, y: r[3] - h * pts[k - 1] },
-            lumen_static::Point { x: r[0] + step * k as f32, y: r[3] - h * pts[k] },
+            fulgurite::Point { x: r[0] + step * (k - 1) as f32, y: r[3] - h * pts[k - 1] },
+            fulgurite::Point { x: r[0] + step * k as f32, y: r[3] - h * pts[k] },
             2.0,
             ink,
         );
@@ -239,11 +239,11 @@ fn sparkline(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
 ///
 /// `scripts/drive/widgets/rich.py`'s star check recomputes the star
 /// from these numbers (`STAR_*`), so the two must move together.
-fn paths(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
-    use lumen_static::display::{PathEl, PathPaint};
-    use lumen_static::Point;
+fn paths(out: &mut dyn fulgurite::Painter, r: [f32; 4]) {
+    use fulgurite::display::{PathEl, PathPaint};
+    use fulgurite::Point;
     let (w, h) = (r[2] - r[0], r[3] - r[1]);
-    let none = lumen_static::Color(0, 0, 0, 0);
+    let none = fulgurite::Color(0, 0, 0, 0);
     // A quarter circle of radius 1, as one cubic.
     let k = 0.552_284_8;
     let arc = [
@@ -254,7 +254,7 @@ fn paths(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
     out.path(
         &arc,
         [ar, 0.0, 0.0, -ar, r[0] + 0.12 * w, r[1] + 0.85 * h],
-        PathPaint { fill: none, stroke: lumen_static::Color(0x05, 0x96, 0x69, 0xff), width: 3.0 },
+        PathPaint { fill: none, stroke: fulgurite::Color(0x05, 0x96, 0x69, 0xff), width: 3.0 },
     );
     let mut star = [PathEl::Close; 11];
     for (i, e) in star.iter_mut().take(10).enumerate() {
@@ -282,7 +282,7 @@ fn paths(out: &mut dyn lumen_static::Painter, r: [f32; 4]) {
 const STAR_X: f32 = 0.78;
 const STAR_RADIUS: f32 = 0.38;
 const STAR_INNER: f32 = 0.4;
-const STAR_INK: lumen_static::Color = lumen_static::Color(0xe1, 0x4d, 0x0a, 0xff);
+const STAR_INK: fulgurite::Color = fulgurite::Color(0xe1, 0x4d, 0x0a, 0xff);
 
 /// What M27/T27.11's file picker lists.
 const FILES: [&str; 7] = [
@@ -302,9 +302,9 @@ const COMMANDS: [&str; 4] = ["Cut", "Copy", "Paste", "Select all"];
 
 /// What M90/T90.4's context menu offers: data, with the ids `on_menu`
 /// hears. Paste is enabled once Cut or Copy has run (`refresh`).
-pub(crate) const CONTEXT: [lumen_static::menu::MenuEntry; 4] = {
-    use lumen_static::menu::MenuEntry;
-    use lumen_static::{Key, Mods};
+pub(crate) const CONTEXT: [fulgurite::menu::MenuEntry; 4] = {
+    use fulgurite::menu::MenuEntry;
+    use fulgurite::{Key, Mods};
     [
         MenuEntry::new("Cut", 1).accel(Key::Char('x'), Mods::CTRL),
         MenuEntry::new("Copy", 2).accel(Key::Char('c'), Mods::CTRL),
@@ -317,33 +317,33 @@ pub(crate) const CONTEXT: [lumen_static::menu::MenuEntry; 4] = {
 /// What M90/T90.5's menu bar offers — one table, read by the bar and by
 /// the program's accelerators (`Program::menu` in `main.rs`). Edit's Paste
 /// (flattened entry 5) is enabled once Copy has run.
-const BAR_FILE: [lumen_static::menu::MenuEntry; 3] = {
-    use lumen_static::menu::MenuEntry;
-    use lumen_static::{Key, Mods};
+const BAR_FILE: [fulgurite::menu::MenuEntry; 3] = {
+    use fulgurite::menu::MenuEntry;
+    use fulgurite::{Key, Mods};
     [
         MenuEntry::new("New", 11).accel(Key::Char('n'), Mods::CTRL),
         MenuEntry::new("Open", 12).accel(Key::Char('o'), Mods::CTRL),
         MenuEntry::new("Save", 13).accel(Key::Char('s'), Mods::CTRL),
     ]
 };
-const BAR_EDIT: [lumen_static::menu::MenuEntry; 3] = {
-    use lumen_static::menu::MenuEntry;
-    use lumen_static::{Key, Mods};
+const BAR_EDIT: [fulgurite::menu::MenuEntry; 3] = {
+    use fulgurite::menu::MenuEntry;
+    use fulgurite::{Key, Mods};
     [
         MenuEntry::new("Undo", 21).accel(Key::Char('z'), Mods::CTRL),
         MenuEntry::new("Copy", 22).accel(Key::Char('c'), Mods::CTRL),
         MenuEntry::new("Paste", 23).accel(Key::Char('v'), Mods::CTRL),
     ]
 };
-const BAR_VIEW: [lumen_static::menu::MenuEntry; 2] = {
-    use lumen_static::menu::MenuEntry;
-    use lumen_static::Key;
-    [MenuEntry::new("Reload", 31).accel(Key::F(5), lumen_static::Mods::NONE), MenuEntry::new("Full screen", 32)]
+const BAR_VIEW: [fulgurite::menu::MenuEntry; 2] = {
+    use fulgurite::menu::MenuEntry;
+    use fulgurite::Key;
+    [MenuEntry::new("Reload", 31).accel(Key::F(5), fulgurite::Mods::NONE), MenuEntry::new("Full screen", 32)]
 };
-pub(crate) const MENU_BAR: [lumen_static::menu::MenuSection; 3] = [
-    lumen_static::menu::MenuSection { title: "File", entries: &BAR_FILE },
-    lumen_static::menu::MenuSection { title: "Edit", entries: &BAR_EDIT },
-    lumen_static::menu::MenuSection { title: "View", entries: &BAR_VIEW },
+pub(crate) const MENU_BAR: [fulgurite::menu::MenuSection; 3] = [
+    fulgurite::menu::MenuSection { title: "File", entries: &BAR_FILE },
+    fulgurite::menu::MenuSection { title: "Edit", entries: &BAR_EDIT },
+    fulgurite::menu::MenuSection { title: "View", entries: &BAR_VIEW },
 ];
 /// Edit's Paste, in flattened order.
 pub(crate) const BAR_PASTE: usize = 5;
@@ -362,23 +362,23 @@ fn bar_label(id: u32) -> &'static str {
 /// trigger works: `dispatch_overlaid` dismisses every overlay on a press
 /// that misses them all and *consumes* it, which is `Select`'s
 /// documented dropdown behaviour and takes the press a combobox's field
-/// needs. `crates/lumen-static-widgets/tests/focus_overlay.rs` pins both
+/// needs. `crates/fulgurite-widgets/tests/focus_overlay.rs` pins both
 /// halves.
-fn opened<const K: u8>(mut c: lumen_static_widgets::Chooser<K>) -> lumen_static_widgets::Chooser<K> {
+fn opened<const K: u8>(mut c: fulgurite_widgets::Chooser<K>) -> fulgurite_widgets::Chooser<K> {
     c.open();
     c
 }
 
 /// The same for a picker: a demo that shows its cells.
-fn shown<const K: u8>(mut p: lumen_static_widgets::Picker<K>) -> lumen_static_widgets::Picker<K> {
+fn shown<const K: u8>(mut p: fulgurite_widgets::Picker<K>) -> fulgurite_widgets::Picker<K> {
     p.open();
     p
 }
 
 /// The `Select` demo: controlled, so opening, dismissal and a choice all
 /// write `Store`, and `refresh` puts them on the tree.
-fn select_demo() -> lumen_static_widgets::select::Select<Store> {
-    let mut d = lumen_static_widgets::select::Select::new(FRUIT.len(), 30.0, bind_fruit);
+fn select_demo() -> fulgurite_widgets::select::Select<Store> {
+    let mut d = fulgurite_widgets::select::Select::new(FRUIT.len(), 30.0, bind_fruit);
     d.trigger.on_click = |s: &mut Store, _: &EventCtx| s.select_open = true;
     d.on_dismiss = |s: &mut Store, _: &EventCtx| s.select_open = false;
     d
@@ -387,7 +387,7 @@ fn select_demo() -> lumen_static_widgets::select::Select<Store> {
 /// One option. **Writes the label only when it differs**: a bind is
 /// steady-state code and runs every frame, so an unconditional
 /// `String` write would allocate per row per frame (M29/T29.5).
-fn bind_fruit(r: &mut lumen_static_widgets::select::Row<Store>, i: usize) {
+fn bind_fruit(r: &mut fulgurite_widgets::select::Row<Store>, i: usize) {
     if r.label != FRUIT[i] {
         r.label.clear();
         r.label.push_str(FRUIT[i]);
@@ -465,7 +465,7 @@ fn pop_rows() -> PopRows {
 
 /// The Pop demo's `on_view`: in view is loaded, and stays loaded.
 fn pop_seen(s: &mut Store, ctx: &EventCtx) {
-    if let lumen_static::Event::Visibility { visible: true } = ctx.event {
+    if let fulgurite::Event::Visibility { visible: true } = ctx.event {
         s.pop_loaded = true;
     }
 }
@@ -615,7 +615,7 @@ pub static CATALOG: &[Entry] = &[
     entry!("Text", "LinkedMarkdown", "Links that run the application's handler, and an image.",
         false,
         |s| on(s, Demo::MdLinks(DMdLinks { a: md_links() })),
-        |s| s.store.link.and_then(|n| lumen_static_widgets::link_target(MDLINKS, n)).map(|t| format!("link: {t}")).unwrap_or_default()),
+        |s| s.store.link.and_then(|n| fulgurite_widgets::link_target(MDLINKS, n)).map(|t| format!("link: {t}")).unwrap_or_default()),
     entry!("Text", "RichTextEditor", "Type markup; see it rendered.",
         false,
         |s| on(s, Demo::RichTextEditor(DRichTextEditor {
@@ -808,7 +808,7 @@ pub static CATALOG: &[Entry] = &[
                 t.closable = true;
                 t.hide();
                 let mut p = Popup::new(ToastSlot { t });
-                p.anchor = lumen_static_widgets::Anchor::WindowBottom;
+                p.anchor = fulgurite_widgets::Anchor::WindowBottom;
                 p.open = false;
                 p.passive = true;
                 p
@@ -915,8 +915,8 @@ pub static CATALOG: &[Entry] = &[
                 let mut g = DataGrid::new(&["Name", "Type", "Size", "Lines"], 200, 26.0, grid_row);
                 // Sizes and line counts are numbers: their headers sit at
                 // the end of the column, where `EndCell` puts them (B51).
-                g.align[2] = lumen_static::style::Align::End;
-                g.align[3] = lumen_static::style::Align::End;
+                g.align[2] = fulgurite::style::Align::End;
+                g.align[3] = fulgurite::style::Align::End;
                 g
             } })),
         // The cell in a sheet's own notation: a column letter and a
@@ -949,7 +949,7 @@ pub static CATALOG: &[Entry] = &[
 /// (`Store::clip_images`, through `App::images`), not the program's: a feed
 /// replaces its pixels per frame, which the window-side store, read once,
 /// cannot take.
-pub const CLIP: lumen_static::display::ImageId = lumen_static::display::ImageId(2);
+pub const CLIP: fulgurite::display::ImageId = fulgurite::display::ImageId(2);
 
 /// The Video demo's subscription kind: `jobs` answers `video_job` for it.
 pub const CLIP_KIND: u64 = 84;
@@ -958,14 +958,14 @@ pub const CLIP_KIND: u64 = 84;
 /// `GifFeed` opens it by index from its subscription key, on the worker.
 pub struct Clips;
 
-impl lumen_static_shell::video::GifLibrary for Clips {
-    fn gif(index: u16) -> Option<&'static lumen_static_shell::image::DecodedImage> {
+impl fulgurite_shell::video::GifLibrary for Clips {
+    fn gif(index: u16) -> Option<&'static fulgurite_shell::image::DecodedImage> {
         (index == 0).then(spin)
     }
 }
 
 /// The Video demo's feed: the GIF as a stream.
-pub type ClipFeed = lumen_static_shell::video::GifFeed<Clips>;
+pub type ClipFeed = fulgurite_shell::video::GifFeed<Clips>;
 
 /// What the Video demo shows — every field of it the application's, written
 /// by its handlers and its `apply`, and copied onto the widget by `refresh`.
@@ -992,7 +992,7 @@ pub struct Clip {
 
 impl Clip {
     fn key(&self) -> u64 {
-        lumen_static_shell::video::VideoKey { source: 0, seek: self.seek, start_ms: self.position_ms }.pack()
+        fulgurite_shell::video::VideoKey { source: 0, seek: self.seek, start_ms: self.position_ms }.pack()
     }
 }
 
@@ -1014,7 +1014,7 @@ fn clip_status(c: &Clip) -> String {
 /// The Video demo's widget, wired to the store.
 fn clip_video(c: &Clip) -> Video<Store> {
     let g = spin();
-    let mut v = Video::<Store>::new(CLIP, lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 });
+    let mut v = Video::<Store>::new(CLIP, fulgurite::desc::Size { w: g.w as f32, h: g.h as f32 });
     v.on_toggle = toggle_clip;
     v.on_seek = seek_clip;
     v.set_label("A ring of four segments, one lit, turning");
@@ -1031,7 +1031,7 @@ fn clip_video(c: &Clip) -> Video<Store> {
 /// subscription runs while paused. On the frame thread, but only on a seek
 /// or a seed, never per video frame.
 pub fn show_clip_at(s: &mut Store) {
-    use lumen_static_shell::video::VideoFeed;
+    use fulgurite_shell::video::VideoFeed;
     let Some(mut feed) = ClipFeed::open(s.clip.key()) else { return };
     s.clip.duration_ms = feed.duration_ms();
     if let Some(f) = feed.next_frame() {
@@ -1067,7 +1067,7 @@ fn toggle_clip(s: &mut Store, _: &EventCtx) {
 /// A seek: the fraction the widget computed, times the store's own
 /// duration. Shows the frame there at once, and re-keys a running feed.
 fn seek_clip(s: &mut Store, cx: &EventCtx) {
-    let Some(f) = lumen_static_widgets::seek_fraction(cx) else { return };
+    let Some(f) = fulgurite_widgets::seek_fraction(cx) else { return };
     s.clip.last_seek = Some(f);
     let d = s.clip.duration_ms;
     s.clip.position_ms = ((f * d as f32).round() as u32).min(d.saturating_sub(1));
@@ -1082,7 +1082,7 @@ fn seek_clip(s: &mut Store, cx: &EventCtx) {
 /// (`#[app(msg = VideoFrame, apply = ..)]`). The pixels go into the store's
 /// reused buffer (`ImageStore::replace`), and its answer is the frame the
 /// widget paints next.
-pub fn apply_clip(s: &mut Store, f: lumen_static_shell::video::VideoFrame) -> bool {
+pub fn apply_clip(s: &mut Store, f: fulgurite_shell::video::VideoFrame) -> bool {
     if f.key != s.clip.key {
         s.clip.stale += 1;
     }
@@ -1100,10 +1100,10 @@ pub fn apply_clip(s: &mut Store, f: lumen_static_shell::video::VideoFrame) -> bo
 
 /// The jobs this application's subscriptions run (`#[app(jobs = ..)]`).
 pub fn clip_jobs(
-    d: lumen_static::spawn::Descriptor,
-) -> Option<lumen_static::spawn::JobFn<lumen_static_shell::video::VideoFrame>> {
+    d: fulgurite::spawn::Descriptor,
+) -> Option<fulgurite::spawn::JobFn<fulgurite_shell::video::VideoFrame>> {
     match d.kind {
-        CLIP_KIND => Some(lumen_static_shell::video::video_job::<ClipFeed, lumen_static_shell::video::VideoFrame>),
+        CLIP_KIND => Some(fulgurite_shell::video::video_job::<ClipFeed, fulgurite_shell::video::VideoFrame>),
         _ => None,
     }
 }
@@ -1112,7 +1112,7 @@ pub fn clip_jobs(
 /// (`examples/showcase/assets/spin.gif`, four 96 px frames at 100 ms),
 /// decoded once and registered with `Program::images` under this id.
 /// M87/T87.4's Markdown image names it too (`docs/plan-markdown.md`).
-pub const SPIN: lumen_static::display::ImageId = lumen_static::display::ImageId(1);
+pub const SPIN: fulgurite::display::ImageId = fulgurite::display::ImageId(1);
 
 /// The GIF's bytes, in the binary: a showcase that opens on its Image entry
 /// needs no file beside it.
@@ -1120,16 +1120,16 @@ const SPIN_GIF: &[u8] = include_bytes!("../assets/spin.gif");
 
 /// The decoded GIF, once: `program()` registers its frames and `build()`
 /// reads its delays for the `Playback` (M84/T84.3).
-pub fn spin() -> &'static lumen_static_shell::image::DecodedImage {
-    static ONCE: std::sync::OnceLock<lumen_static_shell::image::DecodedImage> = std::sync::OnceLock::new();
-    ONCE.get_or_init(|| lumen_static_shell::image::decode_gif(SPIN_GIF).expect("assets/spin.gif decodes"))
+pub fn spin() -> &'static fulgurite_shell::image::DecodedImage {
+    static ONCE: std::sync::OnceLock<fulgurite_shell::image::DecodedImage> = std::sync::OnceLock::new();
+    ONCE.get_or_init(|| fulgurite_shell::image::decode_gif(SPIN_GIF).expect("assets/spin.gif decodes"))
 }
 
 /// The program's image store: [`SPIN`]'s frames. The window reads it once
 /// (`Program::images`); the headless frames (`--shot`, `--demo`, the tests)
 /// hand a copy to their canvas, so they draw what the window draws.
-pub fn images() -> lumen_static_shell::image::ImageStore {
-    let mut store = lumen_static_shell::image::ImageStore::new();
+pub fn images() -> fulgurite_shell::image::ImageStore {
+    let mut store = fulgurite_shell::image::ImageStore::new();
     let ok = store.insert_decoded(SPIN, spin().clone());
     debug_assert!(ok, "the decoded GIF is refused by the store");
     store
@@ -1139,7 +1139,7 @@ pub fn images() -> lumen_static_shell::image::ImageStore {
 /// screen reader.
 fn spin_image(frame: u32) -> Image {
     let g = spin();
-    let mut img = Image::new(SPIN, lumen_static::desc::Size { w: g.w as f32, h: g.h as f32 });
+    let mut img = Image::new(SPIN, fulgurite::desc::Size { w: g.w as f32, h: g.h as f32 });
     img.frame = frame;
     img.set_alt("A ring of four segments, one lit, turning");
     img

@@ -4,7 +4,7 @@
 # docs/results-desktop-integration.md T90.7).
 #
 # K2's command (docs/plan-iced-roadmap.md K2),
-#   cargo tree -p lumen-static-winit -e normal --prefix none [--features F] \
+#   cargo tree -p fulgurite-winit -e normal --prefix none [--features F] \
 #     | sed 's/ (\*)$//' | sort -u | wc -l
 # for the default build, `tray`, `a11y` and `a11y,tray`, all printed, and
 # three clauses:
@@ -40,7 +40,7 @@ export LC_ALL=C
 
 crates() { # features -- the deduplicated crate list, K2's way
     local out
-    out=$(cargo tree -p lumen-static-winit -e normal --prefix none --locked --offline ${1:+--features "$1"} 2>/dev/null) || {
+    out=$(cargo tree -p fulgurite-winit -e normal --prefix none --locked --offline ${1:+--features "$1"} 2>/dev/null) || {
         echo "check_tray_cost: cargo tree failed for features '${1:-default}' -- not a pass" >&2
         return 1
     }

@@ -15,7 +15,7 @@
 use std::hint::black_box;
 
 use benches::bench;
-use lumen_static::display::{Color, DisplayList, Painter};
+use fulgurite::display::{Color, DisplayList, Painter};
 
 const R: [f32; 4] = [1.0, 2.0, 30.0, 40.0];
 const C: Color = Color(10, 20, 30, 255);

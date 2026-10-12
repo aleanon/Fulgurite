@@ -9,7 +9,7 @@ default:
 #   just check  -- before calling work done. Slower: `test`, the cross,
 #                  GPU, SIMD, thread and book builds, and `live` -- every
 #                  live gate, which needs a display and FAILS without one
-#                  unless LUMEN_ALLOW_SKIP=1 (a skip is not a pass).
+#                  unless FULGURITE_ALLOW_SKIP=1 (a skip is not a pass).
 #   just ci     -- the executed gate (M43/T43.13): `check`'s closure step by
 #                  step, plus the ci-only steps, against a COMMIT in a clean
 #                  worktree, with a record `just ci-verify` reads.
@@ -45,7 +45,7 @@ static:
     ./scripts/check_ci_claims.sh        # no bare dependency/[[bin]] count in the justfile or ci.yml
     ./scripts/check_drive_coverage.sh   # M42: every exported widget is driven, or owed with an owner
     ./scripts/check_idle_citations.sh   # M47: a comment citing idle numbers cites a file that has them
-    ./scripts/check_agent_env.sh        # M48/T48.11: LUMEN_AGENT_ADDR is read by the window alone
+    ./scripts/check_agent_env.sh        # M48/T48.11: FULGURITE_AGENT_ADDR is read by the window alone
     ./scripts/check_agent_methods.sh    # M48/T48.14: the skill and the book name exactly the methods the code answers
     python3 scripts/ui_check.py selftest # M48/T48.3: an unmeasured app.perf is NOT MEASURED, not a pass
     python3 scripts/agent_client.py selftest # M48/T48.13: quit raises on an error reply
@@ -58,17 +58,17 @@ static:
 
 # Default features == the shipped shape. This is the ONLY build that compiles
 # what docs/verification-notes.md scopes its argument to; `--workspace` cannot
-# produce it, because lumen-static-agent, examples/counter and fixtures/hot-app
+# produce it, because fulgurite-agent, examples/counter and fixtures/hot-app
 # turn on `observe`/`reload` and cargo unifies features across the selection.
-# Nor can a plain `-p lumen-static` on its own: a dev-dependency's features
+# Nor can a plain `-p fulgurite` on its own: a dev-dependency's features
 # unify into the crate under test, and until M43/T43.7 core's dev edge asked
 # for the widgets' `observe`. scripts/release_shape.sh builds under
-# `--cfg lumen_release_shape`, where core refuses `observe`/`reload` (the
+# `--cfg fulgurite_release_shape`, where core refuses `observe`/`reload` (the
 # tripwire), prints core's resolved features and its test count, and fails
 # on zero tests. The `observe` tests live in fixtures/observe-tests.
 #
 # The steady-state allocation gate runs with the dev-shape tests, as
-# `crates/lumen-static-shell/tests/alloc_gate.rs` — its own binary, since
+# `crates/fulgurite-shell/tests/alloc_gate.rs` — its own binary, since
 # #[global_allocator] is per-binary. Every path it draws asserts **zero**,
 # not a budget -- truetype text included since M50/T50.2. The one budget is
 # the threaded rasteriser's (`just threads`, tests/alloc_gate_threads.rs):
@@ -79,7 +79,7 @@ static:
 release-shape: const-budget
     ./scripts/release_shape.sh
 
-# `--exclude lumen-static-wgpu` on all three: the GPU backend is a
+# `--exclude fulgurite-wgpu` on all three: the GPU backend is a
 # workspace member so it is type-checked and tested, but wgpu is the
 # largest dependency tree in the workspace and minutes of compile
 # (docs/results-gpu.md §5 counts it, and says how), and this runs on
@@ -96,79 +96,79 @@ dev-shape:
     # 1,715 `cargo test --workspace` ran. `.config/nextest.toml` kills a
     # test that hangs.
     @command -v cargo-nextest >/dev/null || { echo "dev-shape: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest (or cargo install cargo-nextest --locked)" >&2; exit 1; }
-    cargo nextest run --workspace --exclude lumen-static-wgpu
-    cargo test --doc --workspace --exclude lumen-static-wgpu
+    cargo nextest run --workspace --exclude fulgurite-wgpu
+    cargo test --doc --workspace --exclude fulgurite-wgpu
     # M34/T34.1: the shadow oracle is a feature, so its test needs it on.
-    cargo test -p lumen-static-shell --features shadow-oracle --test shadow
+    cargo test -p fulgurite-shell --features shadow-oracle --test shadow
     # M54/T54.1: the screen-reader tree without the agent -- NodeDesc stays
     # 48 B, and the widgets still publish roles, under `a11y` alone.
-    cargo test -p lumen-static-widgets --features a11y --test a11y_roles --test desc_size
+    cargo test -p fulgurite-widgets --features a11y --test a11y_roles --test desc_size
     # M54/T54.7: a dropped file's translation is behind `dnd`.
-    cargo test -p lumen-static-winit --features dnd --test translate
+    cargo test -p fulgurite-winit --features dnd --test translate
     # M43/T43.9: the golden gates. Both need `truetype` OFF (a golden with
     # system text records the machine's fonts), and `--workspace` turns it
     # on, so above they compile to zero tests (golden.rs) or lose their
     # golden test (failure_screen.rs). Here the shell is built alone.
-    cargo test -p lumen-static-shell --test golden --test failure_screen
+    cargo test -p fulgurite-shell --test golden --test failure_screen
     # M55/T55.4 (R12-F5): the window's strategy is a type the application
     # chooses; no feature in the graph changes `Pane<A>`'s. Built with
     # showcase's own `everything` feature on, which used to forward to the
     # window crate and turn `&mut Pane<A> -> &mut Host<A>` into E0308.
-    cargo test --workspace --exclude lumen-static-wgpu --features showcase/everything --test inval_param
+    cargo test --workspace --exclude fulgurite-wgpu --features showcase/everything --test inval_param
     # M43/T43.11: text tests shape a committed face; the discovery test
-    # must find a system one (not skip) unless LUMEN_ALLOW_SKIP=1.
+    # must find a system one (not skip) unless FULGURITE_ALLOW_SKIP=1.
     just fonts
     # M50/T50.0: the allocation gate's truetype arms, with the feature named
     # for this binary rather than left to `--workspace`'s unification, and
     # refused at fewer than three -- a feature split must not compile them
     # out while the binary's block-glyph arms keep it green (M43/R17-F1).
-    cargo test -q -p lumen-static-shell --features truetype --test alloc_gate
-    n=$(cargo test -q -p lumen-static-shell --features truetype --test alloc_gate -- --list 2>/dev/null | grep -c '^truetype::'); echo "alloc_gate: $n truetype arms (bound >= 3)"; [ "$n" -ge 3 ]
+    cargo test -q -p fulgurite-shell --features truetype --test alloc_gate
+    n=$(cargo test -q -p fulgurite-shell --features truetype --test alloc_gate -- --list 2>/dev/null | grep -c '^truetype::'); echo "alloc_gate: $n truetype arms (bound >= 3)"; [ "$n" -ge 3 ]
     # M83/T83.3: the shader bracket, with the core's and the shell's
     # `shader` named for these binaries rather than left to `--workspace`'s
     # unification (nothing in the default graph turns it on), and the
     # allocation gate's `shader` arm refused at fewer than one.
-    cargo test -q -p lumen-static --features shader --test shader_cmd --test glass_cmd
-    cargo test -q -p lumen-static-shell --features shader --test shader_software --test contrast_commands --test svg --test clip_test
-    cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate
-    n=$(cargo test -q -p lumen-static-shell --features truetype,shader --test alloc_gate -- --list 2>/dev/null | grep -c '^shader::'); echo "alloc_gate: $n shader arms (bound >= 1)"; [ "$n" -ge 1 ]
+    cargo test -q -p fulgurite --features shader --test shader_cmd --test glass_cmd
+    cargo test -q -p fulgurite-shell --features shader --test shader_software --test contrast_commands --test svg --test clip_test
+    cargo test -q -p fulgurite-shell --features truetype,shader --test alloc_gate
+    n=$(cargo test -q -p fulgurite-shell --features truetype,shader --test alloc_gate -- --list 2>/dev/null | grep -c '^shader::'); echo "alloc_gate: $n shader arms (bound >= 1)"; [ "$n" -ge 1 ]
     # M83/T83.4: `Program::shaders` reaches `Program::host()` and
     # `Session::shaders`.
-    cargo test -q -p lumen-static-shell --features truetype,shader --test shader_table
+    cargo test -q -p fulgurite-shell --features truetype,shader --test shader_table
     # M90/T90.6: the tray's seam -- `Session::tray_model` across a swap
     # (`hot::boot`, behind `reload`) and `Session::menu_state`, with the
     # features named rather than left to `--workspace`'s unification.
-    cargo test -q -p lumen-static-shell --features truetype,reload --test tray_seam
+    cargo test -q -p fulgurite-shell --features truetype,reload --test tray_seam
     # M90/T90.7 (docs/plan-iced-roadmap.md §3.1, second review X7): the
     # window crate's default-off `tray` (`ksni` over D-Bus) -- `Win`'s tray,
     # `UserEvent::Menu`, `app.tray` -- linted with the agent and hot reload
     # that its code is cfg'd against, and documented with the feature on;
     # and examples/tray, whose binary requires `tray` (its manifest says why).
-    cargo clippy -q -p lumen-static-winit --features tray --all-targets -- -D warnings
-    cargo clippy -q -p lumen-static-winit --features tray,hot,agent --all-targets -- -D warnings
+    cargo clippy -q -p fulgurite-winit --features tray --all-targets -- -D warnings
+    cargo clippy -q -p fulgurite-winit --features tray,hot,agent --all-targets -- -D warnings
     cargo clippy -q -p tray --features tray,everything --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-winit --no-deps --features tray
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p fulgurite-winit --no-deps --features tray
     # M83/T83.6: `ShaderView` -- its role row in a build that has it (the
     # `a11y`-alone run above excuses it through FEATURE_GATED), and its
     # damage gates through a `Host` and the journal, behind the agent's
     # `shader` (the dev-dependency cannot carry it; its manifest says why).
-    cargo test -q -p lumen-static-widgets --features a11y,shader --test a11y_roles
-    cargo test -q -p lumen-static-agent --features shader --test damage_shape
+    cargo test -q -p fulgurite-widgets --features a11y,shader --test a11y_roles
+    cargo test -q -p fulgurite-agent --features shader --test damage_shape
     # M83/T83.3 (owner decision D3): every `match` over `Cmd` compiler-checked
     # with the shader variants absent and present. wgpu is included: a check
-    # needs no adapter. The arms outside the core are `cfg(lumen_shader)`,
+    # needs no adapter. The arms outside the core are `cfg(fulgurite_shader)`,
     # from each crate's build.rs, so the "on" build is the unified one.
     cargo check -q --workspace --all-targets
-    cargo check -q --workspace --all-targets --features lumen-static/shader
-    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
-    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu --features lumen-static/shader -- -D warnings
+    cargo check -q --workspace --all-targets --features fulgurite/shader
+    cargo clippy --workspace --all-targets --exclude fulgurite-wgpu -- -D warnings
+    cargo clippy --workspace --all-targets --exclude fulgurite-wgpu --features fulgurite/shader -- -D warnings
     # M83/T83.4: the shell's and the window's own `shader` (the table's
     # contents, `Program::shaders`, `Host::set_shaders`), which neither line
     # above turns on.
-    cargo clippy -q -p lumen-static-shell -p lumen-static-winit --all-targets --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader -- -D warnings
+    cargo clippy -q -p fulgurite-shell -p fulgurite-winit --all-targets --features fulgurite-shell/shader,fulgurite-shell/truetype,fulgurite-winit/shader -- -D warnings
     # M83/T83.6: the widgets' `shader` (`ShaderView`), the agent's (its
     # damage gates) and the showcase's (the demo and its shader table).
-    cargo clippy -q -p lumen-static-widgets -p lumen-static-agent -p showcase --all-targets --features lumen-static-widgets/shader,lumen-static-agent/shader,showcase/shader -- -D warnings
+    cargo clippy -q -p fulgurite-widgets -p fulgurite-agent -p showcase --all-targets --features fulgurite-widgets/shader,fulgurite-agent/shader,showcase/shader -- -D warnings
     # M83/T83.2: glasswall's default-off `custom-backend` (a program's own
     # backend through `Program::backend_with`), linted with the feature on.
     cargo clippy -q -p glasswall --features agent,custom-backend --all-targets -- -D warnings
@@ -185,36 +185,36 @@ dev-shape:
     # documented with the feature on, since the workspace lines build the
     # shell without it. Here rather than beside `just simd`'s clippy line,
     # which `just test` does not run.
-    cargo test -q -p lumen-static-shell --features image --test image_decode
+    cargo test -q -p fulgurite-shell --features image --test image_decode
     # M84/T84.8: the video's headless gates feed it from a `GifFeed`.
-    cargo test -q -p lumen-static-shell --features image --test video
+    cargo test -q -p fulgurite-shell --features image --test video
     # M84/T84.8: K84e's arm builds (it runs by hand; docs/results-images.md).
     cargo build -q -p benches --features image --bin video_rate
-    cargo clippy -q -p lumen-static-shell --features image --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features image
+    cargo clippy -q -p fulgurite-shell --features image --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p fulgurite-shell --no-deps --features image
     # M86/T86.1 (docs/plan-iced-roadmap.md §3.1, second review X7): the
     # core's additive `transitions` -- the blend in `ops::shaded`. The
     # workspace lines unify it on through the shell; this keeps it linted
     # and documented on the core alone if that ever changes.
-    cargo clippy -q -p lumen-static --features transitions --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static --no-deps --features transitions
+    cargo clippy -q -p fulgurite --features transitions --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p fulgurite --no-deps --features transitions
     # A fresh doc dir: rustdoc 1.94 panics in its search index
     # (`search_index.rs:478`) on a stale `target/doc` after large edits —
     # seen twice on 2026-09-24, gone both times with the directory. An
     # ICE in the gate is a gate that cries wolf.
     rm -rf target/doc
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude lumen-static-wgpu
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --exclude fulgurite-wgpu
     # M54/T54.1: `a11y` without `observe` is a third doc build of the core --
     # the workspace's unifies `observe` on, so a link to an `observe`-only
     # item from `a11y` code resolves there and fails for the feature alone.
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps --features a11y
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite --no-deps --features a11y
     # M83/T83.3: `shader` adds public items (`ShaderId`, `Painter::shader`);
     # T83.4 adds the shell's (`ShaderDesc`, `Program::shaders`, the table's
     # contents) and the window's (the `ShaderDesc` re-export), with
     # `truetype` so `Session::shaders` is documented; T83.6 adds the widgets'.
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static -p lumen-static-shell --no-deps --features lumen-static/shader,lumen-static-shell/shader
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-shell -p lumen-static-winit --no-deps --features lumen-static-shell/shader,lumen-static-shell/truetype,lumen-static-winit/shader
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-widgets --no-deps --features lumen-static-widgets/shader,lumen-static-widgets/a11y
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite -p fulgurite-shell --no-deps --features fulgurite/shader,fulgurite-shell/shader
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite-shell -p fulgurite-winit --no-deps --features fulgurite-shell/shader,fulgurite-shell/truetype,fulgurite-winit/shader
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite-widgets --no-deps --features fulgurite-widgets/shader,fulgurite-widgets/a11y
     # M48/T48.9: the core's `observe` without the widgets' must not
     # build, and the matched build must. Compiles, so not in `static`.
     ./scripts/check_feature_seam.sh
@@ -234,43 +234,43 @@ test-crates *names:
 # with the fallback faces (M45/T45.3), which are the system's too. The
 # shaping tests used to return early -- passing -- with no system face;
 # now only `font_discovery` needs one, and here it must find it unless
-# LUMEN_ALLOW_SKIP=1. In `dev-shape`.
+# FULGURITE_ALLOW_SKIP=1. In `dev-shape`.
 fonts:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "fonts: LUMEN_ALLOW_SKIP=1 -- discovery may skip"; else export LUMEN_REQUIRE_FONTS=1; fi
-    cargo test -q -p lumen-static-shell --features truetype --test shaping --test glyph_placement --test font_discovery --test font_fallback
-    cargo test -q -p lumen-static-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
-    cargo test -q -p lumen-static-text --test shaping
+    if [ "${FULGURITE_ALLOW_SKIP:-}" = 1 ]; then echo "fonts: FULGURITE_ALLOW_SKIP=1 -- discovery may skip"; else export FULGURITE_REQUIRE_FONTS=1; fi
+    cargo test -q -p fulgurite-shell --features truetype --test shaping --test glyph_placement --test font_discovery --test font_fallback
+    cargo test -q -p fulgurite-shell --features truetype --test font_discovery -- --nocapture | grep '^fonts:'
+    cargo test -q -p fulgurite-text --test shaping
     cargo test -q -p embedded --test baked_face
     # M81/T81.1 (docs/plan-iced-roadmap.md §3.1): the shell's default-off
     # `shaping` linted and documented with the feature on, from the task
     # that adds it -- the workspace lines build default features only.
-    cargo clippy -q -p lumen-static-shell --features shaping --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features shaping
+    cargo clippy -q -p fulgurite-shell --features shaping --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p fulgurite-shell --no-deps --features shaping
     # M81/T81.3: the `Complex` gates and the `Basic` checksum with the shaper
     # compiled in -- the pins, centring, containment, line height and the
     # ellipsis, K81c's heap, and `mod complex`'s allocations.
-    cargo test -q -p lumen-static-shell --features truetype,shaping --test paint_shaped --test basic_placements --test glyph_placement --test text_containment --test line_height --test font_heap --test alloc_gate --test shaping
+    cargo test -q -p fulgurite-shell --features truetype,shaping --test paint_shaped --test basic_placements --test glyph_placement --test text_containment --test line_height --test font_heap --test alloc_gate --test shaping
     # M81/T81.7: the phase probe (K81d), where phases occur, and the pinned
     # bearing-fraction offset T81.8 flips.
-    cargo test -q -p lumen-static-shell --features truetype,shaping --test subpixel_phase
+    cargo test -q -p fulgurite-shell --features truetype,shaping --test subpixel_phase
     # M81/T81.5: caret, selection and hit test over bidi runs.
-    cargo test -q -p lumen-static-shell --features truetype,shaping --test bidi_caret
+    cargo test -q -p fulgurite-shell --features truetype,shaping --test bidi_caret
     # M81/T81.4: `Program::shaping` through `Local` and an `Offscreen`, the
     # audit and the scale drag under `Complex`, and the showcase's `--demo`
     # following its program's mode.
-    cargo test -q -p lumen-static-shell --features truetype,shaping,live-agent --test program --test agent_audit_face --test scale_memo
+    cargo test -q -p fulgurite-shell --features truetype,shaping,live-agent --test program --test agent_audit_face --test scale_memo
     cargo test -q -p showcase --features shaping shaping_shot
     # M82/T82.7 (docs/plan-iced-roadmap.md §3.1): the shell's default-off
     # `vector-text` -- outlines from the measurer (`vector_text`, with
     # `ComplexText`'s arm under `shaping` too) and the face bytes it keeps
     # (`font_heap`), linted and documented with the feature on, since the
     # workspace lines build the shell without it.
-    cargo test -q -p lumen-static-shell --features vector-text --test vector_text --test font_heap
-    cargo test -q -p lumen-static-shell --features vector-text,shaping --test vector_text
-    cargo clippy -q -p lumen-static-shell --features vector-text --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -q -p lumen-static-shell --no-deps --features vector-text
+    cargo test -q -p fulgurite-shell --features vector-text --test vector_text --test font_heap
+    cargo test -q -p fulgurite-shell --features vector-text,shaping --test vector_text
+    cargo clippy -q -p fulgurite-shell --features vector-text --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -q -p fulgurite-shell --no-deps --features vector-text
 
 # Security advisories, offline, against deny.toml's accepted list: a NEW
 # advisory fails (M43/T43.12). `cargo deny fetch` refreshes the database.
@@ -355,7 +355,7 @@ adversary-plant:
 
 # Before calling work done: everything in `test`, the `check-extra` builds,
 # and every live gate. **No display is a failure**, not "skipped" and green
-# (R17-F8): `live` exits 77, and so does `check`, unless LUMEN_ALLOW_SKIP=1.
+# (R17-F8): `live` exits 77, and so does `check`, unless FULGURITE_ALLOW_SKIP=1.
 check: test check-extra selftest-build live
 
 # **Tier 1: what a hosted runner runs on every push** (owner, 2026-10-08;
@@ -371,25 +371,25 @@ ci-fast: static deny release-shape lint-fast test-fast live-fast
 # Tier 1's lint: clippy over the default workspace. Its own recipe so the
 # workflow runs it on its own runner, beside the tests.
 lint-fast:
-    cargo clippy --workspace --all-targets --exclude lumen-static-wgpu -- -D warnings
+    cargo clippy --workspace --all-targets --exclude fulgurite-wgpu -- -D warnings
 
 # Tier 1's tests: the default workspace under nextest, and its doctests.
 test-fast:
     @command -v cargo-nextest >/dev/null || { echo "test-fast: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest" >&2; exit 1; }
-    cargo nextest run --workspace --exclude lumen-static-wgpu
-    cargo test --doc --workspace --exclude lumen-static-wgpu
+    cargo nextest run --workspace --exclude fulgurite-wgpu
+    cargo test --doc --workspace --exclude fulgurite-wgpu
 
 # Tier 1's live smoke. Needs a display (Xvfb on the runner); like every
 # live gate it exits 77 without one.
 live-fast:
     ./scripts/live_gate.sh
-    LUMEN_DRIVE_LEGS=Boundaries ./scripts/widget_drive.sh
+    FULGURITE_DRIVE_LEGS=Boundaries ./scripts/widget_drive.sh
 
 # Every live gate, one line each and a total (M43/T43.13, §2.2 of
 # docs/plan-gate-hygiene.md): `name: pass | FAIL | skip(77) -- reason`.
-# Fails on a FAIL; a skip fails too (exit 77) unless LUMEN_ALLOW_SKIP=1.
+# Fails on a FAIL; a skip fails too (exit 77) unless FULGURITE_ALLOW_SKIP=1.
 # `just live widget-drive tasks-drive` runs those two. Ports come from
-# LUMEN_LIVE_PORT_RANGE when set (scripts/live/launch.py).
+# FULGURITE_LIVE_PORT_RANGE when set (scripts/live/launch.py).
 live *names:
     ./scripts/live.sh {{ names }}
 
@@ -401,7 +401,7 @@ ci *args:
 
 # Is there a green `just ci` record for this commit? A milestone is not
 # done until there is (docs/plan-m38-fixes.md §5). `--allow-skip` accepts
-# a record whose skips LUMEN_ALLOW_SKIP=1 let through.
+# a record whose skips FULGURITE_ALLOW_SKIP=1 let through.
 ci-verify *args:
     ./scripts/ci_verify.py {{ args }}
 
@@ -431,7 +431,7 @@ bench-lock +cmd:
 check-extra: floats thumb stack gpu simd threads book agent-symbols clipboard-image-symbols tray-symbols release-window-shape
     # Release-shape rustdoc: `--workspace` hides broken links that point at
     # items which only exist behind `observe`/`reload`.
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite --no-deps
     cargo build --release -p binsize
     @ls -l target/release/binsize | awk '{print "binsize: " $5 " bytes"}'
 
@@ -474,8 +474,8 @@ release-window-shape:
 # `damage_oracle.rs` holds the software path to. The tests themselves skip
 # when no adapter is present — a machine with no GPU is the configuration
 # the CPU fallback exists for — but THIS recipe is the gate that claims a
-# comparison happened, so it requires one (LUMEN_REQUIRE_GPU=1) unless
-# LUMEN_ALLOW_SKIP=1 says otherwise (docs/results-gpu.md).
+# comparison happened, so it requires one (FULGURITE_REQUIRE_GPU=1) unless
+# FULGURITE_ALLOW_SKIP=1 says otherwise (docs/results-gpu.md).
 
 # The rasteriser's SIMD path (M17/T17.1). Default-OFF, so `just test`
 # builds the scalar one; this proves the vector one is byte-identical
@@ -486,10 +486,10 @@ release-window-shape:
 
 # The SIMD rasteriser: byte-identity against the scalar path, and lint.
 simd:
-    cargo test -p lumen-static-shell --features simd,raster-counters --test simd_shadow -- --nocapture
-    cargo test -p lumen-static-shell --features simd,raster-counters --test wide_stores -- --nocapture
-    cargo test -p lumen-static-shell --features simd --test damage_oracle
-    cargo clippy -p lumen-static-shell --features simd --all-targets -- -D warnings
+    cargo test -p fulgurite-shell --features simd,raster-counters --test simd_shadow -- --nocapture
+    cargo test -p fulgurite-shell --features simd,raster-counters --test wide_stores -- --nocapture
+    cargo test -p fulgurite-shell --features simd --test damage_oracle
+    cargo clippy -p fulgurite-shell --features simd --all-targets -- -D warnings
 
 # Band-parallel rasterisation (M17/T17.4). Default-OFF and desktop-only.
 # The comparison cannot happen inside one binary -- the split is a cargo
@@ -499,14 +499,14 @@ simd:
 # The threaded rasteriser: byte-identity against the single-band render.
 threads:
     ./scripts/check_banded.sh
-    cargo clippy -p lumen-static-shell --features threads,truetype --all-targets -- -D warnings
-    cargo test -q -p lumen-static-shell --features threads,truetype --test damage_oracle
+    cargo clippy -p fulgurite-shell --features threads,truetype --all-targets -- -D warnings
+    cargo test -q -p fulgurite-shell --features threads,truetype --test damage_oracle
     # M50/T50.0: shaping per visible run when banded (R8-F2), and a banded
     # frame's allocations on every thread (R18-F4), in its own binary.
-    cargo test -q -p lumen-static-shell --features threads,truetype --test banded
-    cargo test -q -p lumen-static-shell --features threads,truetype,raster-counters --test alloc_gate_threads -- --nocapture
+    cargo test -q -p fulgurite-shell --features threads,truetype --test banded
+    cargo test -q -p fulgurite-shell --features threads,truetype,raster-counters --test alloc_gate_threads -- --nocapture
     # M50/T50.5: reachable from the window crate (R6-F5).
-    cargo test -q -p lumen-static-winit --features threads --test raster_features -- --nocapture
+    cargo test -q -p fulgurite-winit --features threads --test raster_features -- --nocapture
 
 # The GPU backend: build, lint, and compare its pixels with the software canvas.
 gpu:
@@ -515,56 +515,56 @@ gpu:
     # With no adapter the parity tests return early, and libtest swallows
     # their "skipping" line on a pass -- so this recipe used to be green on
     # a machine that compared nothing (R17-F6). It requires the adapter
-    # unless LUMEN_ALLOW_SKIP=1, and prints the one it used.
+    # unless FULGURITE_ALLOW_SKIP=1, and prints the one it used.
     set -euo pipefail
-    if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: LUMEN_ALLOW_SKIP=1 -- an absent adapter skips"; else export LUMEN_REQUIRE_GPU=1; fi
+    if [ "${FULGURITE_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: FULGURITE_ALLOW_SKIP=1 -- an absent adapter skips"; else export FULGURITE_REQUIRE_GPU=1; fi
     # nextest: concurrent headless devices in ONE process deadlock in the
     # driver when no X server is reachable (docs/results-ci-time.md, "A
     # hung step"); a process per test does not, and a hung test is killed.
     command -v cargo-nextest >/dev/null || { echo "gpu: FAIL -- cargo-nextest is a prerequisite: cargo binstall cargo-nextest" >&2; exit 1; }
-    cargo nextest run -p lumen-static-wgpu
-    cargo test --doc -p lumen-static-wgpu
-    cargo test -q -p lumen-static-wgpu --test parity the_gpu_half_ran -- --nocapture | grep '^adapter:'
+    cargo nextest run -p fulgurite-wgpu
+    cargo test --doc -p fulgurite-wgpu
+    cargo test -q -p fulgurite-wgpu --test parity the_gpu_half_ran -- --nocapture | grep '^adapter:'
     # M51/T51.2 (R9-F6): Prefer::Auto on a machine whose ONLY adapter is a
     # CPU rasteriser keeps the software canvas. This machine is made into
     # one by pointing the Vulkan loader at lavapipe and the EGL loader at
-    # nothing; LUMEN_REQUIRE_CPU_ONLY=1 makes a visible GPU a failure
+    # nothing; FULGURITE_REQUIRE_CPU_ONLY=1 makes a visible GPU a failure
     # rather than "not run". Without lavapipe installed the step cannot
-    # happen, which is a refusal unless LUMEN_ALLOW_SKIP=1.
+    # happen, which is a refusal unless FULGURITE_ALLOW_SKIP=1.
     lvp=/usr/share/vulkan/icd.d/lvp_icd.json
     if [ -f "$lvp" ]; then
-        VK_ICD_FILENAMES="$lvp" VK_DRIVER_FILES="$lvp" __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent.json LUMEN_REQUIRE_CPU_ONLY=1 \
-            cargo test -q -p lumen-static-winit --features gpu --test cpu_adapter -- --nocapture 2>&1 | grep -E '^(Auto:|adapters:|test result)'
-    elif [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: no lavapipe ($lvp) -- the CPU-only step skipped"
-    else echo "gpu: no lavapipe ($lvp): cannot make a CPU-only machine (LUMEN_ALLOW_SKIP=1 to skip)"; exit 1; fi
+        VK_ICD_FILENAMES="$lvp" VK_DRIVER_FILES="$lvp" __EGL_VENDOR_LIBRARY_FILENAMES=/nonexistent.json FULGURITE_REQUIRE_CPU_ONLY=1 \
+            cargo test -q -p fulgurite-winit --features gpu --test cpu_adapter -- --nocapture 2>&1 | grep -E '^(Auto:|adapters:|test result)'
+    elif [ "${FULGURITE_ALLOW_SKIP:-}" = 1 ]; then echo "gpu: no lavapipe ($lvp) -- the CPU-only step skipped"
+    else echo "gpu: no lavapipe ($lvp): cannot make a CPU-only machine (FULGURITE_ALLOW_SKIP=1 to skip)"; exit 1; fi
     # M81/T81.3: both backends paint shaped -- the `Complex` parity region.
     # nextest's --no-capture runs one test at a time, with its prints.
-    cargo nextest run -p lumen-static-wgpu --features shaping --test parity --no-capture 2>&1 | grep -E 'shaped region|Summary'
-    cargo clippy -p lumen-static-wgpu --all-targets -- -D warnings
-    cargo clippy -p lumen-static-wgpu --features shaping --all-targets -- -D warnings
-    # M83/T83.3: the `cfg(lumen_shader)` arms linted, not only checked.
-    cargo clippy -p lumen-static-wgpu --all-targets --features lumen-static/shader -- -D warnings
-    cargo clippy -p lumen-static-winit --features gpu --all-targets -- -D warnings
+    cargo nextest run -p fulgurite-wgpu --features shaping --test parity --no-capture 2>&1 | grep -E 'shaped region|Summary'
+    cargo clippy -p fulgurite-wgpu --all-targets -- -D warnings
+    cargo clippy -p fulgurite-wgpu --features shaping --all-targets -- -D warnings
+    # M83/T83.3: the `cfg(fulgurite_shader)` arms linted, not only checked.
+    cargo clippy -p fulgurite-wgpu --all-targets --features fulgurite/shader -- -D warnings
+    cargo clippy -p fulgurite-winit --features gpu --all-targets -- -D warnings
     # M88/T88.5: the default-off `clipboard-image` linted (S3, §3.1), and
     # `serve_requests`' unit test run with it -- an image read asked of
     # the clipboard, not refused as unsupported. It adds no public item, so
     # there is no rustdoc line.
-    cargo clippy -p lumen-static-winit --features clipboard-image --all-targets -- -D warnings
-    cargo test -q -p lumen-static-winit --features clipboard-image --lib serve_requests
+    cargo clippy -p fulgurite-winit --features clipboard-image --all-targets -- -D warnings
+    cargo test -q -p fulgurite-winit --features clipboard-image --lib serve_requests
     # M83/T83.7: examples/shader on the GPU, the build `just shader-drive` runs.
     cargo clippy -q -p shader --features gpu,agent --all-targets -- -D warnings
     # M83/T83.8: the build `just hot-window-drive`'s GPU legs run.
     cargo clippy -q -p hot-window --features hot,agent,gpu,shader --all-targets -- -D warnings
     # M83/T83.4: `GpuBackend::set_shaders` keeps its owned copy under the
     # window crate's `shader`, which only a GPU build compiles.
-    cargo clippy -p lumen-static-winit --features gpu,shader --all-targets -- -D warnings
+    cargo clippy -p fulgurite-winit --features gpu,shader --all-targets -- -D warnings
     # M83/T83.5: the GPU split -- scissor, clip, region, refusal, content
     # key, order (`tests/shader.rs`); the `shader` parity region and the
     # two-shader allocation gate; the feature linted and its rustdoc built.
-    cargo nextest run -p lumen-static-wgpu --features shader --test shader
-    cargo nextest run -p lumen-static-wgpu --features shader --test parity --test alloc --no-capture 2>&1 | grep -E '^shader|two shaders|Summary'
-    cargo clippy -p lumen-static-wgpu --features shader --all-targets -- -D warnings
-    RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-wgpu --no-deps --features shader
+    cargo nextest run -p fulgurite-wgpu --features shader --test shader
+    cargo nextest run -p fulgurite-wgpu --features shader --test parity --test alloc --no-capture 2>&1 | grep -E '^shader|two shaders|Summary'
+    cargo clippy -p fulgurite-wgpu --features shader --all-targets -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite-wgpu --no-deps --features shader
 
 # Prove `num::floor`/`num::ceil` bit-exact with std over all 2^32 f32
 # bit patterns (M13/T13.2). Release-only: 13 s optimized, minutes in the
@@ -572,7 +572,7 @@ gpu:
 
 # Exhaustive f32 check: num::floor/ceil vs std over all 2^32 inputs.
 floats:
-    cargo test --release -p lumen-static --lib num -- --ignored
+    cargo test --release -p fulgurite --lib num -- --ignored
 
 # The core, no_std, for the M13 device (M13/T13.1). `--features alloc`
 # rather than bare `--no-default-features`: with the std > alloc > none
@@ -621,19 +621,19 @@ thumb:
     ./scripts/probe.sh thumb
     # The middle tier: no std, an allocator present. This is the M13
     # device's shape (T13.0/T13.1).
-    cargo check -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf
-    cargo clippy -p lumen-static --no-default-features --features alloc --target thumbv7em-none-eabihf -- -D warnings
+    cargo check -p fulgurite --no-default-features --features alloc --target thumbv7em-none-eabihf
+    cargo clippy -p fulgurite --no-default-features --features alloc --target thumbv7em-none-eabihf -- -D warnings
     # The strict tier: no std AND no alloc, where Vec, String, DisplayList
     # and the escape hatches cannot be *named* (T13.4). This is the strong
     # proof of the alloc-free path -- a panicking allocator only covers
     # paths that run; here the compiler says which line wanted one.
-    cargo check -p lumen-static --no-default-features --target thumbv7em-none-eabihf
-    cargo clippy -p lumen-static --no-default-features --target thumbv7em-none-eabihf -- -D warnings
+    cargo check -p fulgurite --no-default-features --target thumbv7em-none-eabihf
+    cargo clippy -p fulgurite --no-default-features --target thumbv7em-none-eabihf -- -D warnings
     cargo check -p embedded --lib --target thumbv7em-none-eabihf
     # The fixture's host tests, built ALONE so core stays no_std: this is
     # the only run of core's no_std `#[bind]` branch (M43/T43.8). The
     # requirement refuses the std answer a unified build would give.
-    LUMEN_REQUIRE_NOSTD=1 cargo test -p embedded
+    FULGURITE_REQUIRE_NOSTD=1 cargo test -p embedded
     # The linked-firmware gates (.bss statics, .text ceiling and headline)
     # moved to `firmware`, in `test` (M43/T43.13). The flash ceiling
     # docs/results-embedded.md stated on 2026-09-05 went unchecked until
@@ -653,7 +653,7 @@ stack:
 
 # Line coverage, as an artifact to read -- not a threshold. A workspace
 # percentage is dominated by whether the fixtures ran, not by core quality;
-# the number worth watching is crates/lumen-static/src.
+# the number worth watching is crates/fulgurite/src.
 
 # Line coverage as an artifact, no threshold.
 coverage:
@@ -704,7 +704,7 @@ firewall:
 miri:
     cargo +nightly miri run -p miri-smoke
 
-# M49/T49.3: lumen-static-reload's raw-pointer code under miri. Works where
+# M49/T49.3: fulgurite-reload's raw-pointer code under miri. Works where
 # `miri` does not: the fixture has no dependencies and no build script, and
 # includes the reload crate's raw.rs and panic.rs by path.
 # In `just ci` (M43/T43.13); a machine without nightly miri skips (77).
@@ -785,9 +785,9 @@ tally:
     cargo run -p counter-window
 
 # One frame of the tally to a viewable image, at a given count --
-# `LUMEN_SHOT`, the window crate's, from the program the window runs.
+# `FULGURITE_SHOT`, the window crate's, from the program the window runs.
 tally-frame count="7":
-    LUMEN_SHOT=target/tally.ppm cargo run -p counter-window -- {{ count }}
+    FULGURITE_SHOT=target/tally.ppm cargo run -p counter-window -- {{ count }}
 
 # Drive the tally through the agent surface and assert — rung 2 of the
 # verification ladder, above a screenshot. Then the same session through
@@ -821,7 +821,7 @@ const-budget:
     export CARGO_TARGET_DIR=target/const-budget CARGO_INCREMENTAL=0
     # Its dependencies, untimed (the same default features the fixture
     # asks for, so the timed build reuses them); then only the fixture.
-    cargo build -q -p lumen-static -p lumen-static-widgets
+    cargo build -q -p fulgurite -p fulgurite-widgets
     cargo clean -q -p const-budget
     start=$(date +%s%N)
     # Stopped at the bound plus a second: a build past 5000 ms is red
@@ -870,7 +870,7 @@ idle-count seconds="60":
     ./scripts/idle_count.sh {{ seconds }}
 
 # M47/T47.7 (R15-F6): examples/glasswall's images survive a suspend and
-# resume round trip (a debug-only LUMEN_TEST_RESUME hook runs it), on the
+# resume round trip (a debug-only FULGURITE_TEST_RESUME hook runs it), on the
 # software and GPU backends, screenshot before and after. Needs a display.
 resume-drive:
     ./scripts/resume_drive.sh
@@ -886,7 +886,7 @@ windows-rss:
 # behind a `Glass` card -- live: the fallback on the software canvas and
 # the plasma on the GPU (read back with `xwd`), 0 px changed outside the
 # view and the card under both strategies, the plasma kept across a
-# LUMEN_TEST_RESUME round trip, and a refused shader drawing its fallback
+# FULGURITE_TEST_RESUME round trip, and a refused shader drawing its fallback
 # with the window up. Needs a display, `xwd` and an adapter.
 shader-drive:
     ./scripts/shader_drive.sh
@@ -923,11 +923,11 @@ vello f="simd,threads" threads="16":
 # and the GPU raster beside them. It prints the sum of the stages and an
 # independently-measured whole frame so the accounting is checkable.
 #
-# Args: N list, iterations, warm-ups. LUMEN_NO_GPU=1 drops the GPU stage.
+# Args: N list, iterations, warm-ups. FULGURITE_NO_GPU=1 drops the GPU stage.
 
 # Per-stage cost of one frame over N x workload x retention.
 stages ns="100,1000,3000,10000" iters="200" warm="20":
-    cd benches-competitive && cargo run --locked --release -q -p lumen-static-stages -- {{ ns }} {{ iters }} {{ warm }}
+    cd benches-competitive && cargo run --locked --release -q -p fulgurite-stages -- {{ ns }} {{ iters }} {{ warm }}
 
 # The Step 4 dylib swap demo; exit code is the verdict.
 hot-demo:
@@ -963,7 +963,7 @@ reload-gating:
     ./scripts/reload_gating.sh
 
 # The tally window with the agent endpoint on 127.0.0.1:9230 (override with
-# LUMEN_AGENT_ADDR). Drive it with scripts/agent_client.py — see
+# FULGURITE_AGENT_ADDR). Drive it with scripts/agent_client.py — see
 # .claude/skills/verifying-apps/SKILL.md, rung 4.
 run-agent:
     cargo run -p counter-window
@@ -1012,10 +1012,10 @@ live-gate:
     ./scripts/live_gate.sh
 
 # Per-stage cost of one tally frame, headless, median of 50. The numbers
-# belong in docs/results-frame-cost.md. `LUMEN_PROFILE` is the window
+# belong in docs/results-frame-cost.md. `FULGURITE_PROFILE` is the window
 # crate's (M60/T60.4); the damaged frame is a click on `#inc`.
 profile:
-    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window -- 12
+    FULGURITE_SHOT=target/tally.ppm FULGURITE_PROFILE=1 FULGURITE_PROFILE_CLICK=inc cargo run -q -p counter-window -- 12
 
 # The frame a popup opens on, damaged area against the window's
 # (M26/T26.0). `profile` above is fixed to the tally and takes no
@@ -1026,11 +1026,11 @@ profile-showcase:
 
 # The same frame with the rasteriser's SIMD path on (M17/T17.1).
 profile-simd:
-    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd -- 12
+    FULGURITE_SHOT=target/tally.ppm FULGURITE_PROFILE=1 FULGURITE_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd -- 12
 
 # And with band-parallel rasterisation as well (M17/T17.4).
 profile-threads:
-    LUMEN_SHOT=target/tally.ppm LUMEN_PROFILE=1 LUMEN_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd,threads -- 12
+    FULGURITE_SHOT=target/tally.ppm FULGURITE_PROFILE=1 FULGURITE_PROFILE_CLICK=inc cargo run -q -p counter-window --features simd,threads -- 12
 
 # ---------------------------------------------------------------------------
 # The book
@@ -1051,7 +1051,7 @@ book: book-deps
 
 # The rlibs the book's snippets link against, in their own target dir.
 # NOT target/debug/deps: that holds thousands of files and a dozen
-# differently featured liblumen_static-*.rlib, and rustdoc refuses an
+# differently featured libfulgurite-*.rlib, and rustdoc refuses an
 # ambiguous search path (E0464). This one holds exactly one of each.
 #
 # The wipe is not laziness. Cargo never deletes a superseded artifact, so

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # M28/T28.1: a completion wakes an idle window. The live half.
 #
-# `crates/lumen-static/tests/inbox_wake.rs` asserts that sending asks for
+# `crates/fulgurite/tests/inbox_wake.rs` asserts that sending asks for
 # a wake, with no window. This asserts the ask reaches a real winit loop
 # sleeping in `ControlFlow::Wait` and that a frame follows.
 #

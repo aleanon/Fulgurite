@@ -8,12 +8,12 @@
 #      include names a missing file is reported and then shipped. So the
 #      exit status is not the gate; the absence of ERROR on stderr is.
 #   2. `mdbook test` needs `-L` pointing at rlibs, and `target/debug/deps`
-#      cannot be used: it holds many liblumen_static-*.rlib built with
+#      cannot be used: it holds many libfulgurite-*.rlib built with
 #      different features and rustdoc will not choose between them.
 #      `just book-deps` builds exactly one of each into target/book.
 #
 # Snippets are edition-2021 because book.toml says so. Without that line
-# rustdoc compiles them as 2015, where `use lumen_static::prelude::*`
+# rustdoc compiles them as 2015, where `use fulgurite::prelude::*`
 # cannot resolve and the error names the wrong cause.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"

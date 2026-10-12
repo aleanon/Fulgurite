@@ -8,7 +8,7 @@
 # refused if the port already answers, and checked -- socket owner and
 # `app.diagnostics`' process block -- to be the pid it launched. The
 # checks below run as the launcher's drive: this script again, with
-# `--drive`, and LUMEN_AGENT_ADDR pointing at that window.
+# `--drive`, and FULGURITE_AGENT_ADDR pointing at that window.
 #
 # **The app's exit status is part of the verdict** (M42/T42.3, R18-F9).
 # After the checks the launcher reads the window's log (`app log: 0
@@ -31,9 +31,9 @@ fi
 
 # M39/T39.1 (R14-F1): a browser's no-cors POST, byte for byte, must not
 # move the tally -- and the first click below must (the accept half).
-python3 scripts/browser_replay.py "$LUMEN_AGENT_ADDR" \
-    crates/lumen-static-agent/tests/browser/firefox156-fetch-no-cors.bin '#value' \
-    --pid "$LUMEN_LIVE_PID"
+python3 scripts/browser_replay.py "$FULGURITE_AGENT_ADDR" \
+    crates/fulgurite-agent/tests/browser/firefox156-fetch-no-cors.bin '#value' \
+    --pid "$FULGURITE_LIVE_PID"
 before=$(python3 scripts/agent_client.py call ui.resolve '{"selector":"#value"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')
 python3 scripts/agent_client.py click '#inc' >/dev/null
 after=$(python3 scripts/agent_client.py call ui.resolve '{"selector":"#value"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')

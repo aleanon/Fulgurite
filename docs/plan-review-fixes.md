@@ -41,7 +41,7 @@ tested by name.
   `scripts/check_*.sh` and `scripts/doc-identifiers.allow`, and the
   boundary-anchored `expect` in `fixtures/hot-host` (`"window="` →
   `"window=24"`; `contains` matched `window=0`). *Finding: 3A §3, 4B D.*
-- **F0.2** Rewrite the `lumen-static-macros` front-page doc
+- **F0.2** Rewrite the `fulgurite-macros` front-page doc
   (`lib.rs:1-14`), which describes `KIND_COUNT`, `offset_of!` and a kind
   list deleted in M0. Fix `WidgetOps` in `widget.rs:4` and `Pump` in
   `agent/tests/input.rs:41`. *Finding: 3B D6, D14; 4B C.*
@@ -49,7 +49,7 @@ tested by name.
   and the two deleted-bench citations in the `results-*` headers — the
   reproducibility notes already say the binaries are gone; reword the
   headers so they do not read as runnable commands. *3B D18; 4B C.*
-- **F0.4** `cargo test -p lumen-static` (release shape) is in `just
+- **F0.4** `cargo test -p fulgurite` (release shape) is in `just
   release-shape`; verify it runs 30 tests and that `just dev-shape`'s
   `--workspace` line is the only unified build. Delete the redundant
   `--all-features` line. *3A opening correction.*
@@ -131,7 +131,7 @@ zero on the plain-tree path.
 *`frame_done` is 117× the frame it observes at 10k nodes and poisons
 every `Label` memo every frame. Under a real shaper (M7) this is the
 app's whole shaping cost paid three times. Self-contained in
-`lumen-static-agent`.*
+`fulgurite-agent`.*
 
 **Gates:** `tests/audit_is_inert.rs` — `measure_is_warm` holds across
 `frame_done`; allocation gate on `frame_done` = **0** in steady state;
@@ -149,7 +149,7 @@ flaking); `just test` green.
   `TextArea`'s scroll) was still reset by the probe, and under the
   `Boundaries` default the reset reached the screen (R1-F5). Both
   override `probe`; `Node::probe`'s rustdoc states the rule, and
-  `crates/lumen-static-agent/tests/audit_is_inert.rs` sweeps every leaf
+  `crates/fulgurite-agent/tests/audit_is_inert.rs` sweeps every leaf
   kind.
   *Amended 2026-09-26, M41/T41.7:* it did not. The sweep left
   `Pagination` and the strips out, left `RichText`, `Markdown` and
@@ -171,7 +171,7 @@ flaking); `just test` green.
 - **F2.4** `frame_done`'s doc (`lib.rs:112`) and `journal.rs:19-21` state
   the real cost. *3B D4, D5.* `lib.rs:340`'s "Mirrors
   `Repeat::observe_op`" → the function that exists. *3B D9.*
-- **F2.5** `lumen-static-agent` stops hard-enabling `observe` on the
+- **F2.5** `fulgurite-agent` stops hard-enabling `observe` on the
   core. It takes its tree view through a trait the core defines without
   `observe`, and gates the accesskit-shaped parts behind its own
   feature. Verify `examples/counter`'s `binsize` is a release number
@@ -238,7 +238,7 @@ emits no row outside the viewport; the five decoder/id/ensure families
 are deleted, not wrapped; `crossover` and `repeater` benches within
 noise of the F3 baseline.
 
-- **F4.1** The trait, in `lumen-static`, storage-only:
+- **F4.1** The trait, in `fulgurite`, storage-only:
   `Arena { node_count, states, style }` with `ensure(items, probe: &dyn
   Node)`, `slice(k)`, `parts()` — keyed on a runtime count so `Dyn` can
   implement it. `ensure` is where F3.2's per-item probing lives once.
@@ -366,18 +366,18 @@ exists and pins the 23 properties 1A enumerated; `just test` green.
   frame-loop hook the core never calls; the "impossible to forget"
   guarantee holds only for shell users, and `hot-app:177` proves it by
   hand-calling it. *1B #8.*
-- **F6.7** `lumen_static::reload::export_reloadable_app!($ty)` emits the
+- **F6.7** `fulgurite::reload::export_reloadable_app!($ty)` emits the
   six `extern "C"` shims; symbol names as `pub const`; the loader side
   references them. Today the ABI is duplicated byte-string literals
   across two fixtures, and the two sides already implement the size
   probe differently. *1B #9.*
-- **F6.8** `crates/lumen-static-macros/tests/ui.rs` with trybuild: the
+- **F6.8** `crates/fulgurite-macros/tests/ui.rs` with trybuild: the
   18 `compile_error!` cases the derive already produces, the 5
   type-level ones (`table_is_well_formed`, `DEPTH`, `Button<Other>`,
   `#[reload(keep)]` on a fn pointer, the typed `let f:` bindings), and
   `pass/` cases asserted at runtime. Un-`ignore` the two doctests. *1A
   trybuild §, 3A test #6.*
-- **F6.9** `crates/lumen-static-shell/tests/alloc_gate.rs` — its own
+- **F6.9** `crates/fulgurite-shell/tests/alloc_gate.rs` — its own
   binary, counting allocator, five warmup frames, assert **zero** for
   plain / hatch / scrolling / `frame_done` (after F2) / enum (after
   F4.3). `docs/results-allocation.md` with the table. *3A §6, 4B E.*
@@ -406,8 +406,8 @@ crate doc.
   marker. *3B D13.*
 - **F7.2** Root `README.md`: two sentences, the counter as the snippet,
   the four `just` recipes, the crate map, two pointers. *3B §5.1.*
-- **F7.3** "How to write a widget" as the `lumen-static` crate-level
-  doc: `Node` vs `Widget` (and that `use lumen_static::Node` is needed
+- **F7.3** "How to write a widget" as the `fulgurite` crate-level
+  doc: `Node` vs `Widget` (and that `use fulgurite::Node` is needed
   to call `.node(i)`), the seven attributes across three derives in one
   list, the two `kind_name` conventions, the hatch cascade limit until
   F4.5 closes it. *3B §5.2, 1A #10.*

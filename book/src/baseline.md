@@ -12,7 +12,7 @@ number rather than repeating it.
 ## The pipeline everyone converged on
 
 Flutter, browser compositors, Slint and GPUI all run some version of
-this, and so does lumen-static:
+this, and so does fulgurite:
 
 ```text
 UI thread

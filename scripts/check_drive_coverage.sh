@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # M42/T42.5 (R18-F2, docs/plan-drive-identity.md §2.4): every widget type
-# `lumen-static-widgets` exports has a drive inventory, or a line in
+# `fulgurite-widgets` exports has a drive inventory, or a line in
 # scripts/drive/undriven.allow with an owner and a reason.
 #
 # Until M42 nothing tied the crate's exports to the drive: the review
@@ -17,7 +17,7 @@ python3 - <<'PY'
 import re, sys
 from pathlib import Path
 
-src = Path("crates/lumen-static-widgets/src/lib.rs").read_text()
+src = Path("crates/fulgurite-widgets/src/lib.rs").read_text()
 src = src[: src.index("pub mod prelude")]
 exported = []
 for m in re.finditer(r"^pub use [a-z_:]+::(\{[^}]*\}|\w+);", src, re.M):
@@ -54,11 +54,11 @@ for n in exported:
 missing = [n for n in exported if n not in driven and n not in allowed and n not in aliases]
 stale = [n for n in list(allowed) + list(aliases) if n not in exported]
 for n in missing:
-    bad.append(f"{n}: exported by lumen-static-widgets with no inventory and no undriven "
+    bad.append(f"{n}: exported by fulgurite-widgets with no inventory and no undriven "
                f"entry -- write scripts/drive/widgets/<x>.py, or add `{n} | owner | reason` "
                f"to scripts/drive/undriven.allow")
 for n in stale:
-    bad.append(f"undriven.allow names {n}, which lumen-static-widgets does not export")
+    bad.append(f"undriven.allow names {n}, which fulgurite-widgets does not export")
 
 print(f"drive-coverage: widgets exported {len(exported)}, driven "
       f"{sum(1 for n in exported if n in driven or n in aliases)}, allowed "

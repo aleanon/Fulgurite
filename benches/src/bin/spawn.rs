@@ -18,13 +18,13 @@
 use std::hint::black_box;
 
 use benches::bench;
-use lumen_static::event::App;
-use lumen_static::inbox::Sender;
-use lumen_static::prelude::*;
-use lumen_static::spawn::{Descriptor, Job, Spawner, Threads};
-use lumen_static::Rebuild;
-use lumen_static_shell::Host;
-use lumen_static_widgets::prelude::*;
+use fulgurite::event::App;
+use fulgurite::inbox::Sender;
+use fulgurite::prelude::*;
+use fulgurite::spawn::{Descriptor, Job, Spawner, Threads};
+use fulgurite::Rebuild;
+use fulgurite_shell::Host;
+use fulgurite_widgets::prelude::*;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

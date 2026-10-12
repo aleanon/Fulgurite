@@ -1,4 +1,4 @@
-//! `just miri-reload`: lumen-static-reload's raw-pointer code under miri
+//! `just miri-reload`: fulgurite-reload's raw-pointer code under miri
 //! — M49/T49.3 (`docs/plan-reload-hardening.md`, R4-F8).
 //!
 //! **The files are the crate's own**, included by path: every pointer
@@ -10,10 +10,10 @@
 //!
 //! Also a plain `cargo run -p miri-reload`, where it is only a smoke run.
 
-#[path = "../../../crates/lumen-static-reload/src/raw.rs"]
+#[path = "../../../crates/fulgurite-reload/src/raw.rs"]
 pub mod raw;
 
-#[path = "../../../crates/lumen-static-reload/src/panic.rs"]
+#[path = "../../../crates/fulgurite-reload/src/panic.rs"]
 pub mod panic;
 
 use std::ffi::c_void;
@@ -35,9 +35,9 @@ impl Session for Counter {
     }
 }
 
-const STAMP: &[u8] = b"rustc=x\nsource lumen-static=0123\n";
+const STAMP: &[u8] = b"rustc=x\nsource fulgurite=0123\n";
 
-/// `lumen_abi_stamp`'s shape: the two-call protocol through `copy_out`.
+/// `fulgurite_abi_stamp`'s shape: the two-call protocol through `copy_out`.
 unsafe extern "C" fn stamp(buf: *mut u8, cap: usize) -> usize {
     unsafe { raw::copy_out(STAMP, buf, cap) }
 }
@@ -47,7 +47,7 @@ unsafe extern "C" fn take_panic(buf: *mut u8, cap: usize) -> usize {
     unsafe { panic::take(buf, cap) }
 }
 
-/// `lumen_boot`'s shape since M89/T89.7: a program index, then the saved
+/// `fulgurite_boot`'s shape since M89/T89.7: a program index, then the saved
 /// bytes. 0 boots a session from them; an index with no window program
 /// answers null and records why with `panic::refuse`, as
 /// `export_program!` does.
@@ -71,7 +71,7 @@ fn main() {
     let mut reached = Vec::new();
     let mut hit = |name: &'static str| reached.push(name);
 
-    // `hot_restore` / `lumen_boot`: saved bytes, or none.
+    // `hot_restore` / `fulgurite_boot`: saved bytes, or none.
     let saved = b"{\"n\":42}".to_vec();
     assert_eq!(unsafe { raw::bytes(saved.as_ptr(), saved.len()) }, &saved[..]);
     hit("bytes(ptr, len)");
@@ -105,7 +105,7 @@ fn main() {
     assert!(unsafe { raw::get_mut::<Counter>(core::ptr::null_mut()) }.is_none());
     hit("null tree");
 
-    // `lumen_boot` / `Build::boot` / `Hot::drop` / `lumen_drop`: a boxed
+    // `fulgurite_boot` / `Build::boot` / `Hot::drop` / `fulgurite_drop`: a boxed
     // trait object, as a thin pointer, both ways.
     let session: Box<dyn Session> = Box::new(Counter(5));
     let p: *mut c_void = raw::give(session);
@@ -134,17 +134,17 @@ fn main() {
     assert_eq!(unsafe { take_panic(core::ptr::null_mut(), 0) }, 0, "the report drains once");
     hit("take_panic(read, then empty)");
 
-    // `lumen_boot(index, ..)` (M89/T89.7): index 0 boots from the bytes;
+    // `fulgurite_boot(index, ..)` (M89/T89.7): index 0 boots from the bytes;
     // index 9 is null, with its refusal in `hot_take_panic`.
     let p = unsafe { boot(0, saved.as_ptr(), saved.len()) };
     let s = unsafe { raw::take::<Box<dyn Session>>(p) }.expect("index 0 boots");
     assert_eq!(s.count(), saved.len() as u32);
-    hit("lumen_boot(0, saved)");
+    hit("fulgurite_boot(0, saved)");
     let p = unsafe { boot(9, core::ptr::null(), 0) };
     assert!(p.is_null(), "an unknown window program must answer null");
     let report = String::from_utf8(unsafe { raw::read(take_panic) }).expect("utf-8");
     assert_eq!(report, "no window program 9", "{report}");
-    hit("lumen_boot(9): refused");
+    hit("fulgurite_boot(9): refused");
 
     reached.sort_unstable();
     reached.dedup();

@@ -5,8 +5,8 @@
 
 Run by a live drive *after* its own assertions, against the window the
 launcher (`scripts/live/launch.py`) started: the port comes from
-`LUMEN_LIVE_PORT`, and what the leg declared from
-`LUMEN_LIVE_EXPECT_FEATURES`. One copy, so that every drive's oracle leg
+`FULGURITE_LIVE_PORT`, and what the leg declared from
+`FULGURITE_LIVE_EXPECT_FEATURES`. One copy, so that every drive's oracle leg
 asks the same three questions in the same order.
 
 **"Cannot say" is never "no"** (I-NEW-3). A leg that expects the oracle
@@ -48,8 +48,8 @@ import sys
 
 def main() -> int:
     tag = sys.argv[1] if len(sys.argv) > 1 else "drive"
-    port = int(os.environ["LUMEN_LIVE_PORT"])
-    expected = "shadow-oracle" in os.environ.get("LUMEN_LIVE_EXPECT_FEATURES", "").split(",")
+    port = int(os.environ["FULGURITE_LIVE_PORT"])
+    expected = "shadow-oracle" in os.environ.get("FULGURITE_LIVE_EXPECT_FEATURES", "").split(",")
     s = socket.create_connection(("127.0.0.1", port), timeout=15)
     f = s.makefile("rwb")
     n = [0]

@@ -25,14 +25,14 @@
 
 use std::time::Instant;
 
-use lumen_static::display::{Color, Material};
-use lumen_static::style::{Length, Patch, Rule, Selector};
-use lumen_static::{App as DeriveApp, StaticTree};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{FontMetrics, FontStack};
-use lumen_static_shell::Host;
-use lumen_static_widgets::ops::{Label, Spacer};
-use lumen_static_widgets::Glass;
+use fulgurite::display::{Color, Material};
+use fulgurite::style::{Length, Patch, Rule, Selector};
+use fulgurite::{App as DeriveApp, StaticTree};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{FontMetrics, FontStack};
+use fulgurite_shell::Host;
+use fulgurite_widgets::ops::{Label, Spacer};
+use fulgurite_widgets::Glass;
 
 const W: u32 = 1920;
 const H: u32 = 1080;
@@ -77,7 +77,7 @@ fn sheet(bar_h: f32) -> Vec<Rule> {
 }
 
 fn face() -> FontStack {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/lumen-static-shell/tests/fonts/DejaVuSans.ttf");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/fulgurite-shell/tests/fonts/DejaVuSans.ttf");
     let bytes = std::fs::read(path).expect("the pinned face");
     FontStack::from_bytes(&bytes, None).expect("the pinned face parses")
 }
@@ -105,7 +105,7 @@ fn measure(material: (&'static str, Material), bar_h: f32) -> Row {
     host.render(&mut canvas);
     let _ = host.take_damage_for_age(1);
 
-    let bar_node = <Screen as lumen_static::Widget>::SUB_TABLE.iter().position(|d| d.wid == "bar").expect("the bar");
+    let bar_node = <Screen as fulgurite::Widget>::SUB_TABLE.iter().position(|d| d.wid == "bar").expect("the bar");
     let s = host.states[bar_node];
     let bar = [s.pos.x, s.pos.y, s.pos.x + s.size.w, s.pos.y + s.size.h];
 

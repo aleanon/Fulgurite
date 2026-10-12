@@ -1,7 +1,7 @@
 # Appendix: the attribute reference
 
 The attributes of the three derives. This table mirrors the one in
-`crates/lumen-static/src/lib.rs`, and a check in `just static` fails if
+`crates/fulgurite/src/lib.rs`, and a check in `just static` fails if
 the two diverge, or if either omits an attribute a derive declares or a
 key its parser accepts — see the note at the end. It states no count: a
 count here was wrong twice.

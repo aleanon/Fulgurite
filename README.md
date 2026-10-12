@@ -1,4 +1,12 @@
-# lumen-static
+# fulgurite
+
+> **Renamed from `lumen-static` on 2026-10-12.** The crates, the
+> `FULGURITE_*` environment variables (formerly `LUMEN_*`) and the
+> hot-reload export symbols all changed with it; commits before the
+> rename use the old names. **Lumen** in these docs is still the
+> separate parent project this framework was measured against and
+> adopted from, and its crates (`lumen-core`, `lumen-style`, …) keep
+> their names.
 
 A GUI framework where the widget tree's **shape lives in the type** and
 only its values live in memory. A `#[derive(StaticTree)]` struct *is* the
@@ -7,7 +15,7 @@ frame allocates nothing, and a tree that could overflow the stack does
 not compile.
 
 ```rust
-use lumen_static::prelude::*;
+use fulgurite::prelude::*;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 12.0)]
@@ -60,18 +68,18 @@ just hot-demo      # swap a dylib under a running app and check state survived
 
 | crate | what it is |
 |---|---|
-| `lumen-static` | the core: widget traits, layout, style, text, events, the §6 escape hatches |
-| `lumen-static-macros` | `StaticTree`, `Reloadable`, `App` |
-| `lumen-static-shell` | the frame loop (`Host`) and a software renderer, headlessly testable |
-| `lumen-static-agent` | a JSON-RPC surface an agent drives the app through — the same input queue a user's mouse uses |
-| `lumen-static-reload` | the `extern "C"` shims for hot reload; separate because the core contains no `unsafe` |
+| `fulgurite` | the core: widget traits, layout, style, text, events, the §6 escape hatches |
+| `fulgurite-macros` | `StaticTree`, `Reloadable`, `App` |
+| `fulgurite-shell` | the frame loop (`Host`) and a software renderer, headlessly testable |
+| `fulgurite-agent` | a JSON-RPC surface an agent drives the app through — the same input queue a user's mouse uses |
+| `fulgurite-reload` | the `extern "C"` shims for hot reload; separate because the core contains no `unsafe` |
 
 ## Where to read next
 
 - **Building something with it** — the book, in `book/`: `just book-serve`
   to read it, or `book/src/index.md` to start from the file. Every snippet
   in it is included from a compiled example, not retyped.
-- **Writing a widget** — the crate docs for `lumen_static`: `Node` vs
+- **Writing a widget** — the crate docs for `fulgurite`: `Node` vs
   `Widget`, the seven attributes, and what the derive emits.
 - **Why any of it is shaped this way** — `docs/00-handoff-static-tree.md`,
   the design record. Sections carry DECIDED / SUPERSEDED / REFINED

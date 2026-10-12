@@ -1,4 +1,4 @@
-# Exported by lumen-static-widgets and driven by no inventory under
+# Exported by fulgurite-widgets and driven by no inventory under
 # scripts/drive/widgets/ -- M42/T42.5 (R18-F2, docs/plan-drive-identity.md
 # §2.4). scripts/check_drive_coverage.sh (in `just static`) refuses an
 # exported type that is in neither place.

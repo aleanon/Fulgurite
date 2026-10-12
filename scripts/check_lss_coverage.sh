@@ -7,7 +7,7 @@
 # A sheet counts as covered when one `.rs` file names it on an
 # `include_lss!` line, calls `load(`, and names it again on a line that is
 # not the `include_lss!` -- the path the load is given. The refusal cases
-# under crates/lumen-static-macros/tests/ui-lss/ (`fail_*`, `tree_fail_*`)
+# under crates/fulgurite-macros/tests/ui-lss/ (`fail_*`, `tree_fail_*`)
 # are not sheets the macro accepts; `tests/lss_parity.rs` compares load's
 # refusals with their pinned .stderr instead, and this counts them apart.
 #
@@ -49,7 +49,7 @@ for s in sorted(accepted):
               file=sys.stderr)
         rc = 1
 print(f"lss-coverage: {len(accepted)} sheets, {both_ways} compared both ways (bound: all {len(accepted)}); "
-      f"{len(refusals)} refusal cases, compared with their .stderr by crates/lumen-static-shell/tests/lss_parity.rs")
+      f"{len(refusals)} refusal cases, compared with their .stderr by crates/fulgurite-shell/tests/lss_parity.rs")
 if not accepted:
     print("lss-coverage: found no .lss sheet -- the listing is wrong, so the check proves nothing", file=sys.stderr)
     rc = 1

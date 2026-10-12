@@ -2,7 +2,7 @@
 """Client for the live-window agent endpoint.
 
 Newline-delimited JSON-RPC 2.0 over plain TCP — what `just tally` serves
-on LUMEN_AGENT_ADDR (default 127.0.0.1:9230). Stdlib only. The protocol
+on FULGURITE_AGENT_ADDR (default 127.0.0.1:9230). Stdlib only. The protocol
 and this client's shape are Lumen's, so its `verifying-apps` skill
 applies here with the method set below.
 
@@ -50,7 +50,7 @@ import socket
 import sys
 import time
 
-DEFAULT_ADDR = os.environ.get("LUMEN_AGENT_ADDR", "127.0.0.1:9230")
+DEFAULT_ADDR = os.environ.get("FULGURITE_AGENT_ADDR", "127.0.0.1:9230")
 
 
 def _split(addr: str) -> tuple[str, int]:

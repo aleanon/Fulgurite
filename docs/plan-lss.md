@@ -5,10 +5,10 @@
 > (`docs/results-lss.md` owns the numbers): **K1** zero bytes in all four
 > firmwares; **K2** +9 ms (tally) and +44 ms (showcase) of warm build, the
 > latter after a fix — the first cut's tree checks spent 88 of the 100 ms;
-> **K3** 0 `lumen_static_lss` symbols in a release window, 63 with
+> **K3** 0 `fulgurite_lss` symbols in a release window, 63 with
 > `reload`. Per task:
 > T61.0 — the gates committed red, against a stub macro;
-> T61.1 — `lumen-static-lss`: Lumen's lexer and parser, trimmed, spans
+> T61.1 — `fulgurite-lss`: Lumen's lexer and parser, trimmed, spans
 > kept, 21 refusals by name;
 > T61.2 — the lowering and property table (21 setters, held to `Patch` by
 > `scripts/check_lss_setters.sh`); `PartialEq` on `Rule` and `Patch`;
@@ -17,7 +17,7 @@
 > K2); kinds stay `W1010`'s, pinned;
 > T61.5 — `lss::load`, `Program::style_lss`/`style_lss_by`/`live_lss`,
 > parity over every `.lss` (`scripts/check_lss_coverage.sh`);
-> T61.6 — the tally's sheet is `app.lss`, `LUMEN_SHOT` byte-identical at
+> T61.6 — the tally's sheet is `app.lss`, `FULGURITE_SHOT` byte-identical at
 > −3, 0 and 7 on both paths; K3 gated;
 > T61.7 — the handoff, the book's styling chapter and gaps, the gaps doc,
 > this header. **Ten corrections and findings** are recorded below,
@@ -82,7 +82,7 @@ release binary (K3), or a build that no longer notices an edited `.lss`
   architecture and is not.
 - **Mistakes are found late today.** A selector that matches nothing is
   `W1010` from the agent's sheet lint, at run time
-  (`crates/lumen-static-agent/src/audit.rs`); a typo in a `Rule::new`
+  (`crates/fulgurite-agent/src/audit.rs`); a typo in a `Rule::new`
   id compiles.
 - **`Rule` and `Patch` do not implement `PartialEq`**, which the parity
   gate (T61.5) needs. Deriving it costs nothing at run time.
@@ -149,7 +149,7 @@ failure — a build that keeps the old sheet — is silent.
 The macro takes the tree type so it can emit, per `#id`:
 
 ```text
-const _: () = assert!(lumen_static::style::count_wid(<Tree as Widget>::SUB_TABLE, "card") > 0,
+const _: () = assert!(fulgurite::style::count_wid(<Tree as Widget>::SUB_TABLE, "card") > 0,
                       "app.lss:7:1: no #[widget_id(\"card\")] in Page");
 ```
 
@@ -175,7 +175,7 @@ way.
 
 ### 2.4 Run-time reading only in debug and `reload` builds
 
-`lumen_static_lss::load(path)` parses at run time with the same parser
+`fulgurite_lss::load(path)` parses at run time with the same parser
 and lowering, for a `Program::style_lss(path)` that re-reads the file
 when it changes. Its selectors need `&'static str`; a dev-only loader
 may leak them (bounded by edits made in a session), which is recorded,
@@ -203,7 +203,7 @@ Committed ignored (`red until T61.n`), with their red output:
 5. **Parity of the two paths (T61.5).** For every `.lss` in the repo,
    `include_lss!` and `load()` give equal `&[Rule]`.
 
-### T61.1 — `lumen-static-lss`: the lexer and parser
+### T61.1 — `fulgurite-lss`: the lexer and parser
 
 A new std crate, used by the proc macro at build time and by `load` in
 dev builds. The lexer and parser are adopted from Lumen's
@@ -253,7 +253,7 @@ sheets still compile. **Injection:** make the id assertion `>= 0`.
 
 **Gates:** T61.0 item 5 (parity of the two paths over every `.lss` in
 the repo); K3 — `nm` on a release build without `reload` finds no
-`lumen_static_lss` symbol. **Injection:** lower a colour differently in
+`fulgurite_lss` symbol. **Injection:** lower a colour differently in
 `load` — the parity gate names the rule.
 
 ### T61.6 — the pilot: the tally's sheet as `app.lss`
@@ -262,7 +262,7 @@ the repo); K3 — `nm` on a release build without `reload` finds no
 `examples/counter/app.lss`: the base rules, and `@sheet pos`, `@sheet
 neg`, `@sheet zero` for the sign, fed through `Program::style_by`.
 
-**Gates:** `LUMEN_SHOT` frames at −3, 0 and 7 byte-identical to the
+**Gates:** `FULGURITE_SHOT` frames at −3, 0 and 7 byte-identical to the
 hand-written sheet's; every recipe that runs the tally stays green
 (`just tally`, `tally-drive`, `live-gate`, the plants). **Injection:**
 swap two colours in `app.lss` — the shot comparison fails by pixel
@@ -308,7 +308,7 @@ Written before anything is built.
   sheets must add under 100 ms to a warm incremental build of the
   invoking crate, measured under `just bench-lock`, eight runs a side.
 - **K3 — nothing in release.** A release build without `reload` links
-  no `lumen_static_lss` symbol (`nm`).
+  no `fulgurite_lss` symbol (`nm`).
 
 Risks:
 
@@ -339,7 +339,7 @@ Risks:
   `SHEET` — came out 780 `.text` bytes apart at equal sizes. A feature
   changes the crate's `-C metadata`, so every mangled name changes, and
   the linker lays same-sized functions out in a different order. The
-  choice is now a cfg the fixture's `build.rs` sets from `LUMEN_SHEET=lss`,
+  choice is now a cfg the fixture's `build.rs` sets from `FULGURITE_SHEET=lss`,
   which leaves the metadata alone: the two builds of `firmware` and
   `firmware_bind` are then byte-identical, and the stub's empty sheet
   shows as the only difference (−396 B `.rodata` in the two firmwares
@@ -375,14 +375,14 @@ Risks:
   `#select-menu`, `#tooltip-content`), which are in `SUB_TABLE` and so
   pass — and it is K2's larger arm.
 - **2026-09-28, T61.5 — "behind `debug_assertions`" cannot be written in
-  the shell.** The workspace's dev profile builds `lumen-static-shell` with
+  the shell.** The workspace's dev profile builds `fulgurite-shell` with
   `debug-assertions = false` (for the rasteriser's speed), so a
   `cfg(debug_assertions)` there is false in every debug build — the first
   cut of `lss` compiled out of exactly the builds it was for, and the
   parity test could not import it. M36 met the same trap
   (`recover.rs`'s module note). The decision is the window's now:
   `Program::style_lss`/`style_lss_by` keep the compiled sheet *and* the
-  path, and `lumen-static-winit`'s `run` calls `Program::live_lss` under
+  path, and `fulgurite-winit`'s `run` calls `Program::live_lss` under
   its own `cfg(any(debug_assertions, feature = "reload"))`. The reader is
   compiled into the shell unconditionally and reached only from there, so
   a release window without `reload` drops it at link time — which is what

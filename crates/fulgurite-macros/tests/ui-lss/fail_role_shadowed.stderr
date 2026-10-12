@@ -1,0 +1,5 @@
+error: fail_role_shadowed.lss:2:5: `@tokens` name `accent` shadows the palette role `$accent`: a colour written through it would stop following the palette -- rename the token (docs/plan-lss.md §2.1)
+  --> tests/ui-lss/fail_role_shadowed.rs:13:55
+   |
+13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_role_shadowed.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^

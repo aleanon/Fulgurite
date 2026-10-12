@@ -10,8 +10,8 @@ publish = false
 # (`docs/plan-tally-slim.md`): a different application that shared four
 # palette constants with the tally, and nothing else.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
 # `agent` for `Host::sheet_findings`: the fixture asserts every rule in
 # its sheet does something (M25/T25.2).
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "agent"] }

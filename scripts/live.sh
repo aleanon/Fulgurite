@@ -15,12 +15,12 @@
 #   <name>: pass | FAIL (exit N) | skip(77) -- <reason>
 #
 # and a total. It FAILS on any FAIL. It also fails on any skip -- **a skip
-# is not a pass** -- unless LUMEN_ALLOW_SKIP=1, in which case it prints
+# is not a pass** -- unless FULGURITE_ALLOW_SKIP=1, in which case it prints
 # `N skipped (allowed)` and exits 0. With no FAIL and a refused skip it
 # exits 77, so an aggregate above this one (`just ci`) can tell "did not
 # run" from "ran and failed".
 #
-# Ports: the launcher picks free ones from LUMEN_LIVE_PORT_RANGE when set.
+# Ports: the launcher picks free ones from FULGURITE_LIVE_PORT_RANGE when set.
 # Logs: target/live/aggregate/<name>.log, one per script, overwritten.
 set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
@@ -97,10 +97,10 @@ done
 echo "live: $n scripts -- $pass passed, $fail failed, $skip skipped"
 [ "$fail" -eq 0 ] || exit 1
 if [ "$skip" -gt 0 ]; then
-    if [ "${LUMEN_ALLOW_SKIP:-}" = 1 ]; then
+    if [ "${FULGURITE_ALLOW_SKIP:-}" = 1 ]; then
         echo "live: $skip skipped (allowed)"
     else
-        echo "live: $skip skipped -- a skip is not a pass; LUMEN_ALLOW_SKIP=1 accepts it" >&2
+        echo "live: $skip skipped -- a skip is not a pass; FULGURITE_ALLOW_SKIP=1 accepts it" >&2
         exit 77
     fi
 fi

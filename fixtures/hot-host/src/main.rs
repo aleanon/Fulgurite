@@ -25,7 +25,7 @@ use libloading::{Library, Symbol};
 // both sides referenced twelve byte strings each with nothing checking
 // they agreed, so a rename was a runtime `unwrap` at load time in the
 // middle of a dylib swap (`docs/plan-review-fixes.md` F6.7).
-use lumen_static::reload::symbols;
+use fulgurite::reload::symbols;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Panics the **loader's** hook saw — M36/T36.4. A library panic must
@@ -269,7 +269,7 @@ fn main() {
     //
     // `Selector::Id` holds a `&'static str`. Read v1's address and text
     // now, keep the address, and read the same address again after the
-    // swap. `crates/lumen-static-shell/tests/reload_sheet.rs` proves the
+    // swap. `crates/fulgurite-shell/tests/reload_sheet.rs` proves the
     // in-process half — that a host which is not re-asked keeps applying
     // the old sheet — and says it cannot prove this one, which needs two
     // real images.

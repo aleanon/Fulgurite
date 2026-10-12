@@ -7,7 +7,7 @@
 
 ## The claim under test
 
-`crates/lumen-static-agent/src/audit.rs`'s module doc adopts three scars
+`crates/fulgurite-agent/src/audit.rs`'s module doc adopts three scars
 from Lumen's own post-mortem rather than re-earning them. The third:
 *"Lumen's `lint()` was re-shaping every text node and deep-cloning the
 tree per call. Here nothing allocates a snapshot at frame time."*
@@ -80,7 +80,7 @@ measured separately:
 ## Verdict
 
 **The audit is now inert with respect to the frame** —
-`crates/lumen-static-agent/tests/audit_is_inert.rs` asserts an idle frame
+`crates/fulgurite-agent/tests/audit_is_inert.rs` asserts an idle frame
 measures nothing before and after `frame_done`, ten times over, and that
 a real change still re-measures exactly one label. Those three tests fail
 on the parent commit with 2 measurements where 0 is correct.
@@ -101,7 +101,7 @@ machine-independent, and `benches --bin agent` prints it. The µs figures
 are not portable and should not be gated on.
 
 **It is asserted since M48/T48.8** (R14-F4), by
-`crates/lumen-static-agent/tests/alloc_frame_done.rs` in `just test`,
+`crates/fulgurite-agent/tests/alloc_frame_done.rs` in `just test`,
 and **the table's "0" above had stopped being true**: the bench printed
 4.00 per call and nothing read it. `live_nodes` built an identity `Vec`
 every call and the journal and the auditor each built their own `live`
@@ -118,7 +118,7 @@ An agent build ran `frame_done` — the journal's diff and the audit, the
 cost measured above — on **every frame of every window**, whether or not
 an address was set (R14-F8); `Config::agent`'s `None` was inert only
 without the feature. The window now journals only when an endpoint was
-configured. Counted by `crates/lumen-static-winit/tests/agent_transport.rs`
+configured. Counted by `crates/fulgurite-winit/tests/agent_transport.rs`
 over a spinning window's first three frames:
 
 | | journaled / frames |
@@ -127,5 +127,5 @@ over a spinning window's first three frames:
 | an address | 3 / 3 |
 
 And a build without the feature links none of it: `just agent-symbols`
-counts 0 `lumen_static_agent` and 0 `serde_json` symbols in a release
+counts 0 `fulgurite_agent` and 0 `serde_json` symbols in a release
 showcase, against 66 and 192 with `agent` (the positive control).

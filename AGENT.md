@@ -195,7 +195,7 @@ are independent of each other**, so either may go first:
   "green both ways" below was re-run at its own SHA by M42/T42.8, on the
   binary each leg launched: all legs pass, `docs/results-drive-identity.md`.)*
   **T27.4 shipped
-  2026-09-19** — `Card`, `Toast`, `Tooltip` in `lumen-static-widgets`,
+  2026-09-19** — `Card`, `Toast`, `Tooltip` in `fulgurite-widgets`,
   and three more defects the drive found: a `Repeat` handled no wheel at
   all (so **a `Select` with more options than fit could not be scrolled
   by anyone**), it measured its viewport from the limits it was offered
@@ -206,7 +206,7 @@ are independent of each other**, so either may go first:
   strategies. **T27.5 shipped 2026-09-19** — `NumberInput` (the ask's
   addition, built against the plan's own eleven-row inventory),
   `RangeSlider`, `SearchField`; plus two more findings: no widget in
-  `lumen-static-widgets` published anything to the agent (the crate had
+  `fulgurite-widgets` published anything to the agent (the crate had
   no `observe` feature), and **a wrapper must loosen a child's limits to
   let it shrink** — the maximum is inherited, the minimum is not.
   Twelve widgets, 33 actions, green both ways.
@@ -392,8 +392,8 @@ are independent of each other**, so either may go first:
   M33 makes it possible. Paint culling stays shelved on §4's condition.
 
 - ~~**M30 — one crate owns the widgets.**~~ **DONE 2026-09-21.** Every
-  user-placeable widget moved from `lumen-static` to
-  `lumen-static-widgets`: `Label`, `Button`, `Fixed`, `Spacer`, the
+  user-placeable widget moved from `fulgurite` to
+  `fulgurite-widgets`: `Label`, `Button`, `Fixed`, `Spacer`, the
   three toggles, `Slider`, `TextInput`, `TextArea`, `Image`,
   `ScrollView`, `Select`, `Popup`, `Glass`. No plan doc; the reasoning
   is in the commit and in `docs/results-widget-crate.md`.
@@ -408,21 +408,21 @@ are independent of each other**, so either may go first:
   name whichever crate it lives in.
 
   **What stayed is not widgets**: `Either`, `List`, `Dyn` and `Repeat`
-  are what the *derive* builds, and `lumen_static::ops` keeps the layout
+  are what the *derive* builds, and `fulgurite::ops` keeps the layout
   helpers derive-generated code calls. Splitting `ops` in two closes
   `docs/plan-review-fixes.md` **F6.1**, which that module's own rustdoc
   had named as "the honest end state" and deferred for churn.
 
   Three things worth carrying forward. **The precondition was a latent
-  defect**: `lumen-static-widgets` advertised an `alloc` tier and could
+  defect**: `fulgurite-widgets` advertised an `alloc` tier and could
   never build `no_std`, because its dependency line omitted
   `default-features = false` — and the failure named *core* ("std is
-  required by lumen_static"), which is why an advertised tier went
+  required by fulgurite"), which is why an advertised tier went
   unexercised. **The derive needed no change at all**, because it had
   never named a concrete widget type. And **a feature seam only a live
   gate could find**: a widget's `observe` impl is gated on the widgets
   crate's feature, not core's, so an agent build that forgets
-  `lumen-static-widgets/observe` reports every label as
+  `fulgurite-widgets/observe` reports every label as
   `GenericContainer` with no value — caught by `counter-window --drive2`,
   not by any unit test.
 
@@ -517,7 +517,7 @@ found" section rather than silently replacing itself.
   (T36.0–T36.5): a screen with
   the message, `file:line:col` and the nearest application frame. It is
   compiled in for debug builds, and for **release builds with
-  `lumen-static-winit/reload`**. One guarded entry covers every path,
+  `fulgurite-winit/reload`**. One guarded entry covers every path,
   the agent's `Live::pump` included. Input is swallowed while the screen
   is up, and recovery is an explicit retry: R, or `app.retry`.
 - ~~**M37 — `docs/plan-window-reload.md`**~~ — **DONE 2026-09-24**,
@@ -688,7 +688,7 @@ found" section rather than silently replacing itself.
     one-commit copy (fixed in `11c7aa2`). One run was restarted after a
     rustc hung 79 minutes on `x11_dl` (the machine's instability). K84b
     fired on its third condition (GStreamer dev libraries absent), so
-    `lumen-static-video` is deferred; it reopens when the owner installs
+    `fulgurite-video` is deferred; it reopens when the owner installs
     `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev`.
     **M85 and M86 DONE**, `just ci-verify 262643a` green (28 steps, 0
     failed, 0 skipped). M85's run at `73f174c` failed `stack`: T85.1's
@@ -744,7 +744,7 @@ found" section rather than silently replacing itself.
     `just ci-verify`.
   - **Owner decisions, binding (index header):** D1 no new crate, four
     moves; D2 a drawn menu bar on Linux, native `muda` deferred;
-    D3 `shader` gated at every use site (`cfg(lumen_shader)` outside
+    D3 `shader` gated at every use site (`cfg(fulgurite_shader)` outside
     the core); D4 `Style` 84 / `NodeState` 88 at most; D5 the firmware
     ceiling is **80 KB** (raised from 64 KB; 19,998 B left on
     `firmware_interactive`); D6 `text_spaced` and `fills` are accepted
@@ -898,7 +898,7 @@ found" section rather than silently replacing itself.
 
 Unsequenced: ~~`docs/plan-harness.md`.~~ — **M12 DONE 2026-09-20.**
 T12.3 and T12.4 landed 2026-09-04; T12.1 (a locator and expectation API,
-`lumen_static_agent::harness::TestApp`) and T12.2 (golden images with a
+`fulgurite_agent::harness::TestApp`) and T12.2 (golden images with a
 diff artifact) on 2026-09-20. `docs/results-harness.md` owns the
 numbers. The premise held — its substrate was already finished, so it
 stayed cheap: what was missing was ergonomics and artifacts, and that is

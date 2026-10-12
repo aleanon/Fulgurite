@@ -5,5 +5,5 @@
 CHECK='./scripts/check_lss_setters.sh'
 EXPECT="Patch setters with no .lss declaration: \['hover_dim'\]"
 plant() {
-    drop_lines crates/lumen-static-lss/src/lower.rs 'name: "hover-dim"'
+    drop_lines crates/fulgurite-lss/src/lower.rs 'name: "hover-dim"'
 }

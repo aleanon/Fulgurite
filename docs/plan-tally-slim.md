@@ -10,7 +10,7 @@
 > - **T60.3** — the tally runs on `Program::run`; `Win` measures input
 >   latency, and `Local`'s audit measures with its face (a defect every
 >   `Program` window had).
-> - **T60.4** — `LUMEN_SHOT`/`LUMEN_PROFILE`, `Local` drives through
+> - **T60.4** — `FULGURITE_SHOT`/`FULGURITE_PROFILE`, `Local` drives through
 >   `Session::agent` and `Local::live`, `examples/form`.
 > - **T60.5** — every recipe green; `examples/counter-window` 1,383 → 514
 >   lines, its window loop 538 → 0.
@@ -18,7 +18,7 @@
 > **Written 2026-09-27.** From the coordinator's audit of
 > `examples/counter-window`: about 540 of its 1,383 lines
 > (`src/window.rs` 399, `src/agent_socket.rs` 139) re-implement what
-> `lumen_static_winit`'s `Program::run` and the shell's `Local`/`Live`
+> `fulgurite_winit`'s `Program::run` and the shell's `Local`/`Live`
 > already do. Two things genuinely need the hand-written loop, and both
 > are framework gaps, so the milestone is **two hooks, then a
 > migration**.
@@ -40,7 +40,7 @@ and prints the measured quantity beside its bound.*
    `Everything` (M25/T25.0's shape: a correct frame under the diagnostic
    and a stale one under the default).
 3. **Nothing the drives use is lost.** The default agent address
-   (127.0.0.1:9230, `LUMEN_AGENT_ADDR` overriding), `app.quit`, every
+   (127.0.0.1:9230, `FULGURITE_AGENT_ADDR` overriding), `app.quit`, every
    agent method the live gate calls, `ui.screenshot` with and without
    `source: "surface"`, input latency in `app.perf`, and the `a11y`,
    `simd` and `threads` passthroughs.
@@ -55,13 +55,13 @@ and prints the measured quantity beside its bound.*
   click counting, modifiers and cursor, the agent socket's `UserEvent`
   and `Rpc`, `app.quit`, `FrameTiming`/`frame_done` with input latency,
   and the a11y adapter. Every one of these is also in
-  `crates/lumen-static-winit/src/lib.rs`'s `Win`, **except input
+  `crates/fulgurite-winit/src/lib.rs`'s `Win`, **except input
   latency**: `frame_times` there sets `input_latency_ns: None` and says
   "`counter-window` measures it itself". `ui_check.py latency` fails on
   an empty latency list, so the migration must bring that into `Win`
   first.
 - `agent_socket.rs`'s `Live` is a copy of
-  `crates/lumen-static-shell/src/session.rs`'s generic `Live`, plus a
+  `crates/fulgurite-shell/src/session.rs`'s generic `Live`, plus a
   sign re-cascade in its `pump`.
 - **App-level keys** (`WinApp::app_keys`): Up and Down nudge the count,
   Escape quits. Run on every key press *before* it is posted, whether or
@@ -73,7 +73,7 @@ and prints the measured quantity beside its bound.*
   "card")` when `count.n.signum()` changes. `Program::style` is re-asked
   only at build and on `adopt`/`restore`/`reload` (`Host::reasked`).
 - `headless.rs`: `--headless path count`, `--profile` via
-  `LUMEN_PROFILE`, `--drive` (clicks by author id through
+  `FULGURITE_PROFILE`, `--drive` (clicks by author id through
   `ui.getLayout`, then `Host::click`) and `--drive2` (M12's `TestApp`,
   over a hand-written `AgentHost` in the example). `form.rs`: `--form`,
   the M8/M9 widget fixture that `just fixtures` runs — a different
@@ -159,7 +159,7 @@ The API surface lands **without its mechanism**: the outcome enum (§2.1),
 but never calls either. So the gates compile and fail for the reason
 they exist, and commit as `#[ignore = "red until T60.k: …"]`.
 
-- `crates/lumen-static-shell/tests/program_hooks.rs`:
+- `crates/fulgurite-shell/tests/program_hooks.rs`:
   - an unconsumed Up reaches the hook, `pump` answers `handled`, and the
     label's new text is **painted** under `Boundaries` — pixels equal to
     an `Everything` host's and different from the frame before (the
@@ -172,7 +172,7 @@ they exist, and commit as `#[ignore = "red until T60.k: …"]`.
   - a click that flips the sign repaints the value's colour **on the
     frame the click lands**, under `Boundaries`, counted in pixels of
     the new colour inside the value's box.
-- `crates/lumen-static-shell/tests/agent_hooks.rs` (`live-agent`): the
+- `crates/fulgurite-shell/tests/agent_hooks.rs` (`live-agent`): the
   same two through `Session::agent` — `input.key` reaches the hook, and
   an `input.click` that flips the sign is recoloured in the frame its
   reply names, read back with `ui.screenshot` from a headless screen.
@@ -239,14 +239,14 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 ## T60.4 — the headless half
 
 > **DONE 2026-09-27.** `--headless` is gone: the count is the first
-> argument, captured by the boot, and `LUMEN_SHOT=<path>` renders it —
+> argument, captured by the boot, and `FULGURITE_SHOT=<path>` renders it —
 > byte-identical to the old `--headless` at counts 0, 12 and −7.
 > `--drive` sends `input.click` through `Session::agent` on a
 > `Local::from_program` session with an `Offscreen` screen, and requires
 > `handled`; `--drive2` runs `TestApp` over `Local::live`, the shell's
-> adapter. Both now run in `just fixtures`. `LUMEN_PROFILE` is the
-> window crate's (`lumen_static_shell::profile`), with
-> `LUMEN_PROFILE_CLICK=inc` giving the same damaged region as the old
+> adapter. Both now run in `just fixtures`. `FULGURITE_PROFILE` is the
+> window crate's (`fulgurite_shell::profile`), with
+> `FULGURITE_PROFILE_CLICK=inc` giving the same damaged region as the old
 > profile (9,152 px, `[176, 143.5, 264, 247.5]`). `--form` is
 > `examples/form`, whose frame is byte-identical to `--form`'s.
 >
@@ -257,14 +257,14 @@ the comparison — the sign gate fails with 0 pixels of the new colour.
 > before each pump, so it is a whole frame's layout and paint (4 µs on
 > the tally, debug build).
 
-- `--headless` becomes `LUMEN_SHOT=<path>` with the count as the first
+- `--headless` becomes `FULGURITE_SHOT=<path>` with the count as the first
   argument, read in boot.
 - `--drive` drives `Local::from_program(..)` through `Session::agent`,
   with a headless `Screen` the shell provides.
 - `--drive2` drives `TestApp` over the shell's `Live`, through a
   `Local::live(screen)` accessor — the adapter lives in the shell.
-- `LUMEN_PROFILE` becomes the framework's, beside `LUMEN_SHOT`; the
-  partial-frame half clicks the node named by a `LUMEN_PROFILE_*` variable.
+- `FULGURITE_PROFILE` becomes the framework's, beside `FULGURITE_SHOT`; the
+  partial-frame half clicks the node named by a `FULGURITE_PROFILE_*` variable.
 - `--form` moves to `examples/form`, which `just fixtures` runs.
 
 ## T60.5 — verify and document

@@ -6,20 +6,20 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload" }
+fulgurite = { path = "../../crates/fulgurite", features = ["reload"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload" }
 libloading = "0.8"
 # M81/T81.1: compare with the shell's fields too (`session::abi_fields`),
 # as a window's loader does; `shaping` builds the loader with the shell's
 # shaper, for the accepting half of the pair.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"], optional = true }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "reload"], optional = true }
 
 [features]
-shell = ["dep:lumen-static-shell"]
-shaping = ["shell", "lumen-static-shell/shaping"]
+shell = ["dep:fulgurite-shell"]
+shaping = ["shell", "fulgurite-shell/shaping"]
 # M83/T83.3: the two shader entries (`session::abi_fields`). `shader-core`
 # turns the core's `shader` on with the shell's off -- the build where only
-# `lumen_shader` (the core's variant set, read through the shell's
+# `fulgurite_shader` (the core's variant set, read through the shell's
 # `build.rs`) tells it apart; `shader` turns the shell's on as well.
-shader-core = ["shell", "lumen-static/shader"]
-shader = ["shader-core", "lumen-static-shell/shader"]
+shader-core = ["shell", "fulgurite/shader"]
+shader = ["shader-core", "fulgurite-shell/shader"]

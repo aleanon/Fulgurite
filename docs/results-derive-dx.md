@@ -59,7 +59,7 @@ M55/T55.5.
 
 §2.3 decided W1003 by probe, after T55.5 removed negative padding, over
 the three candidate constructs, each in a 200 × 100 window
-(2026-09-27, a scratch test in `crates/lumen-static-agent`, not kept):
+(2026-09-27, a scratch test in `crates/fulgurite-agent`, not kept):
 
 | construct | escapes its parent? |
 |---|---|

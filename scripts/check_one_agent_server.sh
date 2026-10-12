@@ -5,7 +5,7 @@
 # because the socket loop had been copied into examples/counter-window.
 # Fixing one would have left the other open. So the workspace has exactly
 # one call that binds a TCP listener outside tests, and it is in
-# crates/lumen-static-agent/src/transport.rs (docs/plan-agent-transport.md).
+# crates/fulgurite-agent/src/transport.rs (docs/plan-agent-transport.md).
 #
 # Scans every .rs under crates/, examples/, fixtures/ and benches*, except
 # tests/ directories (a test binds its own listener to play a client
@@ -13,7 +13,7 @@
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-want="crates/lumen-static-agent/src/transport.rs"
+want="crates/fulgurite-agent/src/transport.rs"
 sites=()
 while IFS= read -r f; do
     while IFS= read -r hit; do
@@ -25,7 +25,7 @@ done < <(find crates examples fixtures benches* -name '*.rs' -not -path '*/targe
 for s in "${sites[@]}"; do echo "one-agent-server: listener bound at $s"; done
 if [ "${#sites[@]}" -ne 1 ] || [[ "${sites[0]}" != "$want":* ]]; then
     echo "one-agent-server: expected exactly one listener bind, in $want; found ${#sites[@]} (above)." >&2
-    echo "  Serve through lumen_static_agent::transport::serve_addr instead of a second loop." >&2
+    echo "  Serve through fulgurite_agent::transport::serve_addr instead of a second loop." >&2
     exit 1
 fi
 echo "one-agent-server: 1 listener bind, in the transport"

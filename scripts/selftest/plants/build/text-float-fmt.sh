@@ -6,7 +6,7 @@
 CHECK='./scripts/check_text.sh'
 EXPECT='firmware_cascade: float-fmt symbols [1-9][0-9]* \(bound 0\)'
 plant() {
-    replace crates/lumen-static/src/desc.rs \
+    replace crates/fulgurite/src/desc.rs \
         'w: crate::num::clamp(s.w, self.min_w, self.max_w),' \
         'w: s.w.clamp(self.min_w, self.max_w),'
 }

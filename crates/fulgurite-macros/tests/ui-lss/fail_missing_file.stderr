@@ -1,0 +1,5 @@
+error: include_lss!: cannot read `no_such.lss` ($DIR/tests/ui-lss/no_such.lss): No such file or directory (os error 2) -- the path is relative to the file that invokes the macro
+  --> tests/ui-lss/fail_missing_file.rs:13:55
+   |
+13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "no_such.lss");
+   |                                                       ^^^^^^^^^^^^^

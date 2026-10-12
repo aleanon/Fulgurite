@@ -80,7 +80,7 @@ one left before handing it out, and every frame it returns is a whole
 picture:
 
 ```text
-{{#include ../../crates/lumen-static-shell/src/image.rs:composite}}
+{{#include ../../crates/fulgurite-shell/src/image.rs:composite}}
 ```
 
 What the feature costs — nine crates, and about 200 KB in a program that
@@ -108,7 +108,7 @@ fraction reaches the application's `on_seek` through `Node::take_action`
 runs only on activation and a captured release activates nothing:
 
 ```text
-{{#include ../../crates/lumen-static-widgets/src/video.rs:seek}}
+{{#include ../../crates/fulgurite-widgets/src/video.rs:seek}}
 ```
 
 A drag moves the knob without seeking, and its release seeks: a seek

@@ -3,7 +3,7 @@
 CHECK='./scripts/check_attr_table.sh'
 EXPECT='missing: .*planted_key \(rustdoc\)'
 plant() {
-    replace crates/lumen-static-macros/src/lib.rs \
+    replace crates/fulgurite-macros/src/lib.rs \
         '} else if meta.path.is_ident("fuse") {' \
         '} else if meta.path.is_ident("fuse") || meta.path.is_ident("planted_key") {'
 }

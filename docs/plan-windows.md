@@ -34,11 +34,11 @@ factory backend treats the shared device.*
     and the loader hold only these numbers. Nothing holds a `fn` pointer
     into a library across a frame (rule 3, `docs/events-decision.md`
     :18–21, :124), and nothing holds a winit `WindowId` outside
-    `lumen-static-winit` (P21).
+    `fulgurite-winit` (P21).
   - Cost: 0 B per node. The key and index live in the loader's
     per-window state.
 - **M89 adds five `Request` variants and four `Answer` variants to
-  S1.** They live where S1 puts `Request` (`lumen-static`, behind
+  S1.** They live where S1 puts `Request` (`fulgurite`, behind
   `std`, as `spawn::Outbox` is).
   - Requests:
     - `OpenWindow { program: u16, tag }`;
@@ -60,7 +60,7 @@ factory backend treats the shared device.*
     the size. That is `CAPACITY × Δ` per application state that declares
     a queue, not per node.
   - The firmware links none of it. `fixtures/embedded` builds
-    `lumen-static` without `std`. **The firmware row is an `nm` count,
+    `fulgurite` without `std`. **The firmware row is an `nm` count,
     not a `.text` delta** (K4 as amended by the index's second review
     M26; M88/T88.3's shape). A `.text` diff would be a bound that
     cannot move, as `docs/results-tasks.md` T28.0 records for the inbox
@@ -68,7 +68,7 @@ factory backend treats the shared device.*
     `scripts/lib/firmware.sh` binary and print 0 symbols matching
     `OpenWindow|CloseWindow|Posted|WindowOpened|OpenProgram` (bound 0).
     The positive control is the same count on the
-    `lumen-static-shell/tests/window_programs.rs` test binary, which
+    `fulgurite-shell/tests/window_programs.rs` test binary, which
     must be > 0. **Injection** (M88/T88.3's, with M89's variants):
     remove `cfg(feature = "std")` from `Requests` and push a
     `Request::OpenWindow` from the embedded fixture's handler. The
@@ -76,14 +76,14 @@ factory backend treats the shared device.*
     `Style`, `NodeState` (at their sizes at landing, printed;
     `docs/plan-iced-roadmap.md` §2.1), `Cmd` 60 B and `Event` 16 B do
     not change. They stay asserted by
-    `crates/lumen-static/tests/cursor.rs:32–33`,
-    `crates/lumen-static/tests/focus.rs:203–204`,
+    `crates/fulgurite/tests/cursor.rs:32–33`,
+    `crates/fulgurite/tests/focus.rs:203–204`,
     `fixtures/embedded/src/lib.rs`:409, :415 and :416 (the `const`
     asserts on `NodeState`, `Style` and per-node RAM), `tests/glass_cmd.rs`
     and `tests/gesture.rs`.
     Cross-window data is an `Answer`, never an `Event`.
 - **A window program is a table the program carries, resolved in the
-  build that is loaded.** All of this is in `lumen-static-shell`,
+  build that is loaded.** All of this is in `fulgurite-shell`,
   `program.rs`.
   - `pub trait OpenProgram` is object-safe, with three methods:
     - `spec(&mut self) -> WindowSpec`, where `WindowSpec` is width,
@@ -94,14 +94,14 @@ factory backend treats the shared device.*
   - It is implemented for `Program<A, I>`, where `A: WindowApp`.
     `WindowApp` is `App + Reloadable` under `reload` and `App` without
     it. The precedent is `impl Run for Program` under `hot`
-    (`lumen-static-winit/src/lib.rs`).
+    (`fulgurite-winit/src/lib.rs`).
   - `pub type WindowTable = fn(u16) -> Option<Box<dyn OpenProgram>>` is
     set with `Program::windows(table)` and read with
     `Program::window_program(i)`.
   - The table is an ordinary `fn` that the *program* holds. The loader
     only ever calls its **own** statically linked copy, which is loader
     code and is never swapped. A library's copy is reached only through
-    `lumen_boot(index, …)` of the build that is loaded (T89.7), so no
+    `fulgurite_boot(index, …)` of the build that is loaded (T89.7), so no
     library pointer is held (A3, P22, M5, M6).
   - **Cost, recorded rather than hidden:** `session(recover)`
     instantiates both `Local<_, Recovering>` and `Local<_, Crashing>`
@@ -116,7 +116,7 @@ factory backend treats the shared device.*
     - Reopen condition: a request for multi-window in a release build
       where M52's bytes matter.
 - **`Win` becomes shared state plus a `Vec<WindowSlot>`**
-  (`lumen-static-winit`).
+  (`fulgurite-winit`).
   - A slot holds the key, the program index, the opener's
     `(key, tag)`, and `Arc<Window>`, `Box<dyn Backend>`,
     `Box<dyn Session>`, the images, the cursor, `ClickCounter`, `Mods`,
@@ -176,7 +176,7 @@ factory backend treats the shared device.*
   one port** (one listener).
   - Absent means the **primary**: window 1, or for a daemon session 0.
     It is never the focused window, because every live script opens
-    windows with `LUMEN_WINDOW_INACTIVE=1` (`scripts/drive_window.sh`,
+    windows with `FULGURITE_WINDOW_INACTIVE=1` (`scripts/drive_window.sh`,
     P23).
   - An unknown or closed key is `-32602`, and the error names
     `app.windows`.
@@ -241,12 +241,12 @@ factory backend treats the shared device.*
     it.
 - **Hot reload boots every window from the build that is loaded (P22,
   M6).**
-  - `export_program!`'s `lumen_boot` takes an index:
-    `lumen_boot(index: u16, saved, len)`. 0 boots `program()`, and `n`
+  - `export_program!`'s `fulgurite_boot` takes an index:
+    `fulgurite_boot(index: u16, saved, len)`. 0 boots `program()`, and `n`
     boots `program().window_program(n)?.hot(saved)`. An unknown `n`
     returns null, with "no window program n" in `hot_take_panic`.
   - `hot::boot`, `hot::save`, `unpack` and `RESERVED` move from
-    `lumen-static-reload` into `lumen-static-shell::session` under the
+    `fulgurite-reload` into `fulgurite-shell::session` under the
     shell's `reload` feature. `OpenProgram::hot` must reach them, and
     the shell cannot depend on the reload crate. The reload crate
     re-exports them.
@@ -304,7 +304,7 @@ factory backend treats the shared device.*
   is their forward gate (S1), so there is no stamp-change test or
   forward-dropping injection (C4, G1).
 - **M89b: one wgpu device, a surface per window** (P25, K89a, K89b).
-  - `lumen-static-wgpu` splits `Gpu` into two parts:
+  - `fulgurite-wgpu` splits `Gpu` into two parts:
     - `GpuContext`, shared by `Rc`: the instance, adapter, device,
       queue, adapter name, the format-independent pipelines, bind-group
       layouts and samplers;
@@ -373,7 +373,7 @@ factory backend treats the shared device.*
     - `Panes` goes into `scripts/doc-identifiers.allow` as "removed by
       M89/T89.1" wherever docs still cite it (`Pane` stays live as a
       test enum);
-    - `crates/lumen-static-winit/tests/inval_param.rs` is rewritten
+    - `crates/fulgurite-winit/tests/inval_param.rs` is rewritten
       against `WindowSlot`'s strategy-free session;
     - `examples/wake-gate` follows `Wake(u32)`.
   - **Gates:**
@@ -419,7 +419,7 @@ factory backend treats the shared device.*
     per-slot render font (X2, second review), the redraw request on an
     answered slot (A10, second review; gated in T89.4), and
     secondary windows offset by +40, +40 px per key under
-    `LUMEN_WINDOW_POS`.
+    `FULGURITE_WINDOW_POS`.
   - `examples/two-windows` is a list window (program 0) whose rows open
     a detail window (program 1). The detail has its own counter
     `#detail-bump`, which exists in no other tree. There is an
@@ -435,7 +435,7 @@ factory backend treats the shared device.*
       recovery-symbol count of `examples/two-windows` (the
       `OpenProgram` cost).
   - **Gates:**
-    1. Headless, `lumen-static-shell/tests/window_programs.rs`:
+    1. Headless, `fulgurite-shell/tests/window_programs.rs`:
        `window_program(1)` boots a session whose `title()` is the
        detail's, and `window_program(9)` is `None`, both printed.
        **Injection:** the table ignores its index, so 9 returns `Some`.
@@ -492,7 +492,7 @@ factory backend treats the shared device.*
     anchor).
   - **Gates:**
     - Headless, the pure `route_requests(from, requests, slots)` in
-      `lumen-static-winit` (unit tests in `lib.rs`): a post reaches its
+      `fulgurite-winit` (unit tests in `lib.rs`): a post reaches its
       target key with `from` set to the sender, and a post to a closed
       key is dropped and counted. **Injection:** `from` set to the
       target. The unit test names it.
@@ -571,15 +571,15 @@ factory backend treats the shared device.*
       A21). The process exits before tick 40, and the gate names the
       lost port.
 - **T89.7 — hot reload with several windows.**
-  - This task lands the indexed `lumen_boot`, `boot_hot` moved into the
+  - This task lands the indexed `fulgurite_boot`, `boot_hot` moved into the
     shell, `Reloader::open` and `Reloader::swap_all`, and a swap step
     taken for every slot and the windowless session.
   - `fixtures/hot-window` gains program 1, a `#[reload(keep)]` panel
     count with an `// EDIT panel` format line, and an `everything`
     feature.
-  - `fixtures/miri-reload` follows the new `lumen_boot` signature.
+  - `fixtures/miri-reload` follows the new `fulgurite_boot` signature.
   - **Docs:**
-    - `lumen_static::reload::symbols::BOOT` rustdoc;
+    - `fulgurite::reload::symbols::BOOT` rustdoc;
     - `export_program!` rustdoc;
     - `book/src/hot-reload.md`, keeping `fixtures/hot-window`'s
       `program` anchor live;
@@ -620,8 +620,8 @@ factory backend treats the shared device.*
 - **T89.9 (M89b) — gates that compile today.** After M89a these run
   with one context per window:
   - `just resume-drive` gains a `two-windows-gpu` leg: a debug
-    `examples/two-windows` with `LUMEN_BACKEND=gpu` and
-    `LUMEN_TEST_RESUME=4000`, each window read back with `xwd -id`.
+    `examples/two-windows` with `FULGURITE_BACKEND=gpu` and
+    `FULGURITE_TEST_RESUME=4000`, each window read back with `xwd -id`.
     Differing pixels per window are printed against 0.1%, and the leg
     also records that two backends were made per resume (G35);
   - `docs/results-windows.md` records each window's `VmRSS` delta: one
@@ -732,7 +732,7 @@ feature, so K2 is not engaged.
   is pending at a swap"; T89.3 gate 2). T89.7's injection (a) proves
   which build boots a late window, a different question.
 - **A3** — adopted: programs are indices into a table, resolved by
-  `lumen_boot(index)` of the loaded build. Windows talk through `Post`.
+  `fulgurite_boot(index)` of the loaded build. Windows talk through `Post`.
 - **A14** — changed: M89 needs **no** new `Session` method. S1's two
   methods, which are M88's, carry everything, and `tick_windowless` is
   rejected in favour of `frame(dt, 1, 1)`.
@@ -745,11 +745,11 @@ feature, so K2 is not engaged.
   "detail shows the clicked item" (T89.4).
 - **P21** — adopted: a `u32` key, a `u16` program index, and
   `WindowSpec` in the shell. No winit type leaves the window crate.
-- **P22** — adopted: indexed `lumen_boot`, `Reloader::swap_all` and
+- **P22** — adopted: indexed `fulgurite_boot`, `Reloader::swap_all` and
   `open`, and the reload state stays on `Win`, not per slot. The
   post-swap adopt step is per slot (second review A8).
 - **P23** — adopted: the default is the primary, never the focused
-  window, and every drive runs under `LUMEN_WINDOW_INACTIVE=1`.
+  window, and every drive runs under `FULGURITE_WINDOW_INACTIVE=1`.
 - **P24** — adopted (as G30).
 - **P25** — adopted in M89b: `GpuContext` and per-surface `Gpu`, image
   atlas per window, images from each program's `WindowSpec`, and the
@@ -1106,7 +1106,7 @@ the first review's findings of the same name.
   997 px window on a 1,080 px monitor, and a resize resets retention.
   The defect's red run is that attempt; the plan's injection (skip slot
   2's `resume_backend`) reads window 2 at 100% and "1 by it (want 2)".
-- **T89.9, the leg's hook is at 8,000 ms, not 4,000.** `LUMEN_TEST_RESUME`
+- **T89.9, the leg's hook is at 8,000 ms, not 4,000.** `FULGURITE_TEST_RESUME`
   counts from `Win::new`, and a debug launch that opens two GPU contexts,
   one per window, used most of 4 s: the first reads straddled the round
   trip (`xwd -id` met a BadWindow error on a window the suspend had destroyed).

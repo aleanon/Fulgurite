@@ -52,7 +52,7 @@
 # Rust-item-shaped names, and for the shape a comment takes when something
 # stripped its backticked spans: a space before punctuation (` , `), two
 # spaces between words, or trailing whitespace. That is how
-# crates/lumen-static-widgets/Cargo.toml came to read "#  implies , the
+# crates/fulgurite-widgets/Cargo.toml came to read "#  implies , the
 # tiering  uses" -- every name gone, the sentence left.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"

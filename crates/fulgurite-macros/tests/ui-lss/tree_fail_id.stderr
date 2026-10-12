@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: tree_fail_id.lss:2:1: `#titel` names no node -- there is no `#[widget_id("titel")]` in `Ui` (docs/plan-lss.md §2.3)
+  --> tests/ui-lss/tree_fail_id.rs:13:55
+   |
+13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "tree_fail_id.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^ evaluation of `SHEET::_` failed here

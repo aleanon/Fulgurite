@@ -21,7 +21,7 @@ Two causes contribute.
     writes it again afterwards.
   - After layout, the host zeroes the focus ring of the node that
     *currently* has focus (`input.focus`), unless focus is
-    keyboard-visible (`lumen-static-shell/src/lib.rs:1235`).
+    keyboard-visible (`fulgurite-shell/src/lib.rs:1235`).
   - So pressing B leaves A with `focused = true`, and A's ring is not
     zeroed: it paints on A.
   - The input audit saw the same one-event lag on Slider (Tab, then the

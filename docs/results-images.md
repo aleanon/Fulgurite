@@ -97,12 +97,12 @@ measures it, never edited here.
 
 | rule | quantity | threshold | measured by | if it fires |
 |---|---|---|---|---|
-| K84a | `image`'s own crates: K2's count of `lumen-static-winit` with `--features lumen-static-shell/image`, minus without | ≤ **15** | T84.1 | PNG decoding is left to the application, only `gif` ships, and the count is recorded |
-| K84b | `lumen-static-video`'s dependency set; any `unsafe` in it; the development libraries on the reference machine | ≤ **150** crates; **no** `unsafe`; present | T84.9 | `lumen-static-video` is deferred (T84.10's second branch) |
+| K84a | `image`'s own crates: K2's count of `fulgurite-winit` with `--features fulgurite-shell/image`, minus without | ≤ **15** | T84.1 | PNG decoding is left to the application, only `gif` ships, and the count is recorded |
+| K84b | `fulgurite-video`'s dependency set; any `unsafe` in it; the development libraries on the reference machine | ≤ **150** crates; **no** `unsafe`; present | T84.9 | `fulgurite-video` is deferred (T84.10's second branch) |
 | K84c | median `layout_ns` per animated frame on the showcase's Image entry (`app.perf`) | ≤ **100 µs** | T84.3 | `App::tick_marked` is built before T84.4 and the gate re-runs |
 | K84d | `resets` in T84.2's 100-change loop with the in-place write | **0** | T84.2 | a changing image gets a dedicated texture; the atlas keeps stills only |
 | K84e | 1280 × 720 at 30 frames/s on the software backend | ≥ **28** presented per second | T84.8 | the rustdoc and this doc state the largest size that holds 30/s; the widget ships |
-| K4 | the four firmware binaries' `.text`, `just firmware-delta <parent> firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0 B** each (no firmware paints an image) | every task that touches `lumen-static` or `lumen-static-widgets` | the task stops and attributes the delta by symbol diff |
+| K4 | the four firmware binaries' `.text`, `just firmware-delta <parent> firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0 B** each (no firmware paints an image) | every task that touches `fulgurite` or `fulgurite-widgets` | the task stops and attributes the delta by symbol diff |
 
 ## T84.0 — the gates that compile today, at `1024cba` (2026-10-06)
 
@@ -111,23 +111,23 @@ Pins, green, each flipped by the task that closes its gap
 
 | gate | prints today | flipped by |
 |---|---|---|
-| (a) `crates/lumen-static-shell/tests/image_frame.rs`: a store switches one id from red to blue; tick (answering `true`), pump, present | centre **red**, `damaged_px` **0** (the image's box is 1,600 px) | T84.2 |
-| (b) `crates/lumen-static-wgpu/tests/image_frames.rs`: the same store, two full-damage draws (RTX 4070, Vulkan) | second draw's centre **red**; `resets` 0 | T84.2 |
+| (a) `crates/fulgurite-shell/tests/image_frame.rs`: a store switches one id from red to blue; tick (answering `true`), pump, present | centre **red**, `damaged_px` **0** (the image's box is 1,600 px) | T84.2 |
+| (b) `crates/fulgurite-wgpu/tests/image_frames.rs`: the same store, two full-damage draws (RTX 4070, Vulkan) | second draw's centre **red**; `resets` 0 | T84.2 |
 | (c) `scripts/check_default_crates.sh` (`just static`): K2's count against the parent commit's | **96** at the work tree and at `1024cba`, Δ **0** | stays green |
 | (d) `just firmware-delta 1024cba firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** on all four (`firmware_interactive` 63,480 B) | — |
 
 ## T84.1 — the `image` feature: PNG and GIF decode into `ImageStore` (2026-10-06)
 
-`lumen_static_shell::image`: `ImageStore` (unconditional), and behind the
+`fulgurite_shell::image`: `ImageStore` (unconditional), and behind the
 shell's default-off `image` the `decode_png` and `decode_gif` that answer
 a `DecodedImage` of composited RGBA8 frames.
 
-**K84a — does not fire.** K2's command on `lumen-static-winit`:
+**K84a — does not fire.** K2's command on `fulgurite-winit`:
 
 | build | crates |
 |---|---:|
 | default | **96** |
-| `--features lumen-static-shell/image` | **105** |
+| `--features fulgurite-shell/image` | **105** |
 | **`image`'s own** | **9** (bound 15) |
 
 The nine: `png`, `gif`, `fdeflate`, `flate2`, `miniz_oxide`, `adler2`,
@@ -157,7 +157,7 @@ than argued — the linker drops an uncalled decoder, so a symbol count
 cannot see the feature and the crate count, gate (c) above, is its
 falsifiable half (`docs/plan-iced-roadmap.md` K2).
 
-**Gates** (`crates/lumen-static-shell/tests/image_decode.rs`, run by
+**Gates** (`crates/fulgurite-shell/tests/image_decode.rs`, run by
 `just test` with `--features image`):
 
 | gate | green | injection → red |
@@ -166,7 +166,7 @@ falsifiable half (`docs/plan-iced-roadmap.md` K2).
 | GIF compositing, 4 frames over 8 × 8, frame 2 a 2 × 2 at the top-left with `Keep` | delays `[100, 100, 100, 100]` (bound `[100; 4]`); frame 2 at (4, 4) = frame 1's green `[40, 160, 60, 255]` | each frame drawn on a cleared canvas (uncomposited): (4, 4) reads `[0, 0, 0, 0]` |
 | every truncation is an error, never a panic | GIF: 133 prefixes, **0** panics, **0** decoded; PNG: 97 prefixes, 0 panics, 4 decoded (93–96), each the whole picture | `unwrap()` in the GIF frame loop: **98** of 133 prefixes panic (35–132) |
 | default stays off | `scripts/check_default_crates.sh`: 96 against 96 at `55f3962`, Δ 0 | `image` in the shell's `default`: 105, Δ **9** (= K84a's count), exit 1 |
-| lint and docs with the feature on | `cargo clippy -p lumen-static-shell --features image --all-targets -- -D warnings` and `cargo doc -p lumen-static-shell --no-deps --features image` with `-D warnings`, both clean | an unused binding in `decode_png`: the feature's clippy line fails, the default line stays green |
+| lint and docs with the feature on | `cargo clippy -p fulgurite-shell --features image --all-targets -- -D warnings` and `cargo doc -p fulgurite-shell --no-deps --features image` with `-D warnings`, both clean | an unused binding in `decode_png`: the feature's clippy line fails, the default line stays green |
 
 The PNG's four decoding prefixes are missing only the end chunk's CRC:
 `png` reads every pixel before it needs the end chunk, and the answer is
@@ -191,8 +191,8 @@ place** for a same-size frame, inserted again on a size change, and a
 second frame of one id in one draw takes a side slot.
 `AtlasStats::image_uploads` and `image_upload_bytes` count every write.
 
-**Gates** (software: `crates/lumen-static-shell/tests/image_frame.rs`;
-GPU: `crates/lumen-static-wgpu/tests/image_frames.rs` under `just gpu`,
+**Gates** (software: `crates/fulgurite-shell/tests/image_frame.rs`;
+GPU: `crates/fulgurite-wgpu/tests/image_frames.rs` under `just gpu`,
 RTX 4070, Vulkan):
 
 | gate | green | injection → red |
@@ -220,7 +220,7 @@ firmware_interactive=0 firmware_bind=0 firmware_cascade=0`: Δ **0**
 the fold link nowhere; `docs/results-embedded.md`'s table does not move.
 
 **K3 — the frame arm, eight interleaved invocations a side** (`R=1
-benches-competitive/run.sh -p lumen-static-frame` under `just
+benches-competitive/run.sh -p fulgurite-frame` under `just
 bench-lock`, base `9f48fd6` from its firmware-delta worktree, every run
 quiet at load1 1.00 against the lock's bound of 8). Medians and spreads
 in µs:
@@ -283,7 +283,7 @@ it) and then "held" on five legs at Δ 10 (twelve changes counting the gaps
 either side, back on the first of four frames; a still-equal read is now
 followed by one more 150 ms later). The figures above and below are the
 final run's. The GPU half is not agent-observable (`ui.regionHash` reads
-the software frame); it is T84.2's `lumen-static-wgpu` test under `just
+the software frame); it is T84.2's `fulgurite-wgpu` test under `just
 gpu`, and re-running this drive on the GPU after M88/T88.2 is the reopen
 condition.
 
@@ -347,7 +347,7 @@ M84b's only gate that compiles before M84b's code: the others name
 
 | gate | prints today | flipped by |
 |---|---|---|
-| `crates/lumen-static-shell/tests/subscriptions.rs`, the pin a_stopped_subscription_keeps_delivering_today (renamed `a_stopped_subscription_stops` by T84.7, `docs/results-tasks.md` T84.7): a ticker sends every 10 ms under `Threads`; the application un-declares it when the first message lands; the next frame's diff stops it, `subscription_counts()` (1, 1); then 20 frames 10 ms apart | after the stop: **20** messages applied (pinned > 0), **20** job iterations (pinned > 1) | T84.7: 0 messages, 0 iterations (bound ≤ 1), measured |
+| `crates/fulgurite-shell/tests/subscriptions.rs`, the pin a_stopped_subscription_keeps_delivering_today (renamed `a_stopped_subscription_stops` by T84.7, `docs/results-tasks.md` T84.7): a ticker sends every 10 ms under `Threads`; the application un-declares it when the first message lands; the next frame's diff stops it, `subscription_counts()` (1, 1); then 20 frames 10 ms apart | after the stop: **20** messages applied (pinned > 0), **20** job iterations (pinned > 1) | T84.7: 0 messages, 0 iterations (bound ≤ 1), measured |
 
 Perturbations, each a miniature of what T84.7 builds, put in
 `Host::diff_subscriptions` where it stops a subscription and then
@@ -377,15 +377,15 @@ restored in the same session.
 | gate | setup asserted | printed (green) | injection | printed (red) |
 |---|---|---|---|---|
 | compile: `Hot` / `Local` without `images` | — | the forward is required (S1, E0046) | — (the compiler is the gate) | — |
-| headless write (`crates/lumen-static-shell/tests/app_images.rs`): `apply` calls `ImageStore::replace`, paints the frame it answers | boot centre red; `apply` ran once; `frame` 1 → 2 | centre blue; damaged **1,600** px against the image's **1,600** px box: **1.00×** (bound 1.00×); neighbour page | the host's `FrameSource::images` answers `None` | centre the page colour `[250, 250, 250]` at boot, failed by name |
+| headless write (`crates/fulgurite-shell/tests/app_images.rs`): `apply` calls `ImageStore::replace`, paints the frame it answers | boot centre red; `apply` ran once; `frame` 1 → 2 | centre blue; damaged **1,600** px against the image's **1,600** px box: **1.00×** (bound 1.00×); neighbour page | the host's `FrameSource::images` answers `None` | centre the page colour `[250, 250, 250]` at boot, failed by name |
 | order (same file): id 1 in both stores, id 2 in the window's | the derived application answers a store | id 1 red (the application's), id 2 green (the window's alone still draws) | `ImageChain::resolve` asks the window's store first | id 1 blue, failed by name |
 | panic (same file): `App::images` panics once in a `Local`'s frame | a healthy session hands the store over | `failed` true; `images()` `None` while the screen is up; `Some` after the retry | (1) the frame's guarded entry does not ask `App::images`; (2) `Local::images` forwards regardless of the failure | (1) `failed` false — the present's catch swallowed it and recorded nothing; (2) `Some` while the screen is up |
-| GPU swap (`crates/lumen-static-wgpu/tests/app_images.rs`, `just gpu`): store A red, then store B blue under the same `(id 1, frame 0)`, `invalidate_images()` between | the first draw is red | blue; `image_uploads` **2** | `Gpu::invalidate_images` does nothing | red (v1's), `image_uploads` 1 |
+| GPU swap (`crates/fulgurite-wgpu/tests/app_images.rs`, `just gpu`): store A red, then store B blue under the same `(id 1, frame 0)`, `invalidate_images()` between | the first draw is red | blue; `image_uploads` **2** | `Gpu::invalidate_images` does nothing | red (v1's), `image_uploads` 1 |
 | GPU origin (same file, T84.2's gate carried here): id 1 red in the application's store, blue in the window's; drawn with, then without, the frame's store | the application's red wins | blue after the fall-through; `image_uploads` **2** (one slot per origin) | the key's origin is always `Window` (the id alone) | red — the application's slot hit, `image_uploads` 1 |
 | across a swap (`just hot-window-drive`, hot leg): `#pic` from `App::images`, the store's colour edited with the label's format in one write | the first hot build's colour `(22, 122, 60)` | after the swap **(29, 78, 216)**, the new build's | `Hot::images` answers `None` | `#pic` the page `(255, 255, 255)` at step 1, failed by name |
 | under the bar (same leg): `#pic`'s `ui.regionHash` before the broken edit and under the bar | the bar is shown (the drive asserts it, M37) | `90500717c9597325` both, over 10,240 px | `Barred::images` answers `None` | `a556430ac2dc4325` under the bar, centre the page colour, failed by name |
 | the window's swap call, GPU (`just hot-window-drive`, `gpu` and `gpu-everything` legs, read with `xwd`): `#pic`'s colour edited with the WGSL colour in one write; its frame stays 0 | `#pic` is v1's `(22, 122, 60)` on the GPU before the edit (distance 0, bound 6) | after the swap **(29, 78, 216)** on both legs, distance 0 from v2's | the swap branch does not call `Backend::invalidate_images` | `(22, 122, 60)` after the swap, distance 156 from v2's, failed by name |
-| stamp, accept (`just abi-stamp`): `stamp-lib --features image` under the plain shell loader | — | `accepted: 20 fields agree`; the M49 half still refuses the reordered `Cmd` | `image` added to `abi_fields`' feature list | `refused ... lumen-static-shell features is reload,truetype here and reload,truetype,image in the library` |
+| stamp, accept (`just abi-stamp`): `stamp-lib --features image` under the plain shell loader | — | `accepted: 20 fields agree`; the M49 half still refuses the reordered `Cmd` | `image` added to `abi_fields`' feature list | `refused ... fulgurite-shell features is reload,truetype here and reload,truetype,image in the library` |
 | panic guard (`just panic-drive`, both strategies): site 10, `App::images`, armed by its click | ten `// SITE n` markers | site 10 at `fixtures/panic-app/src/lib.rs:335`, screen drawn, input refused, retried; **11** panics (expected 11) on each leg | neither guarded entry (the frame's, the agent pump's) asks `App::images` | the agent's present read the host's store unguarded: the app died (exit 101) at site 10, 10 of 11 panics logged |
 | resume (`just resume-drive`) | — | green on every leg: the window-side source still round-trips (gpu-resume 0 differing pixels) | — (unchanged gate, M47/T47.7) | — |
 
@@ -414,7 +414,7 @@ application's `ImageStore`. The seek's fraction reaches `on_seek` through
 found", T84.8). Every gate below was run red under its injection and green
 restored, on a clean build, in the same session.
 
-**Headless** (`crates/lumen-static-shell/tests/video.rs` unless named):
+**Headless** (`crates/fulgurite-shell/tests/video.rs` unless named):
 
 | gate | setup asserted | printed (green) | injection | printed (red) |
 |---|---|---|---|---|
@@ -426,7 +426,7 @@ restored, on a clean build, in the same session.
 | `GifFeed` opens where its key says | — | from 300 ms: frames 3, 0, 1, 2, 3, 0 at 300…800 ms; from 250 ms frame 2, then 3 at 300 | the key's start is ignored | from 300 ms: frame **0**, "a start at 75% shows frame 3" |
 | UI-thread allocations per video frame (`tests/alloc_gate.rs`) | 50 frames applied; the list paints the newest | **0** allocations (bound 0); **50** frees, 1.00 per frame (bound 1: the message's buffer) | `ImageStore::replace` copies into a new `Vec` | **50** allocations, failed by name |
 | the derive's refusals (`fail_app_{msg_without_apply,apply_without_msg,jobs_without_msg}.stderr`) | — | each refused by name; the showcase and these tests are the accept direction | `msg` without `apply` accepted | `fail_app_msg_without_apply.rs` compiles, trybuild fails it |
-| role table (`crates/lumen-static-widgets/tests/a11y_roles.rs`) | — | `Video`: role `Video`, label, value "m:ss / m:ss", published Click and SetValue, **2 of 2** handled; `#video-track`: `Slider` "Seek", **4 of 4** | delete the `Video` row | "Node impls with no row in the table: [Video]" |
+| role table (`crates/fulgurite-widgets/tests/a11y_roles.rs`) | — | `Video`: role `Video`, label, value "m:ss / m:ss", published Click and SetValue, **2 of 2** handled; `#video-track`: `Slider` "Seek", **4 of 4** | delete the `Video` row | "Node impls with no row in the table: [Video]" |
 
 **Live** (`just widget-drive Video`, `scripts/drive/widgets/video.py`, all
 six legs: `Everything`, `Boundaries`, `Boundaries+oracle`,
@@ -471,7 +471,7 @@ window's crate count is **96** against 96 at `479efa9`
 
 A scratch manifest under `target/` (never committed, deleted after
 T84.10) naming `gstreamer`, `gstreamer-app` and `gstreamer-video` 0.24.5
-beside a path dependency on `lumen-static-shell`, resolved against this
+beside a path dependency on `fulgurite-shell`, resolved against this
 workspace's lock, and one `src/main.rs` carrying `#![forbid(unsafe_code)]`
 with a `GstFeed: VideoFeed` over `appsink`: caps set to RGBA, each sample
 mapped with `gstreamer_video::VideoFrame::from_buffer_readable` and its
@@ -507,7 +507,7 @@ crate counts above are from that resolve (the count is 59 either way).
 branch. The probe changes no tracked file but this one: firmware Δ 0 by
 construction.
 
-## T84.10 — `lumen-static-video`, deferred (2026-10-06)
+## T84.10 — `fulgurite-video`, deferred (2026-10-06)
 
 **K84b fired (T84.9), so T84.10 takes its second branch**: the crate is
 not added, and `Video` ships with `VideoFeed` and `GifFeed` (T84.8).
@@ -552,7 +552,7 @@ against `0bf7103` prints **+0** on all four too.
 
 | rule | bound | measured | verdict |
 |---|---|---|---|
-| K84b — the GStreamer crate | ≤ 150 crates; **no** `unsafe`; the development libraries present | **58** crates (66 with build edges); **0** `unsafe` under `forbid`; libraries **absent** (runtime 1.24.2 only) (T84.9) | **fires, on its third condition only**; `lumen-static-video` deferred with its reopen condition (T84.10); `Video` ships with `VideoFeed` and `GifFeed` |
+| K84b — the GStreamer crate | ≤ 150 crates; **no** `unsafe`; the development libraries present | **58** crates (66 with build edges); **0** `unsafe` under `forbid`; libraries **absent** (runtime 1.24.2 only) (T84.9) | **fires, on its third condition only**; `fulgurite-video` deferred with its reopen condition (T84.10); `Video` ships with `VideoFeed` and `GifFeed` |
 | K84e — video on the software backend | ≥ 28 presented per second at 1280 × 720, 30 frames/s | **30.1/s** (301 in 10.00 s; 11.98 ms raster per present) (T84.8) | holds; no size limit is stated |
 | K4 — per task | Δ 0 B `.text` on all four (strict form) | T84.5 **+0**, T84.6 **+0**, T84.7 **+0**, T84.8 **+0** (ungated, the `take_action` route had cost `firmware_interactive` +488, then +320, before it went behind `std`), T84.9 **+0**, T84.10 **+0**; the two fixes landed inside M84b, `553ac3c` and `11c7aa2`, **+0** and scripts only | holds |
 | — M84b's total | recorded | **+0** on all four (`15d4aec` → `0bf7103`); `firmware_interactive` **63,480** B (headroom 18,440 B to 81,920) | recorded; `docs/results-embedded.md`'s table does not move |
@@ -573,5 +573,5 @@ whose three refusals are pinned by `.stderr` files.
 M88/T88.1's, since its progress slot has not landed (T84.7); the GPU
 half of the live Image drive and the retry's `Backend::invalidate_images`
 call reopen with a GPU-readable `ui.regionHash` (M88/T88.2) and a GPU leg
-of the panic drive (T84.3, T84.6); `lumen-static-video` reopens on the
+of the panic drive (T84.3, T84.6); `fulgurite-video` reopens on the
 condition T84.10 writes.

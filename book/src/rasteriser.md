@@ -41,7 +41,7 @@ mutex over the iterator is the whole thing. Per-thread deques and a steal
 handshake are for tasks that spawn subtasks, and these do not. No
 `unsafe`.
 
-`LUMEN_WORKERS` and `LUMEN_STRIP_ROWS` override the defaults.
+`FULGURITE_WORKERS` and `FULGURITE_STRIP_ROWS` override the defaults.
 `docs/results-threading.md` has the sweep and the chosen defaults.
 
 ## The bug that made "parallel" slower

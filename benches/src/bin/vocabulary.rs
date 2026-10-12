@@ -35,9 +35,9 @@
 
 use std::time::Instant;
 
-use lumen_static::display::{Cmd, Color, DisplayList, GradKind, GradShape, PathEl, PathPaint, Renderer, Stops, AFFINE_IDENTITY};
-use lumen_static::Point;
-use lumen_static_shell::software::Canvas;
+use fulgurite::display::{Cmd, Color, DisplayList, GradKind, GradShape, PathEl, PathPaint, Renderer, Stops, AFFINE_IDENTITY};
+use fulgurite::Point;
+use fulgurite_shell::software::Canvas;
 
 const SIDE: u32 = 1024;
 const RUNS: usize = 31;
@@ -130,10 +130,10 @@ fn main() {
 /// K82e's arm (M82/T82.8): a whole `VectorText` frame, in µs.
 #[cfg(feature = "vector-text")]
 fn vector_text() {
-    use lumen_static::widget::{Node, Widget};
-    use lumen_static::{Constraints, LayoutCx, NodeState, Style};
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_widgets::VectorText;
+    use fulgurite::widget::{Node, Widget};
+    use fulgurite::{Constraints, LayoutCx, NodeState, Style};
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_widgets::VectorText;
 
     const RUN: &str = "Vector text, turned 30°!";
     assert_eq!(RUN.chars().count(), 24, "setup: K82e's run is 24 glyphs");

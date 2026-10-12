@@ -12,7 +12,7 @@
 # - **K90c's measurement, as written: release profile, without `a11y`**
 #   (`--no-default-features`: the showcase's `a11y` is its one default
 #   feature, so the D-Bus stack `a11y` already links is not in both
-#   sides), plain and with `lumen-static-winit/tray`. Bound
+#   sides), plain and with `fulgurite-winit/tray`. Bound
 #   **3,300,000 B** -- the owner's re-budget of 2026-10-07 (option 1),
 #   which replaced K2's 3 MB for plain `tray` when the first build measured
 #   +3,286,360 B (docs/plan-desktop-integration.md, K90c and "What building
@@ -33,14 +33,14 @@
 # the linker keeps it whether or not the program declares one.
 #
 # Twelve release builds, so it is not in `static`; `just tray-symbols` runs
-# it, and `check-extra` includes it. `LUMEN_TRAY_BOUND` overrides the size
+# it, and `check-extra` includes it. `FULGURITE_TRAY_BOUND` overrides the size
 # bound, for the gate's own red run only. Numbers:
 # docs/results-desktop-integration.md T90.7.
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 out=target/tray-symbols
 mkdir -p "$out"
-bound=${LUMEN_TRAY_BOUND:-3300000}
+bound=${FULGURITE_TRAY_BOUND:-3300000}
 count() { nm -C "$1" 2>/dev/null | grep -cE '(^|[ <(&*,])ksni::' || true; }
 size() { strip -o "$1.stripped" "$1" && stat -c %s "$1.stripped"; }
 build() { # name profile cargo-args...
@@ -50,17 +50,17 @@ build() { # name profile cargo-args...
     cp "target/$profile/showcase" "$out/$name"
 }
 build plain release --no-default-features
-build tray release --no-default-features --features lumen-static-winit/tray
-build notrace release --no-default-features --features lumen-static-winit/tray-no-tracing
+build tray release --no-default-features --features fulgurite-winit/tray
+build notrace release --no-default-features --features fulgurite-winit/tray-no-tracing
 build a11y release
-build a11y-tray release --features lumen-static-winit/tray
-build a11y-notrace release --features lumen-static-winit/tray-no-tracing
+build a11y-tray release --features fulgurite-winit/tray
+build a11y-notrace release --features fulgurite-winit/tray-no-tracing
 build small release-small --no-default-features
-build small-tray release-small --no-default-features --features lumen-static-winit/tray
+build small-tray release-small --no-default-features --features fulgurite-winit/tray
 build small-a11y release-small
-build small-a11y-tray release-small --features lumen-static-winit/tray
-build small-notrace release-small --no-default-features --features lumen-static-winit/tray-no-tracing
-build small-a11y-notrace release-small --features lumen-static-winit/tray-no-tracing
+build small-a11y-tray release-small --features fulgurite-winit/tray
+build small-notrace release-small --no-default-features --features fulgurite-winit/tray-no-tracing
+build small-a11y-notrace release-small --features fulgurite-winit/tray-no-tracing
 declare -A s
 for f in plain tray notrace a11y a11y-tray a11y-notrace small small-tray small-a11y small-a11y-tray small-notrace small-a11y-notrace; do
     s[$f]=$(size "$out/$f")

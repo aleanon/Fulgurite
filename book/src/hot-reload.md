@@ -77,7 +77,7 @@ a handler that writes a label's text directly writes *code's* half, and
 after a swap the label reads what the build says again. Text that changes
 at run time belongs in `#[bind]`, whose source is state and is kept. A
 split application cannot write the tree from a handler, so it loses
-nothing. (`crates/lumen-static-shell/tests/reload_widget_state.rs` has a
+nothing. (`crates/fulgurite-shell/tests/reload_widget_state.rs` has a
 row per widget above; `reload_code_data.rs` checks the code half.)
 
 ## When a field cannot be kept
@@ -94,7 +94,7 @@ error[E0277]: `u32` is not `Reloadable`, so a hot swap cannot keep or rebuild th
           build should supply `#[reload(fresh)]`; a widget of your own can `#[derive(Reloadable)]`
 ```
 
-Every widget in `lumen-static-widgets` has an impl, stateless ones
+Every widget in `fulgurite-widgets` has an impl, stateless ones
 included (they keep nothing).
 
 ## Code pointers cannot be kept, structurally
@@ -115,7 +115,7 @@ thing that cannot survive.
 
 ## A window that reloads itself
 
-Build a window with `lumen-static-winit`'s `hot` feature, and it rebuilds
+Build a window with `fulgurite-winit`'s `hot` feature, and it rebuilds
 its own crate as a library every time you save a source file. It swaps
 the library in between two frames, and your `#[reload(keep)]` state
 carries across. The application needs three things.
@@ -123,24 +123,24 @@ carries across. The application needs three things.
 **The program lives in the library**, behind `export_program!`:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_shell;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable};
-# use lumen_static::style::{Length, Patch, Rule, Selector};
-# use lumen_static_widgets::prelude::*;
-# use lumen_static_shell::program::{application, Program};
-# use lumen_static_shell::text::Shaping;
+# extern crate fulgurite;
+# extern crate fulgurite_shell;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite::{App as DeriveApp, Reloadable as DeriveReloadable};
+# use fulgurite::style::{Length, Patch, Rule, Selector};
+# use fulgurite_widgets::prelude::*;
+# use fulgurite_shell::program::{application, Program};
+# use fulgurite_shell::text::Shaping;
 # #[derive(StaticTree, Default, DeriveReloadable)] #[widget(column)] pub struct Ui { #[widget_id("inc")] inc: Button<Tally>, value: Label<String> }
 # #[derive(Default)] pub struct Tally { count: i64 }
 # #[derive(DeriveApp, DeriveReloadable)] pub struct Counter { #[tree] ui: Ui, #[state] #[reload(reset)] #[bind(ui.value, count, "count {}")] tally: Tally }
 # fn boot() -> Counter { Counter { ui: Ui::default(), tally: Tally::default() } }
-# fn windows(_: u16) -> Option<Box<dyn lumen_static_shell::program::OpenProgram>> { None }
-# const TOOLS: [lumen_static::menu::MenuEntry; 1] = [lumen_static::menu::MenuEntry::new("Bump", 1)];
-# const MENU: [lumen_static::menu::MenuSection; 1] = [lumen_static::menu::MenuSection { title: "Tools", entries: &TOOLS }];
-# fn menu_enabled(_: &Tally) -> lumen_static::menu::MenuMask { lumen_static::menu::MenuMask::ALL }
-# fn on_menu(_: &mut Tally, _id: u32) -> lumen_static_shell::program::KeyOutcome { lumen_static_shell::program::KeyOutcome::Handled }
+# fn windows(_: u16) -> Option<Box<dyn fulgurite_shell::program::OpenProgram>> { None }
+# const TOOLS: [fulgurite::menu::MenuEntry; 1] = [fulgurite::menu::MenuEntry::new("Bump", 1)];
+# const MENU: [fulgurite::menu::MenuSection; 1] = [fulgurite::menu::MenuSection { title: "Tools", entries: &TOOLS }];
+# fn menu_enabled(_: &Tally) -> fulgurite::menu::MenuMask { fulgurite::menu::MenuMask::ALL }
+# fn on_menu(_: &mut Tally, _id: u32) -> fulgurite_shell::program::KeyOutcome { fulgurite_shell::program::KeyOutcome::Handled }
 # fn main() { let p = program(); assert_eq!(p.width, 320); }
 {{#include ../../fixtures/hot-window/src/lib.rs:program}}
 ```
@@ -151,7 +151,7 @@ carries across. The application needs three things.
 {{#include ../../fixtures/hot-window/src/main.rs:main}}
 ```
 
-**The crate says what `hot` means** (`LUMEN_HOT_FEATURES` tells the
+**The crate says what `hot` means** (`FULGURITE_HOT_FEATURES` tells the
 window which features to build the library with; the default is `hot`):
 
 ```toml
@@ -196,7 +196,7 @@ Three things can go wrong, and none of them takes the window down:
 
 A program with a window table (`Program::windows`, the platform chapter)
 reloads **every** window from the new build at once. The library's
-`lumen_boot` takes a program index — 0 is `program()`, `n` its window
+`fulgurite_boot` takes a program index — 0 is `program()`, `n` its window
 table's entry `n` — and a swap boots each open window's session, and a
 daemon's windowless one, from the new library **before it replaces any**.
 If one of them panics while booting, none is replaced: every window
@@ -254,21 +254,21 @@ with no window. They assert each clause in turn:
 
 A reload loop is where a panic is most likely — you just changed the
 code — so in a debug build, or a release build with
-`lumen-static-winit/reload`, a panic does not end the window. It shows
+`fulgurite-winit/reload`, a panic does not end the window. It shows
 this instead, drawn as a plain display list so that nothing on it goes
 through the layout or paint that may just have failed:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_shell;
-use lumen_static::cx::BlockMetrics;
-use lumen_static::display::Cmd;
-use lumen_static_shell::recover::{failure_frame, PanicReport};
+# extern crate fulgurite;
+# extern crate fulgurite_shell;
+use fulgurite::cx::BlockMetrics;
+use fulgurite::display::Cmd;
+use fulgurite_shell::recover::{failure_frame, PanicReport};
 
 // A panic inside the framework, caused from the application's code.
 let report = PanicReport {
     message: "index out of bounds: the len is 3 but the index is 7".into(),
-    location: Some(("crates/lumen-static/src/style.rs".into(), 1147, 18)),
+    location: Some(("crates/fulgurite/src/style.rs".into(), 1147, 18)),
     app_frame: Some(("examples/counter/src/main.rs".into(), 42)),
     note: None,
 };
@@ -282,7 +282,7 @@ let lines: Vec<&str> = screen
     })
     .collect();
 assert_eq!(lines[0], "The application panicked");
-assert!(lines.contains(&"at crates/lumen-static/src/style.rs:1147:18"));
+assert!(lines.contains(&"at crates/fulgurite/src/style.rs:1147:18"));
 // The line to open when the panic's own location is the framework's.
 assert!(lines.contains(&"in your code: examples/counter/src/main.rs:42"));
 assert_eq!(*lines.last().unwrap(), "Press R to retry");

@@ -560,7 +560,7 @@ def _ime_check(c: AgentClient, first: int, end: int) -> str | None:
 #: with `button: "right"`, answered `handled: false` and left the
 #: widget's pixels as they were), `overlay_open` (not sent: a popup was
 #: open, and a right press outside an open popup dismisses it, which
-#: `crates/lumen-static/tests/context_request.rs` gates headlessly), or
+#: `crates/fulgurite/tests/context_request.rs` gates headlessly), or
 #: — M90/T90.4, for an entry `secondary.context` names — `opened` (the
 #: right click landed inside the widget and opened its context menu,
 #: `handled: true`, and Escape restored its pixels).
@@ -788,7 +788,7 @@ def run_widget(c: AgentClient, widget: str, sel: str, actions: list[Action],
         # state. Enabled for the scale-2 pass, where fractional logical
         # edges land on physical pixels and a damage rect that is off by
         # one leaves a seam.
-        if os.environ.get("LUMEN_DRIVE_FULLCHECK") == "1":
+        if os.environ.get("FULGURITE_DRIVE_FULLCHECK") == "1":
             win = _region_rect(ctx, "window")
             # **Settled first.** An action can legitimately schedule one
             # more frame -- a popup that opens moves focus into itself on

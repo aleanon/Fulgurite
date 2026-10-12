@@ -38,11 +38,11 @@
 //! it, declared after the view in a `stack` so it paints after it and
 //! frosts it. Its button pauses the clock.
 
-use lumen_static::display::{Color, Material, Painter, Rect, ShaderId};
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static_widgets::{Glass, ShaderView};
-use lumen_static_winit::{application, Program, Run};
+use fulgurite::display::{Color, Material, Painter, Rect, ShaderId};
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite_widgets::{Glass, ShaderView};
+use fulgurite_winit::{application, Program, Run};
 
 // ---- palette ---------------------------------------------------------
 
@@ -81,7 +81,7 @@ pub const PLASMA: &str = "
 struct U { t: f32, _p0: f32, _p1: f32, _p2: f32 }
 @group(0) @binding(1) var<uniform> u: U;
 
-@fragment fn fs_main(in: LumenVarying) -> @location(0) vec4<f32> {
+@fragment fn fs_main(in: FulguriteVarying) -> @location(0) vec4<f32> {
     let p = in.local * vec2(8.0, 4.8);
     let t = u.t;
     var v = sin(p.x + t) + sin((p.y + t) * 0.5) + sin((p.x + p.y + t) * 0.5);
@@ -94,8 +94,8 @@ struct U { t: f32, _p0: f32, _p1: f32, _p2: f32 }
 
 /// **The program's shader table.** Entry 0 is the plasma; the view names
 /// it as `ShaderId(0)`.
-pub static SHADERS: [lumen_static_shell::shader::ShaderDesc; 1] =
-    [lumen_static_shell::shader::ShaderDesc::new("plasma", PLASMA, 16)];
+pub static SHADERS: [fulgurite_shell::shader::ShaderDesc; 1] =
+    [fulgurite_shell::shader::ShaderDesc::new("plasma", PLASMA, 16)];
 // ANCHOR_END: table
 
 /// What the view draws where the plasma does not run (the software
@@ -268,9 +268,9 @@ fn build() -> Plasma {
 /// `--shot <file.ppm> [seconds]`: one frame, headless, at that time —
 /// the fallback, as every host without the GPU draws it.
 fn shot(path: &str, t: f32) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     let mut host: Host<Plasma> = program().host();
     host.app.clock.t = t;
@@ -300,10 +300,10 @@ fn main() {
         shot(&path, t);
         return;
     }
-    // Built `--features agent`, the endpoint is `LUMEN_AGENT_ADDR`, read by
+    // Built `--features agent`, the endpoint is `FULGURITE_AGENT_ADDR`, read by
     // the window; inert otherwise.
     #[cfg(feature = "everything")]
-    program().invalidation::<lumen_static::Everything>().run();
+    program().invalidation::<fulgurite::Everything>().run();
     #[cfg(not(feature = "everything"))]
     program().run();
 }
@@ -311,9 +311,9 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lumen_static::display::{Cmd, DisplayList};
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::Host;
+    use fulgurite::display::{Cmd, DisplayList};
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::Host;
 
     fn pumped(t: f32) -> Host<Plasma> {
         let mut host: Host<Plasma> = program().host();
@@ -356,14 +356,14 @@ mod tests {
             l.uniforms_of(u).to_vec()
         };
         let before = bytes(&host);
-        assert!(<Plasma as lumen_static::event::App>::tick(&mut host.app, 500.0), "an unpaused clock animates");
+        assert!(<Plasma as fulgurite::event::App>::tick(&mut host.app, 500.0), "an unpaused clock animates");
         host.pump();
         let after = bytes(&host);
         println!("uniforms before {before:?}, after {after:?}");
         assert_eq!(&after[..4], &0.5f32.to_le_bytes(), "the bracket carries t = 0.5 s");
         assert_ne!(before, after);
         host.app.clock.paused = true;
-        assert!(!<Plasma as lumen_static::event::App>::tick(&mut host.app, 500.0), "a paused clock idles");
+        assert!(!<Plasma as fulgurite::event::App>::tick(&mut host.app, 500.0), "a paused clock idles");
     }
 
     /// The fallback's discs overflow the box, and the bracket clips them:

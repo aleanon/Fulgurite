@@ -15,10 +15,10 @@ Every `StaticTree` type carries two constants, and they are computed by the
 derive, not measured at runtime:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
 
 {{#include ../../examples/counter/src/main.rs:tree}}
 # #[derive(Default)] struct Tally { count: i64 }

@@ -78,14 +78,14 @@ and prints the measured quantity beside its bound.*
 
 ## 1. What is wrong, at 1717808
 
-The re-triage checked that `crates/lumen-static-wgpu/src` has no commits
+The re-triage checked that `crates/fulgurite-wgpu/src` has no commits
 since the review's base. So the review's numbers stand, and they are
 cited, not restated.
 
 ### 1.1 Parity cannot see three things it claims to hold (R9-F7, R9-F2, R9-F1)
 
 `the_two_backends_agree_within_the_stated_tolerance`
-(`crates/lumen-static-wgpu/tests/parity.rs:138`) applies one bound over
+(`crates/fulgurite-wgpu/tests/parity.rs:138`) applies one bound over
 the whole 240×180 frame: fewer than 0.2% of pixels may differ by more
 than 8 levels. On llvmpipe, the frame's baseline already uses most of
 that allowance. Making the software border's ring coverage binary adds
@@ -110,7 +110,7 @@ The overflow path described in §1.2 is unreachable from every test.
 
 ### 1.2 The glyph atlas gives up silently, every frame, at 2× and 3× (R9-F1)
 
-`GLYPH_ATLAS` is 1024 (`crates/lumen-static-wgpu/src/lib.rs:74`). When a
+`GLYPH_ATLAS` is 1024 (`crates/fulgurite-wgpu/src/lib.rs:74`). When a
 frame overflows, the atlas is reset and the frame is built once more.
 If the frame still does not fit an empty atlas, the give-up branch
 (`lib.rs:699-706`) submits what fits, and nothing counts or logs it.
@@ -138,8 +138,8 @@ adapter is llvmpipe. `Prefer::Auto` then takes it. The review measured
 it at several times the software canvas's frame time, with the
 resident memory and threads of a full GPU context. Three docs say that
 exactly this machine gets the software canvas: `Prefer::Auto`'s rustdoc
-(`crates/lumen-static-shell/src/program.rs:116-123`), `pick_backend`'s
-rustdoc (`crates/lumen-static-winit/src/lib.rs:133-139`, and the crate
+(`crates/fulgurite-shell/src/program.rs:116-123`), `pick_backend`'s
+rustdoc (`crates/fulgurite-winit/src/lib.rs:133-139`, and the crate
 header at `:34`), and `docs/results-gpu.md` §6.
 
 ### 1.4 What the GPU path costs when nobody is looking (R9-F8, R9-F9)
@@ -163,7 +163,7 @@ GPU it is committed VRAM, and that could not be measured here.
 
 ### 1.5 The dependency cap's `Damage::All` escape has never been shown to fire (R9-F3)
 
-`MAX_DEPS` is 4 (`crates/lumen-static/src/retain.rs:487`). When a frame
+`MAX_DEPS` is 4 (`crates/fulgurite/src/retain.rs:487`). When a frame
 has more backdrop-reading commands than that, `dilate` returns
 `Damage::All` (`retain.rs:544-546`). The rustdoc directly above it
 (`retain.rs:537-542`) says "there is no cap and no fallback", and says a
@@ -182,7 +182,7 @@ one of its frames takes this branch.
 
 `svg.rs:22` says the SVG test "exercises the **whole** command
 vocabulary". `the_whole_command_vocabulary_renders`
-(`crates/lumen-static-shell/tests/svg.rs:32`) draws no `stroked_rect`
+(`crates/fulgurite-shell/tests/svg.rs:32`) draws no `stroked_rect`
 and no glass. With both SVG arms emitting nothing (scratch `c75d6c4`),
 the shell's suite is green.
 
@@ -248,10 +248,10 @@ environment, it is accepted, because the person asked for it.
 `Gpu::headless` keeps accepting any adapter. That is what makes parity
 executable on a machine like this one, and it is what the tests use.
 
-The rule is a pure function in `lumen-static-wgpu`: the adapter's device
+The rule is a pure function in `fulgurite-wgpu`: the adapter's device
 type and whether a CPU adapter is acceptable, answering accept or
 reject with a reason. `Gpu::for_window` takes the flag, and
-`pick_backend` (`crates/lumen-static-winit/src/lib.rs:143`) passes
+`pick_backend` (`crates/fulgurite-winit/src/lib.rs:143`) passes
 "accept a CPU adapter" only when `prefer` is `Prefer::Gpu`. The chosen
 backend and the adapter's name are printed once, as they already are
 for the fallback case.
@@ -299,12 +299,12 @@ and costs one counter increment on a path that is already slow.
   against today's behaviour, where CPU under Auto is accepted. It fails
   when its assertion is flipped to "rejected". **Red today** on this
   machine: `Prefer::Auto` picks llvmpipe.
-- **R9-F8:** `crates/lumen-static-wgpu/tests/alloc.rs`, thread-local
+- **R9-F8:** `crates/fulgurite-wgpu/tests/alloc.rs`, thread-local
   counting allocator, floor-subtracted (§2.4). **Red today:** the
   per-call `Vec`s. *llvmpipe proves* the framework-owned count.
 - **R9-F9:** a frame with no glass leaves the scratch absent. **Red
   today:** it is always built.
-- **R9-F3:** `crates/lumen-static-shell/tests/glass_deps.rs`, the
+- **R9-F3:** `crates/fulgurite-shell/tests/glass_deps.rs`, the
   review's `r9_deps.rs` under a real name. **Green today.** The red
   state is `ecaf67f`, recorded.
 - **R9-F10:** `tests/svg.rs` asserts one emitted element per command.
@@ -366,7 +366,7 @@ adapters, unless it says otherwise):
   command does not compile until it is placed (§0 rule 3). It adds
   `Image` through an `ImageSource` fixture.
 - The atlas-overflow corpus becomes its own case.
-- In `lumen-static-wgpu`, the glyph atlas grows before giving up
+- In `fulgurite-wgpu`, the glyph atlas grows before giving up
   (§2.1), and the give-up counter from T51.0 stays as a reported
   quantity.
 
@@ -461,7 +461,7 @@ R17-F6.
   the wiring landed as a follow-up commit (`atlas_give_ups` on `Frame`,
   `FrameTimes`, `FrameTiming` and `app.perf`), with a live leg in
   `just gpu-parity` that needed one more debug-only switch,
-  `LUMEN_GPU_ATLAS_MAX`: with growth to the device limit, nothing on a
+  `FULGURITE_GPU_ATLAS_MAX`: with growth to the device limit, nothing on a
   real screen gives up, so a gate that must see a non-zero count has to
   cap the atlas.
 
@@ -471,13 +471,13 @@ R17-F6.
 **Closes:** R9-F6.
 
 **Change:** §2.3. The pure acceptance function lives in
-`lumen-static-wgpu`, `Gpu::for_window` takes the "accept a CPU adapter"
+`fulgurite-wgpu`, `Gpu::for_window` takes the "accept a CPU adapter"
 flag, and `pick_backend` passes it for `Prefer::Gpu` only.
 
 **Gate:** the unit test on the acceptance function: CPU under Auto is
 rejected, CPU under Gpu is accepted, discrete under Auto is accepted,
 integrated under Auto is accepted. It prints each case. A
-`gpu`-feature integration test in `lumen-static-winit` asserts that on
+`gpu`-feature integration test in `fulgurite-winit` asserts that on
 a machine whose only adapter is a CPU, `Auto` yields the software
 backend's name. If a real GPU is present, the test prints why it did
 not apply and reports itself as not run, never as passed.
@@ -493,8 +493,8 @@ the unit test and the integration test both fail by name. Accept:
 (which uses `Gpu::headless`) still runs.
 
 **Docs in the same commit:** `Prefer::Auto`'s rustdoc; `pick_backend`'s
-rustdoc and the crate header in `lumen-static-winit`; the comment above
-`request_adapter` in `lumen-static-wgpu`; `docs/results-gpu.md` §6.
+rustdoc and the crate header in `fulgurite-winit`; the comment above
+`request_adapter` in `fulgurite-wgpu`; `docs/results-gpu.md` §6.
 
 *What building found (2026-09-27).* The plan's rule held and needed
 nothing changed. Two details it did not say: the check runs **before**
@@ -561,7 +561,7 @@ because T50.9 changes the rule in the same function.
 become fields of `Gpu`, cleared per frame. Text shaping uses M50/T50.2's
 scratch-taking variant of `place_run` instead of the allocating one.
 
-**Gate:** `crates/lumen-static-wgpu/tests/alloc.rs` (§2.4): a
+**Gate:** `crates/fulgurite-wgpu/tests/alloc.rs` (§2.4): a
 steady-state caret `draw_regions` minus the empty-list floor equals 0.
 It prints total, floor and difference. *llvmpipe proves* the
 framework's count. The floor on a discrete driver is recorded when one

@@ -1,5 +1,0 @@
-error: fail_theme.lss:1:1: `@theme` is not in v1: a colour that follows the theme is a palette role -- `$page`, `$surface`, `$text`, `$accent` ... -- which `Host::set_palette` re-resolves (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_theme.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_theme.lss");
-   |                                                       ^^^^^^^^^^^^^^^^

@@ -14,7 +14,7 @@
 > batched (run concurrently) or chained (run sequentially)."*
 >
 > **The seam exists and the rule is decided.**
-> `crates/lumen-static/src/inbox.rs` shipped as plan-events E3: a
+> `crates/fulgurite/src/inbox.rs` shipped as plan-events E3: a
 > host-owned receiver, a cloneable sender that moves into a worker, and a
 > per-frame drain through a `fn` pointer taken from the *currently
 > loaded* code. `docs/events-decision.md` states the constraint — **work
@@ -46,7 +46,7 @@ under, and prints its measured quantity beside its bound.*
    to another.
 3. **Guard the budgets no frame number shows**: the allocation gate, the
    `.text` ceiling, the const-asserted struct sizes, and **crate count**.
-   By `cargo tree` on `lumen-static-winit`, clipboard costs +5 crates,
+   By `cargo tree` on `fulgurite-winit`, clipboard costs +5 crates,
    dialogs +24 and the GPU backend +37 (`docs/results-gpu.md` §5, which
    also records that `docs/plan-capabilities.md`'s +11 and +79 were
    counted another way and are not commensurable with these). **No
@@ -261,7 +261,7 @@ windowless):
 
 **Measure:** the wake-path arm.
 
-**Docs:** `crates/lumen-static-winit/src/agent.rs`'s thread rule, which
+**Docs:** `crates/fulgurite-winit/src/agent.rs`'s thread rule, which
 this widens from "the socket thread" to "any thread".
 
 ## T28.2 — the host owns the inbox, and the app declares its message
@@ -483,7 +483,7 @@ section — decided when the surface is real rather than promised.
 
 ## 3. What this is not
 
-**Not async in the core.** Nothing in `crates/lumen-static` awaits; the
+**Not async in the core.** Nothing in `crates/fulgurite` awaits; the
 core stays `no_std` and the inbox stays `std`-gated.
 
 **Not a runtime this workspace owns.** The spawner is a seam, and the

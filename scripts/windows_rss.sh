@@ -35,14 +35,14 @@ for backend in gpu software; do
     for run in 1 2 3; do
         echo "== $backend, launch $run =="
         $LAUNCH --leg "$backend-$run" --exe target/release/two-windows \
-            --env LUMEN_BACKEND="$backend" \
+            --env FULGURITE_BACKEND="$backend" \
             --expect-strategy Boundaries --expect-features shaping --stop quit \
             -- python3 scripts/windows_rss.py {port} {pid} "$backend" | tee -a "$out"
         # Setup: the leg ran on the backend it names.
-        line=$(grep -m1 -E '^lumen-static: (gpu \(|software)' "target/live/windows-rss-$backend-$run.log" || true)
+        line=$(grep -m1 -E '^fulgurite: (gpu \(|software)' "target/live/windows-rss-$backend-$run.log" || true)
         echo "  ..  setup: backend line '$line'"
         case "$backend:$line" in
-        gpu:"lumen-static: gpu ("*|software:"lumen-static: software"*) ;;
+        gpu:"fulgurite: gpu ("*|software:"fulgurite: software"*) ;;
         *) echo "windows-rss: FAIL -- the $backend leg started on '$line'"; exit 1 ;;
         esac
     done

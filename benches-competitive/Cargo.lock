@@ -1037,125 +1037,125 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "lumen-static"
+name = "fulgurite"
 version = "0.1.0"
 dependencies = [
  "accesskit",
- "lumen-static-macros",
+ "fulgurite-macros",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "lumen-static-agent"
+name = "fulgurite-agent"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
+ "fulgurite",
  "serde_json",
 ]
 
 [[package]]
-name = "lumen-static-app"
+name = "fulgurite-app"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
-name = "lumen-static-frame"
+name = "fulgurite-frame"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-shell",
+ "fulgurite-widgets",
 ]
 
 [[package]]
-name = "lumen-static-lean"
+name = "fulgurite-lean"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
-name = "lumen-static-lss"
+name = "fulgurite-lss"
 version = "0.1.0"
 
 [[package]]
-name = "lumen-static-macros"
+name = "fulgurite-macros"
 version = "0.1.0"
 dependencies = [
- "lumen-static-lss",
+ "fulgurite-lss",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
 ]
 
 [[package]]
-name = "lumen-static-shell"
+name = "fulgurite-shell"
 version = "0.1.0"
 dependencies = [
  "fontdue",
- "lumen-static",
- "lumen-static-lss",
- "lumen-static-text",
+ "fulgurite",
+ "fulgurite-lss",
+ "fulgurite-text",
  "raw-window-handle",
  "wide",
 ]
 
 [[package]]
-name = "lumen-static-stages"
+name = "fulgurite-stages"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-wgpu",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-wgpu",
+ "fulgurite-widgets",
 ]
 
 [[package]]
-name = "lumen-static-text"
+name = "fulgurite-text"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
+ "fulgurite",
  "rustybuzz",
  "unicode-bidi",
  "unicode-linebreak",
 ]
 
 [[package]]
-name = "lumen-static-wgpu"
+name = "fulgurite-wgpu"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "lumen-static",
- "lumen-static-shell",
+ "fulgurite",
+ "fulgurite-shell",
  "pollster",
  "wgpu",
 ]
 
 [[package]]
-name = "lumen-static-widgets"
+name = "fulgurite-widgets"
 version = "0.1.0"
 dependencies = [
  "accesskit",
- "lumen-static",
+ "fulgurite",
  "unicode-segmentation",
 ]
 
 [[package]]
-name = "lumen-static-winit"
+name = "fulgurite-winit"
 version = "0.1.0"
 dependencies = [
  "arboard",
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-wgpu",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-wgpu",
  "softbuffer",
  "winit",
 ]
@@ -1595,9 +1595,9 @@ dependencies = [
 name = "observe-probe"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -1850,9 +1850,9 @@ checksum = "ca45419789ae5a7899559e9512e58ca889e41f04f1f2445e9f4b290ceccd1d08"
 name = "raster-scaling"
 version = "0.0.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-wgpu",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-wgpu",
 ]
 
 [[package]]
@@ -2478,8 +2478,8 @@ name = "vello-cpu-arm"
 version = "0.0.0"
 dependencies = [
  "fontdue",
- "lumen-static",
- "lumen-static-shell",
+ "fulgurite",
+ "fulgurite-shell",
  "vello_cpu",
 ]
 

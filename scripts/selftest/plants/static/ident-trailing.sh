@@ -3,6 +3,6 @@
 CHECK='./scripts/check_doc_identifiers.sh'
 EXPECT='PlantedTrailingGhost'
 plant() {
-    append crates/lumen-static/src/lib.rs \
+    append crates/fulgurite/src/lib.rs \
         'const _PLANTED_TRAILING: u8 = 0; // see `PlantedTrailingGhost`'
 }

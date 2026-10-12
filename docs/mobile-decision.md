@@ -36,8 +36,8 @@ mobile-check` type-checks for `aarch64-linux-android` (declared in
 
 | configuration | checks |
 |---|---|
-| `lumen-static`, `lumen-static-widgets`, `lumen-static-shell` | yes |
-| `lumen-static-winit`, `--no-default-features` + `winit/android-native-activity` | yes |
+| `fulgurite`, `fulgurite-widgets`, `fulgurite-shell` | yes |
+| `fulgurite-winit`, `--no-default-features` + `winit/android-native-activity` | yes |
 | … with `reload`, `hot` and `agent` | yes |
 | … with its **default** features (`clipboard`) | yes, since T54.8: `arboard` has no Android backend, so it is a target-gated dependency and `clipboard` is a no-op there |
 | … with `a11y` | yes (`accesskit_winit` has an Android backend) |
@@ -57,7 +57,7 @@ and the image source was taken once, so a second `resumed` drew every
 image as nothing (R15-F6). `Win::suspended` now takes the source back
 through `Backend::take_images` (required on every backend) and drops the
 backend and window. `just resume-drive` runs the round trip on a live
-window through a debug-only `LUMEN_TEST_RESUME` hook and reads 0
+window through a debug-only `FULGURITE_TEST_RESUME` hook and reads 0
 differing pixels of 458,620 on the software and GPU backends
 (`docs/plan-timers-wake.md` T47.7). Surface recreation on an Android
 activity is still the deferred work below.
@@ -114,7 +114,7 @@ into pointer events — a tap presses a button, toggles a checkbox and
 moves a slider on any touchscreen a desktop shell reaches, including
 Wayland — and a touch `Cancel` is a `PointerCancel` that activates
 nothing. Before it no stock widget handled `Event::Touch`, so a tap did
-nothing at all (R15-F4). `crates/lumen-static-shell/tests/touch_as_pointer.rs`
+nothing at all (R15-F4). `crates/fulgurite-shell/tests/touch_as_pointer.rs`
 is the gate.
 
 ## What would probably happen if it were done

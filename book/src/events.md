@@ -101,7 +101,7 @@ checks every one of those effects, with the left button at the same
 point as the accept direction:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/secondary_button.rs:secondary_presses_nothing}}
+{{#include ../../crates/fulgurite-shell/tests/secondary_button.rs:secondary_presses_nothing}}
 ```
 
 The filter sits before pass 1 rather than in pass 2's activation, where
@@ -153,7 +153,7 @@ and its ancestors, then the node's own handler, asked with
 click cannot reach a visibility handler:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/pop_visibility.rs:visibility_handler}}
+{{#include ../../crates/fulgurite-shell/tests/pop_visibility.rs:visibility_handler}}
 ```
 
 While a change waits, `next_deadline_ms()` answers `Some(0.0)`, so a

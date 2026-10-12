@@ -28,7 +28,7 @@ found by building rather than by reading. Results:
 
 That sentence, or a paraphrase of it, appears in the handoff, the README
 and `docs/plan-lumen-parity.md`. **Nothing demonstrates it.**
-`crates/lumen-static-shell/tests/alloc_gate.rs` proves that a *steady-
+`crates/fulgurite-shell/tests/alloc_gate.rs` proves that a *steady-
 state frame* performs no allocation on a desktop with a working
 allocator — a real result, and a much weaker claim than the one being
 made. No build of this project has ever targeted a machine without an
@@ -284,7 +284,7 @@ in a build that still compiles.
 
 This repository has already been bitten by that unification. The
 justfile records why `--workspace` cannot produce the shipped shape:
-"lumen-static-agent, examples/counter and fixtures/hot-app turn on
+"fulgurite-agent, examples/counter and fixtures/hot-app turn on
 `observe`/`reload` and cargo unifies features across the selection."
 Today that is an annoyance about which build is authoritative. With a
 subtractive feature it becomes a build that is quietly missing things.
@@ -299,7 +299,7 @@ Without it, `--no-default-features --features alloc,observe` resolves
 cleanly at the Cargo level and then fails deep inside a dependency
 instead of at the point of the mistake.
 
-**Gate:** `cargo check -p lumen-static --no-default-features
+**Gate:** `cargo check -p fulgurite --no-default-features
 **--features alloc** --target thumbv7em-none-eabihf`. Not bare
 `--no-default-features`: with the tiers above that means *neither*
 `std` nor `alloc`, and `Vec`/`String`/`VecDeque` are still in the core
@@ -366,7 +366,7 @@ operations that is seconds in release, and it is a strictly stronger
 gate than a property test — which is the reason to prefer the
 domain-complete implementation over the cast.
 
-**Built as `crates/lumen-static/src/num.rs`.** All 4,294,967,296 inputs
+**Built as `crates/fulgurite/src/num.rs`.** All 4,294,967,296 inputs
 agree with `f32::floor`/`f32::ceil` *bit for bit*, in 12.9 s release
 (`num::tests::exhaustive_agreement_with_std`, `just floats`, in
 `just check`). Three notes on what the writing settled:
@@ -545,7 +545,7 @@ into it through `pass::dispatch`, and allocates nothing.
 **Done, and it answers this task's own question — the associated type
 was worth having, and the gate proved it by failing.**
 
-`crates/lumen-static/src/inline.rs`: `InlineText<N>` (N *bytes*, not
+`crates/fulgurite/src/inline.rs`: `InlineText<N>` (N *bytes*, not
 chars) and `InlineClusters<N>`, paired through `TextBuffer::Clusters`.
 One cluster per byte is the worst case — every cluster boundary is a
 `char` boundary and the shortest `char` is one byte — so `N` clusters
@@ -583,7 +583,7 @@ be discarded.
 ## T13.7 — a text stack that works without an allocator — **DONE 2026-09-05**
 
 `FontMetrics` is `fontdue`, which needs `alloc` and is a `std` crate,
-and it lives in `lumen-static-shell` — which this milestone explicitly
+and it lives in `fulgurite-shell` — which this milestone explicitly
 keeps `std`. So on the target there is **no measurer at all**, and
 T13.3's fixture would lay out a `Label` whose glyphs nothing can draw.
 No earlier version of this plan named that, which made the alloc-free
@@ -606,7 +606,7 @@ next to it.
 the glyph coverage it emits matches a desktop render of the same face
 at the same size.
 
-**Done.** `lumen_static::font::{BakedFace, Glyph}` is the machinery;
+**Done.** `fulgurite::font::{BakedFace, Glyph}` is the machinery;
 `fixtures/bake-font` is the generator; `fixtures/embedded/src/face.rs`
 is DejaVuSans at 16 px — **95 glyphs, 9,010 bytes of flash**, which is
 1.8% of the device's 512 KB. The fixture resolves **108 glyphs per
@@ -693,7 +693,7 @@ and this project measures claims. Benchmark both at the tally's 34
 commands and at ~2 000, and **keep the copying implementation if
 streaming is not faster** — the point is a host that needs no list, and
 if that costs desktop time it should be a second `Retention` impl rather
-than a replacement. `crates/lumen-static-shell/tests/damage_oracle.rs`
+than a replacement. `crates/fulgurite-shell/tests/damage_oracle.rs`
 is the correctness gate either way: whatever computes the damage, the
 partial redraw must stay pixel-identical to a full one.
 
@@ -803,7 +803,7 @@ Two smaller corrections the numbers forced:
   about this architecture.
 - **Not `no_std` for the shell, the agent or the macros.** The shell
   owns fonts, a rasteriser and a window; the agent owns JSON. Both are
-  desktop by nature and stay `std`. Only `lumen-static` is in scope —
+  desktop by nature and stay `std`. Only `fulgurite` is in scope —
   which is why the bitmap face of T13.7 cannot live in the shell either.
 - **Not a board bring-up.** T13.0 names a device to derive budgets from,
   not a target to flash. The fixture is a library check for thumb and a

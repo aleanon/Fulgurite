@@ -191,7 +191,7 @@ TEXTINPUT = ("TextInput", "#d_textinput_a", [
 # same string out in logical order left to right (M81/T81.0's pin), so its
 # left end is the logical *start*, and the character goes there: the
 # expectation follows the mode the process reports (`parity.leg_shaping`,
-# from the launcher's `LUMEN_LIVE_FEATURES`), never a label set here.
+# from the launcher's `FULGURITE_LIVE_FEATURES`), never a label set here.
 RTL = "#d_textinput_rtl"
 
 

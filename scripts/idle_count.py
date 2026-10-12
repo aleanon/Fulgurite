@@ -38,7 +38,7 @@ both. Remove `shared_desktop` with the winit release that fixes #4755.
 import json, os, shutil, socket, subprocess, sys, time
 
 port, secs = int(sys.argv[1]), float(sys.argv[2])
-pid = os.environ["LUMEN_LIVE_PID"]
+pid = os.environ["FULGURITE_LIVE_PID"]
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
 f = s.makefile("rwb")
 n = [0]

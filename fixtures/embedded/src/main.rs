@@ -22,7 +22,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use embedded::{frame, type_char, Checksum, Panel, NODES};
-use lumen_static::{NodeState, Style};
+use fulgurite::{NodeState, Style};
 
 /// The `field`'s index in `Ui`'s node table: title, badge, field. An
 /// embedded app has no agent to ask, so it is a constant.
@@ -34,7 +34,7 @@ struct Abort;
 
 // Abort, not `panic!`: std's panic machinery boxes its payload, which
 // allocates, which re-enters the allocator we are standing in.
-// `crates/lumen-static-shell/tests/alloc_gate.rs` counts instead and
+// `crates/fulgurite-shell/tests/alloc_gate.rs` counts instead and
 // says why; here the frame under test is a single call, so aborting at
 // the exact allocation is both simpler and a sharper signal than a count
 // read afterwards. `process::abort` allocates nothing.
@@ -67,7 +67,7 @@ fn main() {
 
     println!(
         "embedded: {NODES} nodes, depth {} = {} B of stack by the model (budget 4096; `just stack` measures)",
-        <embedded::Ui as lumen_static::Widget>::DEPTH,
+        <embedded::Ui as fulgurite::Widget>::DEPTH,
         embedded::sizes::STACK
     );
     println!("embedded: arming the allocator for 100 frames");
@@ -88,7 +88,7 @@ fn main() {
     // real dispatch path, still with the allocator armed. `Label` and
     // `Button` never allocate because they never change; an editable
     // field is the widget that would.
-    let mut input = lumen_static::event::InputState { focus: Some(FIELD), ..Default::default() };
+    let mut input = fulgurite::event::InputState { focus: Some(FIELD), ..Default::default() };
     for ch in "hello embedded".chars() {
         assert!(type_char(&mut panel, &mut st, &sty, &mut input, ch), "the field took it");
     }

@@ -25,7 +25,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 ALLOW=scripts/zero-tests.allow
 sel=("$@")
-[ "${#sel[@]}" -gt 0 ] || sel=(--workspace --exclude lumen-static-wgpu)
+[ "${#sel[@]}" -gt 0 ] || sel=(--workspace --exclude fulgurite-wgpu)
 
 # cargo's stderr is kept, and its tail printed on failure: CI at 89e3f7d
 # failed here with only an exit code, and the cause could not be recovered.

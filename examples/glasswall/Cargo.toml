@@ -6,17 +6,17 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-winit = { path = "../../crates/fulgurite-winit" }
 # `truetype` so the tiles under the glass are real glyphs. A backdrop
 # filter over block metrics blurs uniform boxes, which demonstrates
 # nothing.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype"] }
 # Only so `--bench` can put a number on the backend this example is for.
 # Optional, because the M15 gating policy is that nothing pulls wgpu
 # unless a manifest says so.
-lumen-static-wgpu = { path = "../../crates/lumen-static-wgpu", optional = true }
+fulgurite-wgpu = { path = "../../crates/fulgurite-wgpu", optional = true }
 
 [features]
 default = []
@@ -24,11 +24,11 @@ default = []
 # full-screen panel at 4K (`docs/results-glass.md` §0h); thirteen of
 # them is not a frame, it is a slideshow. M22/T22.6 put the whole filter
 # on the GPU, where the same work is milliseconds.
-gpu = ["lumen-static-winit/gpu", "dep:lumen-static-wgpu"]
+gpu = ["fulgurite-winit/gpu", "dep:fulgurite-wgpu"]
 # M47/T47.7: the agent endpoint, so `just resume-drive` can screenshot the
 # window before and after a suspend/resume round trip. Glasswall is the
 # example with images, which is what that round trip used to lose.
-agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+agent = ["fulgurite-winit/agent", "fulgurite-widgets/observe"]
 # M83/T83.2: the window's backend comes from `Program::backend_with` -- a
 # counter that wraps `Software` and forwards every method, so
 # `just resume-drive`'s `custom-resume` leg can count the backends the
@@ -38,4 +38,4 @@ custom-backend = []
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
 # that every rule in its stylesheet does something, so they need it.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "agent"] }

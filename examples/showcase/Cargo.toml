@@ -6,8 +6,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
 # `a11y` (M54/T54.2): the showcase asks for the screen-reader adapter,
 # which the window crate leaves off by default (its manifest says why).
 # Since M90/T90.7 it asks through its own DEFAULT `a11y` feature below,
@@ -17,23 +17,23 @@ lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
 # the window's measurer answers only with the feature; without it the demo
 # paints its fallback, axis-aligned. Its price is in the window crate's
 # manifest (docs/results-paint-vocabulary.md T82.7).
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["vector-text"] }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", features = ["vector-text"] }
 # `image` (M84/T84.3): the Image demo's GIF is decoded at boot
 # (`catalog::spin`). Default-off in the shell, so this asks for it; the
 # window crate's default count does not move (docs/results-images.md T84.1).
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "image"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "image"] }
 
 [features]
 # The screen-reader adapter, on by default (above). Off only for K90c's
 # measurement: the tray's stripped cost is judged WITHOUT `a11y`, which
 # already links the D-Bus stack (docs/plan-desktop-integration.md K90c).
 default = ["a11y"]
-a11y = ["lumen-static-winit/a11y"]
-gpu = ["lumen-static-winit/gpu"]
+a11y = ["fulgurite-winit/a11y"]
+gpu = ["fulgurite-winit/gpu"]
 # `just showcase-agent` runs with this on: a JSON-RPC socket that drives
 # the live window, so a review can open the dropdown and pick the next
 # widget instead of restarting the process once per widget.
-agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+agent = ["fulgurite-winit/agent", "fulgurite-widgets/observe"]
 # M27/T27.3: the same showcase under `Everything` rather than `Boundaries`.
 # `just widget-drive` runs every drive script against both, because M26
 # found four of its five defects invisible under the default -- a clean
@@ -41,18 +41,18 @@ agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
 # M55/T55.4 it forwards nothing: `main` selects the type under it
 # (`Program::invalidation`), which changes only this application.
 everything = []
-shadow-oracle = ["lumen-static-winit/shadow-oracle"]
+shadow-oracle = ["fulgurite-winit/shadow-oracle"]
 # M81/T81.4: the showcase laid out `Shaping::Complex` -- the window, `--shot`
 # and `--demo` alike (`program()` sets it, `stack_of` follows it). Forwards
 # the shell's default-off `shaping` (docs/plan-shaped-paint.md).
-shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
+shaping = ["fulgurite-winit/shaping", "fulgurite-shell/shaping"]
 # M83/T83.6: the `ShaderView` demo and the program's shader table
 # (`catalog::SHADERS`). The window crate's half forwards to the GPU backend
 # in a `gpu` build, which runs the shader; the default software backend,
 # `--shot` and the tests draw its fallback.
-shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
+shader = ["fulgurite-widgets/shader", "fulgurite-shell/shader", "fulgurite-winit/shader"]
 
 [dev-dependencies]
 # The sheet lint is agent-gated (M26/T26.6); this crate's tests assert
 # that every rule in its stylesheet does something, so they need it.
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "agent"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "agent"] }

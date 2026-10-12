@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M57/A17: every widget in lumen-static-widgets tells a screen reader and
+# M57/A17: every widget in fulgurite-widgets tells a screen reader and
 # the agent what it is. `Node::observe` is provided, so a widget that
 # forgets it compiles and publishes `GenericContainer` with no value --
 # which is how ten widgets shipped silent (docs/widget-audit.md X9).
@@ -19,7 +19,7 @@ Pop        a wrapper: its content speaks
 Tooltip    a wrapper: its control and its tip speak
 '
 
-missing=$(for f in crates/lumen-static-widgets/src/*.rs; do
+missing=$(for f in crates/fulgurite-widgets/src/*.rs; do
   awk -v F="$f" '
     /^impl.* Node for /{ match($0,/Node for [A-Za-z]+/); name=substr($0,RSTART+9,RLENGTH-9); has=0; depth=0; inimpl=1 }
     inimpl && /fn observe\(/{has=1}

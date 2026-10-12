@@ -36,13 +36,13 @@
 #    Every path here exports `LC_ALL=C`.
 # 2. CARGO FEATURE UNIFICATION. `cargo build --release` over the whole
 #    benches-competitive workspace unifies features across the selected
-#    packages, and `lumen-static-lean` comes out byte-identical to
-#    `lumen-static-app` (measured 2026-09-08: 2 842 560 vs 2 842 576 built
+#    packages, and `fulgurite-lean` comes out byte-identical to
+#    `fulgurite-app` (measured 2026-09-08: 2 842 560 vs 2 842 576 built
 #    together; 2 843 024 vs 2 683 712 built one at a time). The 159 KB
 #    clipboard delta in `docs/results-competitive.md` §4 only exists if each
 #    is built alone. `build` uses one `cargo` invocation per size arm.
 # 3. BINARY PATH COLLISION. The default and `--features observe` builds of
-#    `lumen-static-frame` write the SAME path. `build` copies each out to
+#    `fulgurite-frame` write the SAME path. `build` copies each out to
 #    `build/` immediately, as `harnesses/bench5/run.sh` does for its two
 #    Lumen binaries.
 # 4. SKIP_RENDER_TESTS. `benches/vs_toolkits.rs` sets it in its own `main`, so
@@ -58,14 +58,14 @@ STATUS=$BUILD/status.tsv
 # Criterion sample count. 20 is what `docs/results-competitive.md` §1 used
 # ("Criterion, 20 samples"); changing it changes comparability, not just noise.
 SAMPLES=${SAMPLES:-20}
-# Iteration count for the C/C++/lumen-static arms: min of 200 after 20
+# Iteration count for the C/C++/fulgurite arms: min of 200 after 20
 # warm-ups, the shape every harness in `harnesses/` was written to.
 ITERS=${ITERS:-200}
 
 # arm -> artifact that must exist before `run` will touch it.
 declare -A ARTIFACT=(
-  [lumen-static]="$BUILD/lumen-static-frame"
-  [lumen-static-observe]="$BUILD/lumen-static-frame-observe"
+  [fulgurite]="$BUILD/fulgurite-frame"
+  [fulgurite-observe]="$BUILD/fulgurite-frame-observe"
   [gtk]="$BUILD/gtk_frame"
   [qt]="$BUILD/qt-frame/qt_frame"
   [gtk-bench5]="$BUILD/gtk_bench5"
@@ -78,8 +78,8 @@ declare -A ARTIFACT=(
   [egui]="$SIB/target/release/deps/.vs_egui.stamp"
   [masonry-raw]="$SIB/target/release/masonry-raw-probe"
   # size/RSS-only arms
-  [lumen-static-app]="$BUILD/lumen-static-app"
-  [lumen-static-lean]="$BUILD/lumen-static-lean"
+  [fulgurite-app]="$BUILD/fulgurite-app"
+  [fulgurite-lean]="$BUILD/fulgurite-lean"
   [gtk-app]="$BUILD/gtk_app"
   [qt-app]="$BUILD/qt-app/qt_app"
   [iced-app]="$SIB/harnesses/apps/target/release/iced-app"
@@ -90,8 +90,8 @@ declare -A ARTIFACT=(
 
 # arm -> which workloads it can actually run.
 declare -A WORKLOADS=(
-  [lumen-static]="point churn"        # one binary prints both
-  [lumen-static-observe]="point churn"
+  [fulgurite]="point churn"        # one binary prints both
+  [fulgurite-observe]="point churn"
   [gtk]="point"                       # harnesses/gtk/frame.c has no churn mode
   [qt]="point"                        # harnesses/qt/frame.cpp likewise
   [gtk-bench5]="point churn"
@@ -105,8 +105,8 @@ declare -A WORKLOADS=(
   [masonry-raw]="point"               # diagnostic: prints no time
 )
 
-FRAME_ARMS="lumen-static lumen-static-observe gtk qt gtk-bench5 qt-bench5 iced lumen lumen-memoized masonry lumen-semantics egui masonry-raw"
-SIZE_ARMS="lumen-static-app lumen-static-lean gtk-app qt-app iced-app xilem-app slint-app lumen-app"
+FRAME_ARMS="fulgurite fulgurite-observe gtk qt gtk-bench5 qt-bench5 iced lumen lumen-memoized masonry lumen-semantics egui masonry-raw"
+SIZE_ARMS="fulgurite-app fulgurite-lean gtk-app qt-app iced-app xilem-app slint-app lumen-app"
 
 die() { echo "competitors.sh: $*" >&2; exit 2; }
 
@@ -114,20 +114,20 @@ die() { echo "competitors.sh: $*" >&2; exit 2; }
 
 record() { printf '%s\t%s\t%s\n' "$1" "$2" "$(date -Is)" >> "$STATUS"; }
 
-build_lumen_static() {
+build_fulgurite() {
   # Trap 3: same output path for both feature sets, so copy immediately.
-  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame \
-    && cp "$HERE/target/release/lumen-static-frame" "$BUILD/lumen-static-frame" \
-    && record lumen-static ok || { record lumen-static FAILED; return 1; }
-  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p lumen-static-frame --features observe \
-    && cp "$HERE/target/release/lumen-static-frame" "$BUILD/lumen-static-frame-observe" \
-    && record lumen-static-observe ok || { record lumen-static-observe FAILED; return 1; }
+  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p fulgurite-frame \
+    && cp "$HERE/target/release/fulgurite-frame" "$BUILD/fulgurite-frame" \
+    && record fulgurite ok || { record fulgurite FAILED; return 1; }
+  cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p fulgurite-frame --features observe \
+    && cp "$HERE/target/release/fulgurite-frame" "$BUILD/fulgurite-frame-observe" \
+    && record fulgurite-observe ok || { record fulgurite-observe FAILED; return 1; }
 }
 
 build_size_arms() {
   # Trap 2: ONE package per cargo invocation, or the lean arm is not lean.
   local ok=0
-  for p in lumen-static-app lumen-static-lean; do
+  for p in fulgurite-app fulgurite-lean; do
     rm -f "$HERE/target/release/$p"
     if cargo build --locked --release -q --manifest-path "$HERE/Cargo.toml" -p "$p"; then
       cp "$HERE/target/release/$p" "$BUILD/$p"; record "$p" ok
@@ -189,10 +189,10 @@ build_sibling_benches() {
 # times.
 #
 # Reproduced on our own side before fixing it: one workspace build puts
-# lumen-static-app and -lean 16 bytes apart; one package per invocation puts
+# fulgurite-app and -lean 16 bytes apart; one package per invocation puts
 # them 159,312 apart, which is the arboard stack the lean arm drops.
 #
-# This is the trap lumen-static's own justfile documents at length. The
+# This is the trap fulgurite's own justfile documents at length. The
 # benchmark walked into it anyway, which is why the warning lives in the code
 # that would repeat it rather than only in a commit message.
 build_sibling_apps() {
@@ -212,7 +212,7 @@ cmd_build() {
   mkdir -p "$BUILD"; : > "$STATUS"
   local arms=("$@"); local rc=0
   if [ ${#arms[@]} -eq 0 ]; then
-    build_lumen_static || rc=1
+    build_fulgurite || rc=1
     build_size_arms    || rc=1
     build_c_arms       || rc=1
     build_sibling_benches || rc=1
@@ -220,8 +220,8 @@ cmd_build() {
   else
     for a in "${arms[@]}"; do
       case $a in
-        lumen-static|lumen-static-observe) build_lumen_static || rc=1 ;;
-        lumen-static-app|lumen-static-lean) build_size_arms || rc=1 ;;
+        fulgurite|fulgurite-observe) build_fulgurite || rc=1 ;;
+        fulgurite-app|fulgurite-lean) build_size_arms || rc=1 ;;
         gtk|qt|gtk-app|qt-app|gtk-bench5|qt-bench5) build_c_arms || rc=1 ;;
         iced|lumen|lumen-memoized|masonry|lumen-semantics|egui|masonry-raw) build_sibling_benches || rc=1 ;;
         iced-app|xilem-app|slint-app|lumen-app) build_sibling_apps || rc=1 ;;
@@ -279,7 +279,7 @@ crit() {
   # offers `--no-default-features` for the release profile. An unqualified
   # `cargo bench` takes the dev build, so LUMEN_OBS defaults to `on` here to
   # reproduce that; `LUMEN_OBS=off` is the fair-to-Lumen setting and the one
-  # matching lumen-static's own arm, whose `observe` feature is default-OFF.
+  # matching fulgurite's own arm, whose `observe` feature is default-OFF.
   # (The sibling's own BENCH5 table, harnesses/bench5/results-2026-08-30.tsv,
   # is where the size of that difference is already written down.)
   local feat=()
@@ -307,15 +307,15 @@ cmd_run() {
   local arm=${1:?arm} n=${2:?n} workload=${3:-point}
   require_built "$arm"; require_workload "$arm" "$workload"
   case $arm in
-    lumen-static|lumen-static-observe)
+    fulgurite|fulgurite-observe)
       local bin=${ARTIFACT[$arm]}
       # One invocation prints BOTH workloads; select the rows asked for.
       "$bin" "$n" "$ITERS" | awk -v arm="$arm" -v wl="$workload" -v n="$n" '
         {
           line=$0
           sub(/[ \t]*\([0-9]+ rows\)[ \t]*$/,"",line)
-          # "lumen-static/<metric>   <value> us"
-          if (match(line, /^lumen-static\//)) {
+          # "fulgurite/<metric>   <value> us"
+          if (match(line, /^fulgurite\//)) {
             rest=substr(line, RLENGTH+1)
             if (match(rest, /[0-9.]+ us$/)) {
               val=substr(rest, RSTART); sub(/ us$/,"",val)

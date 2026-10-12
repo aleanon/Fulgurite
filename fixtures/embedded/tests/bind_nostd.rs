@@ -1,6 +1,6 @@
 //! **Core's `no_std` bind branch, executed** (M43/T43.8, R12-F2).
 //!
-//! `lumen_static::bind::format_into` has two bodies. With `std` it formats
+//! `fulgurite::bind::format_into` has two bodies. With `std` it formats
 //! into a reused thread-local `String`; without, into a stack
 //! `InlineText<SCRATCH_CAP>` of 256 bytes, which truncates at a `char`
 //! boundary where the `std` path would grow. Until M43 no gate ran the
@@ -17,15 +17,15 @@
 //!
 //! Inside `cargo test --workspace` other members unify `std` into core and
 //! the `std` body runs instead; the test accepts that (1,000 stored) and
-//! says so. `just thumb` sets `LUMEN_REQUIRE_NOSTD=1`, under which only
+//! says so. `just thumb` sets `FULGURITE_REQUIRE_NOSTD=1`, under which only
 //! the `no_std` answer passes.
 
 use core::fmt;
 
-use lumen_static::prelude::*;
-use lumen_static::event::Wrote;
-use lumen_static::{wid_index, InlineText};
-use lumen_static_widgets::prelude::*;
+use fulgurite::prelude::*;
+use fulgurite::event::Wrote;
+use fulgurite::{wid_index, InlineText};
+use fulgurite_widgets::prelude::*;
 
 const CAP: usize = 256;
 
@@ -62,7 +62,7 @@ fn app(value: Repeat) -> Readout {
 }
 
 fn required() -> bool {
-    std::env::var("LUMEN_REQUIRE_NOSTD").is_ok_and(|v| v == "1")
+    std::env::var("FULGURITE_REQUIRE_NOSTD").is_ok_and(|v| v == "1")
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn a_bound_label_stores_the_scratch_cap_and_no_more() {
     let branch = if n == 1000 { "std (unified by the workspace)" } else { "no_std" };
     println!("stored {n} of 1000, cap {CAP} -- the {branch} branch ran");
     if required() {
-        assert_eq!(n, CAP, "LUMEN_REQUIRE_NOSTD=1: stored {n} of 1000, expected the no_std cap {CAP}");
+        assert_eq!(n, CAP, "FULGURITE_REQUIRE_NOSTD=1: stored {n} of 1000, expected the no_std cap {CAP}");
     } else {
         assert!(n == CAP || n == 1000, "stored {n} of 1000: neither the no_std cap {CAP} nor the whole value");
     }
@@ -103,7 +103,7 @@ fn truncation_lands_on_a_char_boundary() {
         }
     }
     let mut ui = Ui::default();
-    lumen_static::bind::format_into(&mut ui.out, format_args!("{}", Mixed));
+    fulgurite::bind::format_into(&mut ui.out, format_args!("{}", Mixed));
     let s = ui.out.as_str();
     println!("mixed: stored {} bytes, {} chars", s.len(), s.chars().count());
     if required() || s.len() < 455 {

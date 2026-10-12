@@ -51,7 +51,7 @@ so the rules are stricter than usual.
    the invalidation strategy and the feature set that the *process*
    reports. It fails if any of them differs from what the script
    launched. A label the script sets for itself proves nothing
-   (LUMEN_DRIVE_STRATEGY today).
+   (FULGURITE_DRIVE_STRATEGY today).
 2. **"Cannot say" is never "no".** If a check's subject is compiled out
    of the build, the check fails, unless the leg says it expects the
    subject to be absent. `panic_drive.sh` already does this for
@@ -74,14 +74,14 @@ so the rules are stricter than usual.
 ### 1.1 The harness cannot tell which process it drove (R18-F1)
 
 - The strategy is only a label. `scripts/drive/run.py:40` reads
-  LUMEN_DRIVE_STRATEGY from the environment. No agent method reports
+  FULGURITE_DRIVE_STRATEGY from the environment. No agent method reports
   the strategy.
-- `app.diagnostics` (`crates/lumen-static-agent/src/lib.rs:1336-1363`)
+- `app.diagnostics` (`crates/fulgurite-agent/src/lib.rs:1336-1363`)
   answers from the tree alone: frame, node counts, repeaters and byte
   sizes. It reports no pid, no strategy and no features.
 - A bind failure is only logged. Two sites do this, and both then
   return from the socket thread while the window keeps running:
-  - `crates/lumen-static-winit/src/agent.rs:66`
+  - `crates/fulgurite-winit/src/agent.rs:66`
   - `examples/counter-window/src/agent_socket.rs:126`
 - `agent_client.py wait-port` succeeds against any listener
   (`scripts/widget_drive.sh:39`).
@@ -153,7 +153,7 @@ walked. The loop either adds each action to `seen` or raises, so
 Nothing pins how many entries or actions there are. The review deleted
 Radio's inventory and one Switch row, and the run stayed green at 38/92
 against 39/94 (I5b/I5c; `docs/results-deep-review.md` §4). Nothing ties
-the widgets `lumen-static-widgets` exports to an inventory. The review
+the widgets `fulgurite-widgets` exports to an inventory. The review
 listed eighteen exported types with none. Select, TextArea and
 ScrollView are among them, and all three are interactive.
 
@@ -238,7 +238,7 @@ first drive, and there are no test hosts to update.
 
 The two live implementations are:
 
-- `lumen_static_shell::session::Live`, where the strategy is the shell's
+- `fulgurite_shell::session::Live`, where the strategy is the shell's
   `Inval` alias, `session.rs:49-51`;
 - counter-window's `Live`, which wraps `Host<Tally>` and so uses the
   host's default.
@@ -266,7 +266,7 @@ endpoint. Exit 3 is distinct from a panic (101) and from a kill (143).
 
 What (b) breaks: two `just tally` windows on the default port. The
 second one now exits and names the port, where today it runs without
-an endpoint. The fix for the user is LUMEN_AGENT_ADDR. This lands
+an endpoint. The fix for the user is FULGURITE_AGENT_ADDR. This lands
 after M39/T39.1, which moves the bind into one transport in the agent
 crate. M39 does not change whether the endpoint is on by default;
 M48/T48.11 does (with no address configured there is no endpoint). So
@@ -318,7 +318,7 @@ discovers against the manifest before any window opens:
 
 The second half is a new `just static` check,
 `scripts/check_drive_coverage.sh`. Every `pub use` widget type in
-`crates/lumen-static-widgets/src/lib.rs` must either have an inventory
+`crates/fulgurite-widgets/src/lib.rs` must either have an inventory
 or appear in `scripts/drive/undriven.allow` with a reason and an owner.
 The allow file starts with the review's eighteen names.
 
@@ -423,14 +423,14 @@ T42.2.
   `cfg!` set.
 - Implement it for counter-window's `Live`.
 - The bind failure exits 3 after printing the address (§2.2). At
-  1717808 there are two sites, `crates/lumen-static-winit/src/agent.rs:66`
+  1717808 there are two sites, `crates/fulgurite-winit/src/agent.rs:66`
   and `examples/counter-window/src/agent_socket.rs:126`. After
   M39/T39.1 both servers call one transport, so the exit goes into its
   bind step, and M39/T39.2's loopback refusal exits the same way.
 
 **Gate:**
 
-- `crates/lumen-static-agent/tests/protocol.rs`: `diagnostics_and_perf`
+- `crates/fulgurite-agent/tests/protocol.rs`: `diagnostics_and_perf`
   asserts that a host with no `process_info` answers `supported: false`.
 - A new shell test builds a `Live` over `Host<_, _, Everything>` and
   asserts that the strategy ends in `Everything`, printing the full
@@ -470,7 +470,7 @@ on a free port serves.
 - Each leg declares its expected strategy and features. The launcher
   prints the following, and fails on any mismatch:
   `drove pid P (socket owner P), strategy S, features F, exe E`.
-- `run.py` no longer reads LUMEN_DRIVE_STRATEGY. It takes the strategy
+- `run.py` no longer reads FULGURITE_DRIVE_STRATEGY. It takes the strategy
   from the launcher, which took it from the process.
 
 **Gate:** the stranger and leg-drop plants from T42.0.
@@ -478,7 +478,7 @@ on a free port serves.
 - The stranger plant fails before driving, with `port already answering
   on 127.0.0.1:P (owner pid Q)`.
 - The leg-drop plant fails with `expected Everything, got
-  lumen_static::invalidate::Boundaries<256>`.
+  fulgurite::invalidate::Boundaries<256>`.
 
 **Accepts good input:** on a free port, the unmodified `widget_drive.sh
 Switch` prints two distinct pids and two distinct strategies, and is
@@ -752,7 +752,7 @@ must be finished **before M41 gathers any evidence**.
   Both are R13-F8, in M48. T42.6 edits the same loop, and whichever
   lands second rebases.
 - **Not `app.quit` in turnkey windows** (R13-F9, M48), and **not the
-  split between LUMEN_AGENT and LUMEN_AGENT_ADDR** (R13-F10, M48).
+  split between FULGURITE_AGENT and FULGURITE_AGENT_ADDR** (R13-F10, M48).
   The launcher passes both until M48 settles on one.
 - **Not tasks-drive's blindness to `run()`'s wiring** (R7-F2, M47). The
   launcher makes that drive's legs *identifiable*. It does not make
@@ -808,7 +808,7 @@ for every plan a build corrected.
   strategy tests build `Host<_, _, Everything>` and
   `Host<_, _, Boundaries<256>>` and ask it; a third drives a real
   `Session::agent` and checks the block against `type_name::<Inval>()`
-  and the test's pid (`crates/lumen-static-shell/tests/process_info.rs`).
+  and the test's pid (`crates/fulgurite-shell/tests/process_info.rs`).
   The bind test lives in the agent crate, beside M39's one bind step,
   rather than in winit.
 - **T42.1 moved a gate.** winit's `agent_transport` served `0.0.0.0`
@@ -829,7 +829,7 @@ for every plan a build corrected.
   build's feature list must be refused rather than re-described. The
   strategy check compares the last path segment of the process's
   `type_name`, with or without its parameters (`Boundaries` matches
-  `lumen_static::invalidate::Boundaries<256>`).
+  `fulgurite::invalidate::Boundaries<256>`).
 - **T42.2: the launcher checks features as well as strategy**, so
   shadow-absent and shadow-unexpected go red in the launcher before
   T42.4's in-drive check exists. T42.4's injection therefore removes one

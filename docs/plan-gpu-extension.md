@@ -11,7 +11,7 @@
 *Size L, split in two because the halves close different iced items
 and the second needs the first's trait home. **M83a** (T83.0–T83.2,
 size M): the backend seam. `Backend` and `Frame` move into
-`lumen-static-shell` (D1 move b), a backend is built from a
+`fulgurite-shell` (D1 move b), a backend is built from a
 raw-window-handle target, and `Program::backend_with` installs a
 factory. It closes "custom renderer injection (window)". **M83b**
 (T83.3–T83.8, size L): custom shaders. There is a `Cmd::Shader`
@@ -26,12 +26,12 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
 
 **Decisions.**
 
-- **`Backend` and `Frame` move to `lumen_static_shell::backend`; they
+- **`Backend` and `Frame` move to `fulgurite_shell::backend`; they
   are not merged with `Screen`** (D1 b; C5, B19, A4). The trait names no
   winit type. It needs `FrameSource`, `Color`, `Instant`,
   `ImageSource` and `Frame`, and all of them are shell or core types
-  (`lumen-static-winit/src/backend.rs`, `surface.rs`'s `Frame`).
-  `lumen-static-winit` re-exports both, so `lumen_static_winit::Backend`
+  (`fulgurite-winit/src/backend.rs`, `surface.rs`'s `Frame`).
+  `fulgurite-winit` re-exports both, so `fulgurite_winit::Backend`
   still resolves. What stays in winit is `Software` (softbuffer),
   `GpuBackend`, `AsScreen`, `frame_times` and `pick_backend`.
   - **Why not merged.** `Screen` is the narrow view that crosses the
@@ -58,7 +58,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     `GpuBackend` writes `fetch_rgba`/`frame_rgba` as an explicit
     `None` ("does not render", as today), and winit's test `Fake`
     writes all three.
-  - Cost: `lumen-static-shell` gains `raw-window-handle = { version =
+  - Cost: `fulgurite-shell` gains `raw-window-handle = { version =
     "0.6", features = ["std"], optional = true }`, enabled by the
     shell's `truetype` (`truetype = ["dep:fontdue",
     "dep:raw-window-handle"]`). That is 0.6.2, already in `Cargo.lock`
@@ -66,12 +66,12 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     because the `Arc<H: ?Sized>` impls are behind `alloc`, and `just
     test-crates` builds the shell alone. The shell's default build
     gains +0 crates; with `truetype` it gains +1. The default
-    `lumen-static-winit` graph gains +0 (measured in T83.1, kill rule
+    `fulgurite-winit` graph gains +0 (measured in T83.1, kill rule
     K83d).
 - **A backend is built from a `BackendTarget`, one path for built-in and
   custom backends.** It is `BackendTarget { window: Arc<dyn
   WindowHandles>, width: u32, height: u32, font: Option<FontStack>,
-  accept_cpu: bool }`, in `lumen_static_shell::backend`.
+  accept_cpu: bool }`, in `fulgurite_shell::backend`.
   `WindowHandles: HasWindowHandle + HasDisplayHandle + Send + Sync`
   has a blanket impl. `softbuffer::Context::new`/`Surface::new` and
   `Gpu::for_window` (`W: wgpu::DisplayAndWindowHandle + 'static`) both
@@ -99,13 +99,13 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     with `accept_cpu = prefer == Prefer::Gpu`. `None` falls through to
     today's GPU-then-software decision, so the software fallback
     stands (C5). `Prefer::Software`, from the program or from
-    `LUMEN_BACKEND=software`, skips the factory. The escape hatch for
+    `FULGURITE_BACKEND=software`, skips the factory. The escape hatch for
     a driver bug keeps working however the application was written
     (`Prefer::from_env`'s rustdoc).
   - **Not reloadable, and why rule 3 does not apply** (A4, T20). The
     loader reads the static binary's `Program` once, and the hot boot
     never reads `backend`/`images` (winit `run_program`; nothing in
-    `lumen-static-reload`). So the closure is loader code, held by the
+    `fulgurite-reload`). So the closure is loader code, held by the
     loader, and never a pointer into a dylib. A hot library's
     `backend_with` is ignored. The rustdoc and the handoff say so, and
     changing it needs a restart.
@@ -138,7 +138,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     and retention are backend-independent by construction.
   - **No fn pointer crosses the seam.** The fallback ran in the
     library, in the current build, when the list was recorded.
-    `ui.screenshot` and `LUMEN_SHOT` show the fallback because that is
+    `ui.screenshot` and `FULGURITE_SHOT` show the fallback because that is
     what the software canvas drew.
   - **A broken shader shows its fallback.** Unknown id, failed
     compile or wrong uniform length: the GPU draws the bracket's
@@ -211,8 +211,8 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     covers the whole target, the scissor alone bounds the output, and
     dropping it paints the whole target, which the gates can see.
   - **What the user writes.** A framework prelude declares `struct
-    LumenFrame { rect: vec4<f32>, viewport: vec2<f32>, scale: f32 }` at
-    `@group(0) @binding(0)` and the vertex stage `lumen_vs`. The user
+    FulguriteFrame { rect: vec4<f32>, viewport: vec2<f32>, scale: f32 }` at
+    `@group(0) @binding(0)` and the vertex stage `fulgurite_vs`. The user
     writes `@group(0) @binding(1)` uniforms and `@fragment fn fs_main`.
   - **Pipeline state.** The blend state is the shapes pipeline's, and
     output is linear, as `linear(Color)` is. Frame globals and
@@ -243,8 +243,8 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     and the count is returned. A uniform struct larger than
     `uniform_size` is one such refusal, because the explicit layout
     above moves its check into pipeline creation, inside the scope.
-  - **The fault switch.** It mirrors `LUMEN_GPU_DROP_FIRST`: debug
-    builds only, `LUMEN_GPU_BAD_SHADER=1` appends a syntax error to
+  - **The fault switch.** It mirrors `FULGURITE_GPU_DROP_FIRST`: debug
+    builds only, `FULGURITE_GPU_BAD_SHADER=1` appends a syntax error to
     every source, so a live leg can exercise this.
   - **Changed from the review's fix.** The M36 screen was rejected
     for this case. The UI is correct with its fallback, and a panic
@@ -256,14 +256,14 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     It gates `Cmd::Shader`, `Cmd::ShaderEnd`, `ShaderId`,
     `Painter::shader`/`shader_end`, and `DisplayList`'s recording and
     uniform buffer. The shell's
-    `shader = ["lumen-static/shader"]` gates `ShaderDesc`, the
+    `shader = ["fulgurite/shader"]` gates `ShaderDesc`, the
     `ShaderTable` contents, `Program::shaders` and `Host::set_shaders`.
-    wgpu has `shader = ["lumen-static-shell/shader"]`, which gates the
-    pipeline code. winit has `shader = ["lumen-static-shell/shader",
-    "lumen-static-wgpu?/shader"]`. The widgets have `shader =
-    ["lumen-static/shader"]` for `ShaderView`. All are default-off and
+    wgpu has `shader = ["fulgurite-shell/shader"]`, which gates the
+    pipeline code. winit has `shader = ["fulgurite-shell/shader",
+    "fulgurite-wgpu?/shader"]`. The widgets have `shader =
+    ["fulgurite/shader"]` for `ShaderView`. All are default-off and
     add no dependency.
-  - **Every use site says so.** In `lumen-static`, each arm, method or
+  - **Every use site says so.** In `fulgurite`, each arm, method or
     impl that names a shader variant carries
     `#[cfg(feature = "shader")]`: `display.rs` (the enum, `DisplayList`,
     `Scaled`, `Cmd::hash_into`, `DisplayList::hash_from`), `wire.rs`
@@ -277,23 +277,23 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     Cargo's unification a crate whose own `shader` is off, in a graph
     where the widgets or wgpu turned the core's on, would drop its arm
     while the variant exists, and fail E0004. So:
-    - `lumen-static` gains `links = "lumen_static"` and a `build.rs`
+    - `fulgurite` gains `links = "fulgurite"` and a `build.rs`
       that prints `cargo:shader=1` when `CARGO_FEATURE_SHADER` is set.
       A `links` package must have a build script, and Cargo then
-      refuses two copies of `lumen-static` in one graph; each lock file
+      refuses two copies of `fulgurite` in one graph; each lock file
       in this repository has one (checked).
     - Each crate outside the core that matches `Cmd` gets a `build.rs`
-      that reads `DEP_LUMEN_STATIC_SHADER` and, when it is set, emits
-      `cargo:rustc-cfg=lumen_shader`; it always emits
-      `cargo:rustc-check-cfg=cfg(lumen_shader)`, so the
+      that reads `DEP_FULGURITE_SHADER` and, when it is set, emits
+      `cargo:rustc-cfg=fulgurite_shader`; it always emits
+      `cargo:rustc-check-cfg=cfg(fulgurite_shader)`, so the
       `unexpected_cfgs` lint knows the name when it is unset. A
       `rustc-cfg` applies to every target of the package, tests,
       benches and examples included.
-    - Every use site there is `#[cfg(lumen_shader)] Cmd::Shader { .. }
+    - Every use site there is `#[cfg(fulgurite_shader)] Cmd::Shader { .. }
       => …`. The crates and their sites, found by grep on `553fa5e`
       for exhaustive `match`es over `Cmd` and for the files T83.3 gives
       a shader arm:
-      - `lumen-static-shell`: `src/software.rs` (the raster loop's
+      - `fulgurite-shell`: `src/software.rs` (the raster loop's
         exhaustive match; the clip pre-pass ends in `_ =>`),
         `src/svg.rs` (the exhaustive match; the first pass ends in
         `_ =>`), `src/contrast.rs` (`ground_at` ends in `_ =>`, but
@@ -301,28 +301,28 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
         (`kind`), `tests/clip_test.rs` (`render_cmds`), T83.0's
         `contrast_names_every_command`, and T83.3's
         `tests/alloc_gate.rs` arm;
-      - `lumen-static-wgpu`: `src/lib.rs` (`collect`'s exhaustive
+      - `fulgurite-wgpu`: `src/lib.rs` (`collect`'s exhaustive
         match), `tests/parity.rs` (`kind`, and `KINDS`);
       - `benches`: `src/bin/retain.rs` (`ink`).
     - **`DEP_*` reaches direct dependents only**, and each of the three
-      names `lumen-static` directly in `[dependencies]`
-      (`crates/lumen-static-shell/Cargo.toml`,
-      `crates/lumen-static-wgpu/Cargo.toml`, `benches/Cargo.toml`;
+      names `fulgurite` directly in `[dependencies]`
+      (`crates/fulgurite-shell/Cargo.toml`,
+      `crates/fulgurite-wgpu/Cargo.toml`, `benches/Cargo.toml`;
       checked). A future crate that matches `Cmd` through a re-export
       only must add the direct dependency, or its `build.rs` sees
       nothing.
-    - **Not needing it.** `lumen-static-widgets` names `Painter::shader`
+    - **Not needing it.** `fulgurite-widgets` names `Painter::shader`
       only inside `ShaderView`, under its own `shader`, which turns the
       core's on, so its own feature is sound; it has no exhaustive
-      `Cmd` match. `lumen-static-agent`, `lumen-static-winit`,
-      `lumen-static-reload`, `fixtures/` and `examples/` match `Cmd`
+      `Cmd` match. `fulgurite-agent`, `fulgurite-winit`,
+      `fulgurite-reload`, `fixtures/` and `examples/` match `Cmd`
       only with `if let`, `matches!` or a wildcard arm (checked).
     - **Where the stamp reads it.** Two entries, not one (second
-      review A7): `cfg!(lumen_shader)` for the core's variant set, and
+      review A7): `cfg!(fulgurite_shader)` for the core's variant set, and
       the shell's own `cfg!(feature = "shader")` for `ShaderTable`'s
       layout across `Session::shaders`. The core can be on while the
       shell is off (an application that enables
-      `lumen-static-widgets/shader` but not `lumen-static-winit/shader`),
+      `fulgurite-widgets/shader` but not `fulgurite-winit/shader`),
       and the shell cannot be on while the core is off, so the two
       entries tell all three builds apart (T83.3).
     - **Cost.** Four build scripts (the core's and three dependents'),
@@ -339,7 +339,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     required method behind a feature would need its `cfg` on every
     implementor: six test painters, and `Checksum`
     (`fixtures/embedded`) and `Sink` (`benches --bin retain`) outside
-    the core, where `fixtures/embedded` would need a `lumen_shader`
+    the core, where `fixtures/embedded` would need a `fulgurite_shader`
     build script of its own, or each fails to compile whenever
     anything in the graph enabled `shader`. The provided body is `push_clip(rect)`
     / `pop_clip()`. That is the documented degraded contract, the
@@ -405,17 +405,17 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       firmware_bind=0 firmware_cascade=0` (M80/T80.0), Δ 0 on all
       four (`just firmware-size` prints only the paint-only
       `firmware`; second review B4);
-    - the default `lumen-static-winit` normal-dependency count;
+    - the default `fulgurite-winit` normal-dependency count;
     - the shell-alone count;
     - the stripped release `examples/showcase` size;
     - the frame arm's `idle (floor)` and `+render (damage)` rows and
       `benches --bin cascade` `cascade_deep (whole table)`, eight runs
       a side under `just bench-lock`, spread printed;
-    - `crates/lumen-static-wgpu/tests/alloc.rs`'s empty-frame floor;
+    - `crates/fulgurite-wgpu/tests/alloc.rs`'s empty-frame floor;
     - the clean-build time of `just firmware-size`, the "before" for
       T83.3's four build scripts.
   - **Gate 1 — `scripts/check_shell_headless.sh`** (in `just static`,
-    no compile). It runs `cargo tree -p lumen-static-shell -e normal
+    no compile). It runs `cargo tree -p fulgurite-shell -e normal
     --locked --offline` twice, with default features and with
     `--features truetype` (where T83.1's `backend` module lives,
     second review T6), and asserts none of `winit`, `softbuffer`,
@@ -433,7 +433,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     - Accept direction: `raw-window-handle` (T83.1), with its lock
       update, passes; it appears only in the `truetype` run.
   - **Gate 2 — `contrast_names_every_command`** in
-    `lumen-static-shell/tests/`.
+    `fulgurite-shell/tests/`.
     - **What it does.** It builds one of each `Cmd` through an
       exhaustive `match`, with no wildcard, puts a text run's centre
       on it, and asserts the ground `text_contrast` reports:
@@ -450,7 +450,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     and the new script's name added to AGENT.md's `just static` list.
 - **T83.1 — `Backend`/`Frame` into the shell; `BackendTarget`.**
   - **What changes.**
-    - New module `lumen_static_shell::backend`, holding `Backend`,
+    - New module `fulgurite_shell::backend`, holding `Backend`,
       `Frame`, `BackendTarget` and `WindowHandles`.
     - winit re-exports them.
     - The module, `raw-window-handle` (optional) and, in T83.2,
@@ -478,11 +478,11 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
   - **Gates.**
     - `check_shell_headless.sh`, now printing `raw-window-handle` as
       the one addition, in the `truetype` run only.
-    - `cargo check -p lumen-static-shell` (default features, no
+    - `cargo check -p fulgurite-shell` (default features, no
       `truetype`) compiles, which is the build `just test-crates`
       makes of the shell alone (second review T6). Injection: drop the
       `cfg` on `pub mod backend`, and it fails naming `FrameSource`.
-    - The winit graph: `cargo tree -p lumen-static-winit -e normal
+    - The winit graph: `cargo tree -p fulgurite-winit -e normal
       --prefix none | sed 's/ (\*)$//' | sort -u | wc -l` (K2's exact
       command) printed against T83.0's number (bound: equal; K83d).
     - `just resume-drive` green on all three legs. It proves the moved
@@ -507,7 +507,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       swapped size is corrected before the first frame. Both of
       `resume_drive.py`'s shots (`a = shot()`, `b = shot()`) come from
       the same constructor, so they would agree either way.
-    - A headless render (`LUMEN_SHOT`, `showcase --demo`) never builds
+    - A headless render (`FULGURITE_SHOT`, `showcase --demo`) never builds
       a `Backend`, so alone it cannot gate this move; `showcase
       --demo`'s is the reference M57's D5 compares against.
 - **T83.2 — `Program::backend_with`.**
@@ -534,7 +534,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     - `docs/results-shader.md` gets the stripped showcase delta beside
       the 3 MB bound (B9).
     - `scripts/doc-identifiers.allow` loses `BackendFactory`.
-  - **Gate 1: `crates/lumen-static-winit/tests/cpu_adapter.rs`'s table
+  - **Gate 1: `crates/fulgurite-winit/tests/cpu_adapter.rs`'s table
     gains a `custom` column** (runs everywhere, no window). The rows,
     each printed:
     - `(Auto, custom Some)` → custom;
@@ -547,7 +547,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     - Injection: call `custom` under `Software`, and row 3's call
       count prints 1.
   - **Gate 2: `just resume-drive` gains a `custom-resume` leg**
-    (glasswall `--features agent,custom-backend`, `LUMEN_TEST_RESUME`).
+    (glasswall `--features agent,custom-backend`, `FULGURITE_TEST_RESUME`).
     `resume_drive.py` reads the leg's log for `counting (software)`
     lines. It prints the count against a bound of exactly 2 and names
     backend #2. The existing before/after pixel diff then proves the
@@ -602,17 +602,17 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       feature-off decoder meets those tags as unknown and refuses the
       buffer through the existing unknown-tag path.
     - **The cfg plumbing** (Decisions, "Feature placement"):
-      `links = "lumen_static"` and `crates/lumen-static/build.rs`
+      `links = "fulgurite"` and `crates/fulgurite/build.rs`
       (`cargo:shader=1` when `CARGO_FEATURE_SHADER` is set); a
-      `build.rs` in `lumen-static-shell`, `lumen-static-wgpu` and
-      `benches` that turns `DEP_LUMEN_STATIC_SHADER` into
-      `cargo:rustc-cfg=lumen_shader` and always declares it with
-      `cargo:rustc-check-cfg=cfg(lumen_shader)`. Every arm outside the
-      core is `#[cfg(lumen_shader)]`.
+      `build.rs` in `fulgurite-shell`, `fulgurite-wgpu` and
+      `benches` that turns `DEP_FULGURITE_SHADER` into
+      `cargo:rustc-cfg=fulgurite_shader` and always declares it with
+      `cargo:rustc-check-cfg=cfg(fulgurite_shader)`. Every arm outside the
+      core is `#[cfg(fulgurite_shader)]`.
     - **The reload stamp.** `shader` changes `Cmd`'s variant set, so it
       joins `abi_fields`' feature list (`session.rs`;
       `docs/plan-iced-roadmap.md` §2.3) in this commit. The entry reads
-      `cfg!(lumen_shader)`, not the shell's `cfg!(feature = "shader")`,
+      `cfg!(fulgurite_shader)`, not the shell's `cfg!(feature = "shader")`,
       because the core's feature can be on while the shell's is off,
       and the variant set is the core's. The shell's own `shader`
       feature is declared here too (`dev-shape`'s shell `--features
@@ -631,7 +631,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
         the bar would index an empty `uniforms`. `DisplayList` gains
         `#[derive(Clone)]` and `Barred` copies with `src.clone()`, so
         `uniforms` travels with the commands and winit needs no
-        `lumen_shader` cfg of its own. Gate in T83.8. This is the
+        `fulgurite_shader` cfg of its own. Gate in T83.8. This is the
         design for whichever of M82/T82.5 and T83.3 lands first: if
         T82.5 has landed, `DisplayList` already derives `Clone` and
         `Barred` already clones, and T83.3 only adds `uniforms`.
@@ -641,15 +641,15 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
         `Unknown("shader")`, and the fallback's fills are not ground
         for it.
       - `tests/svg.rs`'s exhaustive table, naming `Shader` and
-        `ShaderEnd` under `#[cfg(lumen_shader)]`, so the table names
+        `ShaderEnd` under `#[cfg(fulgurite_shader)]`, so the table names
         every kind in either build.
-      - `lumen-static-shell/tests/clip_test.rs`'s `render_cmds`.
+      - `fulgurite-shell/tests/clip_test.rs`'s `render_cmds`.
       - The core's `tests/overlay.rs` (`cmds`) and
         `tests/paint_containment.rs`, under the core's own `cfg`.
       - T83.0's gate 2.
       - `benches/src/bin/retain.rs`'s `ink`.
-      - `lumen-static-wgpu/tests/parity.rs`'s `kind` table, which gets
-        `Shader` and `ShaderEnd` rows under `#[cfg(lumen_shader)]`,
+      - `fulgurite-wgpu/tests/parity.rs`'s `kind` table, which gets
+        `Shader` and `ShaderEnd` rows under `#[cfg(fulgurite_shader)]`,
         and its `KINDS`, which counts them only in that build.
       - wgpu `collect`: the bracket is a clip here, and becomes a real
         split in T83.5.
@@ -660,7 +660,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       (`fixtures/embedded`), `Sink` (`benches --bin retain`) and the
       test painters (`Echo`, `Surfaced`, `Plain`, `Counting`, `Null`,
       `Flat`) inherit the clip default, which is correct for a leaf.
-    - `dev-shape` gains `cargo test -p lumen-static --features shader
+    - `dev-shape` gains `cargo test -p fulgurite --features shader
       --test shader_cmd --test glass_cmd` and the shell's `--features
       shader` test lines, because `--workspace` unification must not
       decide whether they run. It also gains the two exhaustiveness
@@ -671,46 +671,46 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     rule, citing M27/T27.3); the `results-embedded.md` row;
     `docs/results-shader.md`; the handoff §2 item 4 DECIDED line;
     `scripts/doc-identifiers.allow` loses `ShaderId`, `ShaderEnd`,
-    `CARGO_FEATURE_SHADER` and `DEP_LUMEN_STATIC_SHADER` (second review
+    `CARGO_FEATURE_SHADER` and `DEP_FULGURITE_SHADER` (second review
     M6).
-  - **Gates** (`crates/lumen-static/tests/shader_cmd.rs` unless named):
+  - **Gates** (`crates/fulgurite/tests/shader_cmd.rs` unless named):
     - **Exhaustive both ways** (`dev-shape`). `cargo check --workspace
       --all-targets` (feature off, the default) and `cargo check
-      --workspace --all-targets --features lumen-static/shader`
-      (unified on). `lumen-static-wgpu` is included: a `check` needs no
+      --workspace --all-targets --features fulgurite/shader`
+      (unified on). `fulgurite-wgpu` is included: a `check` needs no
       adapter. So every `match` over `Cmd` is compiler-checked with the
       variants present and absent. Setup landed: the first injection
       below is the proof that the "on" build really has the variants
-      and the `lumen_shader` arms, since only then can deleting an arm
+      and the `fulgurite_shader` arms, since only then can deleting an arm
       fail it.
-      - Injection: delete one use site's `#[cfg(lumen_shader)]` arm
+      - Injection: delete one use site's `#[cfg(fulgurite_shader)]` arm
         (`benches/src/bin/retain.rs`'s `ink`). The "on" build fails
         E0004 naming that match; the "off" build stays green.
-      - Injection: remove `cargo:rustc-cfg=lumen_shader` from
-        `lumen-static-shell/build.rs`. The "on" build fails in the
+      - Injection: remove `cargo:rustc-cfg=fulgurite_shader` from
+        `fulgurite-shell/build.rs`. The "on" build fails in the
         shell, E0004 at `software.rs`'s and `svg.rs`'s matches.
       - Injection: write one shell arm as `#[cfg(feature = "shader")]`
         (the crate's own feature). The "on" build fails E0004 there,
         which is the unification defect this design exists to stop.
       - Accept: both builds green, in the same session.
       - Lint (second review X7): `dev-shape` also runs `cargo clippy
-        --workspace --all-targets --exclude lumen-static-wgpu
-        --features lumen-static/shader -- -D warnings`, beside its
+        --workspace --all-targets --exclude fulgurite-wgpu
+        --features fulgurite/shader -- -D warnings`, beside its
         feature-off line (justfile:112), and `just gpu` runs `cargo
-        clippy -p lumen-static-wgpu --all-targets --features
-        lumen-static/shader -- -D warnings` beside justfile:371, so
-        the `cfg(lumen_shader)` arms are linted, not only checked.
+        clippy -p fulgurite-wgpu --all-targets --features
+        fulgurite/shader -- -D warnings` beside justfile:371, so
+        the `cfg(fulgurite_shader)` arms are linted, not only checked.
       - Doc (index §3.1): the feature adds public items (`ShaderId`,
         `ShaderDesc`, `ShaderView`), so `dev-shape` also runs
-        `RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static -p
-        lumen-static-shell -p lumen-static-widgets --no-deps --features
-        lumen-static/shader,lumen-static-shell/shader,lumen-static-widgets/shader`,
+        `RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite -p
+        fulgurite-shell -p fulgurite-widgets --no-deps --features
+        fulgurite/shader,fulgurite-shell/shader,fulgurite-widgets/shader`,
         each crate's line added by the task that adds its items.
     - **Stamp** (`just abi-stamp`). The two entries are listed as
-      `lumen_shader` (core) and `shader` (shell).
-      - Pair 1: a library built with `--features lumen-static/shader`
+      `fulgurite_shader` (core) and `shader` (shell).
+      - Pair 1: a library built with `--features fulgurite/shader`
         and the shell's feature off is refused by a loader built
-        without either, and the refusal names `lumen_shader`.
+        without either, and the refusal names `fulgurite_shader`.
         Injection: that entry reads `cfg!(feature = "shader")` (the
         shell's). That library is then accepted, which is red.
       - Pair 2 (second review A7): a library with core and shell on is
@@ -748,7 +748,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
         `Cmd::Shader`. Injection: delete `CullTo`'s `shader` override,
         and `PushClip` appears where `Shader` was. If M83 lands first,
         T85.8 adds this case.
-    - **Software** (`lumen-static-shell/tests/shader_software.rs`). A
+    - **Software** (`fulgurite-shell/tests/shader_software.rs`). A
       bracket whose fallback fills a rect 20 px larger than the
       shader's is rendered byte-identical to `push_clip(rect)` + that
       fill + `pop_clip()`. Setup: fallback pixels inside the rect > 0,
@@ -760,7 +760,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       - Injection: no arm, and it reports `Miss`/measured.
     - **Wire.** A round trip keeps the uniform bytes.
       - Injection: decode drops them, and the lists differ.
-    - **Allocation.** `lumen-static-shell/tests/alloc_gate.rs` gets a
+    - **Allocation.** `fulgurite-shell/tests/alloc_gate.rs` gets a
       `shader` arm: a warm frame with two brackets makes 0
       allocations. The recipe counts the arm present (≥ 1), as it does
       the truetype arms.
@@ -821,19 +821,19 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
   - **Why no live gate here.** No backend acts on the table yet. The
     call sites are driven live by T83.7 (resume) and T83.8 (swap).
 - **T83.5 — the GPU split.**
-  - **What changes.** In `lumen-static-wgpu`, behind `shader`:
+  - **What changes.** In `fulgurite-wgpu`, behind `shader`:
     - `Gpu::set_shaders`, with the content-keyed pipeline cache and
       the error scope;
     - the prelude;
     - `Split::Shader`, and `collect`'s bracket skip;
     - the uniform slots;
-    - `LUMEN_GPU_BAD_SHADER`;
+    - `FULGURITE_GPU_BAD_SHADER`;
     - `GpuBackend::set_shaders` forwarding;
     - the uniform-length check at draw (a mismatch draws the fallback
       and is counted);
     - new `examples/shader_cost.rs` (the `glass_cost.rs` method, with
       `Gpu::wait`).
-    - `just gpu` gains `cargo test -p lumen-static-wgpu --features
+    - `just gpu` gains `cargo test -p fulgurite-wgpu --features
       shader --test shader`.
   - **Same commit.** The `Gpu::draw_regions` rustdoc: "No scissor is
     needed" gains "except a user shader's pass, which draws a
@@ -841,8 +841,8 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     `docs/results-shader.md` gets the cost table.
     `docs/plan-gpu-fidelity.md` is not touched (nothing in it
     changes). `scripts/doc-identifiers.allow` loses
-    `LUMEN_GPU_BAD_SHADER`.
-  - **Gates** (`crates/lumen-static-wgpu/tests/shader.rs`, headless
+    `FULGURITE_GPU_BAD_SHADER`.
+  - **Gates** (`crates/fulgurite-wgpu/tests/shader.rs`, headless
     `Gpu`, 300×300, adapter required under `just gpu`):
     - **Scissor.** The shader writes its uniform colour, with a 100×100
       rect at (50, 50). Printed: inside = 10,000 (setup) and outside =
@@ -889,7 +889,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     - Accept for every gate: the unmodified build prints within bound
       in the same session.
 - **T83.6 — `ShaderView`.**
-  - **What changes.** `lumen_static_widgets::ShaderView<const N:
+  - **What changes.** `fulgurite_widgets::ShaderView<const N:
     usize>`, behind the widgets' `shader` feature, holds `id`,
     `uniforms: [u8; N]` (N ≤ 256, const-asserted) and `fallback:
     fn(&mut dyn Painter, Rect, &[u8])`. `set_uniforms` writes the
@@ -912,7 +912,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       is named only as the pattern `ShaderId` rejects and is never
       built.
     - **`a11y_roles.rs` row** (second review M4). `node_impls()`
-      (`lumen-static-widgets/tests/a11y_roles.rs`:165-185) scans
+      (`fulgurite-widgets/tests/a11y_roles.rs`:165-185) scans
       source text and ignores `cfg`, so the feature-gated `impl Node
       for ShaderView` is counted in every build, while `dev-shape`
       builds the test with `--features a11y` only (justfile:90). So
@@ -920,9 +920,9 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       gains a `FEATURE_GATED: &[(&str, &str)] = &[("ShaderView",
       "shader")]` list: a name on it is excused from `missing` when
       its feature is off and must have a row when it is on.
-      `dev-shape` gains `cargo test -p lumen-static-widgets --features
+      `dev-shape` gains `cargo test -p fulgurite-widgets --features
       a11y,shader --test a11y_roles`.
-  - **Gates**, in `lumen-static-agent/tests/damage_shape.rs`, whose
+  - **Gates**, in `fulgurite-agent/tests/damage_shape.rs`, whose
     dev-dependency on the widgets gains `shader`:
     - **Uniforms.** `a_uniform_change_damages_only_its_shader`: two
       `ShaderView`s. A `set_uniforms` on the first reports the first
@@ -961,14 +961,14 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
       `rect ∪ glass ink` across two animated frames. `ui.lastDamage`
       per animated frame against `rect ∪ glass ink` is printed as a
       ratio with bound 1.00.
-    - **GPU, `Boundaries` and `Everything`** (`LUMEN_BACKEND=gpu`,
+    - **GPU, `Boundaries` and `Everything`** (`FULGURITE_BACKEND=gpu`,
       read back with `xwd`, as `resume-drive` does).
       - Plasma pixels differ from the fallback's at the rect's centre
         (distance printed).
       - 0 changed pixels outside `rect ∪ glass ink` between captures.
-      - A `LUMEN_TEST_RESUME` round trip keeps the plasma. This is
+      - A `FULGURITE_TEST_RESUME` round trip keeps the plasma. This is
         `resume_backend`'s `set_shaders`, driven live.
-    - **GPU with `LUMEN_GPU_BAD_SHADER=1`.** The window stays up, the
+    - **GPU with `FULGURITE_GPU_BAD_SHADER=1`.** The window stays up, the
       agent answers `app.diagnostics` after 3 s, and the rect shows
       the fallback. The log names the shader.
   - **Injections.**
@@ -991,7 +991,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
     - `fixtures/hot-window` gains a `ShaderView` under a `shader`
       feature.
     - `scripts/hot_window_drive.sh` gains a `--gpu` leg (`--features
-      hot,agent,gpu,shader`, `LUMEN_BACKEND=gpu`, `xwd` readback).
+      hot,agent,gpu,shader`, `FULGURITE_BACKEND=gpu`, `xwd` readback).
       It skips with exit 77 without an adapter, and a skip is not a
       pass (M43).
   - **Gate.** Edit the copy's WGSL colour from red to blue.
@@ -1024,7 +1024,7 @@ last Decision). Each half closes with its own `just ci-verify <sha>`
 task and is recorded in `docs/results-shader.md` with the number).
 
 - **K83a — pass-split cost.**
-  - **Measure.** `cargo run --release -p lumen-static-wgpu --features
+  - **Measure.** `cargo run --release -p fulgurite-wgpu --features
     shader --example shader_cost`, 1080p: 32 trivial 64×64 shaders,
     minus the same frame drawing their fallbacks, divided by 32.
   - **Bound.** 50 µs per node. The derivation: a 400×200 glass panel,
@@ -1043,7 +1043,7 @@ task and is recorded in `docs/results-shader.md` with the number).
     binaries, `shader` off. `check_text.sh` keeps no baseline, so it
     is the ceiling check, not this rule's measure (second review G13).
   - **Bound.** Δ 0 B `.text` and `.rodata` against the parent commit,
-    in every task that touches `lumen-static` (K4); T83.0's numbers
+    in every task that touches `fulgurite` (K4); T83.0's numbers
     are the milestone's record.
   - **True by construction, kept as a check.** With the variants,
     methods and table all behind the feature (owner, 2026-09-30),
@@ -1055,7 +1055,7 @@ task and is recorded in `docs/results-shader.md` with the number).
     (D5), and this milestone spends none of it.
 - **K83c — the frame with shaders unused.**
   - **Measure.** `benches-competitive/arms/frame` (package
-    `lumen-static-frame`) rows `idle (floor)` and `+render (damage)`,
+    `fulgurite-frame`) rows `idle (floor)` and `+render (damage)`,
     `benches --bin cascade` `cascade_deep (whole table)`, and
     `benches --bin textarea`'s `keystroke + layout` as the typing
     proxy (no typing arm exists, B10). Eight runs a side under `just
@@ -1075,7 +1075,7 @@ task and is recorded in `docs/results-shader.md` with the number).
       `cfg`, the K83b case; T83.3 stops until it is gated, and K83c is
       re-measured.
 - **K83d — default graph.**
-  - **Measure.** `cargo tree -p lumen-static-winit -e normal --prefix
+  - **Measure.** `cargo tree -p fulgurite-winit -e normal --prefix
     none | sed 's/ (\*)$//' | sort -u | wc -l` (K2's exact command;
     without the `sed` it reads 117, not 96) with default features, and
     the stripped
@@ -1091,13 +1091,13 @@ task and is recorded in `docs/results-shader.md` with the number).
 
 - T83.0: **an exhaustive match alone does not force a sample.**
   `contrast_names_every_command` (in
-  `lumen-static-shell/tests/contrast_commands.rs`) states each command's
+  `fulgurite-shell/tests/contrast_commands.rs`) states each command's
   ground in a match with no wildcard, so a new variant does not compile
   until it has a row; but a row for a variant no sample builds compiles
   and never runs. So the test also keeps a `KINDS` count (12 at landing:
   `Path` is M82's) asserted against the distinct kinds its samples built,
   the `tests/parity.rs` pattern; T83.3 adds two samples and moves it to
-  14 under `cfg(lumen_shader)`. Dropping the `Image` sample reads "kinds
+  14 under `cfg(fulgurite_shader)`. Dropping the `Image` sample reads "kinds
   11 built of 12", red by name. Opaque fills and a sampled gradient are
   one row shape, "measured against this colour"; a miss is told apart by
   measuring against a page colour no sample uses.
@@ -1146,7 +1146,7 @@ task and is recorded in `docs/results-shader.md` with the number).
   K83d rows are `docs/results-shader.md` "M83a closes".
 
 - T83.3: **a core shader build is refused by `DisplayList`'s size before
-  the `lumen_shader` entry is reached.** The uniform buffer makes the list
+  the `fulgurite_shader` entry is reached.** The uniform buffer makes the list
   144 B where it was 120, and the stamp's core fields come first, so pair
   1's refusal names `DisplayList`, and its injection (the entry reading the
   shell's feature) would have stayed green against a check of the first
@@ -1166,7 +1166,7 @@ task and is recorded in `docs/results-shader.md` with the number).
   recorded list 0 (setup 2)" before it asserts; both are in the output.
 - T83.3: **`parity.rs` names no file for the bracket.** Rather than point
   `Shader`'s row at T83.5's `tests/shader.rs`, which does not exist yet,
-  a `lumen_shader` build wraps the frame's clip scope in a bracket
+  a `fulgurite_shader` build wraps the frame's clip scope in a bracket
   narrower than its clip, with an id no backend knows, so both kinds are
   "in the frame" and the clip-scope region compares the two backends'
   bracket arms (the GPU's pushing an unbounded clip reads 700 px over 8).
@@ -1189,15 +1189,15 @@ task and is recorded in `docs/results-shader.md` with the number).
   run alternately in the same session, reads the same.
 
 - T83.4: **the window crate's `shader` feature lands here, one task
-  early.** The Decisions give winit `shader = ["lumen-static-shell/shader",
-  "lumen-static-wgpu?/shader"]` and no task names it; `GpuBackend` "stores
+  early.** The Decisions give winit `shader = ["fulgurite-shell/shader",
+  "fulgurite-wgpu?/shader"]` and no task names it; `GpuBackend` "stores
   the table until T83.5", and reading a table's contents needs the shell's
-  feature, so winit declares `shader = ["lumen-static-shell/shader"]` now
+  feature, so winit declares `shader = ["fulgurite-shell/shader"]` now
   and T83.5 appends the wgpu half. It is additive the safe way round: with
   winit's off and the shell's on through another crate, `GpuBackend`
   stores nothing and compiles. Linted by a `dev-shape` clippy line with the
   shell's and winit's `shader` (and `just gpu`'s `gpu,shader` line), since
-  the workspace's `--features lumen-static/shader` line turns neither on.
+  the workspace's `--features fulgurite/shader` line turns neither on.
 - T83.4: **`GpuBackend` copies the sources into owned strings, not the
   descs.** A `ShaderDesc` is two `&'static str`s into whichever build
   registered it, a hot library included, so a `Vec<ShaderDesc>` would keep
@@ -1239,7 +1239,7 @@ task and is recorded in `docs/results-shader.md` with the number).
   the shader differs from the canvas panel over the page" as its setup;
   and the panel carries a half-white tint, because LIQUID's 18/255 left
   the injection at distance 9, one level over the bound (green 1, red 111).
-- T83.5: **`LumenFrame::scale` is 1.0.** Neither `Backend` nor
+- T83.5: **`FulguriteFrame::scale` is 1.0.** Neither `Backend` nor
   `FrameSource` carries the display scale, and the list already arrives in
   device pixels, so the prelude documents 1.0 rather than a new seam being
   invented here; a shader that needs logical units is T83.7's to ask for.
@@ -1294,11 +1294,11 @@ task and is recorded in `docs/results-shader.md` with the number).
 - T83.6: **the widgets dev-dependency cannot carry `shader`.** A
   dev-dependency's features unify into every `--workspace --all-targets`
   build: with `features = ["observe", "shader"]` on the agent's widgets
-  line, `cargo tree --workspace -e features -i lumen-static` counts
-  `lumen-static feature "shader"` **2** times (0 without), so `dev-shape`'s
+  line, `cargo tree --workspace -e features -i fulgurite` counts
+  `fulgurite feature "shader"` **2** times (0 without), so `dev-shape`'s
   "variants absent" exhaustiveness build (T83.3) would compare the "on"
   build with itself. The agent crate gains its own `shader =
-  ["lumen-static-widgets/shader"]`, the gates are `cfg(feature =
+  ["fulgurite-widgets/shader"]`, the gates are `cfg(feature =
   "shader")`, and `dev-shape` runs `--features shader --test damage_shape`.
 - T83.6: **a feature-gated demo needed three showcase changes the plan did
   not list.** `demos!` (stage.rs) accepts `#[cfg]` on a variant and applies
@@ -1340,14 +1340,14 @@ task and is recorded in `docs/results-shader.md` with the number).
   `shader`.** "Features `gpu`, `agent` and `everything`, the showcase's
   pattern" leaves the shader itself: a member's normal-dependency features
   unify into every `--workspace` build exactly as T83.6's dev-dependency
-  did, so a `shader` named unconditionally counts `lumen-static feature
-  "shader"` 2 times in `cargo tree --workspace -e features -i lumen-static`
+  did, so a `shader` named unconditionally counts `fulgurite feature
+  "shader"` 2 times in `cargo tree --workspace -e features -i fulgurite`
   (0 as built) and would make `dev-shape`'s "variants absent" build the
   "on" one. So `examples/shader` has its own `shader` (`gpu` implies it),
   `[[bin]] required-features = ["shader"]`, and `dev-shape` tests and lints
   it with the feature named (`just gpu` with `gpu,agent`).
 - T83.7: **the plasma does not need the display scale**: it reads `local`
-  (0..1 across the rect) and the time, so `LumenFrame::scale` stays 1.0
+  (0..1 across the rect) and the time, so `FulguriteFrame::scale` stays 1.0
   (T83.5) and no seam was added. The drive sets
   `WINIT_X11_SCALE_FACTOR=1` because it compares the agent's logical
   coordinates with window pixels.
@@ -1464,10 +1464,10 @@ task and is recorded in `docs/results-shader.md` with the number).
   make their own; recorded for §5.
 - **X6** → changed. The validation error scope is adopted. A refused
   shader draws its fallback and logs, rather than showing M36's
-  screen. `LUMEN_GPU_BAD_SHADER` gives it a live leg.
+  screen. `FULGURITE_GPU_BAD_SHADER` gives it a live leg.
 - **Owner, 2026-09-30** → changed. The variants are feature-gated too,
   at every use site: `cfg(feature = "shader")` in the core,
-  `cfg(lumen_shader)` from a `build.rs` elsewhere, and two workspace
+  `cfg(fulgurite_shader)` from a `build.rs` elsewhere, and two workspace
   builds that check exhaustiveness both ways (T83.3). This reverses
   the first draft's "variants unconditional" refinement and removes
   K83c's fallback, which was that same move; K83b holds by
@@ -1513,11 +1513,11 @@ task and is recorded in `docs/results-shader.md` with the number).
   become required in T83.1; T83.2's leg asserts a wallpaper pixel in
   the first capture, with `set_images`-drop and `frame_rgba`-`None`
   injections.
-- **T6** → adopted: `lumen_static_shell::backend`,
+- **T6** → adopted: `fulgurite_shell::backend`,
   `Program::backend_with` and its field are behind the shell's
   `truetype`; `raw-window-handle` is optional under it (shell default
   +0 crates, `truetype` +1); `check_shell_headless.sh` runs both
-  builds, and T83.1 gates `cargo check -p lumen-static-shell`.
+  builds, and T83.1 gates `cargo check -p fulgurite-shell`.
   `Program::shaping` is M81's (request filed).
 - **T9** → adopted: an explicit per-shader `BindGroupLayout` with
   `min_binding_size = uniform_size`, so the oversize struct fails
@@ -1536,7 +1536,7 @@ task and is recorded in `docs/results-shader.md` with the number).
 - **B4, X7** (from a cross-file request) → adopted: T83.0 records
   the four binaries by `scripts/firmware_delta.sh <parent>`, Δ 0 on
   all four (`just firmware-size` prints only `firmware`; K83b already
-  used the comparator); T83.3 adds `--features lumen-static/shader`
+  used the comparator); T83.3 adds `--features fulgurite/shader`
   clippy lines to `dev-shape` (justfile:112) and `just gpu`
   (justfile:371).
 - **B16, G3 count** (from a cross-file request) → adopted: every
@@ -1554,7 +1554,7 @@ task and is recorded in `docs/results-shader.md` with the number).
 - **A13** (from a cross-file request) → changed: winit `Barred::new`
   (`lib.rs`:1709, the only `DisplayList` literal) joins T83.3's
   consumers; `DisplayList` derives `Clone` and `Barred` copies with
-  `src.clone()`, so winit needs no `lumen_shader` cfg. The gate is in
+  `src.clone()`, so winit needs no `fulgurite_shader` cfg. The gate is in
   T83.8's `--gpu` leg (its `xwd` readback already reads GPU pixels),
   not a `just gpu` test; injection: the literal without `uniforms`.
 - **A6/P6/R4** (from a cross-file request) → adopted: `CullTo` joins

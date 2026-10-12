@@ -11,8 +11,8 @@
 //! without the guard clearing the record at entry, the *job's* message
 //! and location would be reported as the frame's.
 
-use lumen_static::spawn::Immediate;
-use lumen_static_shell::Host;
+use fulgurite::spawn::Immediate;
+use fulgurite_shell::Host;
 use panic_app::{build, Fx, Ui};
 
 #[test]
@@ -21,7 +21,7 @@ fn a_replaced_hook_says_so_instead_of_reporting_a_stale_panic() {
     h.set_source_root("fixtures/panic-app");
     h.set_spawner(Box::new(Immediate));
     h.pump();
-    let i = lumen_static::style::index_of_wid(<Ui as lumen_static::Widget>::SUB_TABLE, "go").unwrap();
+    let i = fulgurite::style::index_of_wid(<Ui as fulgurite::Widget>::SUB_TABLE, "go").unwrap();
     let s = h.states[i];
     let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
 

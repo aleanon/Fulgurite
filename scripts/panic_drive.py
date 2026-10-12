@@ -124,7 +124,7 @@ for site in SITES:
     assert fail, f"panic-drive [{strategy}]: site {site} never reported a failure"
     loc = fail["location"]
     if site == 7:
-        assert loc["file"].startswith("crates/lumen-static/src/"), f"site 7 is in the framework: {loc}"
+        assert loc["file"].startswith("crates/fulgurite/src/"), f"site 7 is in the framework: {loc}"
         # A --release build has no debug info, so the backtrace has no
         # lines: the screen must then *say* so rather than show nothing
         # (plan §2.1). With debug info, the frame is the fixture's line.
@@ -173,7 +173,7 @@ def loop_wakes():
     rate would add about 8 a second.
     """
     import os
-    pid = os.environ["LUMEN_LIVE_PID"]
+    pid = os.environ["FULGURITE_LIVE_PID"]
     st = open(f"/proc/{pid}/task/{pid}/status").read()
     return sum(int(l.split()[1]) for l in st.splitlines()
                if l.startswith(("voluntary_ctxt_switches", "nonvoluntary_ctxt_switches")))

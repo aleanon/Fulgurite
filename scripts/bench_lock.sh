@@ -12,13 +12,13 @@
 #
 # 1. Takes an exclusive `flock` on one lock file, waiting for it -- so two
 #    timings never overlap, from this checkout or any other worktree of the
-#    same repository. The file is `<git common dir>/lumen-bench.lock`,
+#    same repository. The file is `<git common dir>/fulgurite-bench.lock`,
 #    which every worktree shares; a lock under one worktree's `target/`
 #    (the plan's first wording) would serialise nothing across worktrees,
-#    which is where the parallel work is. LUMEN_BENCH_LOCK overrides it.
+#    which is where the parallel work is. FULGURITE_BENCH_LOCK overrides it.
 # 2. Prints `uptime` before and after the command.
 # 3. Marks the run LOADED when the one-minute load average, before OR
-#    after, exceeds LUMEN_BENCH_LOAD_FRACTION (default 0.25) of the
+#    after, exceeds FULGURITE_BENCH_LOAD_FRACTION (default 0.25) of the
 #    online cores. A quarter of 32 cores is load 8: past that, other work
 #    competes for the cores and the boost clock, and a figure taken then
 #    is evidence about the load, not the code.
@@ -31,14 +31,14 @@ set -uo pipefail
 export LC_ALL=C
 [ "$#" -gt 0 ] || { echo "usage: bench_lock.sh <command> [args...]" >&2; exit 2; }
 
-if [ -n "${LUMEN_BENCH_LOCK:-}" ]; then
-    lock=$LUMEN_BENCH_LOCK
+if [ -n "${FULGURITE_BENCH_LOCK:-}" ]; then
+    lock=$FULGURITE_BENCH_LOCK
 else
     common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
-        echo "bench-lock: not in a git checkout; set LUMEN_BENCH_LOCK" >&2; exit 2; }
-    lock="$common/lumen-bench.lock"
+        echo "bench-lock: not in a git checkout; set FULGURITE_BENCH_LOCK" >&2; exit 2; }
+    lock="$common/fulgurite-bench.lock"
 fi
-frac=${LUMEN_BENCH_LOAD_FRACTION:-0.25}
+frac=${FULGURITE_BENCH_LOAD_FRACTION:-0.25}
 cores=$(nproc)
 load1() { cut -d' ' -f1 /proc/loadavg; }
 

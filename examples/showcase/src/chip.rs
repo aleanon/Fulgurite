@@ -9,14 +9,14 @@
 //! a `Label` does (role `Label`, text as the value), because the drive
 //! scripts read `#readout`.
 
-use lumen_static::cx::LayoutCx;
-use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
-use lumen_static::display::{Color, Painter};
-use lumen_static::event::{EventCtx, Handlers, NodeSel};
-use lumen_static::ops::{rect_of, record_painted, resolve_self};
-use lumen_static::style::{Edges, Fields, Seed, Style};
-use lumen_static::text::{FoldedText, MeasureKey};
-use lumen_static::widget::{Node, Widget};
+use fulgurite::cx::LayoutCx;
+use fulgurite::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
+use fulgurite::display::{Color, Painter};
+use fulgurite::event::{EventCtx, Handlers, NodeSel};
+use fulgurite::ops::{rect_of, record_painted, resolve_self};
+use fulgurite::style::{Edges, Fields, Seed, Style};
+use fulgurite::text::{FoldedText, MeasureKey};
+use fulgurite::widget::{Node, Widget};
 
 #[derive(Default)]
 pub struct StatusChip {
@@ -115,7 +115,7 @@ impl Node for StatusChip {
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
 
-    lumen_static::leaf_common!(StatusChip, 0, nohit);
+    fulgurite::leaf_common!(StatusChip, 0, nohit);
 
     #[cfg(feature = "agent")]
     fn observe(
@@ -123,10 +123,10 @@ impl Node for StatusChip {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut lumen_static::observe::accesskit::Node,
-        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+        node: &mut fulgurite::observe::accesskit::Node,
+        _extra: &mut Vec<(fulgurite::observe::accesskit::NodeId, fulgurite::observe::accesskit::Node)>,
     ) {
-        node.set_role(lumen_static::observe::accesskit::Role::Label);
+        node.set_role(fulgurite::observe::accesskit::Role::Label);
         node.set_value(self.text.as_str());
     }
 }

@@ -79,7 +79,7 @@ and prints the measured quantity beside its bound.*
 
 `benches/src/bin/grid.rs` prints its frame column as `l + pl + p + r`
 (`:589-613`, and `:623-634` for `handled/split`) from `Host::timings3`
-plus raster. `pump_with` (`crates/lumen-static-shell/src/lib.rs:993-1283`)
+plus raster. `pump_with` (`crates/fulgurite-shell/src/lib.rs:993-1283`)
 also runs dispatch, the drains, the bindings, and
 `cascade_arenas_deep` (`:1179-1190`) before layout, and
 `retain.finish()` (`:1268`) after paint. None of those are in the sum.
@@ -110,11 +110,11 @@ check, none of which the arm brackets.
 
 After T29.6 there are still four places that set `arenas_dirty`
 without asking whether an arena was touched: the handled branch
-(`crates/lumen-static-shell/src/lib.rs:1070-1074`, "Kept either way",
+(`crates/fulgurite-shell/src/lib.rs:1070-1074`, "Kept either way",
 even when the mark was narrowed for a split application),
 `Host::invalidate` (`:630`), an applied message (`:1154`) and a binding
 that wrote `Wrote::Marked` (`:1170`). `cascade_arenas_deep`
-(`crates/lumen-static/src/style.rs:1434-1442`) then asks every node in
+(`crates/fulgurite/src/style.rs:1434-1442`) then asks every node in
 the table for its arenas. T29.6 narrowed a split click's layout, but the
 cascade sits outside the stage sum, so it is now a larger share of a
 narrowed click than it was when the review priced it (R6-F3;
@@ -136,9 +136,9 @@ found it, because M34/T34.2 made `Boundaries` the default for every
 `Host` and every window.
 
 In the window (R7-F6), every translated event requests a redraw
-(`crates/lumen-static-winit/src/lib.rs:770-778`), `CursorMoved`
+(`crates/fulgurite-winit/src/lib.rs:770-778`), `CursorMoved`
 included. The redraw runs the full pump, and the surface presents on
-every redraw (`crates/lumen-static-winit/src/surface.rs:117`), the GPU
+every redraw (`crates/fulgurite-winit/src/surface.rs:117`), the GPU
 backend blitting the whole target. So a pointer crossing a region it
 changes nothing in costs one pump and one whole-surface present per
 motion event (R7-F6; `docs/results-deep-review.md`). The comment "A
@@ -224,8 +224,8 @@ behaviour.
 |---|---|---|
 | R6-F2 | `benches --bin grid` prints `stage-sum S vs pump P, gap G (bound 5% of P)` per arm and fails when the gap exceeds the bound; it prints a cascade column | the gap is the cascade and the dispatch, on all five arms |
 | R6-F4 | the `stages` arm's host gets a stylesheet with an arena rule, and asserts its `pump - sum6` gap against a stated bound, printed beside it | the cascade appears in the pump and not in the sum |
-| R6-F3 | new `crates/lumen-static-shell/tests/arena_marks.rs`: a split application with a stylesheet and a `Repeat` elsewhere; 40 `Toggle` clicks print `cascades N/40 (bound 0)`; 40 wheels over the `Repeat` must give 40/40 | 40/40 on the clicks |
-| R6-F1 | new `crates/lumen-static-shell/tests/idle_pump.rs`: under `Boundaries`, an idle pump runs 0 place and 0 paint passes and reports damage `None`; prints both counts | one of each per idle pump |
+| R6-F3 | new `crates/fulgurite-shell/tests/arena_marks.rs`: a split application with a stylesheet and a `Repeat` elsewhere; 40 `Toggle` clicks print `cascades N/40 (bound 0)`; 40 wheels over the `Repeat` must give 40/40 | 40/40 on the clicks |
+| R6-F1 | new `crates/fulgurite-shell/tests/idle_pump.rs`: under `Boundaries`, an idle pump runs 0 place and 0 paint passes and reports damage `None`; prints both counts | one of each per idle pump |
 | R7-F6 | a live gate beside `just agent-drive` (X display or Xephyr; XTest motion, because the agent's own input path requests redraws): 200 motions over a static 40×40 px region of `examples/showcase`, under both strategies; prints `presents N for M motions (bound 2)` | about one present per motion |
 
 **Other direction, recorded in the same commit:** 40 wheels over the
@@ -254,7 +254,7 @@ non-zero damage (the hover shade). Each shows its check can pass.
 - **The live gate (R7-F6) waits.** It launches through M42/T42.2's
   launcher, not built on this branch, so it is not written here and
   T53.0 is done for its four headless rows only.
-- The instrumentation is a module, `lumen-static-shell/src/frame_cost.rs`,
+- The instrumentation is a module, `fulgurite-shell/src/frame_cost.rs`,
   so the shell's `lib.rs` (which M41 is editing) gains five counter
   increments, one field and one accessor.
 
@@ -347,7 +347,7 @@ refresh on a full cascade: the `Option` case fires.
 
 **Accepts good input:** 40 wheels still cascade 40 times.
 
-**Docs in the same commit:** the comments at `crates/lumen-static-shell/src/lib.rs:1070-1074`,
+**Docs in the same commit:** the comments at `crates/fulgurite-shell/src/lib.rs:1070-1074`,
 `:629-630` and `:1164-1170`; `docs/results-frame-and-types.md` Phase D
 finding 9 (built, as a run-time list, and why not the const);
 `docs/results-damage-precision.md` (the cascade's share of a click,
@@ -450,7 +450,7 @@ arena flag after T53.2 has narrowed it); M41.
 
 **Closes:** R7-F6.
 
-**Change:** §2.3(b) in `crates/lumen-static-winit`. `Win` records
+**Change:** §2.3(b) in `crates/fulgurite-winit`. `Win` records
 whether the pending redraw was its own; a self-requested redraw whose
 damage is `None` skips the backend's present. The software surface
 still presents at buffer age 0, and the GPU backend on any frame the
@@ -468,7 +468,7 @@ fast path's predicate always false: the same.
 exactly one frame with non-zero damage, asserted in the same gate; an
 expose after another window covered this one repaints it.
 
-**Docs in the same commit:** the comment at `crates/lumen-static-winit/src/lib.rs:527-531`
+**Docs in the same commit:** the comment at `crates/fulgurite-winit/src/lib.rs:527-531`
 ("A still UI idles"); `docs/results-frame-cost.md`, Idle;
 `docs/results-competitive.md` §5b; `docs/00-handoff-static-tree.md`,
 invalidation.

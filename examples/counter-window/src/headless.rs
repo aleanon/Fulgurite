@@ -3,15 +3,15 @@
 //!
 //! Rung 2 of the verification ladder. Since M60/T60.4
 //! (`docs/plan-tally-slim.md`) both go through
-//! `lumen_static_shell::session::Local`, booted from the same
+//! `fulgurite_shell::session::Local`, booted from the same
 //! `app::program` the window runs: `--drive` sends the
 //! agent protocol through `Session::agent`, as the window's endpoint
 //! does, and `--drive2` runs M12's harness over the same session's
 //! `Local::live`. The example keeps no adapter of its own. One frame to a
-//! file is `LUMEN_SHOT` and the profiler is `LUMEN_PROFILE`, both the
+//! file is `FULGURITE_SHOT` and the profiler is `FULGURITE_PROFILE`, both the
 //! window crate's.
 
-use lumen_static_shell::session::{Crashing, Local, Offscreen, Session};
+use fulgurite_shell::session::{Crashing, Local, Offscreen, Session};
 use serde_json::{json, Value};
 
 use crate::app::{program, Tally};
@@ -22,10 +22,10 @@ const H: u32 = 520;
 fn session() -> (Local<Tally, Crashing>, Offscreen) {
     let mut s = Local::from_program(program(0, W, H), Crashing);
     // The session's own mode (M81/T81.4), as the window's backend takes it.
-    let mut screen = Offscreen::with_shaping(W, H, lumen_static_shell::session::Session::shaping(&s));
+    let mut screen = Offscreen::with_shaping(W, H, fulgurite_shell::session::Session::shaping(&s));
     // The window's first redraw, which a drive starts from.
     s.frame(0.0, W, H);
-    lumen_static_shell::session::Screen::present(&mut screen, &mut s, crate::app::PAGE);
+    fulgurite_shell::session::Screen::present(&mut screen, &mut s, crate::app::PAGE);
     (s, screen)
 }
 
@@ -105,8 +105,8 @@ pub fn drive() {
 /// The harness drives the session's own `Live` (`Local::live`) — the
 /// adapter `Session::agent` uses, so there is one.
 pub fn drive_harness() {
-    use lumen_static_agent::harness::{Expect, TestApp};
-    use lumen_static_agent::AgentHost;
+    use fulgurite_agent::harness::{Expect, TestApp};
+    use fulgurite_agent::AgentHost;
 
     fn script<H: AgentHost>(app: &mut TestApp<'_, H>, w: f32, h: f32) -> Expect {
         app.click("#inc")?;

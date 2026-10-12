@@ -2,6 +2,6 @@
 CHECK='./scripts/check_doc_identifiers.sh'
 EXPECT='PlantedBlockGhost'
 plant() {
-    append crates/lumen-static/src/lib.rs \
+    append crates/fulgurite/src/lib.rs \
         '/* the old `PlantedBlockGhost` lived here */'
 }

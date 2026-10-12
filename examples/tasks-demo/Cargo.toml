@@ -10,21 +10,21 @@ publish = false
 # against a live window. AGENT.md, after M24: defects hide in machinery
 # tested pass by pass and never assembled.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["observe"] }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", features = ["agent"] }
 
 # So the drive script can run the same application under both
 # invalidation strategies. A compile-time choice, made in this crate's
 # `main` (`Program::invalidation`) since M55/T55.4 -- not forwarded to
-# lumen-static-winit, whose `everything` feature changed every window in
+# fulgurite-winit, whose `everything` feature changed every window in
 # the build graph.
 [features]
 default = []
 everything = []
 # M88/T88.2: the GPU backend, for `just tasks-drive`'s GPU leg -- a
 # pass-through, so this demo's window can be asked to draw on wgpu.
-gpu = ["lumen-static-winit/gpu"]
+gpu = ["fulgurite-winit/gpu"]
 # M88/T88.5: images on the clipboard, for `just tasks-drive`'s image leg
 # -- a pass-through of the window crate's default-off `clipboard-image`.
-clipboard-image = ["lumen-static-winit/clipboard-image"]
+clipboard-image = ["fulgurite-winit/clipboard-image"]

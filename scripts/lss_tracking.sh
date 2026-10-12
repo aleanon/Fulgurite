@@ -32,14 +32,14 @@ edition = "2021"
 publish = false
 
 [dependencies]
-lumen-static = { path = "$ROOT/crates/lumen-static" }
-lumen-static-widgets = { path = "$ROOT/crates/lumen-static-widgets" }
+fulgurite = { path = "$ROOT/crates/fulgurite" }
+fulgurite-widgets = { path = "$ROOT/crates/fulgurite-widgets" }
 
 [workspace]
 EOF
 cat > "$CRATE/src/main.rs" <<'EOF'
-use lumen_static::{include_lss, StaticTree};
-use lumen_static_widgets::ops::Label;
+use fulgurite::{include_lss, StaticTree};
+use fulgurite_widgets::ops::Label;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
@@ -48,7 +48,7 @@ struct Ui {
     title: Label,
 }
 
-const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "sheet.lss");
+const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "sheet.lss");
 
 fn main() {
     let px = SHEET.first().and_then(|r| r.patch.font_size);

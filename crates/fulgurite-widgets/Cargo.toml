@@ -1,0 +1,74 @@
+[package]
+name = "fulgurite-widgets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fulgurite = { path = "../fulgurite", default-features = false }
+# Only under `a11y` (which `observe` implies); `fulgurite` gates its
+# own the same way.
+accesskit = { version = "0.25", optional = true }
+# M45/T45.5: editing steps by extended grapheme cluster. `no_std` and
+# allocation-free, and behind `alloc` anyway, so the leaf profile — which
+# takes neither — links none of its tables (docs/results-embedded.md).
+unicode-segmentation = { version = "1", optional = true, default-features = false }
+# Only under `reload`, exactly as `fulgurite` gates its own.
+serde_json = { version = "1", optional = true }
+
+[features]
+default = ["std"]
+# **The crate is the gate for the optional tier** — but M30 measured
+# what that was worth for the essential one and moved it in. The leaf
+# `no_std` profile links `.text` 27,024 B with every widget here against
+# 27,036 B with the first tier in core (`docs/results-widget-crate.md`):
+# twelve bytes SMALLER, because the gate was never the crate. It is
+# `#[cfg(feature)]` and the linker, and both drop what a tree does not
+# name whichever crate it lives in.
+#
+# So: one crate owns widgets, an application names it once, and a widget
+# set that grows without limit still cannot cost an embedded profile
+# anything it did not ask for — `alloc`-needing widgets stay behind
+# `alloc`, and a leaf profile takes neither feature.
+# `std` implies `alloc`, the tiering `fulgurite` uses: the two are
+# nested, not alternatives, and a crate that took `std` without `alloc`
+# would lose `Vec` for no reason anyone asked for.
+std = ["alloc", "fulgurite/std"]
+alloc = ["fulgurite/alloc", "dep:unicode-segmentation"]
+# **The screen-reader half — M54/T54.1.** Every widget's `Node::observe`:
+# its role, name, state and actions, which is what a platform
+# accessibility adapter sends. Split out of `observe` so a release build
+# can carry it; it adds nothing to `NodeDesc`. `fulgurite/a11y` is
+# required, not optional: without it the core's walk would not call these
+# at all, and the core with `a11y` and this crate without it does not
+# compile (the seam assertion in lib.rs).
+a11y = ["std", "dep:accesskit", "fulgurite/a11y"]
+# **The agent-facing half — M27/T27.5.** Without this no widget in this
+# crate publishes a role or a value, so `ui.getTree` sees geometry and
+# nothing else and a drive script cannot read a number field's number.
+# Every widget here shipped without it and nothing noticed, because
+# nothing had ever asked one of them a question. Default-off and additive
+# for the same reason `fulgurite`'s is: it takes `NodeDesc` from 48 B
+# to 72 B in every binary that links it.
+observe = ["a11y", "fulgurite/observe"]
+# **M30.** `Reloadable` for the widgets this crate owns — the impls that
+# moved with `Label`, `Button`, `Toggle`, `Fixed` and `Spacer`. Gated
+# exactly as `fulgurite`'s is, and for the same reason: the dev
+# surface must compile to nothing in a release build.
+reload = ["std", "dep:serde_json", "fulgurite/reload"]
+# **M83/T83.6: `ShaderView`**, a node a custom shader draws
+# (`docs/plan-gpu-extension.md`, owner decision D3). Turns the core's
+# `shader` on (the `Cmd::Shader` bracket and `Painter::shader`), which is
+# all this crate needs: no exhaustive `match` over `Cmd` lives here, so its
+# own feature is sound and no `cfg(fulgurite_shader)` build script is needed.
+# Default-off; adds no dependency.
+shader = ["fulgurite/shader"]
+
+[dev-dependencies]
+# M54/T54.0: `tests/text_contrast.rs` measures the catalogue's painted
+# text with `fulgurite_shell::contrast`, the one WCAG implementation.
+# The harness itself is headless and needs no face; `truetype` is for
+# `tests/selectable.rs` (M80/T80.4), which selects across a run the pinned
+# face shaped and wrapped, as the window's measurer does. `--workspace`
+# already unified it on for every test here.
+fulgurite-shell = { path = "../fulgurite-shell", features = ["truetype"] }

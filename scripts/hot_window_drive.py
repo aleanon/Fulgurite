@@ -338,8 +338,8 @@ def dist(a, b):
 
 
 def gpu_step():
-    log = open(os.environ["LUMEN_LIVE_LOG"], errors="replace").read()
-    assert "lumen-static: gpu" in log, f"setup: the window is not on the GPU backend: {log.splitlines()[:4]}"
+    log = open(os.environ["FULGURITE_LIVE_LOG"], errors="replace").read()
+    assert "fulgurite: gpu" in log, f"setup: the window is not on the GPU backend: {log.splitlines()[:4]}"
     sw = [round(v) for v in call("ui.resolve", {"selector": "#swatch"})["bounds"]]
     cx, cy = (sw[0] + sw[2]) // 2, (sw[1] + sw[3]) // 2
     # The window's first frames land after the agent answers: poll the
@@ -457,7 +457,7 @@ def presents(window):
 
 
 def windows_step():
-    leg = os.environ.get("LUMEN_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
+    leg = os.environ.get("FULGURITE_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
     # (setup) the copy was broken before launch, so the window's first build
     # fails and nothing swaps until the drive's fix lands.
     r, _ = wait(lambda r: not r["building"] and r["error"] is not None, "the first build's failure")
@@ -612,7 +612,7 @@ r, took = wait(lambda r: r["supported"] and r["reloads"] >= 1 and not r["buildin
 assert r["error"] is None, f"the first hot build did not take: {r['error']}"
 print(f"hot-window-drive: first hot build swapped in after {took:.1f}s")
 if only_shaping:
-    shaping_step(os.environ.get("LUMEN_LIVE_STRATEGY", "?"))
+    shaping_step(os.environ.get("FULGURITE_LIVE_STRATEGY", "?"))
     print("hot-window-drive: PASS")
     sys.exit(0)
 rss0 = rss_kb()
@@ -730,7 +730,7 @@ k0, j0 = accel("k"), accel("j")
 print(f"hot-window-drive: before the edit: Ctrl+K handled {k0} (want True), Ctrl+J handled {j0} (want False)")
 assert k0 and not j0, "step 7b: before the edit the menu does not answer Ctrl+K alone"
 swaps = reloads()["reloads"]
-edit("accel", 'lumen_static::menu::MenuEntry::new("Bump", 1).accel(lumen_static::Key::Char(\'j\'), lumen_static::Mods::CTRL),')
+edit("accel", 'fulgurite::menu::MenuEntry::new("Bump", 1).accel(fulgurite::Key::Char(\'j\'), fulgurite::Mods::CTRL),')
 r, lat4 = wait(lambda r: r["reloads"] >= swaps + 1 and not r["building"], "the accelerator edit's reload")
 assert r["error"] is None, f"step 7b: the accelerator edit did not build: {r['error']}"
 k1, j1 = accel("k"), accel("j")
@@ -763,5 +763,5 @@ print(f"hot-window-drive: latency edit->swap {lat1:.2f}s, {lat2:.2f}s, {lat3:.2f
       f"RSS {rss0} -> {rss1} kB over 3 reloads ({(rss1 - rss0) / 3:.0f} kB/reload)")
 
 # ---- 9. the shaping a swap brings (M81/T81.4) --------------------------
-shaping_step(os.environ.get("LUMEN_LIVE_STRATEGY", "?"))
+shaping_step(os.environ.get("FULGURITE_LIVE_STRATEGY", "?"))
 print("hot-window-drive: PASS")

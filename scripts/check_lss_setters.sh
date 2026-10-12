@@ -2,9 +2,9 @@
 # M61/T61.2 (docs/plan-lss.md): **every `Patch` setter has a `.lss`
 # declaration**, and every declaration names a real setter.
 #
-# The `.lss` property table (crates/lumen-static-lss/src/lower.rs,
+# The `.lss` property table (crates/fulgurite-lss/src/lower.rs,
 # `PROPERTIES`) cannot be checked against the core by the compiler: the
-# lss crate cannot depend on lumen-static (its manifest says why), so a
+# lss crate cannot depend on fulgurite (its manifest says why), so a
 # setter added to `Patch` later would simply have no `.lss` spelling, and
 # nothing would say so. This reads both files and compares the sets, in
 # both directions, and prints the counts beside the verdict.
@@ -16,7 +16,7 @@ set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
-python3 - crates/lumen-static/src/style.rs crates/lumen-static-lss/src/lower.rs <<'PY'
+python3 - crates/fulgurite/src/style.rs crates/fulgurite-lss/src/lower.rs <<'PY'
 import re, sys
 style, lower = (open(p).read() for p in sys.argv[1:3])
 
@@ -39,7 +39,7 @@ if not setters:
     rc = 1
 if missing:
     print(f"lss-setters: Patch setters with no .lss declaration: {missing} -- add them to PROPERTIES "
-          "in crates/lumen-static-lss/src/lower.rs", file=sys.stderr)
+          "in crates/fulgurite-lss/src/lower.rs", file=sys.stderr)
     rc = 1
 if extra:
     print(f"lss-setters: .lss declarations naming no Patch setter: {extra}", file=sys.stderr)

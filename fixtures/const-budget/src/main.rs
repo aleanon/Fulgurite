@@ -22,8 +22,8 @@
 //! budget. The recipe greps for the macro, so an edit that drops it fails
 //! the gate rather than quietly measuring less.
 
-use lumen_static_widgets::ops::{Fixed, Label, Spacer};
-use lumen_static::{pass, wid_index, Constraints, NodeState, StaticTree, Widget};
+use fulgurite_widgets::ops::{Fixed, Label, Spacer};
+use fulgurite::{pass, wid_index, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 0.0)]
@@ -96,7 +96,7 @@ fn main() {
 
     // The table was verified at compile time; say so at runtime too, so
     // the binary is not merely a build artifact.
-    assert!(lumen_static::widget::table_is_well_formed(<Huge as Widget>::SUB_TABLE));
+    assert!(fulgurite::widget::table_is_well_formed(<Huge as Widget>::SUB_TABLE));
     let big = <Big as Widget>::NODE_COUNT;
     assert_eq!((FIRST, MIDDLE, LAST), (1, 1 + 4 * big, 1 + 9 * big), "wid_index! addressed the wrong nodes");
     println!("const-budget: {} nodes, depth {}", Huge::NODE_COUNT, <Huge as Widget>::DEPTH);

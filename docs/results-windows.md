@@ -121,7 +121,7 @@ program is a table the program carries"): `OpenProgram::session(recover)`
 instantiates both `Local<_, Recovering>` and `Local<_, Crashing>` for each
 table entry, so a release build **without** `reload` that declares window
 programs links M36's recovery code. Counted as `just release-window-shape`
-counts it (`nm -C`, defined `lumen_static_shell::recover::` symbols):
+counts it (`nm -C`, defined `fulgurite_shell::recover::` symbols):
 
 | release build, no `reload` | `recover::` symbols | bytes | `.text` |
 |---|---:|---:|---:|
@@ -152,7 +152,7 @@ buttons, equal to each window's agent `Button` count.
 
 ## T89.4 — data between windows, `Request::Post` (2026-10-06)
 
-**`Request` is 32 B** (asserted in `lumen_static::request`): `Post`'s
+**`Request` is 32 B** (asserted in `fulgurite::request`): `Post`'s
 24 B `Descriptor`, its `u32` key and the discriminant, padded to 8 — it
 was 16. Per `Requests` that is 8 × 32 = 256 B, not per node; the firmware
 links none of it (`nm`: 0 symbols matching
@@ -257,7 +257,7 @@ has one, so it wakes on every input anywhere on the screen.
 | `counter-window` opened inactive, pointer away from it, wakes in 6 s | 0 | 119 |
 | winit alone, windowless (the issue's repro), wakes / device events in 8 s | 0 / 0 | 158 / 474 |
 | the same with `DeviceEvents::Never` | 0 / 0 | 158 / 474 |
-| prototype: winit re-selects in `listen_device_events`, lumen asks `Never` — `daemon --still` | 1 | 1 |
+| prototype: winit re-selects in `listen_device_events`, fulgurite asks `Never` — `daemon --still` | 1 | 1 |
 
 The prototype is **not shipped** (owner decision 2026-10-12: report
 upstream and wait; the 0.31.0-beta.3 code is the same). Until a winit
@@ -327,8 +327,8 @@ K89a and K89b (`docs/plan-windows.md`, "Kill rules") are judged against
 these rows.
 
 **`just resume-drive`'s `two-windows-gpu` leg** (`scripts/resume_windows.py`;
-a debug `examples/two-windows` with `LUMEN_BACKEND=gpu`, the list and an
-opened detail, one `LUMEN_TEST_RESUME` round trip at 8,000 ms; each window
+a debug `examples/two-windows` with `FULGURITE_BACKEND=gpu`, the list and an
+opened detail, one `FULGURITE_TEST_RESUME` round trip at 8,000 ms; each window
 found again by its process and title and read back with `xwd -id`):
 
 | quantity | read | bound |

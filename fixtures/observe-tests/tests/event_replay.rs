@@ -1,10 +1,10 @@
 //! A recorded input session round-trips through JSON -- moved from
-//! `crates/lumen-static/tests/events.rs`'s E0 test (M43/T43.7).
+//! `crates/fulgurite/tests/events.rs`'s E0 test (M43/T43.7).
 //! Recording is a dev concern, so the serde derives ride the `observe`
 //! gate -- the vocabulary itself is always present -- and core's own tests
 //! no longer build with `observe`: see this package's `Cargo.toml`.
 
-use lumen_static::{Event, InputQueue, Key};
+use fulgurite::{Event, InputQueue, Key};
 
 #[test]
 fn a_recorded_session_serializes_and_comes_back() {

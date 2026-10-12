@@ -131,10 +131,10 @@ should exhibit it, and in no other.
 
 **The release window** (F-NEW-3): `examples/minimal`, `cargo build
 --release`, the window crate's default features, no `reload`, no agent.
-`.text` 2,743,702 B, of which **14 `lumen_static_shell::recover::`
+`.text` 2,743,702 B, of which **14 `fulgurite_shell::recover::`
 symbols, 13,964 B**, where rule 3 of `docs/plan-panic-recovery.md` says
 there should be none — the re-triage's count and byte total, to the
-byte. With `--features lumen-static-winit/reload` the count is the same
+byte. With `--features fulgurite-winit/reload` the count is the same
 14, which is the finding: the `cfg` decides behaviour and not the link.
 `just release-window-shape` holds both, marked expected red until T52.7.
 
@@ -378,7 +378,7 @@ formats no floats. The panic string in the binary named the culprit:
 `f32::clamp` panics when `lo > hi` or a bound is NaN, and its message
 formats a float.
 
-`lumen_static::num::clamp` replaces it at all nine call sites — one of
+`fulgurite::num::clamp` replaces it at all nine call sites — one of
 them `Constraints::clamp`, which runs for every node of every frame:
 
 | | before | after | |
@@ -439,7 +439,7 @@ and the per-node RAM figures below are unchanged — `NodeState` is still
 
 **M18 and M19 together cost 148 bytes** — `Damage`'s region set, the
 `Cmd::Glass` arm in `hash_into`, and `display::glass_source`. The blur
-itself is not there at all: it lives in `lumen-static-shell`, which an
+itself is not there at all: it lives in `fulgurite-shell`, which an
 embedded profile does not link, so a part that cannot render a backdrop
 filter pays for the command's *identity* and nothing else. `.rodata`
 moved 13,016 → 13,032 and `.bss` is unchanged at one exempted 4-byte
@@ -447,7 +447,7 @@ symbol. That is T19.6, and the claim it was there to check.
 
 **M17 cost the firmware exactly nothing**, which is the tiering claim
 holding up under measurement rather than in argument: T17.0–T17.5 landed
-entirely in `lumen-static-shell`, which an embedded profile does not
+entirely in `fulgurite-shell`, which an embedded profile does not
 link. M14 and M15 together account for three quarters of the growth
 (+1,446) and M16 for the rest (+488) — the core gained `Cmd::Line`,
 `Cmd::Gradient`, `Cmd::Image`, overlays, popups, the focus ring and the
@@ -590,7 +590,7 @@ Not results, just the starting position, measured while planning M10:
 - **`NodeDesc` is 48 B only on a 64-bit host, and only without
   `observe`.** It holds a `&'static str` and a `&'static [&'static str]`,
   so it is ~32 B on a 32-bit target; `observe` grows it to 72 B
-  (`crates/lumen-static-agent/Cargo.toml`). The profile this document
+  (`crates/fulgurite-agent/Cargo.toml`). The profile this document
   is about is the 32-bit, no-`observe` one, so **sizes must be
   re-measured on the target** rather than carried over from here.
 
@@ -644,7 +644,7 @@ before and after, `git stash` on either side of the same link.
 
 `Fields` grew from `u16` to `u32` to hold a seventeenth bit
 (`Fields::BORDER`; the first sixteen were taken). It is a field of
-[`Seed`](../crates/lumen-static/src/style.rs), which also holds a
+[`Seed`](../crates/fulgurite/src/style.rs), which also holds a
 `&'static str` and a `fn` pointer, so the extra two bytes fall inside
 padding the struct already had. `Event::Hover` cost nothing either:
 `Event` is still 16 bytes, asserted by `tests/gesture.rs`.
@@ -707,8 +707,8 @@ the next reader of this budget knows the 164 is a choice.
 **Zero deferred-work symbols link into a leaf profile**, and that is the
 measurement M28/T28.7 owes rather than a `.text` delta.
 
-`.text` is deliberately *not* the measure. `lumen_static::inbox` and
-`lumen_static::spawn` are behind the `std` feature and `fixtures/embedded`
+`.text` is deliberately *not* the measure. `fulgurite::inbox` and
+`fulgurite::spawn` are behind the `std` feature and `fixtures/embedded`
 does not enable it, so that number cannot move whatever M28 does — a
 bound computed from the wrong quantity, which is the shape `AGENT.md`
 records twice. The falsifiable form of the same claim is a symbol count,
@@ -723,7 +723,7 @@ text: .text 27036 B of 65536 (41.3% of budget), 3 Toggle symbols linked, 0 task 
 **The gate is shown able to fire**, because a gate that refuses
 everything and a gate that refuses nothing look identical at zero. With
 the pattern pointed at a module that *is* linked
-(`lumen_static::ops::`), it reports `11 deferred-work symbols linked …
+(`fulgurite::ops::`), it reports `11 deferred-work symbols linked …
 expected 0`, prints the offenders and exits non-zero. That injection
 proves the counting, comparison and reporting work; the emptiness of the
 real pattern is the property being asserted, and the two claims are
@@ -780,7 +780,7 @@ first measured here.
 
 `MeasureKey` gained `flow`, the node's `Style::line_height`, so a restyle
 that changes only the pitch is not served the box measured at the old one
-(`crates/lumen-static/tests/measure_key.rs`). Four bytes of key, 32 → 36,
+(`crates/fulgurite/tests/measure_key.rs`). Four bytes of key, 32 → 36,
 on each of the four memo-holding widgets in the eleven-node fixture,
 which alignment makes **24**: the title `Label`'s `Measured` +4, the field
 `TextInput`'s shaped key +4, and each of the two `Button`s' `FoldedText`
@@ -919,7 +919,7 @@ it in `GlyphId`.
 firmware_bind=64 firmware_cascade=64` (K4's comparator at the plan's
 tighter 64 B per binary): **−220 / −240 / −220 / −220 B** `.text`,
 `.rodata` +0 on all four. `size_of::<Cluster>()` stays **12 B**
-(`crates/lumen-static-text/tests/shaper.rs` prints it): `rtl` takes a
+(`crates/fulgurite-text/tests/shaper.rs` prints it): `rtl` takes a
 byte of `line`'s padding.
 
 **What the field costs, from a symbol diff of the two builds**:
@@ -1066,7 +1066,7 @@ with `firmware_interactive` at **18,448 B** of headroom (K82b's floor
 Rewritten by M82/T82.7 (`TextMeasure::outline`, a **provided** method, so
 the firmware's `BakedFace` takes the default): **+8 B** `.text` on all four,
 `.rodata` **+4** (the vtable slot), all of it the default
-`lumen_static::cx::TextMeasure::outline` (8 B, answering `false`) by `nm`.
+`fulgurite::cx::TextMeasure::outline` (8 B, answering `false`) by `nm`.
 It is in neither D3's nor D6's list, so it is reported to the owner here,
 under K4's 1,000 B cap at 8 B. Printed by `just firmware-delta 8db6ba5`
 (K4's default, `firmware_interactive=1000`), with `firmware_interactive` at
@@ -1135,7 +1135,7 @@ slot lets the default be stored in fewer words), and `cascade_range` **+2**
 symbol links. Printed by `just firmware-delta db138c0 firmware=64
 firmware_bind=64 firmware_cascade=96 firmware_interactive=96`, with
 `firmware_interactive` at **17,940 B** of headroom; with `transitions`
-added to the fixture's `lumen-static` line (K86a's injection) the same
+added to the fixture's `fulgurite` line (K86a's injection) the same
 invocation prints +324 / +344 / +320 / +328 and fails all four.
 Rewritten by the T85.1 stack fix (`fix(T85.1)`, after M86/T86.1): **+168 B**
 on `firmware` and `firmware_cascade`, **+180 B** on `firmware_interactive`,
@@ -1159,7 +1159,7 @@ menu; `docs/results-desktop-integration.md` T90.4): **+12 B** on
 `firmware_interactive`, all of it in `pass::dispatch` (5,396 → 5,408 B by
 `nm`: the `match` over `Event` re-laid for its new variant), +0 on the
 other three, `.rodata` +0. No menu code links: `Node::take_menu`, the
-host's hook and both widgets are behind `std`, and `lumen_static::menu` is
+host's hook and both widgets are behind `std`, and `fulgurite::menu` is
 data. Printed by `just firmware-delta cad8edc firmware=0
 firmware_interactive=256` (K90a), with `firmware_interactive` at
 **17,752 B** of headroom. (T90.3 moved no byte, so it has no column.)
@@ -1223,7 +1223,7 @@ cited T27.1's +676 B paint-only cost for a required method plus a field
 every painter). T80.1 adds a vtable slot (`text_spaced`) beside one that
 became a provided forward (`text_weighted`), and one byte folded by
 `Checksum::text_spaced`; nothing in the firmware paints a second line, so
-the re-placement code is in `lumen-static-shell`, which the firmware does
+the re-placement code is in `fulgurite-shell`, which the firmware does
 not link. Printed by `just firmware-delta 845de0c
 firmware_interactive=1000` (K4's per-task cap, 1,000 B, on
 `firmware_interactive`), `.rodata` +4 B on each.
@@ -1236,7 +1236,7 @@ the paint-only binary and cannot say "unchanged".
 ### Grapheme editing is behind `alloc` — M45/T45.5
 
 The editors step by extended grapheme cluster through
-`unicode-segmentation`, an optional dependency of `lumen-static-widgets`
+`unicode-segmentation`, an optional dependency of `fulgurite-widgets`
 enabled by its `alloc` feature. **The leaf firmware's `.text` did not
 change**: 27,964 B before and after (`scripts/check_text.sh`), because
 `fixtures/embedded` takes neither `std` nor `alloc` and its `TextInput`

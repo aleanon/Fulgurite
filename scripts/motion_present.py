@@ -27,7 +27,7 @@ from Xlib import X, display
 from Xlib.ext import xtest
 
 port, leg = int(sys.argv[1]), sys.argv[2]
-pid = int(os.environ["LUMEN_LIVE_PID"])
+pid = int(os.environ["FULGURITE_LIVE_PID"])
 s = socket.create_connection(("127.0.0.1", port), timeout=15)
 f = s.makefile("rwb")
 n = [0]

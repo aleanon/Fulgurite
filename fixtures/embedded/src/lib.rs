@@ -46,12 +46,12 @@ mod refuse {
     static A: Refuse = Refuse;
 }
 
-use lumen_static::display::{Color, Painter, Rect};
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::cx::LayoutCx;
-use lumen_static::font::BakedFace;
-use lumen_static::{pass, Constraints, InlineText, NodeState, Style};
+use fulgurite::display::{Color, Painter, Rect};
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::cx::LayoutCx;
+use fulgurite::font::BakedFace;
+use fulgurite::{pass, Constraints, InlineText, NodeState, Style};
 
 // ---- the tree: alloc-free widgets only -------------------------------
 
@@ -182,7 +182,7 @@ pub fn type_char(
     p: &mut Panel,
     st: &mut [NodeState],
     sty: &[Style],
-    input: &mut lumen_static::event::InputState,
+    input: &mut fulgurite::event::InputState,
     ch: char,
 ) -> bool {
     pass::dispatch(p, sty, st, input, &Event::Text { ch })
@@ -200,7 +200,7 @@ pub const VIEW: Constraints =
 /// Folds every drawing command into a checksum and forgets it.
 ///
 /// The point of the M10a `Painter` seam, exercised: paint reaches a sink
-/// without a [`lumen_static::DisplayList`] existing anywhere. On the real
+/// without a [`fulgurite::DisplayList`] existing anywhere. On the real
 /// device this is where SPI writes would go — the M13 panel has its own
 /// GRAM and no framebuffer, because one would be 150 KB on a 128 KB part.
 #[derive(Default)]
@@ -298,7 +298,7 @@ impl Painter for Checksum {
     }
     /// No fill table — M82/T82.3: a firmware has no `Program::fills`, so
     /// `ops::fill` finds nothing and every node paints its flat `bg`.
-    fn fills(&self) -> &[lumen_static::style::Fill] {
+    fn fills(&self) -> &[fulgurite::style::Fill] {
         &[]
     }
     fn pop_clip(&mut self) {
@@ -314,7 +314,7 @@ impl Painter for Checksum {
     /// inlined `fold`s and linked **956 B** for a method nothing in the
     /// firmware calls; a ten-value `f32s` linked 964 B, unrolled
     /// (`docs/results-embedded.md` M82/T82.5).
-    fn path(&mut self, els: &[lumen_static::display::PathEl], xf: lumen_static::display::Affine, paint: lumen_static::display::PathPaint) {
+    fn path(&mut self, els: &[fulgurite::display::PathEl], xf: fulgurite::display::Affine, paint: fulgurite::display::PathPaint) {
         let bits = |c: Color| f32::from_bits(u32::from_be_bytes([c.0, c.1, c.2, c.3]));
         self.r(8, [xf[4], xf[5], paint.width, els.len() as f32], &[bits(paint.fill), bits(paint.stroke)]);
     }
@@ -349,38 +349,38 @@ pub const DEVICE_NODES: usize = DeviceUi::NODE_COUNT;
 ///
 /// **Written twice, on purpose** (M61/T61.0, kill rule K1 of
 /// `docs/plan-lss.md`): by hand here, and as `sheet.lss` under
-/// `cfg(lumen_lss_sheet)` below (`LUMEN_SHEET=lss`; `build.rs` says why it
+/// `cfg(fulgurite_lss_sheet)` below (`FULGURITE_SHEET=lss`; `build.rs` says why it
 /// is not a feature). `scripts/check_lss_parity.sh` links the firmwares both
 /// ways and requires their `.text` and `.rodata` to be byte-identical.
-#[cfg(not(lumen_lss_sheet))]
-pub const SHEET: &[lumen_static::Rule] = &[
-    lumen_static::Rule::new(
-        lumen_static::Selector::Any,
-        lumen_static::Patch::new().spacing(5.0),
+#[cfg(not(fulgurite_lss_sheet))]
+pub const SHEET: &[fulgurite::Rule] = &[
+    fulgurite::Rule::new(
+        fulgurite::Selector::Any,
+        fulgurite::Patch::new().spacing(5.0),
     ),
-    lumen_static::Rule::new(
-        lumen_static::Selector::Kind("button"),
-        lumen_static::Patch::new().radius(3.0),
+    fulgurite::Rule::new(
+        fulgurite::Selector::Kind("button"),
+        fulgurite::Patch::new().radius(3.0),
     ),
-    lumen_static::Rule::new(
-        lumen_static::Selector::Id("title"),
-        lumen_static::Patch::new().font_size(18.0),
+    fulgurite::Rule::new(
+        fulgurite::Selector::Id("title"),
+        fulgurite::Patch::new().font_size(18.0),
     ),
 ];
 
 /// [`SHEET`], authored as `.lss` and parsed while this crate compiles —
 /// the other side of K1's comparison (`docs/plan-lss.md` §5).
-#[cfg(lumen_lss_sheet)]
-pub const SHEET: &[lumen_static::Rule] = lumen_static::include_lss!(Ui, "sheet.lss");
+#[cfg(fulgurite_lss_sheet)]
+pub const SHEET: &[fulgurite::Rule] = fulgurite::include_lss!(Ui, "sheet.lss");
 
 /// Lay out and paint over styles the caller already has — the cascade's
 /// output, which [`frame`] would overwrite with the defaults — laying out
 /// only what `changed` says moved (M52/T52.1).
-pub fn frame_changed<W: lumen_static::Widget>(
+pub fn frame_changed<W: fulgurite::Widget>(
     ui: &mut W,
     st: &mut [NodeState],
     sty: &[Style],
-    changed: lumen_static::invalidate::Changed<'_>,
+    changed: fulgurite::invalidate::Changed<'_>,
     out: &mut Checksum,
 ) {
     let mut face: BakedFace = face::FACE;
@@ -391,7 +391,7 @@ pub fn frame_changed<W: lumen_static::Widget>(
 
 /// The centre of node `i`'s laid-out box: where a press lands on it.
 pub fn centre(st: &[NodeState], i: usize) -> (f32, f32) {
-    let r = lumen_static::ops::rect_of(&st[i]);
+    let r = fulgurite::ops::rect_of(&st[i]);
     ((r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5)
 }
 
@@ -409,7 +409,7 @@ pub fn centre(st: &[NodeState], i: usize) -> (f32, f32) {
 /// exists to record.
 pub mod sizes {
     use core::mem::size_of;
-    use lumen_static::{NodeDesc, NodeState, Style};
+    use fulgurite::{NodeDesc, NodeState, Style};
 
     pub const NODE_STATE: usize = size_of::<NodeState>();
     pub const STYLE: usize = size_of::<Style>();
@@ -525,7 +525,7 @@ pub mod sizes {
     // different numbers and conflating them was the bug this closed on
     // 2026-09-07. `MAX_DEPTH` is 64 and would want ~18 KB, which is why
     // it is a runaway-recursion backstop and not this.
-    pub const STACK: usize = lumen_static::stack_bytes(<super::Ui as lumen_static::Widget>::DEPTH);
+    pub const STACK: usize = fulgurite::stack_bytes(<super::Ui as fulgurite::Widget>::DEPTH);
     const _: () = assert!(
         STACK <= 4096,
         "the tree is deeper than docs/results-embedded.md's 4 KB stack budget allows by the model (a depth backstop; `just stack` measures)"

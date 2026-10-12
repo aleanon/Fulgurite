@@ -6,11 +6,11 @@
 //! tree in hand can click it at a known point; the label under it is the
 //! only other text on the frame, with the kept `name` below it.
 
-use lumen_static::event::EventCtx;
-use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
-use lumen_static::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
-use lumen_static_shell::program::{application, Program};
-use lumen_static_widgets::prelude::*;
+use fulgurite::event::EventCtx;
+use fulgurite::style::{Edges, Length, Patch, Rule, Selector};
+use fulgurite::{App as DeriveApp, Reloadable as DeriveReloadable, StaticTree};
+use fulgurite_shell::program::{application, Program};
+use fulgurite_widgets::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(StaticTree, Default, DeriveReloadable)]
@@ -97,11 +97,11 @@ pub fn program() -> Program<Counter> {
     })
 }
 
-lumen_static_reload::export_program!(program);
+fulgurite_reload::export_program!(program);
 
 /// Where `#value` sits in this build's table — M49/T49.11's gate prints it
 /// for each build, to show the index an agent would hold moved.
 #[no_mangle]
 pub extern "C" fn reload_app_value_index() -> usize {
-    lumen_static::style::index_of_wid(<Ui as lumen_static::widget::Widget>::SUB_TABLE, "value").unwrap_or(usize::MAX)
+    fulgurite::style::index_of_wid(<Ui as fulgurite::widget::Widget>::SUB_TABLE, "value").unwrap_or(usize::MAX)
 }

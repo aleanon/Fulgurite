@@ -113,7 +113,7 @@ TREE = ("Tree", "#d_tree_a", [
                       _row(c, 1))[0],
         expect=lambda c: (
             len(_visible(c)) == c._n0 - 2,
-            f"{c._n0} -> {len(_visible(c))} rows after folding `lumen-static`, "
+            f"{c._n0} -> {len(_visible(c))} rows after folding `fulgurite`, "
             f"which has two children: {_visible(c)}",
         ),
         isolate=lambda c: (c.__dict__.__setitem__("_n0", len(_visible(c))),

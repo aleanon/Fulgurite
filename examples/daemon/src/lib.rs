@@ -29,10 +29,10 @@
 //! `daemon --still` does not tick at all — the two legs of `just
 //! idle-count`'s daemon phase (K89d).
 
-use lumen_static::prelude::*;
-use lumen_static::request::{Answer, Request, Requests};
-use lumen_static_shell::program::{application, daemon, KeyOutcome, OpenProgram, Program};
-use lumen_static_widgets::prelude::*;
+use fulgurite::prelude::*;
+use fulgurite::request::{Answer, Request, Requests};
+use fulgurite_shell::program::{application, daemon, KeyOutcome, OpenProgram, Program};
+use fulgurite_widgets::prelude::*;
 
 /// The tick period, in milliseconds.
 pub const PERIOD_MS: f64 = 120.0;
@@ -86,7 +86,7 @@ pub struct DaemonUi {
 /// boots the new build's daemon afresh, which is all `just
 /// hot-window-drive`'s daemon leg asks of it. Expands to nothing without
 /// the core's `reload`.
-#[derive(Default, lumen_static::Reloadable)]
+#[derive(Default, fulgurite::Reloadable)]
 pub struct Daemon {
     #[reload(fresh)]
     pub ui: DaemonUi,
@@ -208,9 +208,9 @@ fn boot() -> Daemon {
 
 /// Escape asks to close: `KeyOutcome::Quit`. A windowless session has no
 /// window to close, so the window ignores it and says so (A21).
-fn keys(_: &mut Daemon, key: lumen_static::Key, _: lumen_static::Mods) -> KeyOutcome {
+fn keys(_: &mut Daemon, key: fulgurite::Key, _: fulgurite::Mods) -> KeyOutcome {
     match key {
-        lumen_static::Key::Escape => KeyOutcome::Quit,
+        fulgurite::Key::Escape => KeyOutcome::Quit,
         _ => KeyOutcome::Ignored,
     }
 }
@@ -225,7 +225,7 @@ pub struct PanelUi {
 }
 
 /// `Reloadable`, as a window program is in a `reload` build (`WindowApp`).
-#[derive(Default, lumen_static::Reloadable)]
+#[derive(Default, fulgurite::Reloadable)]
 pub struct Panel {
     #[reload(fresh)]
     pub ui: PanelUi,
@@ -281,7 +281,7 @@ pub fn program() -> Program<Daemon> {
 /// `everything` feature, so the drive runs both.
 fn boxed(p: Program<Panel>) -> Box<dyn OpenProgram> {
     #[cfg(feature = "everything")]
-    return Box::new(p.invalidation::<lumen_static::Everything>());
+    return Box::new(p.invalidation::<fulgurite::Everything>());
     #[cfg(not(feature = "everything"))]
     Box::new(p)
 }
@@ -289,4 +289,4 @@ fn boxed(p: Program<Panel>) -> Box<dyn OpenProgram> {
 // A `hot` build is a library a window loads (M89/T89.7): `just
 // hot-window-drive`'s daemon leg swaps it in with no window open.
 #[cfg(feature = "hot")]
-lumen_static_reload::export_program!(program);
+fulgurite_reload::export_program!(program);

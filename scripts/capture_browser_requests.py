@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capture what a real browser sends to the agent port — M39/T39.0.
 
-`crates/lumen-static-agent/tests/transport.rs` replays these bytes against
+`crates/fulgurite-agent/tests/transport.rs` replays these bytes against
 the agent transport. A request typed from memory tests its author's idea
 of a browser (docs/plan-agent-transport.md §0 rule 4), so the captured
 fixtures are written by this script and nothing else.
@@ -25,7 +25,7 @@ look for: a click on counter-window's `#inc` and one on tasks-demo's
 `#spawn-one`.
 
 Usage: capture_browser_requests.py OUT_DIR BROWSER_NAME -- BROWSER_ARGV...
-The URL is appended to BROWSER_ARGV. Ports come from LUMEN_CAPTURE_PORTS
+The URL is appended to BROWSER_ARGV. Ports come from FULGURITE_CAPTURE_PORTS
 ("rec,page", default 7810,7811).
 """
 import os
@@ -36,7 +36,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-REC_PORT, PAGE_PORT = (int(p) for p in os.environ.get("LUMEN_CAPTURE_PORTS", "7810,7811").split(","))
+REC_PORT, PAGE_PORT = (int(p) for p in os.environ.get("FULGURITE_CAPTURE_PORTS", "7810,7811").split(","))
 
 # The two JSON-RPC lines every body carries. Kept short: a form field's
 # name cannot contain `=`, and the trick below needs the value to close

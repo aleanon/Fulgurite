@@ -1,7 +1,7 @@
 # Competitive benchmark harness — `docs/results-competitive.md`.
 #
 # Its OWN workspace, excluded from the root one, so foreign UI toolkits never
-# enter lumen-static's dependency graph or Cargo.lock. The same arrangement
+# enter fulgurite's dependency graph or Cargo.lock. The same arrangement
 # Lumen's `benches-competitive` uses, and for the same reason.
 #
 # The **methodology is Lumen's**, deliberately: the workload, the stopping
@@ -13,8 +13,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "arms/lumen-static-app",
-    "arms/lumen-static-lean",
+    "arms/fulgurite-app",
+    "arms/fulgurite-lean",
     "arms/frame",
     "arms/raster",
     "arms/stages",

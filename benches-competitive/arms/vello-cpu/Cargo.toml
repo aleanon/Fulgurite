@@ -9,16 +9,16 @@ publish = false
 # records: a difference in what the optimiser could see, reported as a
 # difference in what the code costs.
 [dependencies]
-lumen-static = { path = "../../../crates/lumen-static" }
-lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite = { path = "../../../crates/fulgurite" }
+fulgurite-shell = { path = "../../../crates/fulgurite-shell", features = ["truetype"] }
 # The comparison. `multithreading` is a *runtime* setting in vello_cpu
 # (`RenderSettings::num_threads`), so one build sweeps both, where the
-# lumen arm needs two builds because `threads` is a cargo feature.
+# fulgurite arm needs two builds because `threads` is a cargo feature.
 vello_cpu = { version = "0.2", features = ["multithreading", "text", "u8_pipeline"] }
 # The same face, and the same advances, feed both sides -- see `run_glyphs`.
 fontdue = "0.9"
 
 [features]
 default = []
-simd = ["lumen-static-shell/simd"]
-threads = ["lumen-static-shell/threads"]
+simd = ["fulgurite-shell/simd"]
+threads = ["fulgurite-shell/threads"]

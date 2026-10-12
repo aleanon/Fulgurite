@@ -19,31 +19,31 @@ publish = false
 # ANCHOR: features
 [features]
 hot = [
-    "lumen-static-winit/hot",
-    "lumen-static/reload",
-    "lumen-static-widgets/reload",
-    "lumen-static-shell/reload",
-    "dep:lumen-static-reload",
+    "fulgurite-winit/hot",
+    "fulgurite/reload",
+    "fulgurite-widgets/reload",
+    "fulgurite-shell/reload",
+    "dep:fulgurite-reload",
 ]
-agent = ["lumen-static-winit/agent", "lumen-static-widgets/observe"]
+agent = ["fulgurite-winit/agent", "fulgurite-widgets/observe"]
 # ANCHOR_END: features
 # M81/T81.4: `Shaping::Complex` for the drive's shaping step -- the loader
 # and the library both build with it, and `--expect-features` names it.
-shaping = ["lumen-static-winit/shaping", "lumen-static-shell/shaping"]
+shaping = ["fulgurite-winit/shaping", "fulgurite-shell/shaping"]
 # M83/T83.8: `#swatch` becomes a `ShaderView` and the program registers its
 # table, so the drive's GPU legs can edit the copy's WGSL and watch the swap
 # re-send it (`--features hot,agent,gpu,shader`). Default-off: a member's
 # features unify into every `--workspace` build.
-shader = ["lumen-static-widgets/shader", "lumen-static-shell/shader", "lumen-static-winit/shader"]
-gpu = ["lumen-static-winit/gpu"]
+shader = ["fulgurite-widgets/shader", "fulgurite-shell/shader", "fulgurite-winit/shader"]
+gpu = ["fulgurite-winit/gpu"]
 # M89/T89.7: both programs under `Everything`, so the drive's windows leg
 # runs both strategies (the shaping legs edit `EDIT strategy` instead).
 everything = []
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"], optional = true }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload", features = ["window"], optional = true }
+fulgurite-winit = { path = "../../crates/fulgurite-winit" }
 serde = { version = "1", features = ["derive"] }

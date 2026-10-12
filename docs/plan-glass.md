@@ -101,7 +101,7 @@ essentially forces a compute shader. That is its own milestone's worth of
 work and it is not this one's.
 
 **Cost of waiting, stated:** the two backends visibly diverge for anyone
-running `LUMEN_BACKEND=gpu`. That is a first for this project and it is
+running `FULGURITE_BACKEND=gpu`. That is a first for this project and it is
 the reason this is a decision rather than an omission.
 
 ## 2. What M18 must deliver first
@@ -333,7 +333,7 @@ Four corrections to the first draft, all from the review:
    not of the implementation as a whole. The dependency *table* was
    built bounded (`MAX_DEPS`, 4) with exactly the `Damage::All` escape
    this item calls untriggerable, and it fires on any frame with five
-   panels. `crates/lumen-static-shell/tests/glass_deps.rs` gates it.
+   panels. `crates/fulgurite-shell/tests/glass_deps.rs` gates it.
 
 `observe_dep` gets a **provided body** so `Rebuild`, `Streaming<N>` and
 any host strategy are unaffected until they opt in — the shape

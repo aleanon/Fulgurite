@@ -132,7 +132,7 @@ Confirmed by the change, not just predicted by it:
   branch names an absolute table index — the `(row, node)` indirection
   that addressed branches like repeater rows is gone. Agent selectors,
   lints, `#[widget_id]` and stylesheet `#id` rules reach branch
-  internals with no special case; `crates/lumen-static-agent` needed no
+  internals with no special case; `crates/fulgurite-agent` needed no
   change at all, which is the clearest evidence the special case was
   only ever a workaround.
 - **Each branch node has its own style slot.** `Either::defaults()`

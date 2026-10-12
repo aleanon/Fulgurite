@@ -22,14 +22,14 @@
 
 use std::cell::Cell;
 
-use lumen_static::cx::LayoutCx;
-use lumen_static::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
-use lumen_static::display::{Color, Painter};
-use lumen_static::event::{EventCtx, Handlers, NodeSel};
-use lumen_static::ops::{record_painted, rect_of, resolve_self};
-use lumen_static::style::{Fields, Seed, Style};
-use lumen_static::text::{FoldedText, MeasureKey};
-use lumen_static::widget::{Node, Widget};
+use fulgurite::cx::LayoutCx;
+use fulgurite::desc::{Constraints, NodeDesc, NodeState, Size, NO_PARENT};
+use fulgurite::display::{Color, Painter};
+use fulgurite::event::{EventCtx, Handlers, NodeSel};
+use fulgurite::ops::{record_painted, rect_of, resolve_self};
+use fulgurite::style::{Fields, Seed, Style};
+use fulgurite::text::{FoldedText, MeasureKey};
+use fulgurite::widget::{Node, Widget};
 
 std::thread_local! {
     /// Which catalogue entry the sidebar highlights — see the module doc
@@ -97,7 +97,7 @@ impl<S: 'static> Widget for NavRow<S> {
             font_size: 14.0,
             hover_dim: 0.05,
             pressed_dim: 0.1,
-            cursor: lumen_static::style::Cursor::Pointer,
+            cursor: fulgurite::style::Cursor::Pointer,
             color: Color(27, 34, 48, 255),
             border_color: Color(47, 107, 255, 255),
             ..Style::default()
@@ -179,7 +179,7 @@ impl<S: 'static> Node for NavRow<S> {
         record_painted(st, i, limits, resolve_self(limits, &style[i], content), &style[i])
     }
 
-    lumen_static::leaf_common!(NavRow<S>, 0);
+    fulgurite::leaf_common!(NavRow<S>, 0);
 
     #[cfg(feature = "agent")]
     fn observe(
@@ -187,14 +187,14 @@ impl<S: 'static> Node for NavRow<S> {
         _st: &[NodeState],
         _i: usize,
         _id: u64,
-        node: &mut lumen_static::observe::accesskit::Node,
-        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+        node: &mut fulgurite::observe::accesskit::Node,
+        _extra: &mut Vec<(fulgurite::observe::accesskit::NodeId, fulgurite::observe::accesskit::Node)>,
     ) {
         match self.kind {
-            RowKind::Heading => node.set_role(lumen_static::observe::accesskit::Role::Heading),
+            RowKind::Heading => node.set_role(fulgurite::observe::accesskit::Role::Heading),
             RowKind::Item => {
-                node.set_role(lumen_static::observe::accesskit::Role::Tab);
-                node.add_action(lumen_static::observe::accesskit::Action::Click);
+                node.set_role(fulgurite::observe::accesskit::Role::Tab);
+                node.add_action(fulgurite::observe::accesskit::Action::Click);
                 if self.selected {
                     node.set_selected(true);
                 }

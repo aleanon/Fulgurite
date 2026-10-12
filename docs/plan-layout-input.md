@@ -17,7 +17,7 @@ shifted command count as damage. Closes: the `Flexible` length, `pin`,
 `pop`, primitive culling in containers. **Smart event propagation is
 narrowed to a survey** (T85.5): if it finds two real cases, the build
 is its own plan, because a required `Node` method touches every hand-
-written `Node` impl (47 in `lumen-static-widgets/src` alone, counted
+written `Node` impl (47 in `fulgurite-widgets/src` alone, counted
 with `grep 'impl.*Node for'`); that plan is unwritten, and K85e
 names when it is written. Depends on nothing. `Pop` could serve
 lazily loaded images (a possibility; M84 does not use it).
@@ -29,11 +29,11 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
 
 **Decisions.**
 
-- **`Length::Flexible(u16)`** — `lumen-static` (`style.rs`). Laid out
+- **`Length::Flexible(u16)`** — `fulgurite` (`style.rs`). Laid out
   under a main-axis maximum of its fill share, so it ends at
   `min(content, share)`. **What it leaves goes to the `FillPortion`
   children, never to another `Flexible`.** In the derive's row/column
-  body (`lumen-static-macros/src/lib.rs`, scans 1 and 2 at ~540–600)
+  body (`fulgurite-macros/src/lib.rs`, scans 1 and 2 at ~540–600)
   scan 2 splits into 2a (`Flexible` children, each under
   `loose_child(axis, inner, share, align)`) and 2b (fills, dividing
   `free - flex_used` among the fill portions). 2a is skipped when the
@@ -56,13 +56,13 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
   1,000 B and the 81,920 B ceiling (D5). It is not a `Painter` method,
   so neither D3 nor D6 covers it.
 - **`.lss` spells it `flexible` and `flexible(n)`** — M61 is on this
-  tree (`lumen-static-lss`, `check_lss_setters.sh` in `just static`),
+  tree (`fulgurite-lss`, `check_lss_setters.sh` in `just static`),
   so this is not conditional. Four exhaustive sites:
-  `lumen-static-lss/src/lower.rs` (`Length` and `length()`),
-  `lumen-static-shell/src/lss.rs` `length()`, and
-  `lumen-static-macros/src/lss.rs`. No new `Patch` setter: it is a
+  `fulgurite-lss/src/lower.rs` (`Length` and `length()`),
+  `fulgurite-shell/src/lss.rs` `length()`, and
+  `fulgurite-macros/src/lss.rs`. No new `Patch` setter: it is a
   value of `width`/`height`.
-- **`Pin<W>`** — `lumen-static-widgets` (`surface.rs`, beside `Card`,
+- **`Pin<W>`** — `fulgurite-widgets` (`surface.rs`, beside `Card`,
   the same one-child splice). A single child laid out `Shrink` inside
   the pin's box less its offset, and placed at `pos + (x, y)`. The pin
   is `FILL` by default, pushes a clip of its own rect in `paint` and
@@ -83,7 +83,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     pays one empty-slice check per frame. No per-node virtual call, so
     the `Node::tick` objection (`event.rs:1193–1198`) does not apply.
   - **When.** After `tree.place` in `Host::frame`
-    (`lumen-static-shell/src/lib.rs:2020–2023`). `place` is a
+    (`fulgurite-shell/src/lib.rs:2020–2023`). `place` is a
     whole-tree walk under both strategies ("`place` takes no
     `Changed`", same site), so positions are fresh under
     `Boundaries<256>` as well as `Everything`.
@@ -151,7 +151,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     clip stack (`display.rs:878–898`), so a column culled against it in
     a 400 px `ScrollView` keeps every row inside the window. The
     `ScrollView` paints its content through `CullTo`, a `Painter`
-    wrapper in `lumen-static` (`display.rs`, beside `Scaled`) that
+    wrapper in `fulgurite` (`display.rs`, beside `Scaled`) that
     answers `clip_bounds() = inner ∩ viewport` and forwards **every**
     other method that exists when T85.8 lands, provided ones included:
     today's `text`, `glass`, `gradient`, `defer`, `line`, `image`,
@@ -225,7 +225,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
 **Tasks — M85a.**
 
 - **T85.0 — the gates that compile today.**
-  - `crates/lumen-static/tests/flexible.rs`: a test leaf `CountingLeaf`
+  - `crates/fulgurite/tests/flexible.rs`: a test leaf `CountingLeaf`
     (`leaf_common!`, fixed content width, a `Cell` counter in `layout`)
     in a derived 300 px row `[CountingLeaf(Shrink, 80 px), CountingLeaf(FILL)]`,
     laid out once under `LayoutCx` as `tests/fixed_container.rs` does.
@@ -236,7 +236,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     1, 1, 1.
   - `size_of::<Length>() == 8`, beside `tests/cursor.rs:32`'s `Style`
     assertion, printed. **Injection:** `FillPortion(u64)` → 16.
-  - `crates/lumen-static-shell/tests/pop_visibility.rs`, setup half: a
+  - `crates/fulgurite-shell/tests/pop_visibility.rs`, setup half: a
     `ScrollView` whose viewport (printed) is strictly shorter than the
     window (printed), a target leaf below its fold, wheeled 20 px at a
     time. Asserts each wheel is `handled`, the offset moved (printed),
@@ -264,7 +264,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     `scripts/doc-paths.allow` entry (M80/T80.0) is removed here.
 - **T85.1 — `Flexible`.** Variant, `is_flexible()`, the derive's 2a/2b
   split, `resolve_self`'s arm, the stack/flow arms, the four `.lss`
-  sites and a `lumen-static-lss/src/tests.rs` case beside the
+  sites and a `fulgurite-lss/src/tests.rs` case beside the
   `fill(3)` one.
   *Same commit:* rustdoc on `Length`; `docs/layout-and-storage-decisions.md`
   §2's table gains `Flexible(k)` and a sentence that distribution stays
@@ -299,11 +299,11 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
   `Flexible` in `tests/` renders byte-identically (`just test`).
   Firmware: `just firmware-delta <parent>` (default
   `firmware_interactive=1000`), four binaries printed.
-- **T85.2 — `Pin<W>`.** *Same commit:* `lumen-static-widgets` export;
+- **T85.2 — `Pin<W>`.** *Same commit:* `fulgurite-widgets` export;
   `scripts/check_observe.sh` ALLOW line ("a wrapper: its content
   speaks", as `Card`); `roles.py` row `GenericContainer`; a
   `#[widget_id("Pin")]` field in
-  `crates/lumen-static-widgets/tests/catalogue/mod.rs`'s `Ui`, a
+  `crates/fulgurite-widgets/tests/catalogue/mod.rs`'s `Ui`, a
   `row("Pin", "Pin", Role::GenericContainer, false)` in
   `tests/a11y_roles.rs`'s `ROWS` and `"Pin"` in its `GENERIC_BOUND`
   (else `every_node_impl_has_a_row` and the explicit-list check fail
@@ -311,7 +311,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
   in `scripts/drive/widgets/surface.py`; a showcase entry; rustdoc;
   handoff §12 DECIDED line; `docs/competitive-feature-gaps.md` row.
   `Pin` is not in `scripts/doc-identifiers.allow` (checked).
-  **Gates** (`crates/lumen-static-widgets/tests/pin.rs`, and live):
+  **Gates** (`crates/fulgurite-widgets/tests/pin.rs`, and live):
   - child `pos` == pin `pos` + `(x, y)` exactly, printed;
   - a press/release at the child's centre is `handled` and the hit
     node is the child's index (printed), not the pin's;
@@ -373,7 +373,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
   printed). Firmware: `just firmware-delta <parent>` (default
   `firmware_interactive=1000`), printed.
 - **T85.4 — `Pop<S, W>`, and the arena refusal.** `Pop` in
-  `lumen-static-widgets` (`surface.rs`), `on_view: fn(&mut S,
+  `fulgurite-widgets` (`surface.rs`), `on_view: fn(&mut S,
   &EventCtx)`, `visible()`; the new `pub const fn
   widget::table_has_flag(t: &[NodeDesc], f: u8) -> bool` beside
   `table_is_well_formed` (`widget.rs:727`), with rustdoc and a `const`
@@ -426,7 +426,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     for both, eight runs a side under `just bench-lock`. Today the two
     command counts are equal (printed): **this is the setup check** —
     an arm that culls nothing shows it (B13).
-  - `crates/lumen-static-shell/tests/cull_damage.rs`: a `List` (which
+  - `crates/fulgurite-shell/tests/cull_damage.rs`: a `List` (which
     culls today) inside a `ScrollView`, a label painted after it,
     `Host<_, Incremental, _>` under both strategies; ten wheel steps.
     Prints per step: damage px inside the scroller's rect, outside it,
@@ -436,7 +436,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
     the gate asserts the current gap, damage outside the scroller with
     culling > without, printed. T85.7 flips it to the bound: with
     culling ≤ without.
-  - `crates/lumen-static-shell/tests/cull_ink.rs`: a shadowed card
+  - `crates/fulgurite-shell/tests/cull_ink.rs`: a shadowed card
     whose rect is just below the surface while its `shadow_ink` is on
     it, an open `Select` whose anchor is off-surface, each printed
     (rect, ink, surface; `content_absent()` false). Render with bounds
@@ -508,7 +508,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
 
 - **K85a — one layout per child.** `flexible.rs` prints a count above 1
   for any child, or the frame arm's `ALL rows: layout` row
-  (`benches-competitive/run.sh -p lumen-static-frame`, under
+  (`benches-competitive/run.sh -p fulgurite-frame`, under
   `just bench-lock`, eight runs a side) leaves its spread with
   `Flexible` unused. Fires → `Flexible` is not shipped; the count and
   the row go in `docs/results-layout-input.md`.
@@ -540,7 +540,7 @@ Read against `553fa5e`, which is `92a4033` plus M61 (`.lss`).*
   section records the count and this condition either way.
 
 **Note for the assembler.** No change to S1/S2. `CullTo` is a fourth
-`lumen-static` wrapper (`display.rs`): §2.2's implementor table and
+`fulgurite` wrapper (`display.rs`): §2.2's implementor table and
 its "three wrappers" sentence, and M83's override list, name it
 (second review A6, P6, R4). No cross-milestone
 obligation on M82: `NodeDesc::INKS_OUTSIDE` is for any widget whose ink
@@ -619,7 +619,7 @@ that adds a `Session` method…" does not touch M85: none is added.
   placeholder's text, and the harness bounds that combined frame against
   the placeholder's box and where it was (bound 4.0); the load's own
   frame — inside the pop's box, at most 1.00× of it — is
-  `crates/lumen-static-widgets/tests/pop.rs`, where the host pumps the
+  `crates/fulgurite-widgets/tests/pop.rs`, where the host pumps the
   delivering frame by itself.
 - **T85.4: the drive's inventory node is the `Pop`, not the demo's
   `ScrollView`.** `roles.py`'s row (`GenericContainer`) is checked
@@ -702,7 +702,7 @@ that adds a `Session` method…" does not touch M85: none is added.
   table as a `const`, and for an item that cannot defer the calls and
   the resolution compile away. With it every K3 row is inside its
   parent's spread (`docs/results-layout-input.md`, "fix(T15.0)").
-  `crates/lumen-static-shell/tests/list_overlay.rs` gates it — the menu
+  `crates/fulgurite-shell/tests/list_overlay.rs` gates it — the menu
   draws inside a `List` (0 → 12,800 panel pixels, bound > 8,000) and
   still in a column, a press in row 1's popup runs that row's handler,
   a press outside closes it, a scrolled `Repeat` resolves its data row
@@ -788,7 +788,7 @@ that adds a `Session` method…" does not touch M85: none is added.
   its own plan because it touches every `Node` impl.
 - P30 → adopted: T85.1's injections listed; appendix row replaced.
 - M3 → adopted: no trailing docs task; each task carries its docs.
-- M4 → adopted: `Pin` and `Pop` live in `lumen-static-widgets`; each
+- M4 → adopted: `Pin` and `Pop` live in `fulgurite-widgets`; each
   export carries inventory, ALLOW, role and showcase in its commit.
 - M20 → adopted: T85.1, T85.2, T85.4, T85.7, T85.8 have injections.
 - M24 → changed: M61 is on this tree, so `.lss` `flexible(n)` is

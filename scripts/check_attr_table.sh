@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The attribute table exists in two places. Keep them in agreement.
 #
-# `crates/lumen-static/src/lib.rs` says of its table: "This list is the
+# `crates/fulgurite/src/lib.rs` says of its table: "This list is the
 # only place they appear together." That stopped being true when the book
 # gained `book/src/attributes.md`, and two copies of a table is the exact
 # shape the doc-currency rule warns about -- so the second copy comes
@@ -25,7 +25,7 @@
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-RUST=crates/lumen-static/src/lib.rs
+RUST=crates/fulgurite/src/lib.rs
 BOOK=book/src/attributes.md
 [ -f "$BOOK" ] || { echo "attr-table: no book table at $BOOK -- a missing book is a failure, not a skip" >&2; exit 1; }
 
@@ -69,7 +69,7 @@ python3 - "$RUST" "$BOOK" <<'PY' || status=1
 import re, sys
 sys.path.insert(0, "scripts/lib")
 import rustsrc
-src = open("crates/lumen-static-macros/src/lib.rs", encoding="utf-8").read()
+src = open("crates/fulgurite-macros/src/lib.rs", encoding="utf-8").read()
 code, _ = rustsrc.split(src, keep_literals=True)
 keys = sorted(set(re.findall(r'meta\.path\.is_ident\("(\w+)"\)', code))
               | set(re.findall(r'\bkw\s*!=\s*"(\w+)"', code)))
@@ -106,7 +106,7 @@ PY
 # number of variants of `enum Cmd`.
 python3 - <<'PY' || status=1
 import re, sys
-disp = open("crates/lumen-static/src/display.rs", encoding="utf-8").read()
+disp = open("crates/fulgurite/src/display.rs", encoding="utf-8").read()
 body = disp[disp.index("pub enum Cmd {"):]
 depth, i = 0, body.index("{")
 for j in range(i, len(body)):

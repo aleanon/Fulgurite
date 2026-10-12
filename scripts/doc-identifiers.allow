@@ -4,7 +4,7 @@
 
 # --- not ours: C library / toolchain / upstream crate surface ---
 dlclose              # libdl; docs/step4-hot-reload.md §7 says we never call it
-dlsym                # libdl; where M88/T88.1's loader defect died (lumen-static-reload's COPIES)
+dlsym                # libdl; where M88/T88.1's loader defect died (fulgurite-reload's COPIES)
 SIGSEGV              # the signal that defect died with
 nm                   # binutils, cited in the binsize fixture's notes
 generic_const_exprs  # unstable rustc feature, cited as a road not taken
@@ -52,7 +52,7 @@ fill_all             # examples/showcase's cascade workaround, deleted by M24/T2
                      # stage.rs and docs/plan-select.md record why it existed and how its
                      # removal was checked (the showcase test it was hiding goes red)
 
-# wgpu's unsafe surface constructor, named as the thing lumen-static-wgpu
+# wgpu's unsafe surface constructor, named as the thing fulgurite-wgpu
 # deliberately does NOT call: `crates/*/src` may contain no `unsafe`,
 # which is why `Gpu::for_window` asks for a `Send + Sync` window handle
 # instead. A name that exists upstream and must not exist here
@@ -69,7 +69,7 @@ RenderRoot           # masonry's public driver, used by probes/masonry-raw
 EnableAccessTree     # masonry's WindowEvent variant; the caveat turns on it
 BENCH_SIZES          # env var on the sibling harness (M16/T16.0)
 BENCH_CHURN_SIZES    # ditto
-LUMEN_TRACE          # env var named in a plan; nothing reads it yet
+FULGURITE_TRACE          # env var named in a plan; nothing reads it yet
 DISPLAY              # the X server the live gates and the GPU tests reach; read by Xlib and the driver, not by us
 CI_STEP_TIMEOUT      # env bound read by scripts/ci.sh (a script, not workspace code)
 CARGO_PROFILE_DEV_DEBUG # cargo profile override set by .github/workflows/ci.yml
@@ -151,7 +151,7 @@ MAX_SPANS                      # removed by M87/T87.1 (the span store grows); do
 line_start                     # removed by M87/T87.1 (set_str carries the line offset); the M87 plan and gate 2 name the quadratic it was
 RegisteredStatusNotifierItems  # proposed by M90
 LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's uniform-size gate
-LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
+FULGURITE_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
 Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it
 DeviceEvents                   # winit's device-event filter, cited by K89d's shared-desktop note (winit#4755); not used by the workspace
 StateSet             # promised by docs/plan-lss-selectors.md T62.7; comes off when it exists

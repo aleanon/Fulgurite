@@ -11,11 +11,11 @@
 > not restate them.
 
 *Size M: eight commits, one widget file
-(`lumen-static-widgets/src/rich.rs`)
+(`fulgurite-widgets/src/rich.rs`)
 plus its drive, showcase and bench, and one signing rule in
-`crates/lumen-static-agent/src/journal.rs` (T87.2; the agent is not
+`crates/fulgurite-agent/src/journal.rs` (T87.2; the agent is not
 linked into firmware). **No file under
-`crates/lumen-static/src` changes**, so `Style`, `NodeState`, `Cmd`
+`crates/fulgurite/src` changes**, so `Style`, `NodeState`, `Cmd`
 (60 B) and the four firmware binaries' `.text` cannot move from their
 values at landing (`docs/plan-iced-roadmap.md` §2.1 owns them); each
 task prints `just firmware-delta <parent> firmware=0
@@ -49,7 +49,7 @@ are identical to `92a4033`'s.*
   40 B per word, 44 B once `Span` grows (below). `MAX_SPANS` is
   removed from the export list; `docs/plan-widget-parity.md:1179`
   still names it historically, so it moves to
-  `scripts/doc-identifiers.allow`. Crate: `lumen-static-widgets`.
+  `scripts/doc-identifiers.allow`. Crate: `fulgurite-widgets`.
 - **`set_str` walks once.** `line_start` (`rich.rs:576`) re-scans from
   byte 0 for every line, so the parse is lines × bytes. The line
   offset is carried instead. This is T45.10's quadratic again, found
@@ -187,7 +187,7 @@ are identical to `92a4033`'s.*
 **Tasks.**
 
 - **T87.0 — gates that compile today.** One file,
-  `crates/lumen-static-widgets/tests/markdown_m69.rs`, headless with
+  `crates/fulgurite-widgets/tests/markdown_m69.rs`, headless with
   `BlockMetrics` as `tests/rich.rs` is. Every gate is committed
   **green** (§3.1): gates 1–4 pin today's gap, asserting the current
   value and printing it, and the task that closes each flips its
@@ -250,7 +250,7 @@ are identical to `92a4033`'s.*
     removed.
   - **Gates:** T87.0 gates 1 and 2 flipped to their bounds (values
     printed). New arm
-    in `crates/lumen-static-shell/tests/alloc_gate.rs`: a tree with a
+    in `crates/fulgurite-shell/tests/alloc_gate.rs`: a tree with a
     `Markdown`, ten hover frames, allocations per frame printed (bound
     0). `size_of::<RichText>()` printed before and after.
   - **Injections:** restore the 192 refusal in `push` (gate 1 red,
@@ -342,7 +342,7 @@ are identical to `92a4033`'s.*
     - Cursor: `Host::cursor()` after a hover over the link is
       `Pointer`, and 4 px past it `Default`. Injection: `cursor_at`
       answers `None` (red). **Not live:** the agent has no cursor
-      method (`ui.*` list in `lumen-static-agent/src/lib.rs`), so the
+      method (`ui.*` list in `fulgurite-agent/src/lib.rs`), so the
       headless `Host::cursor` is the gate, as it was for M44/T44.8.
     - Palette: the link span's colour equals `DARK`'s `Accent` after
       `set_palette(DARK)`. Injection: paint with `st[i].fg` (red).
@@ -526,7 +526,7 @@ Appendix rows for the assembler:
 - **T87.2 — `ui.contrast` was blind at scale 2.** The live quote check
   asked for the least contrasting run and got none on the scale-2 leg:
   the session filtered the physical display list by a selector's logical
-  bounds. Fixed in `lumen-static-shell`'s session (the rect is scaled),
+  bounds. Fixed in `fulgurite-shell`'s session (the rect is scaled),
   with `tests/contrast_scale.rs`; the harness's after-every-action
   contrast check had been passing on "no text in the widget's box" for
   every widget on that leg.
@@ -634,7 +634,7 @@ Appendix rows for the assembler:
 - T87.7 (M87's close): **K87 and K87c fired; K87a and K87b were not
   reached**; K4 held at every task and M87's total, measured `262643a` →
   `70310c7` in one invocation, is +0 on all four; K1 held (no file under
-  `crates/lumen-static/src` changed) and K2 held. The numbers are
+  `crates/fulgurite/src` changed) and K2 held. The numbers are
   `docs/results-markdown.md`'s, "M87's kill rules, at its close".
   Nothing was built at the close. One change landed outside the widgets
   crate, recorded there: the shell session's `ui.contrast` scales a

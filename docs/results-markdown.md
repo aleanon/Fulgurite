@@ -63,7 +63,7 @@ measures it, never edited here.
 
 ## T87.0 — the gates that compile today, at `262643a` (2026-10-06)
 
-`crates/lumen-static-widgets/tests/markdown_m69.rs`, debug `cargo test`.
+`crates/fulgurite-widgets/tests/markdown_m69.rs`, debug `cargo test`.
 
 | gate | pinned at T87.0 | perturbation (red) |
 |---|---|---|
@@ -167,7 +167,7 @@ surface); with the derived default, **0 of 632**.
 | a theme's `h1 = (2.0, 700)`: heading line over body line | **2.000** (40.60 / 20.30 px; bound 2.0 ± 0.0725) | `a_theme_scales_its_heading`; `heading()` ignoring the theme: **1.500** |
 | a quote wrapping to 5 lines at 120 px: bars, words at the 14 px indent | **5**, **5** (bound = lines) | `a_quote_is_indented_and_barred_on_every_line`; the bar skipped: 0 |
 
-**The quote's colour, and M57's D4 record** (`crates/lumen-static-shell/
+**The quote's colour, and M57's D4 record** (`crates/fulgurite-shell/
 tests/markdown_quote.rs`, a `Host` under each built-in palette): the
 default quote is the body's colour at `QUOTE_ALPHA` (0xb3), so LIGHT
 `(15, 23, 42, 179)` and DARK `(230, 234, 242, 179)`, which reads at
@@ -191,7 +191,7 @@ physical pixels, painted through `Scaled` — by the selector's logical
 bounds, so at scale 2 a widget's box held almost none of its own text and
 the drive's after-every-action check printed "no text in the widget's
 box" and passed. The session scales the rect now
-(`crates/lumen-static-shell/tests/contrast_scale.rs`: one run, `"second"`,
+(`crates/fulgurite-shell/tests/contrast_scale.rs`: one run, `"second"`,
 at scale 1 and 2; with the rect left logical, scale 2 measures **0**).
 
 ## T87.3 — links
@@ -206,7 +206,7 @@ Some(n)`, and `link_target(src, n)` reads the target from the source.
 | gate | measured | injection (red) |
 |---|---|---|
 | gate 3 `link_markup_is_not_drawn`, flipped | drawn `see\|the\|docs\|now`, links `[-, 0, 0, -]`, link 0 `https://a.example` | `scan_links` finds nothing: `see\|[the\|docs](https://a.example)\|now` |
-| click at link 1's word centre (187.5, 12.2) | `handled` **true**, `last_link` **Some(1)**, `link_target(DOC, 1)` `https://lumen.example/changes` | `hit` with `inner: None`: handled false, `None`; `hit` with the previous index: `Some(0)`, `.../guide` |
+| click at link 1's word centre (187.5, 12.2) | `handled` **true**, `last_link` **Some(1)**, `link_target(DOC, 1)` `https://fulgurite.example/changes` | `hit` with `inner: None`: handled false, `None`; `hit` with the previous index: `Some(0)`, `.../guide` |
 | the same click 4 px past the link | `handled` **false**, state unchanged | — (the accept-and-refuse pair) |
 | press on link 0, release on link 1 | handler ran **0** times; a press and release on link 1 runs it once | `hit` reporting row 0 for every link: **1** |
 | `Host::cursor` over link 0 / 4 px past it | **Pointer** / **Default** | `cursor_at` answering `None`: Default over the link |
@@ -224,11 +224,11 @@ that is not virtualized, `just test` is green and so is the live drive.
 
 **Live** (`scripts/widget_drive.sh LinkedMarkdown,Markdown,RichTextEditor`,
 all six legs green): a click on `#d_mdlinks_a > ~=changelog` moves the
-readout `''` → `link: https://lumen.example/changes`, its damage the
+readout `''` → `link: https://fulgurite.example/changes`, its damage the
 readout's own box at **1.00x**, the window's pixels changed; a press on
 the plain first word leaves it there (the isolate). M57's D3 pass: Tab
 reaches `#d_mdlinks_a` in one press, and Down, Enter moves the readout to
-`link: https://lumen.example/guide`. The a11y sweep finds no silent leaf
+`link: https://fulgurite.example/guide`. The a11y sweep finds no silent leaf
 (each link is a `Link` with its text). With no link children pushed, every
 leg fails on `` `~=changelog` matched nothing ``.
 
@@ -271,8 +271,8 @@ this machine (2026-10-06). **Both must be yes to build; neither is.**
 
 | question | probe | answer |
 |---|---|---|
-| does the pinned fallback list find an italic face for the body face? | `lumen-static-shell/src/text.rs`'s `CANDIDATES` (regular, bold pairs) and `FALLBACKS`, grepped for `Italic\|Oblique` | **0 entries**. The body face is `NotoSans-Regular.ttf`; `NotoSans-Italic.ttf` and `DejaVuSans-Oblique.ttf` are on disk, and **no list names them**, so a `FontStack` can never load one |
-| does M81 give a widget's paint a per-run face? | `Painter`'s text methods in `lumen-static/src/display.rs`; `GlyphKey::face` in `lumen-static/src/text.rs`; `FontStack::face` | **absent**. `text`, `text_weighted` and `text_spaced` take size, weight, line height and colour, no face; `GlyphKey::face` is "0 regular, 1 bold, 2 + k fallback k", chosen inside the shell by `FontStack::face(weight)`; no file under `lumen-static-widgets/src` names `GlyphKey` |
+| does the pinned fallback list find an italic face for the body face? | `fulgurite-shell/src/text.rs`'s `CANDIDATES` (regular, bold pairs) and `FALLBACKS`, grepped for `Italic\|Oblique` | **0 entries**. The body face is `NotoSans-Regular.ttf`; `NotoSans-Italic.ttf` and `DejaVuSans-Oblique.ttf` are on disk, and **no list names them**, so a `FontStack` can never load one |
+| does M81 give a widget's paint a per-run face? | `Painter`'s text methods in `fulgurite/src/display.rs`; `GlyphKey::face` in `fulgurite/src/text.rs`; `FontStack::face` | **absent**. `text`, `text_weighted` and `text_spaced` take size, weight, line height and colour, no face; `GlyphKey::face` is "0 regular, 1 bold, 2 + k fallback k", chosen inside the shell by `FontStack::face(weight)`; no file under `fulgurite-widgets/src` names `GlyphKey` |
 
 So `*` stays plain text, the `rich.rs` header and `book/src/gaps.md` keep
 the gap, and both now carry the reopen condition: **M81 (or a successor)
@@ -354,13 +354,13 @@ firmware_cascade=0` prints **+0** `.text` and **+0**
 | K87c — parts cost | `cascade_deep (markdown x16)` inside T87.1's spread, eight runs a side | **943.23–1004.60 ns** against **274.12–293.52 ns**, 3.4x (T87.2) | **fired**; the parts withdrawn, colours an optional fixed override on the theme with a derived default |
 | K4 — per task | Δ 0 B `.text` on all four (strict form) | T87.0–T87.6 each **+0** `.text` and **+0** `.rodata` on all four (each commit body) | holds |
 | — M87's total | recorded | **+0** on all four (`262643a` → `70310c7`); `firmware_interactive` **64,160** B | recorded; `docs/results-embedded.md`'s table does not move |
-| K1 — the struct budget | `Cmd` 60; `Style`, `NodeState` +0 B | no file under `crates/lumen-static/src` changed in M87 (`git diff --stat 262643a 70310c7 -- crates/lumen-static/src` is empty) | holds |
+| K1 — the struct budget | `Cmd` 60; `Style`, `NodeState` +0 B | no file under `crates/fulgurite/src` changed in M87 (`git diff --stat 262643a 70310c7 -- crates/fulgurite/src` is empty) | holds |
 | K2 — default-off | the default window's crate count Δ 0 | **96** against 96, `scripts/check_default_crates.sh` in `just static` at every task | holds |
 | K3 — the task's named arm | — | no M87 task names a K3 arm: with no core change, the plan's per-task bound is K4's strict Δ 0 instead (`docs/plan-markdown.md`, Kill rules) | not measured, by the plan |
 
-**What M87 changed outside `lumen-static-widgets`**, each recorded where
+**What M87 changed outside `fulgurite-widgets`**, each recorded where
 it was built: the shell session's `ui.contrast` now scales a selector's
-rect at scale 2 (T87.2, `crates/lumen-static-shell/tests/contrast_scale.rs`), a fix for a blind
+rect at scale 2 (T87.2, `crates/fulgurite-shell/tests/contrast_scale.rs`), a fix for a blind
 check found by M87's live drive, not an M87 feature; the journal gained
 no rule, because K87c withdrew the parts it would have signed.
 

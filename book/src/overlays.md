@@ -182,11 +182,11 @@ A chosen row is its entry's `id`, and it reaches the application through
 **one hook**, `Program::on_menu`:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:entries}}
+{{#include ../../crates/fulgurite-shell/tests/context_menu.rs:entries}}
 ```
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:program}}
+{{#include ../../crates/fulgurite-shell/tests/context_menu.rs:program}}
 ```
 
 The host asks for the choice — `Node::take_menu`, take-once — of the node
@@ -207,7 +207,7 @@ damages the list's ink and nothing else
 (`docs/results-desktop-integration.md`, T90.4):
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/context_menu.rs:open_and_choose}}
+{{#include ../../crates/fulgurite-shell/tests/context_menu.rs:open_and_choose}}
 ```
 
 ## The menu bar
@@ -236,11 +236,11 @@ with or without a bar. `Program::menu` installs the sections and a
 function from the state to the enabled mask:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:enabled}}
+{{#include ../../crates/fulgurite-shell/tests/menu_bar.rs:enabled}}
 ```
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:program}}
+{{#include ../../crates/fulgurite-shell/tests/menu_bar.rs:program}}
 ```
 
 A key press no widget consumed is offered to the entries' shortcuts
@@ -253,7 +253,7 @@ button focused an Edit menu's Paste answers. The window's routing is a
 function a test drives, in the window's order:
 
 ```text
-{{#include ../../crates/lumen-static-winit/tests/clipboard_shortcut.rs:x3_gate}}
+{{#include ../../crates/fulgurite-winit/tests/clipboard_shortcut.rs:x3_gate}}
 ```
 
 The showcase's entry draws the bar from the table above, and its
@@ -272,11 +272,11 @@ The gates (`docs/results-desktop-integration.md`, T90.5) press Ctrl+S
 with nothing focused, then open, move and close the bar:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:accel_gate}}
+{{#include ../../crates/fulgurite-shell/tests/menu_bar.rs:accel_gate}}
 ```
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/menu_bar.rs:bar_gate}}
+{{#include ../../crates/fulgurite-shell/tests/menu_bar.rs:bar_gate}}
 ```
 
 ## What `Host` does with all this

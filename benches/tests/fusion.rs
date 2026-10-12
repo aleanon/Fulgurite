@@ -3,12 +3,12 @@
 //! values live, and computes rigidity across fusion.
 
 use benches::{Card, FusedCard, FusedItem, FusedTen, Ten};
-use lumen_static_widgets::ops::{Fixed, Label};
-use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
+use fulgurite_widgets::ops::{Fixed, Label};
+use fulgurite::{pass, Constraints, NodeState, StaticTree, Widget};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
 
-fn root_size<W: Widget + Default>() -> lumen_static::Size {
+fn root_size<W: Widget + Default>() -> fulgurite::Size {
     let mut w = W::default();
     let mut st = vec![NodeState::default(); W::NODE_COUNT];
     let sty = pass::default_styles(&w);
@@ -75,7 +75,7 @@ fn fused_values_stay_live() {
     let mut st = [NodeState::default(); FusedTen::NODE_COUNT];
     let sty = pass::default_styles(&t);
     pass::layout(&mut t, &sty, &mut st, ROOT_C);
-    let mut a = lumen_static::DisplayList::new();
+    let mut a = fulgurite::DisplayList::new();
     pass::paint(&t, &st, &mut a);
 
     // Re-laid out first: a fused tree's labels default to empty, and an
@@ -83,7 +83,7 @@ fn fused_values_stay_live() {
     // the layout this compared two frames that both drew nothing.
     t.l1.set("changed");
     pass::layout(&mut t, &sty, &mut st, ROOT_C);
-    let mut b = lumen_static::DisplayList::new();
+    let mut b = fulgurite::DisplayList::new();
     pass::paint(&t, &st, &mut b);
     assert_ne!(a.hash_from(0), b.hash_from(0), "paint reads fused internals through the fields");
 

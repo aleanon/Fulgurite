@@ -1,5 +1,0 @@
-error: fail_important.lss:1:27: `!important` is not in v1: specificity and source order decide (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_important.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_important.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^

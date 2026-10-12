@@ -14,7 +14,7 @@ by the task that measures it, never edited here.
 
 | rule | quantity | threshold | measured by | if it fires |
 |---|---|---|---|---|
-| K85a | layout calls per child in `crates/lumen-static/tests/flexible.rs`, every case; the frame arm's `ALL rows: layout` row (`R=1 benches-competitive/run.sh -p lumen-static-frame`, `just bench-lock`, eight runs a side) with `Flexible` unused | **1** per child; inside the parent's eight-run spread | T85.0 (the count), T85.1 | `Flexible` is not shipped; the count and the row are recorded here |
+| K85a | layout calls per child in `crates/fulgurite/tests/flexible.rs`, every case; the frame arm's `ALL rows: layout` row (`R=1 benches-competitive/run.sh -p fulgurite-frame`, `just bench-lock`, eight runs a side) with `Flexible` unused | **1** per child; inside the parent's eight-run spread | T85.0 (the count), T85.1 | `Flexible` is not shipped; the count and the row are recorded here |
 | K85b | `benches --bin scroll_cull`, the culled median against the uncull arm's eight-run spread | below the spread's minimum | T85.8 | T85.8 is not shipped; the number is recorded |
 | K85c | `benches --bin retain` and the frame arm's `idle (floor)` and `+render (damage)` rows, eight runs a side | inside each row's spread | T85.7 | T85.7 is reverted, and culling is decided against on X1's ground |
 | K85d | M85's cumulative `firmware_interactive` `.text`, `just firmware-delta <T85.0 sha> firmware_interactive=1024` at each task | ≤ **1,024 B** (5.1% of the 19,998 B headroom under 80 KB at the M56 merge) | T85.1–T85.4, T85.7, T85.8 | the task stops; the owner re-budgets or defers `Flexible`'s derive branch |
@@ -29,10 +29,10 @@ the injection it was watched red under.
 
 | gate | prints today | injection (red) | used by |
 |---|---|---|---|
-| `crates/lumen-static/tests/flexible.rs`: a derived 300 px row `[CountingLeaf(Shrink, 80 px), CountingLeaf(FILL)]`, laid out once | row **300** px; layouts **1, 1**; widths **80 / 220** | scan 2's `d.layout` emitted twice in the derive: the fill reads **2** layouts, fails by name | T85.1 adds the `Flexible` cases |
+| `crates/fulgurite/tests/flexible.rs`: a derived 300 px row `[CountingLeaf(Shrink, 80 px), CountingLeaf(FILL)]`, laid out once | row **300** px; layouts **1, 1**; widths **80 / 220** | scan 2's `d.layout` emitted twice in the derive: the fill reads **2** layouts, fails by name | T85.1 adds the `Flexible` cases |
 | the same file, accept: three `Shrink` children | layouts **1, 1, 1** (widths 40 / 50 / 60) — unchanged under the injection, which never reaches a row with no fill | — | — |
-| `crates/lumen-static/tests/cursor.rs` `a_length_is_eight_bytes` | `Length` **8 B**, `Style` 84 B | `FillPortion(u64)`: `Length` **16 B**, `Style` 104 B, fails by name | T85.1 |
-| `crates/lumen-static-shell/tests/pop_visibility.rs`, setup half, under `Everything` and `Boundaries<256>` | viewport **100** px in a **300** px window; 15 wheel steps of 20 px, each handled, offset 20 → 300; the target enters the window at step **3** (y 280..300) and the viewport at step **13** (y 80..100); identical under both strategies | a viewport as tall as the window: first in the window and in the viewport both step 3, "inside the window and outside the viewport" **none**, fails by name | T85.3's arrival-step gate |
+| `crates/fulgurite/tests/cursor.rs` `a_length_is_eight_bytes` | `Length` **8 B**, `Style` 84 B | `FillPortion(u64)`: `Length` **16 B**, `Style` 104 B, fails by name | T85.1 |
+| `crates/fulgurite-shell/tests/pop_visibility.rs`, setup half, under `Everything` and `Boundaries<256>` | viewport **100** px in a **300** px window; 15 wheel steps of 20 px, each handled, offset 20 → 300; the target enters the window at step **3** (y 280..300) and the viewport at step **13** (y 80..100); identical under both strategies | a viewport as tall as the window: first in the window and in the viewport both step 3, "inside the window and outside the viewport" **none**, fails by name | T85.3's arrival-step gate |
 | firmware, `just firmware-delta 2fcb000 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | Δ **0** on all four | — | — |
 
 **M85's firmware baseline** (`just firmware`, `scripts/check_text.sh`,
@@ -59,7 +59,7 @@ body run in two rounds (`ops::Round`; why not two bodies is
 | `flexible.rs`, `[Flexible 80, Flexible 400]` — the stated limit | layouts **1, 1**; **80 / 150** | under the first injection: **150 / 150**, fails by name |
 | layout count, every case above (K85a) | **1** for every child | a `Flexible` child laid out a second time under its measured size: **2** in all three cases, fails by name |
 | `flexible.rs` `flexible_moves_no_struct` | `Length` **8 B**; `Style` **84**, `NodeState` **84** (parent 84 / 84); **16.4 KB** per 100 nodes (parent 16.4 KB, bound 24 KB) | `Flexible(u64)`: `Length` **16 B**, `Style` 104, 18.4 KB, fails by name |
-| `lumen-static-lss` `every_property_lowers_to_its_setter` | `width: flexible` → `Flexible(1)`, `height: flexible(2)` → `Flexible(2)` | the keyword lowered as `FillPortion(1)`: fails by name. Deleting the shell's or the macro's `Flexible` arm is a compile error (both matches are exhaustive) |
+| `fulgurite-lss` `every_property_lowers_to_its_setter` | `width: flexible` → `Flexible(1)`, `height: flexible(2)` → `Flexible(2)` | the keyword lowered as `FillPortion(1)`: fails by name. Deleting the shell's or the macro's `Flexible` arm is a compile error (both matches are exhaustive) |
 | live, `scripts/widget_drive.sh Layout` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | row **300.0** px on **1** line; flexible **80.0** px (bound min(80, 150.0) = 80.0), fill **220.0** px (bound 220.0); D5 parity 1 of 1 byte-identical; oracle 596 frames, none diverged | the first injection: flexible **150.0**, fill 150.0, FAIL by name on every leg |
 | firmware, `just firmware-delta a21135b` (K4) and `just firmware-delta a21135b firmware_interactive=1024` (K85d) | `firmware` **+484**, `firmware_interactive` **+436**, `firmware_bind` **+436**, `firmware_cascade` **+484**; `.rodata` +0; headroom **18,004 B** | — |
 
@@ -106,8 +106,8 @@ cumulative 1,024).
 ## T85.2 — `Pin<W>` (2026-10-06)
 
 One child at an offset inside the pin's own box, in flow, clipped to
-the pin in `paint` and in `hit` (`crates/lumen-static-widgets/src/surface.rs`).
-Gates in `crates/lumen-static-widgets/tests/pin.rs` and live.
+the pin in `paint` and in `hit` (`crates/fulgurite-widgets/src/surface.rs`).
+Gates in `crates/fulgurite-widgets/tests/pin.rs` and live.
 
 | gate | prints | injection (red) |
 |---|---|---|
@@ -129,7 +129,7 @@ with no row in the table: [\"Pin\"]") with the `Pin` row removed, and
 `NodeDesc::WATCHES_VIEW`, `Event::Visibility`, `NodeSel::visibility`,
 `pass::in_view`, `pass::tell_visibility`, and `Host`'s `view_watch`,
 `view_seen` and `view_pending`. Gated with a test-only flagged leaf in
-`crates/lumen-static-shell/tests/pop_visibility.rs` (the T85.0 setup:
+`crates/fulgurite-shell/tests/pop_visibility.rs` (the T85.0 setup:
 100 px viewport, 300 px window, 20 px wheel steps), both strategies
 unless named.
 
@@ -156,10 +156,10 @@ is 4 B per watched node plus a `bool`. K4 and K85d hold.
 One child whose own table entry carries `NodeDesc::WATCHES_VIEW`, with
 `visible()` recorded from `Event::Visibility` and an `on_view` handler
 answered only for `NodeSel::visibility`
-(`crates/lumen-static-widgets/src/surface.rs`); `widget::table_has_flag`,
+(`crates/fulgurite-widgets/src/surface.rs`); `widget::table_has_flag`,
 a `const fn`, and the refusal in `Repeat::new`, `List::new`/`Default` and
-`Dyn::new`. Gates in `crates/lumen-static-widgets/tests/pop.rs`,
-`crates/lumen-static/tests/table_invariants.rs` and live.
+`Dyn::new`. Gates in `crates/fulgurite-widgets/tests/pop.rs`,
+`crates/fulgurite/tests/table_invariants.rs` and live.
 
 | gate | prints | injection (red) |
 |---|---|---|
@@ -196,19 +196,19 @@ model being read: a press is offered to the node it hit and then to each
 ancestor until one consumes it; consuming a `PointerDown` captures the
 pointer, after which every move and the release go to the captor and
 **a captured release activates nothing**; a `PointerMove` reaches a
-widget only under capture (`crates/lumen-static/src/event.rs:198`, the
+widget only under capture (`crates/fulgurite/src/event.rs:198`, the
 `Event::Hover` rustdoc). Searched by `grep` for `target_is_control`,
 `cx.target == cx.node` / `!= cx.node`, "bubbl", "steal", "intercept" over
 `crates/*/src`, and the audit's rows.
 
 | candidate | where | what the code does | verdict |
 |---|---|---|---|
-| `PullToRefresh` takes a drag its content declined, but not a control's | `crates/lumen-static-widgets/src/nav.rs:1010`; `EventCtx::target_is_control`, `crates/lumen-static/src/event.rs:441–449`; audit row 40 (B40, "drag does nothing", `docs/widget-audit.md:131`) | a press on a label or on its own surface starts a pull; a press on a focusable node is left alone, because consuming it would capture the pointer and the control's click would never activate. So a drag that **starts on a button never pulls** | **real case (1).** The flag is the workaround, and it exists because a parent cannot watch a gesture it has not taken: with no phase before the child, the only choices are to take every press (and break controls) or to forgo drags from controls. A capture phase with a threshold would let it watch and claim late |
-| `ScrollView` steals a drag from a child after a threshold | `crates/lumen-static-widgets/src/scroll.rs:415–447` | the wheel and the keys (PageUp/PageDown/Home/End) bubble from the focused or hovered child and are declined at an end, which is scroll chaining; a press is taken only on the bar's track. **There is no content drag to pan at all** | **refused**: no shipped code steals or wants to; the missing feature is touch panning, not a workaround. It becomes a case if content panning ships and needs one |
-| a press on a tab is consumed "or a scroller above would take it as a drag" | `crates/lumen-static-widgets/src/nav.rs:400–405` | `Strip` consumes a press on the selected tab, to keep it from bubbling to an ancestor that acts on declined presses | **refused**: the bubble phase working as designed — the child decides first and says so. A capture phase would make the parent decide first, which is the opposite of what this needs |
-| containers acting only on their **own** chrome (`target == node`) | `Veil` `crates/lumen-static-widgets/src/veil.rs:363`; `SplitPane`/`PaneGrid` `split.rs:286, 1091`; `Collapsible` `split.rs:633, 636`; `Picker` `pick.rs:1036`; `Chooser` `choose.rs:911, 929, 946`; `DataGrid` `data.rs:1438`; `Video` `video.rs:600`; `RangeSlider` `field.rs:655`; `SearchField` `field.rs:983, 987`; audit X2 (`docs/widget-audit.md:54`) | a press a child declined reaches its container with `target` still naming the child, and the container ignores it (a click on a modal's panel no longer dismisses it, a click in a pane no longer moves the divider) | **refused**: these guards exist because events bubble, not because they *only* bubble. A capture phase adds a phase before the child and leaves the bubble phase, and these guards, exactly as they are |
-| `Tooltip` sees its content's presses and focus without consuming them | `crates/lumen-static-widgets/src/surface.rs:1105–1109` | hover intent, focus and presses bubble up from the content, and the tooltip reacts while declining, so the content keeps its press | **refused**: works under bubbling today, because a press its content declines still reaches it. It would need a capture phase only for content that consumes `PointerDown`, and no shipped tooltip content does |
-| a hovered row in `Tree`/`OptionList` | `crates/lumen-static/src/event.rs:195–216` (M27/T27.11) | a move reached a widget only under capture, so a row-painting widget could not learn the hovered row; fixed by synthesising `Event::Hover`, which bubbles | **refused**: closed in the bubble model by a second event, not by a phase; no workaround remains |
+| `PullToRefresh` takes a drag its content declined, but not a control's | `crates/fulgurite-widgets/src/nav.rs:1010`; `EventCtx::target_is_control`, `crates/fulgurite/src/event.rs:441–449`; audit row 40 (B40, "drag does nothing", `docs/widget-audit.md:131`) | a press on a label or on its own surface starts a pull; a press on a focusable node is left alone, because consuming it would capture the pointer and the control's click would never activate. So a drag that **starts on a button never pulls** | **real case (1).** The flag is the workaround, and it exists because a parent cannot watch a gesture it has not taken: with no phase before the child, the only choices are to take every press (and break controls) or to forgo drags from controls. A capture phase with a threshold would let it watch and claim late |
+| `ScrollView` steals a drag from a child after a threshold | `crates/fulgurite-widgets/src/scroll.rs:415–447` | the wheel and the keys (PageUp/PageDown/Home/End) bubble from the focused or hovered child and are declined at an end, which is scroll chaining; a press is taken only on the bar's track. **There is no content drag to pan at all** | **refused**: no shipped code steals or wants to; the missing feature is touch panning, not a workaround. It becomes a case if content panning ships and needs one |
+| a press on a tab is consumed "or a scroller above would take it as a drag" | `crates/fulgurite-widgets/src/nav.rs:400–405` | `Strip` consumes a press on the selected tab, to keep it from bubbling to an ancestor that acts on declined presses | **refused**: the bubble phase working as designed — the child decides first and says so. A capture phase would make the parent decide first, which is the opposite of what this needs |
+| containers acting only on their **own** chrome (`target == node`) | `Veil` `crates/fulgurite-widgets/src/veil.rs:363`; `SplitPane`/`PaneGrid` `split.rs:286, 1091`; `Collapsible` `split.rs:633, 636`; `Picker` `pick.rs:1036`; `Chooser` `choose.rs:911, 929, 946`; `DataGrid` `data.rs:1438`; `Video` `video.rs:600`; `RangeSlider` `field.rs:655`; `SearchField` `field.rs:983, 987`; audit X2 (`docs/widget-audit.md:54`) | a press a child declined reaches its container with `target` still naming the child, and the container ignores it (a click on a modal's panel no longer dismisses it, a click in a pane no longer moves the divider) | **refused**: these guards exist because events bubble, not because they *only* bubble. A capture phase adds a phase before the child and leaves the bubble phase, and these guards, exactly as they are |
+| `Tooltip` sees its content's presses and focus without consuming them | `crates/fulgurite-widgets/src/surface.rs:1105–1109` | hover intent, focus and presses bubble up from the content, and the tooltip reacts while declining, so the content keeps its press | **refused**: works under bubbling today, because a press its content declines still reaches it. It would need a capture phase only for content that consumes `PointerDown`, and no shipped tooltip content does |
+| a hovered row in `Tree`/`OptionList` | `crates/fulgurite/src/event.rs:195–216` (M27/T27.11) | a move reached a widget only under capture, so a row-painting widget could not learn the hovered row; fixed by synthesising `Event::Hover`, which bubbles | **refused**: closed in the bubble model by a second event, not by a phase; no workaround remains |
 
 **Count: 1 real case** (`PullToRefresh`), against K85e's threshold of
 **2**. **K85e: fewer than two — the capture phase is decided against, and
@@ -253,8 +253,8 @@ plan's shape could not be built as written, the reason is in
 | gate | prints today | injection (red) | flipped by |
 |---|---|---|---|
 | `benches --bin scroll_cull` (`just bench-lock`, quiet, load1 0.76, bound 8): a derived **220**-row column (243 nodes, `MAX_SCROLL_NODES` 256) in a 400 px `ScrollView`, 800 × 800 window, offset 2,640; 8 runs a side, each the median of 4,000 paints | rows **34** in the window, **17** in the viewport; commands Some(surface) **224**, None **224** — equal, the setup check: nothing culls; paint **1.18 µs** (1.18–1.71) and **1.18 µs** (1.18–1.18) | — (a bench; its setup asserts 220 leaves, a 400 px viewport, the offset, and more rows in the window than in the viewport) | T85.8 (K85b) |
-| `crates/lumen-static-shell/tests/cull_damage.rs`, `Everything` and `Boundaries<256>` (identical): a `List` of 220 one-row `List`s in a 240 × 200 `ScrollView`, a label and a readout beside it, 400 × 400 window, ten 7 px wheel steps, the readout written every step; the `None` arm a repaint of the host's frame whose surface twin equals the host's damage at every step | every wheel handled, offset 7 → 70; culled count **59 / 62** (changes on **5** of 9 steps), uncull **668** every step; over ten steps the label damaged **8,960 px** culled (1,792 on each step whose count changed) against **0** uncull, and the damage outside the scroller **416,640 px** culled against **407,680** uncull | `List` culls nothing: count changes on 0 of 9 steps, "the list's command count never changed"; `Incremental` comparing two frames of different lengths slot for slot from their ends: label **0 px** culled, "culling no longer charges the label (0 px) -- the gap this pins has closed" (the outside total *rose* to 447,680 under it, so the label is the assertion that sees it) | T85.7 |
-| `crates/lumen-static-shell/tests/cull_ink.rs`, a derived column, a card whose rect `[0, 300, 300, 372]` starts at the surface's edge, its shadow 8 inking `[-8, 294.8, 308, 382.8]` | uncull render: **1,215** shadow pixels on the surface; Some vs None **0** pixels differ (bound 0) | `Card::paint` returns when its rect misses `clip_bounds`: **1,171** pixels differ, fails by name | stays green (T85.8) |
+| `crates/fulgurite-shell/tests/cull_damage.rs`, `Everything` and `Boundaries<256>` (identical): a `List` of 220 one-row `List`s in a 240 × 200 `ScrollView`, a label and a readout beside it, 400 × 400 window, ten 7 px wheel steps, the readout written every step; the `None` arm a repaint of the host's frame whose surface twin equals the host's damage at every step | every wheel handled, offset 7 → 70; culled count **59 / 62** (changes on **5** of 9 steps), uncull **668** every step; over ten steps the label damaged **8,960 px** culled (1,792 on each step whose count changed) against **0** uncull, and the damage outside the scroller **416,640 px** culled against **407,680** uncull | `List` culls nothing: count changes on 0 of 9 steps, "the list's command count never changed"; `Incremental` comparing two frames of different lengths slot for slot from their ends: label **0 px** culled, "culling no longer charges the label (0 px) -- the gap this pins has closed" (the outside total *rose* to 447,680 under it, so the label is the assertion that sees it) | T85.7 |
+| `crates/fulgurite-shell/tests/cull_ink.rs`, a derived column, a card whose rect `[0, 300, 300, 372]` starts at the surface's edge, its shadow 8 inking `[-8, 294.8, 308, 382.8]` | uncull render: **1,215** shadow pixels on the surface; Some vs None **0** pixels differ (bound 0) | `Card::paint` returns when its rect misses `clip_bounds`: **1,171** pixels differ, fails by name | stays green (T85.8) |
 | the same file, a derived column, an open `Select` whose trigger `[0, 300, 28, 334]` is below the surface, its menu `[0, 200, 300, 300]` on it, `content_absent()` false | uncull render: **13,190** inked pixels in the menu's rect; Some vs None **0** differ (bound 0) | `Popup::paint` returns when its anchor misses `clip_bounds`: **14,270** pixels differ, fails by name | stays green (T85.8) |
 | the same file, a `List` of the two cards (the plan's pin) | uncull: **1,215** shadow pixels; Some vs None **1,171** pixels differ — `List` culls by `rect_of`, so the shadow vanishes | `List` culls nothing: **0** differ, "a List no longer culls the card below the surface … flip the gate (T85.8)" | T85.8 |
 | firmware, `just firmware-delta f5fedd9 firmware=0 firmware_interactive=0 firmware_bind=0 firmware_cascade=0` | **+0** on all four `.text` and `.rodata` (`firmware_interactive` 63,912 B); K85d cumulative **+432** of 1,024 against `a21135b` | — | — |
@@ -340,7 +340,7 @@ on today's code (`b6163e5`) and under its injection:
 
 **K3, first build: fired, and attributed.** Eight interleaved runs a
 side under one `just bench-lock` (quiet), `R=1 benches-competitive/run.sh
--p lumen-static-frame`'s binary against `b6163e5`'s:
+-p fulgurite-frame`'s binary against `b6163e5`'s:
 
 | build | `layout` | `+paint` | `+render (damage)` | `+paint (culled)` |
 |---|---:|---:|---:|---:|

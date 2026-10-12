@@ -188,7 +188,7 @@ that arithmetic — but the direction is not in doubt.)
 1. ~~**(b) + (c)**~~ — **DONE 2026-09-18.**
    `input.click {"selector": "~Switch"}` now works on any *visible* row.
    `scripts/agent_drive.sh` picks the Switch by name instead of
-   multiplying a row height, and `crates/lumen-static-agent/tests/rows.rs`
+   multiplying a row height, and `crates/fulgurite-agent/tests/rows.rs`
    holds the two claims with four injections behind them. T27.3's harness
    is unblocked for the eighteen that exist today.
 2. **(e)** — row keys, so the drive names a row instead of computing one.
@@ -297,7 +297,7 @@ has a derive attribute and **`align` has none**, so a stylesheet is the
 *only* way to set it today.
 
 **But the observation is exactly right.** Every reader of `align` is in
-`crates/lumen-static-macros/src/lib.rs` — the derive's container layout,
+`crates/fulgurite-macros/src/lib.rs` — the derive's container layout,
 off `let me = style[i]`. A leaf pays a byte it never reads.
 
 **And that byte is worth four.** The tail slot — `align`, `focus_ring`,
@@ -355,7 +355,7 @@ and the task's test is that a stroke survives an overlay pass.
 
 Settle before typing, not during. **None of the three is a compile
 error**, and saying so matters, because the precedent everyone will
-reach for is not the same shape: `Rule` *was* hard — `lumen_static::Rule`
+reach for is not the same shape: `Rule` *was* hard — `fulgurite::Rule`
 is a stylesheet rule and is **in the prelude**, so a `Rule` widget makes
 `use ...::prelude::*` ambiguous, and that is why tranche 1 shipped
 `Divider`. Menu, Canvas and Tree are none of them in the prelude and all
@@ -372,7 +372,7 @@ looks at prose.
 
 - **Canvas → the widget is PaintBox.** `software::Canvas` is the raster
   backend's pixel buffer, with dozens of methods, cited from
-  `lumen-static-shell`'s front page, from `lumen-static-wgpu`'s shader
+  `fulgurite-shell`'s front page, from `fulgurite-wgpu`'s shader
   comments, and from AGENT.md itself (`Canvas::bands_for`). Renaming
   *that* to free a widget name would be the tail wagging the dog. The
   reasoning is recorded on `software::Canvas` itself, where the next
@@ -738,7 +738,7 @@ Two more framework findings:
 
 | | what | how it surfaced |
 |---|---|---|
-| 10 | **No widget in `lumen-static-widgets` published anything to the agent.** The crate had no `observe` feature at all, so `ui.getTree` saw geometry and nothing else for every widget tranche 1 shipped. | a drive asked a number field for its value and got `""` |
+| 10 | **No widget in `fulgurite-widgets` published anything to the agent.** The crate had no `observe` feature at all, so `ui.getTree` saw geometry and nothing else for every widget tranche 1 shipped. | a drive asked a number field for its value and got `""` |
 | 11 | **A wrapper must loosen a child's limits to let it shrink.** A `SearchField` is `FILL`, so its own `min_w` is what its parent insisted on — and `resolve_self` clamps a `Fixed` *up* to `min_w`. A 20 px magnifier resolved to 296, centred, with the text off the right edge. | `ui.getAppliedStyles` said `Fixed(20.0)` while `ui.resolve` said 296 wide — the two disagreeing is the tell |
 
 11 is worth keeping as a rule: **the maximum is inherited, the minimum
@@ -927,7 +927,7 @@ which is `Select`'s documented dropdown behaviour and is *desirable*.
 But the rule cannot tell a press on the overlay's **owner** from a press
 somewhere else entirely, and a combobox wants both: close the list *and*
 focus the field. It cannot have both today.
-`crates/lumen-static-widgets/tests/focus_overlay.rs` pins both halves,
+`crates/fulgurite-widgets/tests/focus_overlay.rs` pins both halves,
 and a chooser opens on **focus** rather than on a press — which a
 keyboard user needs anyway, and which a press arm could not give them
 because the field consumes the press first.
@@ -1058,7 +1058,7 @@ columns in the **type** instead (a cell is a container, and a derived
 container is `FILL`), the grid owns the inset, and the sheet is not
 involved at all. The arena cascade stays, because the hole it closes is
 real, with its own fixture in
-`crates/lumen-static-shell/tests/arena_cascade.rs` rather than a
+`crates/fulgurite-shell/tests/arena_cascade.rs` rather than a
 showcase rule that would reintroduce the false positive.
 
 **Two findings were closed as correct-as-built**, with the reason

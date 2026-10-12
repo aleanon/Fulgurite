@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run every widget's drive against the window on LUMEN_AGENT_ADDR."""
+"""Run every widget's drive against the window on FULGURITE_AGENT_ADDR."""
 from __future__ import annotations
 
 import importlib
@@ -136,10 +136,10 @@ def main() -> int:
     only = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else None
     # The strategy the *process* reported, through the launcher (M42/
     # T42.2) -- never a label a script set for itself. Printed short.
-    strategy = os.environ.get("LUMEN_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
-    addr = os.environ.get("LUMEN_AGENT_ADDR")
+    strategy = os.environ.get("FULGURITE_LIVE_STRATEGY", "?").rsplit("::", 1)[-1]
+    addr = os.environ.get("FULGURITE_AGENT_ADDR")
     if not addr:
-        print("widget-drive: no LUMEN_AGENT_ADDR -- run through scripts/widget_drive.sh, "
+        print("widget-drive: no FULGURITE_AGENT_ADDR -- run through scripts/widget_drive.sh, "
               "whose launcher names the process it drives", file=sys.stderr)
         return 2
     c = AgentClient(addr)
@@ -187,7 +187,7 @@ def main() -> int:
     # came up at 1 would compare nothing new and still say "Scale2".
     shot = c.rpc("ui.screenshot")
     print(f"widget-drive [{strategy}]: window {shot['width']}x{shot['height']} px at scale {shot.get('scale')}"
-          f"{', full-repaint check on' if os.environ.get('LUMEN_DRIVE_FULLCHECK') == '1' else ''}")
+          f"{', full-repaint check on' if os.environ.get('FULGURITE_DRIVE_FULLCHECK') == '1' else ''}")
 
     # M57/D5: first, on the fresh window, the agent must not change what
     # is drawn. A filtered run compares the entries it names (M81/T81.6):

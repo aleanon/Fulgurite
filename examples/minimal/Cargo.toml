@@ -6,14 +6,14 @@ license.workspace = true
 publish = false
 
 [dependencies]
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-winit = { path = "../../crates/lumen-static-winit" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-winit = { path = "../../crates/fulgurite-winit" }
 
 # Passed straight through, so the same 24-line application can be built
 # both ways and the difference measured rather than asserted
 # (docs/results-gpu.md). `cargo run -p minimal --features gpu`, and
-# `LUMEN_BACKEND=software` to make it fall back on purpose.
+# `FULGURITE_BACKEND=software` to make it fall back on purpose.
 [features]
 default = []
-gpu = ["lumen-static-winit/gpu"]
+gpu = ["fulgurite-winit/gpu"]

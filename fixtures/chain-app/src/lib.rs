@@ -38,14 +38,14 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use lumen_static::event::{App, EventCtx};
-use lumen_static::inbox::Sender;
-use lumen_static::request::{Answer, ClipFormat, ClipKind, Request, Requests};
-use lumen_static::spawn::{Descriptor, JobFn, Outbox};
-use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
-use lumen_static::{Reloadable as DeriveReloadable, StaticTree};
-use lumen_static_shell::program::{application, Program};
-use lumen_static_widgets::prelude::*;
+use fulgurite::event::{App, EventCtx};
+use fulgurite::inbox::Sender;
+use fulgurite::request::{Answer, ClipFormat, ClipKind, Request, Requests};
+use fulgurite::spawn::{Descriptor, JobFn, Outbox};
+use fulgurite::style::{Edges, Length, Patch, Rule, Selector};
+use fulgurite::{Reloadable as DeriveReloadable, StaticTree};
+use fulgurite_shell::program::{application, Program};
+use fulgurite_widgets::prelude::*;
 
 /// The chain's kind. Stable, append-only (`docs/plan-tasks.md` §2.1).
 const KIND: u64 = 9;
@@ -235,16 +235,16 @@ impl App for Chain {
     }
     fn update(&mut self) -> bool {
         let a = match self.work.result {
-            Some(v) => lumen_static::bind::format_into(&mut self.ui.result, format_args!("chain {v}")),
-            None => lumen_static::bind::format_into(&mut self.ui.result, format_args!("chain -")),
+            Some(v) => fulgurite::bind::format_into(&mut self.ui.result, format_args!("chain {v}")),
+            None => fulgurite::bind::format_into(&mut self.ui.result, format_args!("chain -")),
         };
         let b = match self.work.sip {
-            Some(v) => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
-            None => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
+            Some(v) => fulgurite::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
+            None => fulgurite::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
         };
         let c = match &self.work.asked {
-            Some(t) => lumen_static::bind::set_if_changed(&mut self.ui.asked, t),
-            None => lumen_static::bind::format_into(&mut self.ui.asked, format_args!("{BUILD}:")),
+            Some(t) => fulgurite::bind::set_if_changed(&mut self.ui.asked, t),
+            None => fulgurite::bind::format_into(&mut self.ui.asked, format_args!("{BUILD}:")),
         };
         a | b | c
     }
@@ -287,7 +287,7 @@ pub fn program() -> Program<Chain> {
     })
 }
 
-lumen_static_reload::export_program!(program);
+fulgurite_reload::export_program!(program);
 
 /// Let this build's blocked step 0 finish — the loader calls it after the
 /// swap, so v1's worker completes into an inbox nobody drains any more.

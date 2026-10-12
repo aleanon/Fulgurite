@@ -14,7 +14,7 @@ with anything.
 
 `vello_cpu` is the control that was missing: a CPU 2D rasteriser, in
 Rust, SIMD and multithreaded, from the people who do this full time. It
-is the one arm where lumen-static is not structurally advantaged — both
+is the one arm where fulgurite is not structurally advantaged — both
 sides take the same scene to the same pixels on the same core.
 
 ## What is being compared, and what is not
@@ -47,7 +47,7 @@ Every figure below reproduces. Single-threaded, no `simd`, both sides on
 one core — the cleanest per-core rasteriser comparison this repository
 has:
 
-| canvas | lumen ms | vello ms | ratio |
+| canvas | fulgurite ms | vello ms | ratio |
 |---|---:|---:|---:|
 | tally window | 0.64 | 1.43 | **2.21×** |
 | 720p | 2.24 | 5.10 | **2.27×** |
@@ -64,7 +64,7 @@ same session and one arm had silently changed underneath it.
 
 ## 1. Single-threaded
 
-| canvas | Mpx | lumen | lumen+`simd` | vello | ratio |
+| canvas | Mpx | fulgurite | fulgurite+`simd` | vello | ratio |
 |---|---:|---:|---:|---:|---:|
 | tally window | 0.23 | 0.64 ms | 0.62 | 1.43 | **2.3×** |
 | 720p | 0.92 | 2.23 | 2.15 | 5.06 | **2.4×** |
@@ -88,7 +88,7 @@ band workers per render with a count derived from the pixel area
 (`workers_for`). Vello's best is 16 threads; below is our default
 against it.
 
-| canvas | lumen (T17.5 default) | vello ×16 | |
+| canvas | fulgurite (T17.5 default) | vello ×16 | |
 |---|---:|---:|---|
 | tally window | 0.62 ms | **0.39** | vello 1.6× |
 | 720p | 1.17 | **0.95** | vello 1.2× |
@@ -98,7 +98,7 @@ against it.
 
 **Vello wins below about 1 Mpx.** That is a real result and it is worth
 stating plainly, because it is the first arm in this repository that
-lumen-static loses.
+fulgurite loses.
 
 ## 3. It is our worker heuristic, not our rasteriser
 
@@ -134,7 +134,7 @@ scene.
 The gap in §1 is bought, and this is the price. Everything in this list
 is something `vello_cpu` renders and our software canvas cannot.
 
-| | vello_cpu 0.2 | lumen-static software canvas |
+| | vello_cpu 0.2 | fulgurite software canvas |
 |---|---|---|
 | geometry | arbitrary Bézier paths, fill + stroke, nonzero and even-odd | 9 fixed commands; no path type exists |
 | strokes | joins, caps, miter limit, dashes | one round-capped line width |
@@ -181,9 +181,9 @@ Symmetrically, and none of it shows up in a frame time:
   `vello_common` are clean too — but their SIMD comes from
   `fearless_simd`, which contains **3 408** of them. That is the normal
   and reasonable way to write portable SIMD; it is the thing this
-  project decided not to do (`crates/lumen-static-shell/Cargo.toml`,
+  project decided not to do (`crates/fulgurite-shell/Cargo.toml`,
   the `simd` feature).
-- **12 dependencies against 48.** `lumen-static-shell` with `truetype`
+- **12 dependencies against 48.** `fulgurite-shell` with `truetype`
   pulls 12 external crates, three of which are proc-macro build-time
   only. `vello_cpu` pulls 48.
 
@@ -217,9 +217,9 @@ Per `AGENT.md`, all three were injected and the numbers are the evidence:
 
 | injection | result |
 |---|---|
-| drop the shadow from the vello scene | `ink differs by 11.3 points (lumen 89.5%, vello 78.1%)` |
+| drop the shadow from the vello scene | `ink differs by 11.3 points (fulgurite 89.5%, vello 78.1%)` |
 | drop both text runs from the vello scene | `worst 8x8 block differs by 88 of 255` |
-| drop the title from the *lumen* scene | `worst 8x8 block differs by 90 of 255` |
+| drop the title from the *fulgurite* scene | `worst 8x8 block differs by 90 of 255` |
 
 **The second injection is why there are three bounds and not one.** The
 first version of this gate checked ink only. Dropping every glyph from

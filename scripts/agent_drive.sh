@@ -5,7 +5,7 @@
 # handlers. This drives the window through the whole stack -- socket thread,
 # event-loop proxy, backend, present -- because "the tree changed" and "the
 # window shows it" are different claims, and this project has been caught by
-# the gap between them before (crates/lumen-static-winit/src/surface.rs, and
+# the gap between them before (crates/fulgurite-winit/src/surface.rs, and
 # again in examples/glasswall, where a wallpaper rendered headless and was
 # missing on screen).
 #

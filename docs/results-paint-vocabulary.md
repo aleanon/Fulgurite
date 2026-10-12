@@ -92,9 +92,9 @@ task that changes it turns them red by name.
 
 | what | gate | at `b873ab0` | injection (red) | flipped by |
 |---|---|---|---|---|
-| text over a gradient | `lumen-static-shell/tests/contrast_ground.rs` | setup 1 text run over 1 gradient; measured **0**, unmeasured **1** (`"gradient"`), clipped 0 | `ground_at` reads a gradient as its middle sample: measured 1 at **5.46:1**, fails by name | T82.2 |
-| `Gradient` payload | `lumen-static/tests/glass_cmd.rs` `the_gradient_payload_fits` | **56 B** of 56 (`Stops` 36 B), `Cmd` 60 B | `Stops` gains a 4-byte field: **60 B** (`Stops` 40, `Cmd` 64), fails by name | kept at 56 by T82.1, T82.2 |
-| `Deferring`'s stream | `lumen-static/tests/overlay.rs` `deferring_forwards_every_command` | **6** commands in, 6 out (unchanged since M80/T80.1) | `Deferring::gradient` drops its command: 6 in, **5** out, first difference at index 2 | T82.5 (6 → 7) |
+| text over a gradient | `fulgurite-shell/tests/contrast_ground.rs` | setup 1 text run over 1 gradient; measured **0**, unmeasured **1** (`"gradient"`), clipped 0 | `ground_at` reads a gradient as its middle sample: measured 1 at **5.46:1**, fails by name | T82.2 |
+| `Gradient` payload | `fulgurite/tests/glass_cmd.rs` `the_gradient_payload_fits` | **56 B** of 56 (`Stops` 36 B), `Cmd` 60 B | `Stops` gains a 4-byte field: **60 B** (`Stops` 40, `Cmd` 64), fails by name | kept at 56 by T82.1, T82.2 |
+| `Deferring`'s stream | `fulgurite/tests/overlay.rs` `deferring_forwards_every_command` | **6** commands in, 6 out (unchanged since M80/T80.1) | `Deferring::gradient` drops its command: 6 in, **5** out, first difference at index 2 | T82.5 (6 → 7) |
 | firmware | `just firmware-delta b873ab0` | Δ **0** on all four; `firmware_interactive` **63,084 B**, headroom **18,836 B** to 81,920 | (T80.0's) | — |
 
 ## T82.1 — `Stops` offsets in 1/255 (2026-10-04)
@@ -127,8 +127,8 @@ Every other consumer failed to compile and was changed to `offset`
 `Cmd::Gradient { rect, stops, kind: GradKind, geom: [f32; 3], corner }`;
 `Painter::gradient(rect, stops, GradShape, corner)`; `GradAxis` is the one
 parameter formula (software, GPU upload, SVG, contrast). Wire `VERSION`
-3 → 4. Gates: `lumen-static-shell/tests/gradient_shapes.rs`, the GPU half
-in `lumen-static-wgpu/tests/parity.rs` (`just gpu`).
+3 → 4. Gates: `fulgurite-shell/tests/gradient_shapes.rs`, the GPU half
+in `fulgurite-wgpu/tests/parity.rs` (`just gpu`).
 
 | gate | measured (green) | bound | injection (red) |
 |---|---|---|---|
@@ -183,25 +183,25 @@ against the palette by `Host::set_fills` / `Host::set_palette` into the
 frame list (`DisplayList::set_fills`) and handed to the agent's journal
 through `TreeMut::with_fills`. `.lss`: `background-fill: <index>`
 (`Takes::Index`, lowering to `Val::U8`). `Fields::BACKGROUND_FILL` is bit
-**19** (`Fields::EACH` 19 → 20). Gates: `lumen-static-shell/tests/fill.rs`
+**19** (`Fields::EACH` 19 → 20). Gates: `fulgurite-shell/tests/fill.rs`
 unless named.
 
 | gate | measured (green) | bound | injection (red) |
 |---|---|---|---|
-| sizes, `lumen-static/tests/cursor.rs` (and `focus.rs`, the embedded `const` asserts) | `Style` **84 B**, 81 used; `NodeState` **84 B**, 84 used; **168 B**/node, **16.4 KB** per 100 nodes | = 84 / 84; used 81 / 84; 24 KB | a second `u8` beside the field: E0027 at the used-bytes destructuring, then used **82** against 81 (size still 84); a `u32`: size **88** against 84 |
+| sizes, `fulgurite/tests/cursor.rs` (and `focus.rs`, the embedded `const` asserts) | `Style` **84 B**, 81 used; `NodeState` **84 B**, 84 used; **168 B**/node, **16.4 KB** per 100 nodes | = 84 / 84; used 81 / 84; 24 KB | a second `u8` beside the field: E0027 at the used-bytes destructuring, then used **82** against 81 (size still 84); a `u32`: size **88** against 84 |
 | reaches paint: a derive container, a `Repeat`, a `Button` | **1** gradient each, rect = the node's, stops = the table's; setup `st.fill` 1 and the rule's bit set | 1 | `record_painted` does not copy the byte: **0** gradients at all three, each named with `st.fill = 0`; `Scaled::fills` or `Recording::fills` answering `&[]`: 0 at all three with `st.fill = 1` |
 | palette (a role-named stop) | `LIGHT.accent` then `DARK.accent` after `set_palette`; damage **3,600** px² | = the node's 3,600 px² | `set_palette` does not re-resolve: stop unchanged, damage **0** |
 | `set_fills` marks, `Boundaries<256>` | a changed table: 1 gradient with the new stops; the same table again: damage **0**, can skip | new stops; 0 | `set_fills` without `mark_all`: the frame keeps the old stops |
 | index 0 is today | table 2 entries, 5 nodes, 0 asking: **0** gradients | 0 | `ops::fill` paints entry 0 for `fill == 0`: **4** |
 | disabled | stops' alpha **102**, 102 (40%) | 102 | `ops::fill` ignores `disabled`: 255, 255 |
-| journal, `lumen-static-agent/tests/fill_journal.rs` (transparent `bg`, role-named fill, palette swap) | container **1.00×** its box (6,400 px²), `Button` **1.00×**; total 12,800 = the two boxes | 1.00× | the container signature omits the fill: container **0.00×**, `Button` 1.00×; `TreeMut::as_ref` hands the journal `&[]`: both **0.00×** |
-| W1010, `lumen-static/tests/sheet_lint.rs` | on a `Card`: **0** findings; on a `CheckBox`: `Unread(BACKGROUND_FILL)` | 0; 1 | `Patch::background_fill` records no bit: no finding |
-| `Deferring`, `lumen-static/tests/overlay.rs` (a popup's content with a fill) | **1** gradient, after the scroller's last pop (index 4 against 3) | 1, in phase 2 | `Deferring::fills` answers `&[]`: **0** |
+| journal, `fulgurite-agent/tests/fill_journal.rs` (transparent `bg`, role-named fill, palette swap) | container **1.00×** its box (6,400 px²), `Button` **1.00×**; total 12,800 = the two boxes | 1.00× | the container signature omits the fill: container **0.00×**, `Button` 1.00×; `TreeMut::as_ref` hands the journal `&[]`: both **0.00×** |
+| W1010, `fulgurite/tests/sheet_lint.rs` | on a `Card`: **0** findings; on a `CheckBox`: `Unread(BACKGROUND_FILL)` | 0; 1 | `Patch::background_fill` records no bit: no finding |
+| `Deferring`, `fulgurite/tests/overlay.rs` (a popup's content with a fill) | **1** gradient, after the scroller's last pop (index 4 against 3) | 1, in phase 2 | `Deferring::fills` answers `&[]`: **0** |
 | shadow oracle, `tests/shadow.rs` (`shadow-oracle`), a filled `Button`, hover and click | 6 frames compared, no divergence | none | the scratch list is not given fills: diverges at frame 2, node 0, `"paint"` |
-| masks, `lumen-static-widgets/tests/style_reads.rs` (probe `background_fill(1)` over a one-entry table) | every kind's mask equals its measured reads, 34 kinds | equal | before the masks were edited: **16** kinds read `background_fill` and did not declare it (`label: … omits read [background_fill]`) |
+| masks, `fulgurite-widgets/tests/style_reads.rs` (probe `background_fill(1)` over a one-entry table) | every kind's mask equals its measured reads, 34 kinds | equal | before the masks were edited: **16** kinds read `background_fill` and did not declare it (`label: … omits read [background_fill]`) |
 | `scripts/check_fill_paint.sh` (`just static`) | `sites 29 in 18 files, filled 29, allowed 0` | all filled | `fill(` removed from `Button::paint`: `ops.rs:736: Button draws a border with no fill( before it`, `Label` still filled; `BACKGROUND_FILL` removed from `input.rs`'s seed: names `TextInput` |
-| `.lss`, `lumen-static-lss` tests and `scripts/check_lss_setters.sh` | 25 setters, 25 declared; `background-fill: 1` lowers to `Val::U8(1)`; `1px`, `1.5` and `256` refused with "a whole number from 0 to 255, no unit, like `1`" | — | the `PROPERTIES` line deleted: the script names `background_fill`; declared `Takes::Byte`: `background-fill: 1` refused ("a whole number of px … like `2px`, not `1`") |
-| `.lss` both ways, `lumen-static-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `background-fill: 1`) | equal both ways | equal | the shell's `set` arm deleted: `check_lss_setters.sh` stays green and `lss::load` panics "no setter `background_fill` taking U8(1)" |
+| `.lss`, `fulgurite-lss` tests and `scripts/check_lss_setters.sh` | 25 setters, 25 declared; `background-fill: 1` lowers to `Val::U8(1)`; `1px`, `1.5` and `256` refused with "a whole number from 0 to 255, no unit, like `1`" | — | the `PROPERTIES` line deleted: the script names `background_fill`; declared `Takes::Byte`: `background-fill: 1` refused ("a whole number of px … like `2px`, not `1`") |
+| `.lss` both ways, `fulgurite-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `background-fill: 1`) | equal both ways | equal | the shell's `set` arm deleted: `check_lss_setters.sh` stays green and `lss::load` panics "no setter `background_fill` taking U8(1)" |
 | D4, showcase `every_demo_text_reads_in_both_palettes` (now samples a gradient ground at a run's centre and ends) | the Card's two runs judged on the fill in both palettes, worst **12.02**:1 / **8.89**:1 (title), 590 runs, 0 under | ≥ 4.5; ≥ 4 runs on a gradient | the fill's edge stop as `Text`: title **1.63**:1 / **1.34**:1, red; the same with the gradient arm removed: green at 15.93:1 — the walk had judged text on the stage behind a fill |
 | live, `scripts/widget_drive.sh Card` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | "the card's fill is a rounded radial": centre (254, 254, 254) against sides (216, 221, 230), **38** levels; corner against the stage **0** levels, at scale 1 and 2; D5 parity 1 of 1 byte-identical; oracle 544 frames, none diverged | ≥ 16; ≤ 2 | `ops::fill` removed from `Card::paint` (Boundaries leg): centre and sides all (255, 255, 255), **0** levels, FAIL by name |
 | firmware, `just firmware-delta 22ce8f8` | `firmware` **+156**, `firmware_interactive` **+288**, `firmware_bind` / `firmware_cascade` **+220**; `.rodata` +20–32; headroom **18,516 B** | ≤ 1,000 on `firmware_interactive`; K82b floor 1,024 | — |
@@ -273,7 +273,7 @@ flattened at `FLATTEN_TOLERANCE` = 0.1 px, a stroke as quads and round
 elements follow the text only when there are any); `contrast.rs` measures
 a path as non-text ink in `Report::shapes`. `DisplayList` derives `Clone`,
 and winit's `hot::Barred` copies the session's list with it. Gates:
-`lumen-static-shell/tests/path_coverage.rs` and `path_damage.rs` unless
+`fulgurite-shell/tests/path_coverage.rs` and `path_damage.rs` unless
 named.
 
 | gate | measured (green) | bound | injection (red) |
@@ -283,11 +283,11 @@ named.
 | round join, a 90° turn stroked 16 px, the pixel on the outer bisector `w / 4` out (3.54 px from the vertex, outside both quads, inside the disc) | coverage **1.000**; the segment's own interior 1.000 | > 0.5 | the join discs omitted: **0.000** |
 | no phantom damage: A, a text run, B; A gains an element (same bounds) | damage **1,936** px² in 1 region = A's ink; B's offset 5 → 6, its `hash_from` signature unchanged; A reshaped at the same count: **2,200** px² (old ∪ new ink); unchanged: **0** | = A's ink; unchanged; = the union; 0 | `hash_into` folds `els.0`: B's signature moves (`0ee6a5e6…` → `3d121f46…`); `Recording::path` hashes only the count: the reshaped A damages **0** |
 | transform: a wedge rotated 30° and moved, `Recording(Scaled(list))` | Recording's ink = the hand-rotated box grown by `w / 2 + 1` at scale 1 and 2; the list's rect = `k ×` the box grown by `k · w / 2` (scale 2: `[118.0, 58.0, 260.56, 162.78]`, width 4); the rotated tip pixel inked at (122, 73) and (245, 146) | equal (1e-3); the path's colour | `Scaled::path` forwards `xf` unscaled: the scale-2 list rect is the scale-1 box, red by name |
-| `Deferring`'s stream, `lumen-static/tests/overlay.rs` (a path with a non-identity `xf` added) | **7** in, 7 out; the element stores equal | equal | `Deferring::path` empty: **7 in, 6 out** |
+| `Deferring`'s stream, `fulgurite/tests/overlay.rs` (a path with a non-identity `xf` added) | **7** in, 7 out; the element stores equal | equal | `Deferring::path` empty: **7 in, 6 out** |
 | banded, `tests/banded.rs` (a filled and stroked circle-and-star across the surface) and `scripts/check_banded.sh` (`just threads`) | **10** scenes byte-identical to the single-band render; every case asserts `bands_for` ≥ 2 | identical | the mask's rows taken relative to the band's `y0`: the threaded render differs |
 | wire, `wire.rs` tests | every command round-trips (12, now with a path); a path of all five element kinds round-trips (112 B), its store equal; the buffer without its element section is refused; an empty list encodes exactly as version 4 did | equal; `None`; the v4 bytes | the decoder drops the elements: both round trips fail to decode (the range check refuses the command) |
 | contrast, `shell/tests/contrast_ground.rs` | a path at **2.01**:1 is below 3 (1 shape); at **4.54**:1 it is not; text over the path's box unmeasured as `"path"` | < 3; ≥ 3 | the walk skips `Path`: no shape measured, the text judged against the page |
-| GPU pin, `lumen-static-wgpu/tests/parity.rs` (`just gpu`, RTX 4070) | software inks **6,400** px, the GPU **0**; `KINDS` 11 → **12**, the `Path` row compared in "tests/parity.rs: path pin, until T82.6" | 0 | the arm pushes a quad: the GPU inks 6,400 px, red by name |
+| GPU pin, `fulgurite-wgpu/tests/parity.rs` (`just gpu`, RTX 4070) | software inks **6,400** px, the GPU **0**; `KINDS` 11 → **12**, the `Path` row compared in "tests/parity.rs: path pin, until T82.6" | 0 | the arm pushes a quad: the GPU inks 6,400 px, red by name |
 | SVG, `shell/tests/svg.rs` | `<path d="M0.00 0.00 L9.00 9.00" fill="rgba(255,0,0,1.000)" fill-rule="nonzero" stroke="none" …>`; 12 kinds drawn | the element | — (the vocabulary test's own) |
 | clip, `shell/tests/clip_test.rs` | `Path` inside a `PushClip`: **0** px outside (ink inside 3,200 px; unclipped 14,796 px outside) | 0 | — (the clip test's own) |
 | live, `scripts/widget_drive.sh PaintBox` (Everything, Boundaries, Boundaries+oracle, scale 2, both `+shaping` legs) | "the star path is filled inside its own outline": **4,182** px of its colour inside its outline of 4,346 px² (**96.2%**), 0 outside the box; at scale 2 **17,049** of 17,383 (**98.1%**); D5 parity 0 of 67,584 bytes differ | ≥ 90%; 0 | the canvas skips `Cmd::Path` (Boundaries leg): **0** px (0.0%), FAIL by name |
@@ -343,7 +343,7 @@ two-sided as a measurement and is read one-sided as a stop.
 
 ## T82.6 — GPU path masks (2026-10-06)
 
-`Cmd::Path` on `lumen-static-wgpu`: each non-transparent paint is an R8
+`Cmd::Path` on `fulgurite-wgpu`: each non-transparent paint is an R8
 coverage mask in the **glyph** atlas (`Atlas<MaskKey>`; no stencil, no
 new pipeline, binding or texture), rasterised on a miss by the software
 canvas's `rasterize_path` from the same device-space elements and at the
@@ -354,7 +354,7 @@ ink box's integer floor, so a whole-pixel scroll hits; `paint` is `Fill`
 or `Stroke(width bits)`, one key per paint. `AtlasStats` gains
 `path_masks` (tiles rasterised) and `path_texels` (resident, counted from
 the atlas). The window's GPU backend logs K82d's line once. Gates:
-`lumen-static-wgpu/tests/parity.rs` (`just gpu`) on the RTX 4070
+`fulgurite-wgpu/tests/parity.rs` (`just gpu`) on the RTX 4070
 (Vulkan, `DiscreteGpu`) and llvmpipe (lavapipe, `Cpu`) unless named.
 
 | gate | measured (green) | bound | injection (red) |
@@ -376,14 +376,14 @@ the atlas). The window's GPU backend logs K82d's line once. Gates:
 `TextMeasure::outline(text, size, weight, sink) -> bool` is provided,
 answering `false`; `PathSink` takes `PathEl`s (and announces each glyph
 through a provided `glyph`). `FontMetrics` overrides it under the shell's
-default-off `vector-text` (forwarded by `lumen-static-winit/vector-text`):
+default-off `vector-text` (forwarded by `fulgurite-winit/vector-text`):
 `FontStack::outline` lays the run out as `measure_run` does, on one line,
 and writes each glyph's ttf-parser outline at the pen `extent_by` advances
 by, on its line's baseline plus the cap shift, at `size × scale` divided
 back down. Under the feature a stack keeps each face's bytes (regular,
 bold, and a fallback once read); ttf-parser is the one fontdue already
 builds, with its features. `ComplexText` overrides it from its shaper's
-pens, through rustybuzz's face. Gates: `lumen-static-shell/tests/vector_text.rs`
+pens, through rustybuzz's face. Gates: `fulgurite-shell/tests/vector_text.rs`
 (`--features vector-text`, and `vector-text,shaping` for `ComplexText`)
 unless named.
 
@@ -395,10 +395,10 @@ unless named.
 | scale | scale 2 against scale 1, logical px: the same 87 elements, x edges equal, y edges 0.5 apart (the cap shift is rounded at physical px) | 1 px per edge | — |
 | a stand-in | `BlockMetrics.outline` answers `false`, 0 elements | false | — |
 | memory, `tests/font_heap.rs` `vector_text_keeps_one_copy_of_each_face` (a regular + bold stack on the pinned face, after a bold run) | kept **1,519,960 B** above the two parsed faces (38,022,960 B), the two files 1,519,440 B; RSS moved **2,605,056 B** over the same steps (in-process, allocator reuse included) | files .. files + 64 KiB | `Bold::new` keeps the bytes in its parse buffer as well: **2,279,680 B**, red by name |
-| symbols, `scripts/release_window_shape.sh` (`examples/minimal`, release) | default **0** outline symbols, `.text` 2,811,158 B; with `lumen-static-winit/vector-text` **10**, `.text` 2,819,478 B (+8,320) | 0; > 0 | `vector-text` a default feature of the window crate: the default window links **10** (`FontStack::outline_into`, `OutlinePen`'s builder methods, …), exit 1 |
-| crates (K2's method) | `lumen-static-winit` **96 → 96**; `lumen-static-shell` 16 → 16 over `truetype` | 0 new | — |
+| symbols, `scripts/release_window_shape.sh` (`examples/minimal`, release) | default **0** outline symbols, `.text` 2,811,158 B; with `fulgurite-winit/vector-text` **10**, `.text` 2,819,478 B (+8,320) | 0; > 0 | `vector-text` a default feature of the window crate: the default window links **10** (`FontStack::outline_into`, `OutlinePen`'s builder methods, …), exit 1 |
+| crates (K2's method) | `fulgurite-winit` **96 → 96**; `fulgurite-shell` 16 → 16 over `truetype` | 0 new | — |
 | stripped release showcase (K2) | 9,689,320 → 9,699,560 B, **+10,240 B** | 3 MB | — |
-| clippy, `cargo clippy -p lumen-static-shell --features vector-text --all-targets -- -D warnings` (the `fonts` recipe) | green | — | an unused binding in `outline_into`: the feature line fails (`unused variable: injected`), the workspace line stays green |
+| clippy, `cargo clippy -p fulgurite-shell --features vector-text --all-targets -- -D warnings` (the `fonts` recipe) | green | — | an unused binding in `outline_into`: the feature line fails (`unused variable: injected`), the workspace line stays green |
 | firmware, `just firmware-delta 8db6ba5` | **+8 B** `.text`, **+4** `.rodata` on all four: the provided `TextMeasure::outline` in `BakedFace`'s vtable (8 B by `nm`); `firmware_interactive` 63,480 B, headroom **18,440 B** | ≤ 1,000 B on `firmware_interactive` (K4); K82b floor 1,024 | — |
 
 **K2 for `vector-text` holds**: 0 new crates and +10,240 B stripped,
@@ -413,7 +413,7 @@ deduplicated.
 
 ## T82.8 — `VectorText` (2026-10-06)
 
-`VectorText<S>` in `lumen-static-widgets` (`alloc`): a run at an angle
+`VectorText<S>` in `fulgurite-widgets` (`alloc`): a run at an angle
 (clockwise degrees), measured once into its outline
 (`TextMeasure::outline`) and memoised on (a hash of the text, size,
 weight, scale, the measurer's generation); painted as one `Painter::path`
@@ -422,7 +422,7 @@ Its box is the turned run box (the measured line box grown to the ink), so
 the ink stays inside it; with no outlines it paints the string level, in a
 box its own size. It publishes `Role::Label` with the run as its value.
 The showcase's entry turns one run three ways (0°, 30°, 90°), with the
-window's `vector-text` on. Gates: `lumen-static-shell/tests/vector_text.rs`
+window's `vector-text` on. Gates: `fulgurite-shell/tests/vector_text.rs`
 `mod widget` (the pinned face) unless named.
 
 | gate | measured (green) | bound | injection (red) |
@@ -430,9 +430,9 @@ window's `vector-text` on. Gates: `lumen-static-shell/tests/vector_text.rs`
 | rotated, "Vertical" at 32 px | 0°: **139** elements, ink 121.64 × 24.77 (w/h **4.9117**) in node `[10, 20, 135, 58]`; 90°: ink 24.77 × 121.64 (w/h **0.2036**) in node `[10, 20, 48, 145]`; w/h at 90° × w/h at 0° = 1.0000 | > 0 elements; 1%; ink inside the node | paint ignores the angle: the 90° ink `[-33.25, 70.19, 88.39, 94.95]` leaves the node `[10, 20, 48, 145]`, red by name; the box sized from the unrotated run: the 90° ink `[60.05, -23.25, 84.81, 98.39]` leaves `[10, 20, 135, 58]` |
 | memo, a counting measurer that forwards `outline` | outline calls: still **0**, text changed **1**, generation bumped **1** (setup: the first layout 1) | 0 / 1 / 1 | the key omits the generation: the bump asks **0** times — a stale outline served (M45/T45.2's shape) |
 | fallback, `BlockMetrics` at 90° | **1** `Cmd::Text`, **0** `Path`; the box the level run's (`[10, 20, 138, 52]`) | 1 / 0 | the fallback removed: **0** `Text`, red |
-| speaks, `lumen-static-widgets/tests/a11y_roles.rs` (`--features a11y`) | `VectorText role=Label`; rows checked 65, `Node` impls 49 (49 covered) | every impl a row | the row deleted: `Node impls with no row in the table: ["VectorText"]` |
-| speaks, `scripts/check_observe.sh` / `check_drive_coverage.sh` (`just static`) | "every widget speaks or is listed"; widgets exported 78, driven 46, allowed 32, missing 0 | 0 missing | `observe` removed: `no observe: crates/lumen-static-widgets/src/vector.rs: VectorText` |
-| masks, `lumen-static-widgets/tests/style_reads.rs` | `vectortext` measured = declared: width, height, padding, cursor, visible, color, background, radius, font_size, font_weight, pressed_dim, hover_dim, border, background_fill | equal | — (the lint test's own) |
+| speaks, `fulgurite-widgets/tests/a11y_roles.rs` (`--features a11y`) | `VectorText role=Label`; rows checked 65, `Node` impls 49 (49 covered) | every impl a row | the row deleted: `Node impls with no row in the table: ["VectorText"]` |
+| speaks, `scripts/check_observe.sh` / `check_drive_coverage.sh` (`just static`) | "every widget speaks or is listed"; widgets exported 78, driven 46, allowed 32, missing 0 | 0 missing | `observe` removed: `no observe: crates/fulgurite-widgets/src/vector.rs: VectorText` |
+| masks, `fulgurite-widgets/tests/style_reads.rs` | `vectortext` measured = declared: width, height, padding, cursor, visible, color, background, radius, font_size, font_weight, pressed_dim, hover_dim, border, background_fill | equal | — (the lint test's own) |
 | palette, `tests/palette_defaults.rs` | the run on the page **17.85**:1 light, **15.53**:1 dark | 4.5 | — |
 | D4, showcase `every_demo_text_reads_in_both_palettes`, now reading path ink at 3:1 | VectorText's three paths **15.93**:1 light, **13.38**:1 dark (6 judged; 10 paths in all, PaintBox's star and arc the other 4) | 3:1; 6 VectorText paths | the run painted at 16% alpha: **1.37**:1 / **1.57**:1, red. Its first run found **PaintBox's star at 2.67:1 in the dark palette** (`#c2410c`, T82.5's), fixed to `#e14d0a` (3.99 / 3.47) |
 | book, `book/src/text.md` "Text at an angle" (`just book`) | a stand-in measurer's 80 × 20 run laid out at 90° is **20 × 80**, `is_vector()` | equal | the box sized from the unrotated run: `left: (80.0, 20.0)`, `right: (20.0, 80.0)`, the chapter's test fails |

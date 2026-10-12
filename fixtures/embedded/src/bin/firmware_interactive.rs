@@ -24,10 +24,10 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use embedded::{centre, frame_changed, Checksum, Device, DeviceUi, DEVICE_NODES, SHEET};
-use lumen_static::event::InputState;
-use lumen_static::invalidate::{Boundaries, Invalidation};
-use lumen_static::style::{cascade_deep_with, subtree_range, Palette};
-use lumen_static::{pass, wid_index, App, Event, NodeState, PointerButton, Style, Widget};
+use fulgurite::event::InputState;
+use fulgurite::invalidate::{Boundaries, Invalidation};
+use fulgurite::style::{cascade_deep_with, subtree_range, Palette};
+use fulgurite::{pass, wid_index, App, Event, NodeState, PointerButton, Style, Widget};
 
 #[panic_handler]
 fn panicked(_: &PanicInfo) -> ! {

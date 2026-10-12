@@ -12,12 +12,12 @@
 
 // One import line for the whole vocabulary. Before the prelude existed
 // this was three modules plus the root, for a forty-line app.
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static_agent::{Agent, TreeRef};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::program::{application, Program};
-use lumen_static_shell::{Host, CLEAR};
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite_agent::{Agent, TreeRef};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::program::{application, Program};
+use fulgurite_shell::{Host, CLEAR};
 
 // ---- the tree: topology in the type, values in the fields (§3) -------
 
@@ -131,7 +131,7 @@ fn stylesheet() -> Vec<Rule> {
 ///
 /// How to build it and how it is styled, in one value. The headless host
 /// below is built from it, and a window would be too
-/// (`lumen_static_winit::Run`), so the two cannot be styled differently.
+/// (`fulgurite_winit::Run`), so the two cannot be styled differently.
 fn program() -> Program<Counter> {
     application(Counter::build).title("Counter").size(320, 200).style(|_: &Counter| stylesheet())
 }

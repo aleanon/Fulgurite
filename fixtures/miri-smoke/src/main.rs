@@ -7,11 +7,11 @@
 //! inbox. It stays because `cargo miri run -p miri-smoke` remains the
 //! cheapest whole-core check if the tooling is ever fixed.
 
-use lumen_static::assemble::Assembled;
-use lumen_static::inbox::Inbox;
-use lumen_static_widgets::ops::{Button, Fixed, Label, Spacer};
-use lumen_static::repeat::Repeat;
-use lumen_static::{pass, Constraints, Event, EventCtx, NodeState, StaticTree, Widget};
+use fulgurite::assemble::Assembled;
+use fulgurite::inbox::Inbox;
+use fulgurite_widgets::ops::{Button, Fixed, Label, Spacer};
+use fulgurite::repeat::Repeat;
+use fulgurite::{pass, Constraints, Event, EventCtx, NodeState, StaticTree, Widget};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 300.0 };
 
@@ -47,7 +47,7 @@ struct App {
     rows: Vec<u64>,
 }
 
-impl lumen_static::event::App for App {
+impl fulgurite::event::App for App {
     // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
@@ -56,7 +56,7 @@ impl lumen_static::event::App for App {
     // M28/T28.2: this fixture defers no work. `Never` is
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
-    type Msg = lumen_static::event::Never;
+    type Msg = fulgurite::event::Never;
     fn apply(_: &mut Self, m: Self::Msg) -> bool {
         match m {}
     }
@@ -97,7 +97,7 @@ fn main() {
     // layout + paint, including the fused subtree and the repeater's
     // nested per-instance layout.
     pass::layout(&mut app.ui, &sty, &mut st, VIEW);
-    let mut sum = lumen_static::DisplayList::new();
+    let mut sum = fulgurite::DisplayList::new();
     pass::paint(&app.ui, &st, &mut sum);
 
     // hit testing across the whole tree.
@@ -113,7 +113,7 @@ fn main() {
     }
 
     // dispatch over every node's centre.
-    let mut input = lumen_static::event::InputState::default();
+    let mut input = fulgurite::event::InputState::default();
     let targets: Vec<(f32, f32)> = (0..Ui::NODE_COUNT)
         .map(|i| (st[i].pos.x + st[i].size.w / 2.0, st[i].pos.y + st[i].size.h / 2.0))
         .collect();
@@ -136,7 +136,7 @@ fn main() {
     // runtime assembly (§8's concat-at-startup path).
     let mut asm = Assembled::<Row>::new(8);
     asm.layout(VIEW);
-    let mut asum = lumen_static::DisplayList::new();
+    let mut asum = fulgurite::DisplayList::new();
     asm.paint(&mut asum);
 
     // the async seam.

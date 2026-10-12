@@ -33,13 +33,13 @@
 //! program's stack; and it sets an agent address that the window ignores,
 //! because the primary program's port addresses every window.
 
-use lumen_static::display::Color;
-use lumen_static::prelude::*;
-use lumen_static::request::{Answer, Request, Requests};
-use lumen_static::spawn::Descriptor;
-use lumen_static_shell::program::{application, KeyOutcome, OpenProgram, Program};
-use lumen_static_widgets::prelude::*;
-use lumen_static_winit::Run;
+use fulgurite::display::Color;
+use fulgurite::prelude::*;
+use fulgurite::request::{Answer, Request, Requests};
+use fulgurite::spawn::Descriptor;
+use fulgurite_shell::program::{application, KeyOutcome, OpenProgram, Program};
+use fulgurite_widgets::prelude::*;
+use fulgurite_winit::Run;
 
 const PAGE: Color = Color(0xf4, 0xf5, 0xf7, 0xff);
 
@@ -66,15 +66,15 @@ impl Swatch {
     }
 }
 
-impl lumen_static::ImageSource for Swatch {
-    fn image(&self, id: lumen_static::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
-        (id == lumen_static::display::ImageId(0)).then_some((SWATCH, SWATCH, &self.px[..]))
+impl fulgurite::ImageSource for Swatch {
+    fn image(&self, id: fulgurite::display::ImageId, _frame: u32) -> Option<(u32, u32, &[u8])> {
+        (id == fulgurite::display::ImageId(0)).then_some((SWATCH, SWATCH, &self.px[..]))
     }
 }
 
 /// The `#swatch` widget both trees carry: id 0, drawn 48 × 48.
-fn swatch() -> lumen_static_widgets::Image {
-    lumen_static_widgets::Image::new(lumen_static::display::ImageId(0), lumen_static::Size { w: 48.0, h: 48.0 })
+fn swatch() -> fulgurite_widgets::Image {
+    fulgurite_widgets::Image::new(fulgurite::display::ImageId(0), fulgurite::Size { w: 48.0, h: 48.0 })
 }
 
 // ---- the list: program 0 ----------------------------------------------
@@ -104,7 +104,7 @@ pub struct ListUi {
     pub send: Button<List>,
     /// `ImageId(0)` from the list's own `ImageSource` (M89b/T89.10).
     #[widget_id("swatch")]
-    pub swatch: lumen_static_widgets::Image,
+    pub swatch: fulgurite_widgets::Image,
 }
 
 /// The list's state. Unsplit (`State = Self`), so an answer's `apply`
@@ -235,7 +235,7 @@ pub struct DetailUi {
     pub from: Label<String>,
     /// A text field: its caret is this window's IME area (T89.5).
     #[widget_id("field")]
-    pub field: lumen_static_widgets::input::TextInput,
+    pub field: fulgurite_widgets::input::TextInput,
     /// Asks the window for a screenshot of this window (T89.5).
     #[widget_id("detail-shot")]
     pub shot: Button<Detail>,
@@ -251,13 +251,13 @@ pub struct DetailUi {
     /// `ImageId(0)` from the detail's own `ImageSource` — the same id as
     /// the list's, a different image (M89b/T89.10).
     #[widget_id("swatch")]
-    pub swatch: lumen_static_widgets::Image,
+    pub swatch: fulgurite_widgets::Image,
 }
 
 /// `Reloadable` because a window program is one in a `reload` build
 /// (`WindowApp`, M89/T89.7): nothing is kept, everything is the new
 /// build's. Expands to nothing without the core's `reload`.
-#[derive(Default, lumen_static::Reloadable)]
+#[derive(Default, fulgurite::Reloadable)]
 pub struct Detail {
     #[reload(fresh)]
     pub ui: DetailUi,
@@ -369,9 +369,9 @@ fn detail_title(d: &Detail) -> String {
 
 /// Escape closes the detail: `KeyOutcome::Quit` closes the window it came
 /// from, and only the primary's ends the process.
-fn detail_keys(_: &mut Detail, key: lumen_static::Key, _: lumen_static::Mods) -> KeyOutcome {
+fn detail_keys(_: &mut Detail, key: fulgurite::Key, _: fulgurite::Mods) -> KeyOutcome {
     match key {
-        lumen_static::Key::Escape => KeyOutcome::Quit,
+        fulgurite::Key::Escape => KeyOutcome::Quit,
         _ => KeyOutcome::Ignored,
     }
 }
@@ -386,7 +386,7 @@ pub fn detail() -> Program<Detail> {
         .size(300, 400)
         .page(PAGE)
         .on_key(detail_keys)
-        .shaping(lumen_static_shell::text::Shaping::Complex)
+        .shaping(fulgurite_shell::text::Shaping::Complex)
         .images(Swatch::new(DETAIL_SWATCH))
         .agent("127.0.0.1:7999")
 }
@@ -417,14 +417,14 @@ pub fn program() -> Program<List> {
 /// `everything` feature, so the drive runs both.
 fn boxed(p: Program<Detail>) -> Box<dyn OpenProgram> {
     #[cfg(feature = "everything")]
-    return Box::new(p.invalidation::<lumen_static::Everything>());
+    return Box::new(p.invalidation::<fulgurite::Everything>());
     #[cfg(not(feature = "everything"))]
     Box::new(p)
 }
 
 fn main() {
     #[cfg(feature = "everything")]
-    program().invalidation::<lumen_static::Everything>().run();
+    program().invalidation::<fulgurite::Everything>().run();
     #[cfg(not(feature = "everything"))]
     program().run();
 }

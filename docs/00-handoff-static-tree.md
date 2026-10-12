@@ -76,7 +76,7 @@ Layout, hit testing, `NodeState` and the agent's journal are logical;
 retention's journal, `Damage`, the display list and both rasterisers are
 physical, because `Recording` sits inside `Scaled`
 (`docs/plan-physical-damage.md` §2.1; the gate is
-`crates/lumen-static-shell/tests/damage_scale.rs`). The agent's
+`crates/fulgurite-shell/tests/damage_scale.rs`). The agent's
 `ui.lastDamage` is journal-derived and stays logical.
 
 **DECIDED (M40/T40.3): a plain rect's edges land on device pixels.**
@@ -122,7 +122,7 @@ The four properties that produce the performance, in rough order of importance:
 4. **The GPU keeps its own retained copy.** The layer tree is persistent
    textures. An unchanged frame is a few quads plus a damage rect.
 
-   **HALF-BUILT 2026-09-07** — `lumen-static-wgpu`, `docs/results-gpu.md`.
+   **HALF-BUILT 2026-09-07** — `fulgurite-wgpu`, `docs/results-gpu.md`.
    There *is* a GPU backend now, and it does keep a persistent target
    texture that damage is scissored into, so a partial frame is a few
    quads over a retained image. There is **no layer tree**: no per-subtree
@@ -132,8 +132,8 @@ The four properties that produce the performance, in rough order of importance:
 
    **DECIDED 2026-10-06 (M83/T83.1): the backend seam is the shell's.**
    `Backend`, `Frame`, `BackendTarget` and `WindowHandles` live in
-   `lumen_static_shell::backend` (behind `truetype`), and
-   `lumen-static-winit` re-exports them; a backend is built from raw
+   `fulgurite_shell::backend` (behind `truetype`), and
+   `fulgurite-winit` re-exports them; a backend is built from raw
    window handles plus a size, and `fetch_rgba`, `set_images` and
    `frame_rgba` are required. The shell still names no window or GPU
    crate (`scripts/check_shell_headless.sh`); the window's graph is
@@ -159,7 +159,7 @@ The four properties that produce the performance, in rough order of importance:
    uniform writes mark only its own node (`docs/results-shader.md` T83.6). The uniforms are hashed by
    content, never by offset. With the feature off neither the variants nor
    `Painter::shader`/`shader_end` exist, and every arm outside the core is
-   `cfg(lumen_shader)`, which the core's `links` build script hands its
+   `cfg(fulgurite_shader)`, which the core's `links` build script hands its
    direct dependents (`docs/plan-gpu-extension.md`, "Feature placement";
    the firmware Δ 0 and the gates are `docs/results-shader.md` T83.3).
 
@@ -176,7 +176,7 @@ The four properties that produce the performance, in rough order of importance:
 
    **DECIDED 2026-10-07 (M89b/T89.10, shipped on owner decision): the
    windows share one wgpu device, with a surface each.**
-   `lumen_static_wgpu::GpuContext` (instance, adapter, device, queue, the
+   `fulgurite_wgpu::GpuContext` (instance, adapter, device, queue, the
    shapes pipeline, layouts, samplers, and blit pipelines cached by
    surface format) is shared by `Rc`; a per-surface `Gpu` keeps its
    surface, target, scratch, buffers and both atlases, so two programs'
@@ -218,9 +218,9 @@ and the frames it cannot help are already 18 µs.
 
 **How to turn it on, and why it is off — DECIDED 2026-09-27 (M50/T50.5).**
 It shipped as the shell's `threads` feature (T17.4), with `simd` beside
-it (T17.1), and until M50 neither was reachable from `lumen-static-winit`
-(R6-F5). An application enables `lumen-static-winit/threads` and
-`lumen-static-winit/simd` now. **Both stay default-off by decision**
+it (T17.1), and until M50 neither was reachable from `fulgurite-winit`
+(R6-F5). An application enables `fulgurite-winit/threads` and
+`fulgurite-winit/simd` now. **Both stay default-off by decision**
 (`docs/plan-raster-allocation.md` §2.3): full redraws on desktop are the
 GPU's (`docs/results-gpu.md`), and a banded frame spends a stated budget
 of `std`'s spawns, 3 per worker + 1 (`docs/results-allocation.md`, "The
@@ -391,7 +391,7 @@ tree *position*. The code-size blowup from §4 disappears.
 
 - Zero allocation — offsets index into the same single struct.
   **Gated over the whole frame since 2026-09-19 (M26/T26.13)**, and not
-  before: `crates/lumen-static-shell/tests/alloc_gate.rs` measured
+  before: `crates/fulgurite-shell/tests/alloc_gate.rs` measured
   `Host::pump`, which stops at the display list, so the software
   rasteriser was outside every zero in `docs/results-allocation.md`. It
   was allocating 1.00 per frame for its clip stack and 3.00 per glass
@@ -512,7 +512,7 @@ construction.** `Repeat::new`, `List::new` (and `Default`) and
 `Dyn::new` panic when their template's table has an entry carrying the
 flag (`widget::table_has_flag`, a `const fn`, so the check folds away
 for every other row), with a sentence naming the window range as the
-alternative (`crates/lumen-static-widgets/tests/pop.rs`).
+alternative (`crates/fulgurite-widgets/tests/pop.rs`).
 
 ---
 
@@ -646,7 +646,7 @@ supported; `docs/plan-desktop-integration.md` (Decisions) has the reopen
 condition, `docs/results-desktop-integration.md` T90.2 the gates.
 
 **DECIDED 2026-10-07 (M90/T90.4): a menu is data, and a choice is an
-id.** A menu's entries are `&'static [MenuEntry]` (`lumen_static::menu`)
+id.** A menu's entries are `&'static [MenuEntry]` (`fulgurite::menu`)
 and which are enabled is a `MenuMask` of state; a chosen entry is its
 `u32` id, which reaches the application through one hook,
 `Program::on_menu`, installed by `Program::host()` as `on_key` is, so a
@@ -684,7 +684,7 @@ the window's and not reloadable (`docs/plan-window-reload.md` §2.7).
 `docs/results-desktop-integration.md` T90.6 has the gates.
 
 **DECIDED 2026-10-08 (M90/T90.7): the Linux tray is `ksni` 0.3 over
-zbus, no GTK** (owner decision D2 stands). `lumen-static-winit`'s
+zbus, no GTK** (owner decision D2 stands). `fulgurite-winit`'s
 default-off `tray` feature shows a program's tray as a StatusNotifierItem
 with a dbusmenu menu on a thread of its own; a click sends only the
 entry's id, posted as `Event::Menu` to the program's primary session.
@@ -790,7 +790,7 @@ drains' own change flag and asks for the frame that shows it. A
 clipboard write's bytes come from `App::clip_for` at the drain, never
 from the request. A screenshot answers from `Backend::frame_rgba`.
 **Since M88/T88.4** a clipboard request reaches the platform clipboard
-(`lumen_static_winit::Clipboard`): text and HTML on the clipboard, text on
+(`fulgurite_winit::Clipboard`): text and HTML on the clipboard, text on
 the primary selection, `Written` or `Refused(Failed)` for a write, and
 `Refused(Unsupported)` for what the build or platform cannot do — no
 `clipboard` feature, a primary selection off X11, HTML on primary
@@ -821,7 +821,7 @@ which guarantees destructors run against unmapped code.
 
 **DECIDED 2026-09-24 (M32): what `fresh()` is not asked for.** A
 stylesheet is code-shaped data and comes from the program's
-*description* (`lumen_static_shell::program`), which is the one place the
+*description* (`fulgurite_shell::program`), which is the one place the
 window, every headless host and a swap all ask: `Host::adopt` re-asks the
 description's sheet of the adopted application. `Application::style` and
 the window's `Config::stylesheet` are gone — they were two sources, and
@@ -848,7 +848,7 @@ The whole sheet is re-applied: scoping saved 2% at the tally's size
 
 **DECIDED 2026-09-28 (M61): a stylesheet may be a `.lss` file, parsed at
 compile time.** `include_lss!(Tree, "app.lss" [, block])` runs
-`lumen-static-lss` (Lumen's lexer and parser, trimmed) while the crate
+`fulgurite-lss` (Lumen's lexer and parser, trimmed) while the crate
 compiles and emits the `const` rules a person writes — byte-identical in
 the firmware (K1) and under 100 ms of build time (K2,
 `docs/results-lss.md`). v1's grammar is what this cascade can apply: one
@@ -868,7 +868,7 @@ development builds.** One guard, `Host::guard`, covers every path that
 runs application code; the screen is a display list naming the message,
 `file:line:col` and the nearest application frame; state is kept without
 rollback and retry is explicit. It is compiled in for debug builds and
-release builds with `lumen-static-winit/reload`, and a release build
+release builds with `fulgurite-winit/reload`, and a release build
 without it dies. Across a dylib the catch and the hook live **inside the
 library**, because a `cdylib` has its own std and its own hook
 (`docs/plan-panic-recovery.md`, `docs/step4-hot-reload.md`).
@@ -1006,14 +1006,14 @@ release application could not have one without the agent's cost.
 `observe::snapshot`) and leaves `NodeDesc` at 48 B; `observe` implies it
 and adds the JSON view, `probe`, `stats` and the `src` stamp (72 B).
 `docs/plan-a11y-platform.md` §2.1; the sizes are asserted by
-`crates/lumen-static-widgets/tests/desc_size.rs`.
+`crates/fulgurite-widgets/tests/desc_size.rs`.
 
 **DECIDED 2026-09-27 (M54/T54.2): the platform adapter is the window
 crate's, and a turnkey application is accessible when it asks.** "One
 implementation serves both screen readers and agents" was true of the
 tree and false of the platform: only `examples/counter-window` handed it
 to a screen reader, through a hand-written loop (R15-F1).
-`lumen_static_winit::a11y` now attaches `accesskit_winit` for `run`,
+`fulgurite_winit::a11y` now attaches `accesskit_winit` for `run`,
 every `Program` (`Program::accessible` is the run-time switch) and
 counter-window alike. The window crate's `a11y` feature is
 **default-off** because the kill rule written before it was built fired
@@ -1023,7 +1023,7 @@ AT-SPI for both.
 
 **DECIDED (2026-09-25, M39/T39.1): the endpoint is a local line protocol
 that refuses HTTP.** Newline-delimited JSON-RPC over TCP, one transport
-(`lumen_static_agent::transport`) that every server calls, and a line
+(`fulgurite_agent::transport`) that every server calls, and a line
 that is not a JSON object **ends the connection**. That is framing, not
 policy: nothing reads an `Origin` or `Host` header, because every way a
 web page reaches a local port begins with an HTTP request line, and no
@@ -1034,7 +1034,7 @@ application. **A per-session token is deferred, not rejected**: it is the
 only option that separates users on a shared host, and the plan's §4
 names what reopens it. Per vector, before and after:
 `docs/results-agent-transport.md`. **It binds loopback only** (T39.2):
-a non-loopback address is refused unless `LUMEN_AGENT_ALLOW_REMOTE=1`,
+a non-loopback address is refused unless `FULGURITE_AGENT_ALLOW_REMOTE=1`,
 which binds it and warns that there is no authentication.
 
 **DECIDED 2026-09-26 (M48/T48.7): a stand-in is recognised by
@@ -1045,7 +1045,7 @@ same-kind wrapper at offset 0 defeated (`Glass<Glass<Label>>`, R13-F5).
 Now `Node::node_count` — required under `observe`, emitted by the derive
 and `leaf_common!`, one `node_count!()` line in a hand-written impl —
 is compared with the table's subtree size at `i`: an ancestor's is
-always larger (`lumen_static_agent::live_nodes_with`).
+always larger (`fulgurite_agent::live_nodes_with`).
 
 **DECIDED 2026-09-26 (M48/T48.2): `ui.waitSettled` answers from the
 host, and "cannot say" is `null`.** It answered `true` in every state
@@ -1095,7 +1095,7 @@ layout/paint loops, rigid/flexible partitioning. No hot reload, no observability
 yet. Benchmark against a naive `Box<dyn Widget>` tree at 10, 1k, and 100k nodes
 — the crossover behaviour from §4 needs to be measured, not assumed.
 
-**DONE 2026-08-30.** Built in `crates/lumen-static{,-macros}`; measured
+**DONE 2026-08-30.** Built in `crates/fulgurite{,-macros}`; measured
 ~~crossover between 10 and 1k nodes (static wins ~16–21% above it, loses ~16%
 at 10 nodes)~~ — *superseded 2026-09-02: on the recursive implementation
 there is no crossover; 10 nodes is a toss-up and static wins ~31% at 1k
@@ -1143,7 +1143,7 @@ incremental TreeUpdates. See `docs/step5-observability.md`.
 assistive technology's request is `Event::Action { node, action }`,
 delivered through `on_event` from its target like a key, and a node
 publishes exactly the actions it handles (`docs/plan-a11y-platform.md`
-§2.4; `crates/lumen-static-widgets/tests/a11y_roles.rs` invokes every
+§2.4; `crates/fulgurite-widgets/tests/a11y_roles.rs` invokes every
 one). *Amended 2026-09-27 (M54/T54.1–T54.2):* the tree is its own feature,
 `a11y`, which `observe` implies, and the window crate hands it to the
 platform (behind that crate's default-off `a11y`); until then no
@@ -1197,7 +1197,7 @@ The two advantages that are real and that nothing else gives:
   "The truetype path, covered"). What remains outside it is stated
   there: a run that needs a fallback face, a glyph too large to cache,
   the threaded rasteriser's stated spawn budget (M50/T50.4), and wgpu's
-  own per-frame encoding on the GPU path — what `lumen-static-wgpu` adds
+  own per-frame encoding on the GPU path — what `fulgurite-wgpu` adds
   on top of it is gated at zero since M51/T51.4.
 - **Const-folded rigidity** — a dynamic tree checks the flag at runtime per node
   per frame. The static version does not have the check at all.
@@ -1263,12 +1263,12 @@ The years go to:
   Shaped paint **DECIDED** (M81/T81.4, `docs/plan-shaped-paint.md`,
   `docs/text-render-adoption-decision.md` "Shaped paint"): renderer-side
   shaping, no glyph command. A `FontStack` in `Shaping::Complex` measures,
-  reports clusters and paints through `lumen-static-text`'s shaper
+  reports clusters and paints through `fulgurite-text`'s shaper
   (T81.3), and `Program::shaping` chooses it for a whole program — the
   window (`Session::shaping`, applied before the first backend and after
   every swap through `Backend::set_font`), its measurer, the agent's audit,
-  `LUMEN_SHOT` and every headless shot. Until M81 it was **OPEN**:
-  `lumen-static-text` shaped for measurement only, and the painter drew
+  `FULGURITE_SHOT` and every headless shot. Until M81 it was **OPEN**:
+  `fulgurite-text` shaped for measurement only, and the painter drew
   the unshaped string (§2.1 there; T45.4).
   *M81/T81.5:* selection across bidi runs **DECIDED** for one run: a
   direction change is two insertion points with one byte (the ending
@@ -1339,7 +1339,7 @@ The years go to:
   idle-count`, `docs/results-windows.md` T89.6).
   **Hot reload with several windows: DECIDED, M89/T89.7**
   (`docs/plan-windows.md`, "Hot reload boots every window from the build
-  that is loaded"; 2026-10-06). `export_program!`'s `lumen_boot` takes a
+  that is loaded"; 2026-10-06). `export_program!`'s `fulgurite_boot` takes a
   program index; a swap boots every session — each window's and a
   daemon's windowless one — from the new build before it replaces any
   (`Reloader::swap_all`), adopting each into its own slot; a window opened
@@ -1432,7 +1432,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
    `place` rather than from whatever limits `layout` was last handed,
    and `Repeat` overrides `Node::probe` so a measurement does not pick a
    window. See `docs/plan-widget-parity.md` §T27.10 and
-   `crates/lumen-static/tests/repeat_scroll.rs`.
+   `crates/fulgurite/tests/repeat_scroll.rs`.
 5. **Fusion granularity heuristics** (§5) — whether `#[fuse]` stays manual or
    the macro can infer candidates from subtree size and instantiation count.
    **RESOLVED 2026-08-30: stays manual.** Per-type (not per-position)
@@ -1487,7 +1487,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
    node, drawn by the host). `Painter::stroked_rect` is a **required** method, not a provided
    one, so every wrapper is a compile error until it forwards — the
    `Deferring` lesson, and an injection in
-   `crates/lumen-static/tests/border.rs` reproduces that bug exactly by
+   `crates/fulgurite/tests/border.rs` reproduces that bug exactly by
    making it provided. It cost 16 B per node and +676 B of `.text`
    (`docs/results-embedded.md`).
 
@@ -1549,7 +1549,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
 
    **Image decoding is DECIDED — the shell's default-off `image`,
    M84/T84.1, 2026-10-06** (`docs/plan-images-in-motion.md`). The core
-   still never decodes: `lumen_static_shell::image::decode_png` and
+   still never decodes: `fulgurite_shell::image::decode_png` and
    `decode_gif` (pure Rust, `png` and `gif`) answer full-size RGBA8
    frames, a GIF's composited at decode time with its disposals applied,
    and `ImageStore` — unconditional, since it needs no decoder — holds
@@ -1615,7 +1615,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
 
    **Video is DECIDED — a controlled widget and a feed, not a codec,
    M84/T84.8, 2026-10-06** (`docs/plan-images-in-motion.md`). `Video<S>`
-   (`lumen-static-widgets`, `std`) shows an id at a frame with a
+   (`fulgurite-widgets`, `std`) shows an id at a frame with a
    play/pause button, a seek track and the time; `playing`,
    `position_ms`, `duration_ms` and `frame` are the application's, and
    `on_toggle` and `on_seek` report intent. The widget computes a seek's
@@ -1696,7 +1696,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
    pin's position plus `(x, y)`. The pin clips the child to its own rect
    in `paint` and in `hit` alike and answers `clips_children()`, so what
    is drawn and what is pressable agree. Over another widget is a
-   `stack` holding a `Pin` (`crates/lumen-static-widgets/tests/pin.rs`;
+   `stack` holding a `Pin` (`crates/fulgurite-widgets/tests/pin.rs`;
    numbers in `docs/results-layout-input.md` T85.2).
 
 12. **How does a node learn it scrolled into view?** iced's `sensor`
@@ -1714,7 +1714,7 @@ remains** — which is why §10 Step 1 is the kill criterion.
    `Some(0.0)` while one waits. A handler that ran is marked as a click
    is; `adopt` forgets last frame's visibility. `Event` stays 16 B; a
    tree with no flagged node pays one empty-slice check per frame
-   (`crates/lumen-static-shell/tests/pop_visibility.rs`; numbers in
+   (`crates/fulgurite-shell/tests/pop_visibility.rs`; numbers in
    `docs/results-layout-input.md` T85.3). Arena rows are not table nodes
    and are not watched (§6, Repeaters).
    **DECIDED 2026-10-06 (M85/T85.4): the widget is `Pop<S, W>`** —
@@ -1757,5 +1757,5 @@ remains** — which is why §10 Step 1 is the kill criterion.
    (`Incremental` +11.6%), which K85c forbids. So T85.8 is not built:
    renderers and `List` cull, derived containers and `ScrollView` do not
    (`docs/results-layout-input.md` T85.7; the gap `List` leaves is pinned
-   by `crates/lumen-static-shell/tests/cull_damage.rs`). **Reopen** with a
+   by `crates/fulgurite-shell/tests/cull_damage.rs`). **Reopen** with a
    scope mechanism that costs nothing on a frame whose length held.

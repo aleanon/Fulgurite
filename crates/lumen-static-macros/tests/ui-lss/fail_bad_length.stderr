@@ -1,5 +1,0 @@
-error: fail_bad_length.lss:1:17: `width` takes a length: `12px`, `fixed(12px)`, `fill`, `fill(2)`, `flexible`, `flexible(2)` or `shrink`, not `wide`
-  --> tests/ui-lss/fail_bad_length.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_bad_length.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^^

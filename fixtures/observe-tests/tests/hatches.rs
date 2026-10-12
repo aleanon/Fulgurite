@@ -1,10 +1,10 @@
 //! M4: §6's escape hatches. Each gets a firing and a quiet case, and
 //! `NODE_COUNT` stays a compile-time constant in every one.
 
-use lumen_static::hatch::{Either, List, Side};
-use lumen_static_widgets::ops::{Button, Fixed, Label};
-use lumen_static::widget::Node;
-use lumen_static::{pass, Constraints, EventCtx, NodeState, StaticTree, Widget};
+use fulgurite::hatch::{Either, List, Side};
+use fulgurite_widgets::ops::{Button, Fixed, Label};
+use fulgurite::widget::Node;
+use fulgurite::{pass, Constraints, EventCtx, NodeState, StaticTree, Widget};
 
 const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 400.0 };
 
@@ -40,7 +40,7 @@ fn option_keeps_node_count_constant_and_indices_stable() {
     let mut none: Option<Panel> = None;
     let mut st2 = [NodeState::default(); Panel::NODE_COUNT];
     pass::layout(&mut none, &sty, &mut st2, VIEW);
-    assert_eq!(st2[0].size, lumen_static::Size::default(), "absent takes no space");
+    assert_eq!(st2[0].size, fulgurite::Size::default(), "absent takes no space");
     assert!(pass::hit_test(&none, &st2, 1.0, 1.0).is_none(), "and cannot be hit");
 }
 
@@ -74,7 +74,7 @@ fn either_holds_both_branches_so_toggling_keeps_state() {
     // The hidden branch holds no geometry: zeroed every frame, so
     // nothing downstream can read last frame's position out of it.
     let b_at = 1 + <Panel as Widget>::NODE_COUNT;
-    assert_eq!(st[b_at].size, lumen_static::Size::default(), "hidden branch is zeroed");
+    assert_eq!(st[b_at].size, fulgurite::Size::default(), "hidden branch is zeroed");
 
     // Both branches are on the table, as §6 specified: the merged
     // padded const table, re-decided 2026-09-04
@@ -139,7 +139,7 @@ struct App {
     picked: Vec<u64>,
 }
 
-impl lumen_static::event::App for App {
+impl fulgurite::event::App for App {
     // M33: this app keeps handlers on the whole of itself.
     type State = Self;
     fn state_mut(&mut self) -> &mut Self::State {
@@ -148,7 +148,7 @@ impl lumen_static::event::App for App {
     // M28/T28.2: this fixture defers no work. `Never` is
     // uninhabited, so nothing can be sent and `apply` cannot
     // be called.
-    type Msg = lumen_static::event::Never;
+    type Msg = fulgurite::event::Never;
     fn apply(_: &mut Self, m: Self::Msg) -> bool {
         match m {}
     }
@@ -186,10 +186,10 @@ fn clicks_route_into_list_items_with_the_row_attached() {
     // Click the third item's button, addressed through its own geometry.
     let b = app.ui.list.item_state(2, 1);
     let (x, y) = (b.pos.x + b.size.w / 2.0, b.pos.y + b.size.h / 2.0);
-    let mut input = lumen_static::event::InputState::default();
+    let mut input = fulgurite::event::InputState::default();
     for ev in [
-        lumen_static::Event::down(x, y),
-        lumen_static::Event::up(x, y),
+        fulgurite::Event::down(x, y),
+        fulgurite::Event::up(x, y),
     ] {
         pass::dispatch(&mut app, &sty, &mut st, &mut input, &ev);
     }
@@ -245,7 +245,7 @@ fn enum_variants_get_stable_index_ranges_and_paint() {
     assert_eq!(st[0].size.h, 12.0, "and shrinks to the variant along");
     assert_eq!(
         st[box_at].size,
-        lumen_static::Size { w: 40.0, h: 12.0 },
+        fulgurite::Size { w: 40.0, h: 12.0 },
         "the variant's own geometry is retained at its own index"
     );
 
@@ -261,7 +261,7 @@ fn enum_variants_get_stable_index_ranges_and_paint() {
     // variant's content reaches the screen.
     let mut s = Slot::Text(Label::new("hello"));
     pass::layout(&mut s, &sty, &mut st, VIEW);
-    let mut a = lumen_static::DisplayList::new();
+    let mut a = fulgurite::DisplayList::new();
     pass::paint(&s, &st, &mut a);
     assert!(!a.is_empty(), "the active variant paints");
 
@@ -270,14 +270,14 @@ fn enum_variants_get_stable_index_ranges_and_paint() {
     let fixed_root = 1 + <Label as Widget>::NODE_COUNT;
     assert_eq!(
         st[fixed_root].size,
-        lumen_static::Size::default(),
+        fulgurite::Size::default(),
         "an inactive variant keeps no geometry from when it was active"
     );
 }
 
 #[test]
 fn dyn_islands_carry_runtime_content() {
-    use lumen_static::hatch::Dyn;
+    use fulgurite::hatch::Dyn;
 
     const _: () = assert!(<Dyn as Widget>::NODE_COUNT == 1);
     let mut d: Dyn = Dyn::new(Panel::default());
@@ -289,7 +289,7 @@ fn dyn_islands_carry_runtime_content() {
     // Swapping content at runtime is the point of the hatch.
     d.replace(Fixed { w: 33.0, h: 7.0 });
     pass::layout(&mut d, &sty, &mut st, VIEW);
-    assert_eq!(st[0].size, lumen_static::Size { w: 33.0, h: 7.0 });
+    assert_eq!(st[0].size, fulgurite::Size { w: 33.0, h: 7.0 });
     assert_eq!(d.node_count(), Fixed::NODE_COUNT);
 }
 
@@ -305,8 +305,8 @@ struct Deep {
 
 #[test]
 fn a_dyn_island_checks_its_content_depth_at_construction() {
-    use lumen_static::desc::MAX_DEPTH;
-    use lumen_static::hatch::Dyn;
+    use fulgurite::desc::MAX_DEPTH;
+    use fulgurite::hatch::Dyn;
 
     let d: Dyn = Dyn::new(Deep::default());
     assert_eq!(d.content_depth(), <Deep as Widget>::DEPTH, "the real depth is recorded");
@@ -335,7 +335,7 @@ fn branch_nodes_are_ordinary_table_nodes() {
     type E = Either<Panel, Row>;
     let t = <E as Widget>::SUB_TABLE;
     assert_eq!(t.len(), 1 + Panel::NODE_COUNT + Row::NODE_COUNT);
-    assert!(lumen_static::widget::table_is_well_formed(t), "the spliced table is well formed");
+    assert!(fulgurite::widget::table_is_well_formed(t), "the spliced table is well formed");
 
     // The root owns exactly the two branch roots.
     assert_eq!(t[0].child_count, 2);

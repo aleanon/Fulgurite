@@ -1,0 +1,14 @@
+[package]
+name = "fulgurite-lean"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The lean shape: no clipboard, so no arboard and no platform clipboard
+# stack. The row that answers "what does the framework itself cost".
+# clipboard included. This is the row a reader should compare against Qt and
+# GTK, because it is what an application actually ships.
+[dependencies]
+fulgurite-widgets = { path = "../../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../../crates/fulgurite" }
+fulgurite-winit = { path = "../../../crates/fulgurite-winit", default-features = false }

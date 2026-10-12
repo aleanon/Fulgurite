@@ -29,17 +29,17 @@ fi
 # OUTSIDE that range, so a range given by the caller (`just ci` runs with
 # the one it was given, M43/T43.13) gives its top port to the stranger and
 # the rest to the launcher; with none, 7880-7889 and 7890.
-if [ -n "${LUMEN_LIVE_PORT_RANGE:-}" ] && [ -z "${LUMEN_SELFTEST_STRANGER_PORT:-}" ]; then
-    lo=${LUMEN_LIVE_PORT_RANGE%-*}; hi=${LUMEN_LIVE_PORT_RANGE#*-}
+if [ -n "${FULGURITE_LIVE_PORT_RANGE:-}" ] && [ -z "${FULGURITE_SELFTEST_STRANGER_PORT:-}" ]; then
+    lo=${FULGURITE_LIVE_PORT_RANGE%-*}; hi=${FULGURITE_LIVE_PORT_RANGE#*-}
     if [ "$hi" -le "$lo" ]; then
-        echo "selftest-live: LUMEN_LIVE_PORT_RANGE=$LUMEN_LIVE_PORT_RANGE needs two ports or more" >&2
+        echo "selftest-live: FULGURITE_LIVE_PORT_RANGE=$FULGURITE_LIVE_PORT_RANGE needs two ports or more" >&2
         exit 2
     fi
-    export LUMEN_SELFTEST_STRANGER_PORT=$hi LUMEN_LIVE_PORT_RANGE="$lo-$((hi - 1))"
+    export FULGURITE_SELFTEST_STRANGER_PORT=$hi FULGURITE_LIVE_PORT_RANGE="$lo-$((hi - 1))"
 fi
-export LUMEN_LIVE_PORT_RANGE="${LUMEN_LIVE_PORT_RANGE:-7880-7889}"
-export LUMEN_SELFTEST_STRANGER_PORT="${LUMEN_SELFTEST_STRANGER_PORT:-7890}"
-echo "selftest-live: launcher ports $LUMEN_LIVE_PORT_RANGE, stranger on $LUMEN_SELFTEST_STRANGER_PORT"
+export FULGURITE_LIVE_PORT_RANGE="${FULGURITE_LIVE_PORT_RANGE:-7880-7889}"
+export FULGURITE_SELFTEST_STRANGER_PORT="${FULGURITE_SELFTEST_STRANGER_PORT:-7890}"
+echo "selftest-live: launcher ports $FULGURITE_LIVE_PORT_RANGE, stranger on $FULGURITE_SELFTEST_STRANGER_PORT"
 # The stranger plant starts its window itself, not through the launcher.
 . "$(dirname "$0")/../drive_window.sh"  # live windows on the monitor the user is not reading
 exec "$(dirname "$0")/run.sh" live

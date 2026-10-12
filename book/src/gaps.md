@@ -63,7 +63,7 @@ its glyph atlas). Text turns too, since M82/T82.8: a `VectorText` paints
 its run's outlines as one path (see [Text](./text.md)). What did not ship
 is the rest of SVG: miter joins, dashes, even-odd fill, `clip-path`, a
 transform for any command but a path, and SVG import. The drawing vocabulary is the
-`Cmd` enum in `crates/lumen-static/src/display.rs`, and its box commands
+`Cmd` enum in `crates/fulgurite/src/display.rs`, and its box commands
 stay small enough for an embedded target to implement.
 
 **A layer tree in the GPU backend.** There is a persistent target texture

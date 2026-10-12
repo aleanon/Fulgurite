@@ -73,7 +73,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 LAUNCH="python3 scripts/live/launch.py --script tasks-drive"
 $LAUNCH --display-only || exit $?
 
-# The strategy is a COMPILE-TIME feature of lumen-static-winit, not a
+# The strategy is a COMPILE-TIME feature of fulgurite-winit, not a
 # runtime switch, so this builds twice. Both arms matter: M25/T25.0 and
 # M26/T26.1 were both defects that `Everything` hid, because it walks
 # the tree regardless of what was marked.
@@ -114,11 +114,11 @@ for leg in everything boundaries boundaries+oracle; do
         cargo build --release -q -p tasks-demo
         expect=(--expect-strategy Boundaries --expect-features "") ;;
     boundaries+oracle)
-        cargo build --release -q -p tasks-demo --features lumen-static-winit/shadow-oracle
+        cargo build --release -q -p tasks-demo --features fulgurite-winit/shadow-oracle
         expect=(--expect-strategy Boundaries --expect-features shadow-oracle) ;;
     esac
     $LAUNCH --leg "$leg" --exe target/release/tasks-demo "${expect[@]}" \
-        -- env LUMEN_TASKS_PID={pid} bash -c \
+        -- env FULGURITE_TASKS_PID={pid} bash -c \
            'python3 scripts/tasks_drive.py "$1" "$2"; r=$?
             python3 scripts/live/shadow.py tasks-drive || exit 1; exit $r' \
            _ {port} "${leg%%+*}"
@@ -136,7 +136,7 @@ $LAUNCH --leg clipboard-image --exe target/release/tasks-demo \
 echo "== gpu =="
 cargo build --release -q -p tasks-demo --features gpu
 rc=0
-$LAUNCH --leg gpu --exe target/release/tasks-demo --env LUMEN_BACKEND=gpu \
+$LAUNCH --leg gpu --exe target/release/tasks-demo --env FULGURITE_BACKEND=gpu \
     --expect-strategy Boundaries --expect-features "" \
     -- python3 scripts/tasks_drive.py {port} boundaries gpu || rc=$?
 if [ "$rc" = 77 ]; then

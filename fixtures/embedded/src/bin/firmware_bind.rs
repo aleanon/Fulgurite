@@ -12,8 +12,8 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use embedded::{frame_changed, Checksum, Device, DEVICE_NODES};
-use lumen_static::invalidate::{Boundaries, Changed, Invalidation};
-use lumen_static::{pass, App, NodeState, Style};
+use fulgurite::invalidate::{Boundaries, Changed, Invalidation};
+use fulgurite::{pass, App, NodeState, Style};
 
 #[panic_handler]
 fn panicked(_: &PanicInfo) -> ! {

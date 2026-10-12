@@ -29,12 +29,12 @@
 //! tray-drive` drives by sending the item's dbusmenu `Event(id,
 //! "clicked")`. `#status` and `app.tray` show the result.
 
-use lumen_static::menu::{MenuEntry, MenuMask};
-use lumen_static::prelude::*;
-use lumen_static::request::{Answer, Request, Requests};
-use lumen_static_shell::program::{application, daemon, KeyOutcome, OpenProgram, Program};
-use lumen_static_shell::tray::TraySpec;
-use lumen_static_widgets::prelude::*;
+use fulgurite::menu::{MenuEntry, MenuMask};
+use fulgurite::prelude::*;
+use fulgurite::request::{Answer, Request, Requests};
+use fulgurite_shell::program::{application, daemon, KeyOutcome, OpenProgram, Program};
+use fulgurite_shell::tray::TraySpec;
+use fulgurite_widgets::prelude::*;
 
 /// The entries' ids, as `on_menu` hears them.
 pub const OPEN: u32 = 1;
@@ -81,7 +81,7 @@ pub struct TrayUi {
 /// label itself. `Reloadable` because a window program is in a `reload`
 /// build (as examples/daemon's are): nothing is kept across a swap.
 /// Expands to nothing without the core's `reload`.
-#[derive(Default, lumen_static::Reloadable)]
+#[derive(Default, fulgurite::Reloadable)]
 pub struct TrayApp {
     #[reload(fresh)]
     pub ui: TrayUi,
@@ -198,7 +198,7 @@ pub struct WindowUi {
 }
 
 /// `Reloadable`, as `TrayApp` is.
-#[derive(Default, lumen_static::Reloadable)]
+#[derive(Default, fulgurite::Reloadable)]
 pub struct TrayWindow {
     #[reload(fresh)]
     pub ui: WindowUi,
@@ -257,7 +257,7 @@ pub fn program() -> Program<TrayApp> {
         .title("tray")
         .windows(windows)
         .on_menu(on_menu)
-        .tray(TraySpec { icon: (ICON_SIZE, ICON_SIZE, &ICON), tooltip: "lumen-static tray", menu: MENU, enabled })
+        .tray(TraySpec { icon: (ICON_SIZE, ICON_SIZE, &ICON), tooltip: "fulgurite tray", menu: MENU, enabled })
 }
 // ANCHOR_END: program
 
@@ -265,7 +265,7 @@ pub fn program() -> Program<TrayApp> {
 /// `everything` feature, so the drive runs both.
 fn boxed(p: Program<TrayWindow>) -> Box<dyn OpenProgram> {
     #[cfg(feature = "everything")]
-    return Box::new(p.invalidation::<lumen_static::Everything>());
+    return Box::new(p.invalidation::<fulgurite::Everything>());
     #[cfg(not(feature = "everything"))]
     Box::new(p)
 }

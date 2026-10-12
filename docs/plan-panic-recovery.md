@@ -11,7 +11,7 @@
 >
 > **The first draft's premise was wrong, and the rest followed from
 > it.** It said the window reloads through `Host::reload`. Nothing in
-> the workspace calls `Host::reload`, and `lumen-static-winit` has no
+> the workspace calls `Host::reload`, and `fulgurite-winit` has no
 > `reload` feature. So the motivating scenario, "you save, the reloaded
 > code panics", cannot happen in any window today. **This milestone
 > makes the window survive a panic and say where it happened, and it
@@ -39,15 +39,15 @@ and prints the measured quantity beside its bound.*
 1. **"Where" means a line a person can open.** The screen shows
    `file:line:column`. When that location is inside the framework, it
    also shows the nearest frame in the *application's* code. A report
-   that only ever points into `crates/lumen-static/src` answers the
+   that only ever points into `crates/fulgurite/src` answers the
    wrong question. T36.0 has a site that makes the framework filter do
    real work (§5, finding 4).
 2. **The screen does not use the machinery that just failed.** It is a
    `DisplayList` built directly, not a widget tree (§2.3).
 3. **Where it is compiled in** (decided 2026-09-23): in **debug
    builds**, and in **release builds with the `reload` feature**, which
-   is a new feature of `lumen-static-winit` that forwards to
-   `lumen-static-shell/reload`. Always under `cfg(panic = "unwind")`. A
+   is a new feature of `fulgurite-winit` that forwards to
+   `fulgurite-shell/reload`. Always under `cfg(panic = "unwind")`. A
    release build without `reload` keeps the default behaviour, because
    a shipped application should crash where a crash reporter can see it.
 
@@ -71,7 +71,7 @@ and prints the measured quantity beside its bound.*
 ## 1. What exists today
 
 - **No window reloads.** `Host::reload` exists under the shell's
-  `reload` feature and nothing calls it. `lumen-static-winit` links the
+  `reload` feature and nothing calls it. `fulgurite-winit` links the
   application statically, and its `redraw` calls `tick`, `pump` or
   `pump_with`, `tick(0)` and `present`.
 - **The agent drives the window through `user_event`.** `answer_agent`
@@ -103,7 +103,7 @@ and prints the measured quantity beside its bound.*
 - M28's spawners catch job panics in `spawn.rs`. `Immediate` and
   `Queued` run jobs **synchronously inside `pump_with`**, so the hook
   fires on the frame thread for a panic that is not the frame's.
-  `crates/lumen-static-shell/tests/failure.rs` swaps the process-wide
+  `crates/fulgurite-shell/tests/failure.rs` swaps the process-wide
   hook while its tests run in parallel.
 
 ## 2. The decisions
@@ -209,7 +209,7 @@ builds (`docs/00-handoff-static-tree.md`).
 > constants and **four of seven were off by one to three lines** — the
 > hand-copying the constants were meant to avoid. `tests/dies.rs`: every
 > site dies today with its marker's line in stderr, site 7's location is
-> inside `crates/lumen-static/src/`, and an unarmed run exits cleanly.
+> inside `crates/fulgurite/src/`, and an unarmed run exits cleanly.
 > *Injection:* site 4's key made a no-op — "site 4 did not die".
 
 
@@ -237,7 +237,7 @@ just declared.
 
 ## T36.1 — capture and host recovery, headless
 
-> **DONE 2026-09-24.** `lumen_static_shell::recover` (the recording hook,
+> **DONE 2026-09-24.** `fulgurite_shell::recover` (the recording hook,
 > `PanicReport`) and `Host::{guard, failure, retry, set_source_root}`;
 > `program::application` is `#[track_caller]` and hands the host its
 > caller's source directory. Gates in `fixtures/panic-app/tests`:
@@ -265,7 +265,7 @@ just declared.
 > `retain` reset removed. It now takes the damage before the retry.
 
 
-§2.1 and §2.2 in `lumen-static-shell`. The core crate is untouched, and
+§2.1 and §2.2 in `fulgurite-shell`. The core crate is untouched, and
 it keeps no `unsafe` (`AssertUnwindSafe` is a safe wrapper).
 
 **Gate:** for each site, the report's file and line equal the recorded
@@ -298,7 +298,7 @@ stays at zero.
 
 > **DONE 2026-09-24.** `recover::failure_frame(report, w, h, measure)` —
 > a display list, every line through one greedy `wrap` (a word wider
-> than a line breaks by characters). `crates/lumen-static-shell/tests/
+> than a line breaks by characters). `crates/fulgurite-shell/tests/
 > failure_screen.rs`: every line inside the window at 480×320 and
 > 260×420 (rightmost 451.5 / 234.0 px printed beside the widths),
 > contrast 8.29 / 13.65 / 8.60 : 1 against AA's 4.5, the location and
@@ -332,7 +332,7 @@ overrun printed.
 
 ## T36.3 — the window, and the agent
 
-> **DONE 2026-09-24.** `lumen-static-winit` guards both ticks and the
+> **DONE 2026-09-24.** `fulgurite-winit` guards both ticks and the
 > pump in its redraw, IME composition, paste, the agent's per-frame
 > journal walk and **the agent's `Live::pump`** through one pair of
 > helpers (`guarded`, `failed`), compiled to a plain call where recovery
@@ -366,7 +366,7 @@ overrun printed.
 Rule 4's single guarded entry, used by the redraw, window events,
 `compose`, `paste`, both ticks, the agent's observe walk and
 `Live::pump`. §2.2's input policy. §2.4's two agent methods. The
-`reload` feature on `lumen-static-winit`, and rule 3's `cfg`.
+`reload` feature on `fulgurite-winit`, and rule 3's `cfg`.
 
 **Gate:** a drive script, in the manner of `scripts/widget_drive.sh`,
 built **`--release --features reload`**. It asserts through `app.failure`
@@ -392,7 +392,7 @@ session, so the `cfg` is known to be switched both ways.
 
 ## T36.4 — the dylib seam
 
-> **DONE 2026-09-24.** `lumen_static_reload::panic` holds the hook, the
+> **DONE 2026-09-24.** `fulgurite_reload::panic` holds the hook, the
 > record and the catch, and it lives in the crate the **library** links,
 > so each loaded build has its own. `export_reloadable_app!`'s four
 > lifecycle shims catch (`hot_new` → null, `hot_save` → `usize::MAX`,
@@ -469,7 +469,7 @@ records. **The application's are not**: `Live::pump` wraps anything that
 escapes it in a marker, and `Session::agent` re-raises a marked panic
 with its original payload, so rule 3 holds — under `Recover::Off` a
 shipped application still crashes where a crash reporter can see it.
-`crates/lumen-static-shell/tests/agent_panic.rs` checks both directions;
+`crates/fulgurite-shell/tests/agent_panic.rs` checks both directions;
 `docs/plan-agent-transport.md` §2.5 has the reasoning.
 
 ## 5. What the review found (2026-09-23)

@@ -32,7 +32,7 @@ fn every_site_kills_the_process_today() {
         println!("site {site} ({what}): exit ok={ok}, {at}");
         assert!(!ok, "site {site} ({what}) did not die — is it reached at all?");
         if site == 7 {
-            assert!(at.contains("crates/lumen-static/src/"), "site 7's panic should be inside the framework: {at}");
+            assert!(at.contains("crates/fulgurite/src/"), "site 7's panic should be inside the framework: {at}");
         } else {
             let want = format!("fixtures/panic-app/src/lib.rs:{}", panic_app::site_line(site));
             assert!(at.contains(&want), "site {site}: expected {want} in {at:?}");

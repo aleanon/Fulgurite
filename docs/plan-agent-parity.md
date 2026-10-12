@@ -81,7 +81,7 @@ Ordered by dependency, not value; P1 and P3 are the value.
 
 ### P0 — transport and session (small)
 
-**DONE 2026-08-31** (with P1, one commit). `crates/lumen-static-agent`:
+**DONE 2026-08-31** (with P1, one commit). `crates/fulgurite-agent`:
 JSON-RPC 2.0 `Agent::dispatch(&TreeRef, &Value)` with Lumen's envelope;
 the host wrapper stayed thinner than planned — `TreeRef` borrows
 base/table/kinds/states per call, `Agent` holds only frame + timings.
@@ -90,9 +90,9 @@ validated** rather than mirrored loosely: `jsonrpc: "2.0"`, an `id`, a
 string `method` and an object (or absent) `params`, else `-32600`; a
 batch and a notification are refused, not run (`docs/plan-agent-transport.md`
 §2.4). The socket, when it came, was a line transport and not a
-WebSocket (M39/T39.1, `lumen_static_agent::transport`).
+WebSocket (M39/T39.1, `fulgurite_agent::transport`).
 
-`lumen-static-agent` crate: JSON-RPC 2.0 `dispatch(&mut App?, &Value) ->
+`fulgurite-agent` crate: JSON-RPC 2.0 `dispatch(&mut App?, &Value) ->
 Value` mirroring Lumen's envelope, method names, and error codes where
 semantics coincide (agent skills and muscle memory transfer). In-process
 dispatch first; WebSocket behind a feature exactly like Lumen's `ws`.
@@ -138,7 +138,7 @@ All from table + `NodeState` + AccessKit snapshot, no new subsystems:
 
 ### P2 — "what changed": state diffing instead of a dependency graph
 
-**DONE 2026-08-31.** `crates/lumen-static-agent/src/journal.rs`: each
+**DONE 2026-08-31.** `crates/fulgurite-agent/src/journal.rs`: each
 `frame_done` records per-node geometry *and* per-node paint checksums,
 diffs against the previous frame, and appends to a 64-frame ring.
 Shipped `ui.lastChange { since }` (default: previous frame) and
@@ -168,7 +168,7 @@ scroll or row edit surfaces as a `content` change on the repeater node
 `app.diagnostics`. Cost is one extra paint dispatch per node per frame,
 dev-surface only; no AccessKit snapshot is built at frame time (only per
 query). If the future invalidation work wants this diff as its
-acceptance oracle, the journal moves down into `lumen-static`.
+acceptance oracle, the journal moves down into `fulgurite`.
 
 `ui.lastChange { since_frame }` from double-buffered `NodeState` diff +
 paint-checksum per subtree; report changed nodes with old/new geometry
@@ -181,7 +181,7 @@ out-of-scope, not TODO.
 
 ### P3 — ambient audit (`ui.lint` + `app.logs`)
 
-**DONE 2026-08-31.** `crates/lumen-static-agent/src/audit.rs` runs at
+**DONE 2026-08-31.** `crates/fulgurite-agent/src/audit.rs` runs at
 every frame boundary; `ui.lint` reads the cached current set (queries
 cost nothing) and open/close transitions push into an `app.logs` ring.
 Lumen's three rev2 scars adopted rather than re-earned, each pinned by a
@@ -277,7 +277,7 @@ the queue with recording in mind from the first commit.
 
 `ui.screenshot` shipped with the live window rather than waiting for
 `lumen-render`: `AgentHost::frame()` hands the agent the RGBA the
-window last blitted, and `lumen_static_agent::png` encodes it
+window last blitted, and `fulgurite_agent::png` encodes it
 (stored-deflate PNG, dependency-free) as `image_base64` — Lumen's wire
 shape, so its `agent_client.py` and `verifying-apps` skill carry over
 unchanged. The acceptance run is in `.claude/skills/verifying-apps`:
@@ -298,7 +298,7 @@ back — occluded by which node and its bounds, no area, hidden, not
 focusable. The method matters more than the prose: a narrative assembled
 from properties would be a second model of dispatch, free to drift from
 the first, which is the probe-vs-click class of bug one layer up.
-`crates/lumen-static-agent/tests/explain.rs` fails if hiding a node ever
+`crates/fulgurite-agent/tests/explain.rs` fails if hiding a node ever
 becomes cosmetic.
 
 `ui.getAppliedStyles` shipped with it — the other half of "why does it

@@ -1,4 +1,4 @@
-# The lumen-static book.
+# The fulgurite book.
 #
 # It lives in this repo, not beside it, for the reason `AGENT.md` gives:
 # the doc-currency rule requires the prose to move in the *same commit*
@@ -8,7 +8,7 @@
 # rlibs -- both of which need one checkout.
 
 [book]
-title = "lumen-static"
+title = "fulgurite"
 description = "A GUI framework where the widget tree's shape lives in the type."
 src = "src"
 language = "en"
@@ -22,7 +22,7 @@ create-missing = false
 
 [rust]
 # Without this rustdoc compiles every snippet as edition 2015, where
-# `use lumen_static::prelude::*` cannot resolve and the error it gives
+# `use fulgurite::prelude::*` cannot resolve and the error it gives
 # you ("you might be missing a crate") points nowhere near the cause.
 edition = "2021"
 

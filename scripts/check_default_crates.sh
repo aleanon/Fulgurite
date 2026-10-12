@@ -4,7 +4,7 @@
 # docs/plan-images-in-motion.md).
 #
 # K2's exact command,
-#   cargo tree -p lumen-static-winit -e normal --prefix none \
+#   cargo tree -p fulgurite-winit -e normal --prefix none \
 #     | sed 's/ (\*)$//' | sort -u | wc -l
 # run on the work tree and on BASE, both printed, and the difference
 # bounded at 0. Without the `sed` step a `(*)` repeat counts twice, which
@@ -55,7 +55,7 @@ fi
 SHA=$(git rev-parse --verify -q "$BASE^{commit}") || {
     echo "check_default_crates: '$BASE' is not a commit" >&2; exit 2; }
 
-# count DIR -- K2's count for lumen-static-winit's default build in DIR.
+# count DIR -- K2's count for fulgurite-winit's default build in DIR.
 # Only cargo's STDOUT is counted: stderr carries cargo's progress lines,
 # and "Blocking waiting for file lock on package cache" appears there
 # whenever another cargo process holds the lock (a CI run beside this
@@ -64,7 +64,7 @@ SHA=$(git rev-parse --verify -q "$BASE^{commit}") || {
 count() {
     local out err
     err=$(mktemp) || return 1
-    if ! out=$(cd "$1" && cargo tree -p lumen-static-winit -e normal --prefix none --locked --offline 2>"$err"); then
+    if ! out=$(cd "$1" && cargo tree -p fulgurite-winit -e normal --prefix none --locked --offline 2>"$err"); then
         echo "check_default_crates: cargo tree failed in $2 -- not a pass:" >&2
         tail -5 "$err" >&2
         rm -f "$err"
@@ -95,7 +95,7 @@ fi
 
 delta=$((now - base))
 short=$(git rev-parse --short "$SHA")
-echo "check_default_crates: lumen-static-winit default build, $now crates (K2's command); $base at $short ($how); delta $delta, bound 0"
+echo "check_default_crates: fulgurite-winit default build, $now crates (K2's command); $base at $short ($how); delta $delta, bound 0"
 if [ "$delta" -ne 0 ]; then
     echo "check_default_crates: the default window's crate count moved by $delta against $short -- a default-off feature leaked into the default set, or a default dependency was added (K2: bound 0)" >&2
     exit 1

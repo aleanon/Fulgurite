@@ -6,8 +6,8 @@
 //! (`fwq.ld`, `docs/plan-embedded-footprint.md` §2.6).
 //!
 //! And, since M61/T61.0, chooses where `SHEET` comes from: with
-//! `LUMEN_SHEET=lss` in the environment, from `src/sheet.lss` through
-//! `include_lss!` (`cfg(lumen_lss_sheet)`). **A cfg from here and not a
+//! `FULGURITE_SHEET=lss` in the environment, from `src/sheet.lss` through
+//! `include_lss!` (`cfg(fulgurite_lss_sheet)`). **A cfg from here and not a
 //! cargo feature**, because a feature changes the crate's `-C metadata`,
 //! every mangled name with it, and so the order the linker lays functions
 //! out in: two builds that differed only by an unused feature had 780
@@ -15,10 +15,10 @@
 //! (`scripts/check_lss_parity.sh`), so the two builds must differ in the
 //! sheet and in nothing else.
 fn main() {
-    println!("cargo:rustc-check-cfg=cfg(lumen_lss_sheet)");
-    println!("cargo:rerun-if-env-changed=LUMEN_SHEET");
-    if std::env::var("LUMEN_SHEET").as_deref() == Ok("lss") {
-        println!("cargo:rustc-cfg=lumen_lss_sheet");
+    println!("cargo:rustc-check-cfg=cfg(fulgurite_lss_sheet)");
+    println!("cargo:rerun-if-env-changed=FULGURITE_SHEET");
+    if std::env::var("FULGURITE_SHEET").as_deref() == Ok("lss") {
+        println!("cargo:rustc-cfg=fulgurite_lss_sheet");
     }
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR");
     println!("cargo:rustc-link-arg-bin=fwq=-T{dir}/fwq.ld");

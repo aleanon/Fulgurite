@@ -36,9 +36,9 @@ use std::hash::{BuildHasher, Hasher};
 use std::hint::black_box;
 use std::time::Instant;
 
-use lumen_static::style::Style;
-use lumen_static::text::{FoldedText, MeasureKey};
-use lumen_static::{Constraints, Size};
+use fulgurite::style::Style;
+use fulgurite::text::{FoldedText, MeasureKey};
+use fulgurite::{Constraints, Size};
 
 const K: u64 = 0x9E37_79B9_7F4A_7C15;
 

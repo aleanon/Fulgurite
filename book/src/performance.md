@@ -26,7 +26,7 @@ just profile-simd       # with the rasteriser's SIMD path
 just profile-threads    # with band-parallel rasterisation too
 ```
 
-`LUMEN_PROFILE=1` is what turns on the per-stage report. `app.perf` over
+`FULGURITE_PROFILE=1` is what turns on the per-stage report. `app.perf` over
 the agent protocol reports the same stages from a live window, plus
 input-to-presented latency over recent frames.
 

@@ -14,8 +14,8 @@ records what adoption would actually cost, and what is adopted instead.*
 |---|---:|
 | Lumen's `lumen-text` | **74** |
 | Lumen's `lumen-render` | **84** |
-| this project's `lumen-static` (core) | **6** |
-| this project's `lumen-static-shell` (with `truetype`) | **7** |
+| this project's `fulgurite` (core) | **6** |
+| this project's `fulgurite-shell` (with `truetype`) | **7** |
 
 Both Lumen crates hard-depend on `lumen-core` (7,684 lines): its signal
 graph, its store, its `State: Serialize + DeserializeOwned` bound and
@@ -40,7 +40,7 @@ workspace's default graph.
 ## What is adopted instead
 
 **Lumen's interface, not Lumen's crates.** T7.1 and T7.2 are satisfied
-by what `lumen-static-shell` already ships and by extending it:
+by what `fulgurite-shell` already ships and by extending it:
 
 - **Text:** `FontStack`/`FontMetrics` (fontdue) behind `dyn TextMeasure`
   — real faces, real rasterization, advance-based measurement, wrapping,
@@ -57,7 +57,7 @@ by what `lumen-static-shell` already ships and by extending it:
 
 What this defers, honestly: no complex-script shaping (parley does
 bidi, Indic reordering, cluster-correct segmentation; fontdue's layout
-does not — `lumen-static-text` later added it **for measurement only**,
+does not — `fulgurite-text` later added it **for measurement only**,
 M15/T15.8 as corrected by M45/T45.4: nothing paints the shaper's glyphs
 — until M81, "Shaped paint" below), no GPU backend, no SVG/gradient/image commands. None of them
 is on the path to M8b/M8c/M8/M9, and each can arrive behind the same
@@ -71,7 +71,7 @@ adoption would have ended.
 in `FontStack::place_run_into`** — the one function both backends already
 place every run through, every frame — and `Cmd::Text` stays the command.
 A `FontStack` in `Shaping::Complex` (the shell's default-off `shaping`
-feature) lays a run that needs shaping out with `lumen-static-text`'s
+feature) lays a run that needs shaping out with `fulgurite-text`'s
 `Shaper` for the measure, the clusters and the paint (T81.3); a run with
 nothing to shape keeps fontdue's layout even there, because shaping Latin
 cost 2.2–3.6× (K81a, `docs/results-text.md` M81/T81.3). Since T81.4 a
@@ -108,12 +108,12 @@ twice, one pixel right whenever it was 0.5 or more
 
 "The `no_std` profile stays reachable" turned out to have a hole in it,
 and M13 found it: **`FontMetrics` is `fontdue`, which needs `alloc`, is
-a `std` crate, and lives in `lumen-static-shell` — which M13 keeps
+a `std` crate, and lives in `fulgurite-shell` — which M13 keeps
 `std`.** So the embedded target had no measurer at all, and would have
 laid out a `Label` whose glyphs nothing could draw. The seam was right;
 nothing had been put through it from the other side.
 
-`lumen_static::font::BakedFace` is that second implementation: advances
+`fulgurite::font::BakedFace` is that second implementation: advances
 and 8-bit coverage in `const` data, indexed by a sorted glyph table,
 measured and drawn with no allocation and no shaping.
 `fixtures/bake-font` generates one from a TTF, and the data lives in the

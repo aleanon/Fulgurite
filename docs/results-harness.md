@@ -4,7 +4,7 @@
 
 ## T12.1 — a locator and expectation API
 
-**Landed 2026-09-20.** `lumen_static_agent::harness::TestApp` drives
+**Landed 2026-09-20.** `fulgurite_agent::harness::TestApp` drives
 anything that implements `AgentHost` — every host in this repository,
 headless or windowed — through the selector grammar and
 `Agent::dispatch_input` that already existed.
@@ -84,7 +84,7 @@ host that cannot say. The harness still does not poll for its caller.
 ## T12.3, amended — a replay that diverges is an error (M48/T48.10)
 
 T12.3 is recorded in `docs/plan-harness.md`; its gate could not fail.
-`crates/lumen-static-agent/tests/session_replay_fails.rs` inverts the
+`crates/fulgurite-agent/tests/session_replay_fails.rs` inverts the
 review's probes (R13-F6), and each inversion was red at M48/T48.0:
 
 | case | at T48.0 | now |
@@ -98,7 +98,7 @@ on a selector that matches nothing changes nothing, so the tree at the
 end is the recorded one. With the per-step assertion removed from the
 exporter, that export passed. Both assertions are in every export, and
 the two included exports are compared byte for byte with what the
-exporter writes (`LUMEN_BLESS=1` regenerates them).
+exporter writes (`FULGURITE_BLESS=1` regenerates them).
 
 ## T12.2 — golden images with a diff artifact
 
@@ -161,7 +161,7 @@ re-recorded green (M38's I-NEW-4). Both now fail on `Recorded` with
 `truetype` off (below), and every `--workspace` build turns it on, so
 `golden.rs` compiled to zero tests and `failure_screen.rs` lost its
 golden test in every automated run. `just dev-shape` now runs
-`cargo test -p lumen-static-shell --test golden --test failure_screen`
+`cargo test -p fulgurite-shell --test golden --test failure_screen`
 with the shell built alone, and ends with `scripts/check_test_counts.sh`,
 which fails on any integration-test binary listing zero tests unless
 `scripts/zero-tests.allow` says why — `golden` is allowed there only
@@ -182,17 +182,17 @@ is itself refused now, above.)
 level down: the shaping, glyph-placement, complex-text and baked-face
 tests read the machine's fonts and *returned early, passing,* when none
 was installed (M38's R17-F7). They now load
-`crates/lumen-static-shell/tests/fonts/DejaVuSans.ttf` through
+`crates/fulgurite-shell/tests/fonts/DejaVuSans.ttf` through
 `FontStack::from_bytes` and print `face: DejaVuSans.ttf, glyphs: 6253`;
 a missing file panics with `pinned face not found`. Only
 `font_discovery.rs` is about the system, and `just fonts` (in
-`dev-shape`) runs it under `LUMEN_REQUIRE_FONTS=1`.
+`dev-shape`) runs it under `FULGURITE_REQUIRE_FONTS=1`.
 
 **PPM, not PNG.** `Canvas::to_ppm` already writes it and it needs no
-dependency. The PNG encoder lives in `lumen-static-agent`, which depends
-on `lumen-static` with `features = ["observe"]` — not optional — and
+dependency. The PNG encoder lives in `fulgurite-agent`, which depends
+on `fulgurite` with `features = ["observe"]` — not optional — and
 Cargo unifies features across a selection, so a dev-dependency on it
-from `lumen-static-shell/tests` would switch `observe` on for
+from `fulgurite-shell/tests` would switch `observe` on for
 `alloc_gate.rs`'s process and grow `NodeDesc` from 48 B to 72 B. Same
 unification hazard M13's feature polarity is argued from.
 

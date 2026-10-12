@@ -5,8 +5,8 @@ readers and agents, source provenance in `NodeDesc`, all behind an
 additive dev gate with measured-zero release cost. Also pays Step 4's
 
 > **Condition, added 2026-09-02 (F2.5).** "Zero release cost" means: a
-> binary that does not link `lumen-static-agent`. That crate depends on
-> `lumen-static` with `features = ["observe"]`, and cargo unifies
+> binary that does not link `fulgurite-agent`. That crate depends on
+> `fulgurite` with `features = ["observe"]`, and cargo unifies
 > features across a selection, so linking it turns `observe` on for the
 > whole graph — `NodeDesc` 48 B → 72 B, plus accesskit. This is the
 > additive dev gate §9 blesses, used as intended, but the claim above was
@@ -15,16 +15,16 @@ additive dev gate with measured-zero release cost. Also pays Step 4's
 > release figure it records is a release figure.
 >
 > **And checked, since M48/T48.12** (R14-F8): `just agent-symbols`
-> counts `lumen_static_agent` and `serde_json` symbols in a release
+> counts `fulgurite_agent` and `serde_json` symbols in a release
 > showcase built without the `agent` feature — 0 of each, against 66 and
 > 192 in the agent build, its positive control. Inside an agent build, a
 > window with no address set no longer runs the journal or the audit on
-> any frame (`crates/lumen-static-winit/tests/agent_transport.rs`).
+> any frame (`crates/fulgurite-winit/tests/agent_transport.rs`).
 recorded debt: the reload surface is now gated too.*
 
 ## The gate: additive cargo features, not a mode
 
-`observe` and `reload` are non-default features of `lumen-static`
+`observe` and `reload` are non-default features of `fulgurite`
 (`observe = ["a11y", "dep:serde", "dep:serde_json"]`, `reload =
 ["std", "dep:serde", "dep:serde_json"]`).
 
@@ -34,7 +34,7 @@ recorded debt: the reload surface is now gated too.*
 > widget's `Node::observe`, the static walk and `observe::snapshot` —
 > what a screen-reader adapter sends — and leaves `NodeDesc` at 48 B;
 > `observe` adds the JSON dump, `probe`, `stats` and the `src` stamp
-> (72 B). `crates/lumen-static-widgets/tests/desc_size.rs` asserts both
+> (72 B). `crates/fulgurite-widgets/tests/desc_size.rs` asserts both
 > sizes, and `scripts/check_feature_seam.sh` refuses the core's `a11y`
 > without the widgets' as it refuses `observe`.
  §8 rejected features for *semantic* dials because
@@ -52,7 +52,7 @@ within noise of the Step 2 record).
 Emitted code must compile identically whether or not the app enables the
 features (a proc macro cannot see downstream features). Both hooks are
 always-present const builders whose *bodies* are gated inside
-lumen-static: `NodeDesc::new(...).with_src(file!(), line)` (no-op without
+fulgurite: `NodeDesc::new(...).with_src(file!(), line)` (no-op without
 `observe`) and `WidgetOps::new(...)` (fills the cfg-gated `observe` op
 with a default). This replaced all struct-literal construction of
 `NodeDesc`/`WidgetOps` — which is also what lets the structs grow gated
@@ -113,14 +113,14 @@ synthetic ids.
    that invalidation needs. Same future work item as §11's invalidation
    emphasis.
 3. ~~**Platform adapter wiring**~~ — **done 2026-09-27 (M54/T54.2)**:
-   `lumen_static_winit::a11y` attaches `accesskit_winit` for `run`, every
+   `fulgurite_winit::a11y` attaches `accesskit_winit` for `run`, every
    `Program` and counter-window's own loop, behind the window crate's
    `a11y` feature (default-off: `docs/results-a11y-platform.md`), with
    bounds in physical pixels (`observe::platform_tree`).
 
 ## Verification
 
-4 new gated tests (`crates/lumen-static/tests/observe.rs`): snapshot
+4 new gated tests (`crates/fulgurite/tests/observe.rs`): snapshot
 shape/roles/values/bounds against layout state; row-stable instance ids
 across scroll; provenance file + declaration-order lines, including the
 nested-component ownership rule; agent JSON dump content. Full gate:

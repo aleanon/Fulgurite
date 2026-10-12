@@ -1,4 +1,4 @@
-# What the others have that lumen-static does not
+# What the others have that fulgurite does not
 
 *Surveyed 2026-09-06, from the sources on this machine — not from
 memory. Qt 6.4.2 and GTK 4.14.5 headers as installed, `iced_widget`
@@ -36,7 +36,7 @@ scroll.
 
 ## Common to all six — the gaps that are not about any one framework
 
-These were absent from lumen-static and present in **every** other arm
+These were absent from fulgurite and present in **every** other arm
 when this survey was taken (2026-09-06). **Most have shipped since**;
 re-checked against `553fa5e` on 2026-10-04 (M80/T80.0), each row now
 says what exists and which plan owns what is left. The per-framework
@@ -44,7 +44,7 @@ sections below are still the 2026-09-06 survey.
 
 | capability | status at `553fa5e` |
 |---|---|
-| **Images** | Shipped: `Cmd::Image`, the `Image` widget, `ImageSource`; PNG and GIF decoding behind the shell's `image` (M84/T84.1) and animated images — a `Playback` writing an `Image`'s `frame`, the window woken by `App::wake_in_ms` (M84/T84.3, `docs/results-images.md`). Video: a controlled `Video` widget over a `VideoFeed` subscription, with `GifFeed` as the feed that ships (M84/T84.8, `docs/results-images.md`); a real codec — the GStreamer crate `lumen-static-video` — is deferred on K84b: the reference machine lacks GStreamer's development libraries (M84/T84.10, `docs/results-images.md`, with the reopen condition). |
+| **Images** | Shipped: `Cmd::Image`, the `Image` widget, `ImageSource`; PNG and GIF decoding behind the shell's `image` (M84/T84.1) and animated images — a `Playback` writing an `Image`'s `frame`, the window woken by `App::wake_in_ms` (M84/T84.3, `docs/results-images.md`). Video: a controlled `Video` widget over a `VideoFeed` subscription, with `GifFeed` as the feed that ships (M84/T84.8, `docs/results-images.md`); a real codec — the GStreamer crate `fulgurite-video` — is deferred on K84b: the reference machine lacks GStreamer's development libraries (M84/T84.10, `docs/results-images.md`, with the reopen condition). |
 | **Vector drawing** | Lines and linear gradients shipped (`Cmd::Line`, `Cmd::Gradient`). Paths, radial and style gradients, vector text: `docs/plan-paint-vocabulary.md` (M82). |
 | **Animation** | Shipped: `Animated<T>`, `Easing`, `App::tick`, timers (M28). Built-in widget transitions: `docs/plan-transitions.md` (M86). |
 | **Overlays and z-order** | Shipped: popups, menus, tooltips, modals, toasts, nested overlays (M15, M27). Arbitrary z-order stays rejected (`docs/plan-capabilities.md`). |
@@ -52,11 +52,11 @@ sections below are still the 2026-09-06 survey.
 | **Multi-window** | Not in a turnkey window (M54/T54.7 un-marked T15.10). `docs/plan-windows.md` (M89). |
 | **Drag and drop** | Within an application shipped (`Drag`); the platform half compiles behind `dnd` and is not routed by `run` (M54/T54.7). |
 | **Touch and gestures** | Shipped: touch events and recognisers (`gesture.rs`, M15; M44/T44.4). |
-| **Complex-script text** | Measured and edited (`lumen-static-text`, M45), not painted. `docs/plan-shaped-paint.md` (M81). |
+| **Complex-script text** | Measured and edited (`fulgurite-text`, M45), not painted. `docs/plan-shaped-paint.md` (M81). |
 | **Localisation** | RTL layout mirroring exists (T15.9); no catalogue or locale formatting. Not planned. |
 | **Focus ring / keyboard nav beyond Tab** | Shipped: arrow groups, focus traps, a keyboard-only focus ring (M15/T15.6, M44). |
 | **File / colour / font dialogs** | File dialogs behind `dialogs` (T15.11); colour, date and file pickers as widgets (M27/T27.11). |
-| **GPU rendering** | Shipped: `lumen-static-wgpu`, behind `gpu` (T15.12, M51). Custom shaders and backends: `docs/plan-gpu-extension.md` (M83). |
+| **GPU rendering** | Shipped: `fulgurite-wgpu`, behind `gpu` (T15.12, M51). Custom shaders and backends: `docs/plan-gpu-extension.md` (M83). |
 
 ---
 
@@ -73,12 +73,12 @@ seven embedded/EGLFS integration modules:
   future/promise library, XML parsing, and printing.
 - **Model/view framework** — `QAbstractItemModel` with proxy models,
   sorting, filtering and selection, shared by list, table and tree
-  views. lumen-static has `List` and `Repeat` and no model layer at all.
+  views. fulgurite has `List` and `Repeat` and no model layer at all.
 - **Item views**: tree view, table view, header views, editable
   delegates.
 - **Embedded/EGLFS backends** — direct KMS/DRM, framebuffer and input
   integration for devices with no window system. Notable because M13
-  targets that class of hardware and lumen-static has no display driver
+  targets that class of hardware and fulgurite has no display driver
   of any kind (`docs/results-embedded.md` says so explicitly: the
   fixture computes a checksum, it does not talk to hardware).
 - **Style engine with platform themes**, so an application inherits the
@@ -97,14 +97,14 @@ here, from the installed headers:
 - **Virtualized, model-backed views**: `GtkListView`, `GtkColumnView`,
   `GtkGridView` over a `GListModel`, with `GtkSorter`, `GtkFilter`,
   `GtkSelectionModel` and `GtkTreeListModel`/`GtkTreeExpander` for
-  trees. lumen-static's `Repeat` virtualizes; it has no model, sorting,
+  trees. fulgurite's `Repeat` virtualizes; it has no model, sorting,
   filtering or selection layer.
 - **Rich text**: `GtkTextView` with `GtkTextBuffer`, tags, marks and
   iterators. `TextArea` here is a flat string with a caret.
 - **Layout managers as objects**: `GtkConstraintLayout` (a real
   constraint solver), `GtkGridLayout`, `GtkFixedLayout`,
   `GtkOverlayLayout`, `GtkCenterLayout`, plus `GtkSizeGroup` for
-  cross-container alignment. lumen-static has one axis per container and
+  cross-container alignment. fulgurite has one axis per container and
   no constraint solving.
 - **Containers with behaviour**: `GtkPaned`, `GtkNotebook`,
   `GtkExpander`, `GtkRevealer`, `GtkStack` + `GtkStackSwitcher`,
@@ -113,13 +113,13 @@ here, from the installed headers:
   long-press, pan, rotate, stylus, swipe, zoom — plus scroll, motion,
   key and focus event controllers.
 - **Input methods**: `GtkIMContext`, `GtkIMMulticontext` — a pluggable
-  IME layer. lumen-static handles the winit `Ime` events (T14.8) and has
+  IME layer. fulgurite handles the winit `Ime` events (T14.8) and has
   no equivalent abstraction.
 - **Media**: `GtkVideo`, `GtkMediaStream`, `GtkMediaControls`.
 - **Dialogs and pickers**: file, colour, font, print, alert, about,
   emoji chooser.
 - **`GtkCssProvider`** — a real CSS engine, loadable at runtime.
-  lumen-static's cascade is Rust values with no parser or stylesheet
+  fulgurite's cascade is Rust values with no parser or stylesheet
   file.
 - **Accessibility as a widget property tree** (`GtkAccessible`,
   `GtkAccessibleText`, `GtkAccessibleRange`) rather than a snapshot.
@@ -132,13 +132,13 @@ here, from the installed headers:
 ## iced 0.14
 
 Closest in spirit — Rust, CPU-rasterisable, declarative. Its widget set
-is roughly 3× lumen-static's. Present in `iced_widget` and absent here:
+is roughly 3× fulgurite's. Present in `iced_widget` and absent here:
 
 - `canvas` — arbitrary 2D drawing with paths, strokes, fills, gradients.
 - `shader` — a wgpu escape hatch for custom GPU rendering.
 - `image`, `svg`, `qr_code`, `markdown` — content widgets.
 - `text_editor` — a multi-line editor with its own content model
-  (lumen-static's `TextArea` is a string and a caret).
+  (fulgurite's `TextArea` is a string and a caret).
 - `pane_grid` — draggable, splittable, resizable panes.
 - `table`, `grid` — tabular layout.
 - `combo_box`, `pick_list`, `tooltip`, `overlay` — all overlay-dependent.
@@ -199,7 +199,7 @@ The most different: a language and compiler, not a Rust API.
   but not values, bindings or layout.
 - **Reactive properties with two-way binding and change tracking**
   (`properties.rs`, `two_way_binding.rs`, `change_tracker.rs`).
-  lumen-static's `#[bind]` is one-directional and recomputed per frame.
+  fulgurite's `#[bind]` is one-directional and recomputed per frame.
 - **Animations and easing as language constructs**, plus
   `physics_simulation.rs`.
 - **A model/repeater abstraction** with observable collections.
@@ -208,20 +208,20 @@ The most different: a language and compiler, not a Rust API.
   core concerns.
 - `system_tray/` — tray icons.
 - `translations.rs` — i18n in the language.
-- `flickable.rs` — kinetic/inertial scrolling. lumen-static's scroll is
+- `flickable.rs` — kinetic/inertial scrolling. fulgurite's scroll is
   positional with no momentum.
 - `partial_renderer.rs` — its own damage-tracking renderer (the one
-  thing on this list lumen-static has an equal of).
+  thing on this list fulgurite has an equal of).
 - **Backends**: winit, Qt, and **linuxkms** — direct KMS/DRM for
   embedded devices with no window system. Plus wgpu integration.
-- `bitmapfont.rs` — a baked font path, which lumen-static also has
+- `bitmapfont.rs` — a baked font path, which fulgurite also has
   (T13.7), and Slint additionally has a full shaping stack beside it.
 - `accessibility.rs`, `date_time.rs`, `timers.rs`, `styled_text.rs`.
 
 ## Lumen
 
 The sibling project, and the closest architectural comparison. Its
-widget layer is ~17.5k lines against lumen-static's core; the survey in
+widget layer is ~17.5k lines against fulgurite's core; the survey in
 `docs/plan-lumen-parity.md` predates M11–M14 and its widget counts are
 stale, but the *shape* of the gap is unchanged. Present in
 `lumen-widgets` and absent here:
@@ -238,7 +238,7 @@ stale, but the *shape* of the gap is unchanged. Present in
 - **`shader.rs`** — a GPU escape hatch.
 - **A style language — closed in part by M61 (2026-09-28).**
   `lumen-style` (4.3k lines) is a `.lss` lexer/parser/AST and a resolver.
-  lumen-static now reads `.lss` too — Lumen's lexer and parser, trimmed
+  fulgurite now reads `.lss` too — Lumen's lexer and parser, trimmed
   to one simple selector per rule, `@tokens`, palette roles and `@sheet`
   blocks, parsed at compile time by `include_lss!` into the same `const`
   rules as hand-written Rust, and re-read at run time in debug windows
@@ -247,11 +247,11 @@ stale, but the *shape* of the gap is unchanged. Present in
   `@keyframes`, `@theme` and run-time classes — each a named compile
   error here, because the cascade has no machinery for them.
 - **Platform shells**: `lumen-shell-web`, `lumen-shell-android`,
-  `lumen-shell-ios`. lumen-static is desktop-only, plus a `no_std` core
+  `lumen-shell-ios`. fulgurite is desktop-only, plus a `no_std` core
   with no driver.
 - **`lumen-cli`** — a project CLI and dev server.
 - **`lumen-test`** — locators, snapshots and traces as a library.
-  lumen-static has the agent protocol and session replay (M12), which
+  fulgurite has the agent protocol and session replay (M12), which
   covers much of the same ground from the other side.
 - **A real text stack** (`lumen-text`, parley/swash): complex scripts,
   bidi, font fallback chains.

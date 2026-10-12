@@ -3,7 +3,7 @@
 # bytes.** The firmwares are linked twice -- once with the hand-written
 # `SHEET` slice in fixtures/embedded/src/lib.rs, once with the same sheet
 # authored as fixtures/embedded/src/sheet.lss through `include_lss!`
-# (`LUMEN_SHEET=lss`, a cfg the fixture's build.rs sets; it says why a
+# (`FULGURITE_SHEET=lss`, a cfg the fixture's build.rs sets; it says why a
 # feature could not be used) -- and each binary's `.text` and `.rodata` must
 # be byte-identical between the two. Sizes are printed beside the verdict,
 # so a match is visibly a match of something.
@@ -31,7 +31,7 @@ for name in $FIRMWARE_BINS; do HAND[$name]=$(firmware_path "$name"); done
 LSS_DIR="${CARGO_TARGET_DIR:-target}/lss-parity"
 bins=""; for b in $FIRMWARE_BINS; do bins="$bins --bin $b"; done
 # shellcheck disable=SC2086
-json=$(LUMEN_SHEET=lss CARGO_TARGET_DIR="$LSS_DIR" cargo build --release -q -p embedded $bins \
+json=$(FULGURITE_SHEET=lss CARGO_TARGET_DIR="$LSS_DIR" cargo build --release -q -p embedded $bins \
     --features firmware --target "$FIRMWARE_TARGET" --message-format=json) || {
     echo "lss-parity: the include_lss! firmware build failed" >&2
     exit 1

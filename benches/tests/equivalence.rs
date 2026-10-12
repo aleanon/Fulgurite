@@ -3,8 +3,8 @@
 //! every node's size and position must agree exactly.
 
 use benches::{d_assembled, d_ten, Block, Card, Ten};
-use lumen_static::assemble::Assembled;
-use lumen_static::{pass, Constraints, NodeState, Point, Size, Widget, NO_PARENT};
+use fulgurite::assemble::Assembled;
+use fulgurite::{pass, Constraints, NodeState, Point, Size, Widget, NO_PARENT};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
 
@@ -58,8 +58,8 @@ fn tables_are_well_formed() {
     // The derive asserts well-formedness and the depth cap at compile
     // time for every table it emits; this re-checks at runtime that the
     // const fn agrees with the hand-written invariants above.
-    assert!(lumen_static::widget::table_is_well_formed(Block::SUB_TABLE));
-    const _: () = assert!(Block::DEPTH <= lumen_static::MAX_DEPTH);
+    assert!(fulgurite::widget::table_is_well_formed(Block::SUB_TABLE));
+    const _: () = assert!(Block::DEPTH <= fulgurite::MAX_DEPTH);
 }
 
 /// Run the framework pipeline; return (size, pos) per node in table order.
@@ -115,9 +115,9 @@ fn paint_is_deterministic_and_value_sensitive() {
     let mut st = [NodeState::default(); Ten::NODE_COUNT];
     let sty = pass::default_styles(&tree);
     pass::layout(&mut tree, &sty, &mut st, ROOT_C);
-    let mut a = lumen_static::DisplayList::new();
+    let mut a = fulgurite::DisplayList::new();
     pass::paint(&tree, &st, &mut a);
-    let mut b = lumen_static::DisplayList::new();
+    let mut b = fulgurite::DisplayList::new();
     pass::paint(&tree, &st, &mut b);
     assert_eq!(a.hash_from(0), b.hash_from(0));
 
@@ -129,7 +129,7 @@ fn paint_is_deterministic_and_value_sensitive() {
     // that a command nobody can see had changed.)
     tree.l1.set("changed");
     pass::layout(&mut tree, &sty, &mut st, ROOT_C);
-    let mut c = lumen_static::DisplayList::new();
+    let mut c = fulgurite::DisplayList::new();
     pass::paint(&tree, &st, &mut c);
     assert_ne!(a.hash_from(0), c.hash_from(0));
 
@@ -139,10 +139,10 @@ fn paint_is_deterministic_and_value_sensitive() {
     let mut est = [NodeState::default(); Ten::NODE_COUNT];
     let esty = pass::default_styles(&empty);
     pass::layout(&mut empty, &esty, &mut est, ROOT_C);
-    let mut e = lumen_static::DisplayList::new();
+    let mut e = fulgurite::DisplayList::new();
     pass::paint(&empty, &est, &mut e);
     assert!(
-        !e.cmds.iter().any(|cmd| matches!(cmd, lumen_static::Cmd::Text { .. })),
+        !e.cmds.iter().any(|cmd| matches!(cmd, fulgurite::Cmd::Text { .. })),
         "an empty label records no text run"
     );
 }

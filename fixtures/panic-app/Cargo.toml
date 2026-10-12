@@ -10,18 +10,18 @@ publish = false
 # library is what the headless tests drive; the binary is what T36.0 runs
 # as a subprocess to record that today each site kills the process.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets" }
-lumen-static-shell = { path = "../../crates/lumen-static-shell" }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets" }
+fulgurite-shell = { path = "../../crates/fulgurite-shell" }
 # The window mode (M36/T36.3), off by default so the headless binary
 # T36.0 runs is exactly the unguarded one.
-lumen-static-winit = { path = "../../crates/lumen-static-winit", optional = true }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", optional = true }
 
 [features]
 default = []
-window = ["dep:lumen-static-winit"]
-agent = ["window", "lumen-static-winit/agent", "lumen-static-widgets/observe"]
-reload = ["window", "lumen-static-winit/reload"]
+window = ["dep:fulgurite-winit"]
+agent = ["window", "fulgurite-winit/agent", "fulgurite-widgets/observe"]
+reload = ["window", "fulgurite-winit/reload"]
 # M55/T55.4: run the window under `Everything` -- selected in `main`,
 # not forwarded (the window crate has no such feature any more).
 everything = ["window"]

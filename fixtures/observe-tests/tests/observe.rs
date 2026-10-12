@@ -3,10 +3,10 @@
 //! agent-facing JSON dump.
 
 use accesskit::{NodeId, Role};
-use lumen_static::observe::{dump, index_of_node, snapshot, snapshot_focused};
-use lumen_static_widgets::ops::{Fixed, Label, Spacer};
-use lumen_static::repeat::Repeat;
-use lumen_static::{pass, Constraints, NodeState, StaticTree, Widget};
+use fulgurite::observe::{dump, index_of_node, snapshot, snapshot_focused};
+use fulgurite_widgets::ops::{Fixed, Label, Spacer};
+use fulgurite::repeat::Repeat;
+use fulgurite::{pass, Constraints, NodeState, StaticTree, Widget};
 
 #[derive(StaticTree, Default)]
 #[widget(row, spacing = 2.0)]

@@ -1,5 +1,0 @@
-error: fail_nested.lss:3:5: nested rule `&`: v1 has no nesting -- write the selector out as a rule of its own (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_nested.rs:13:55
-   |
-13 | const SHEET: &[lumen_static::Rule] = include_lss!(Ui, "fail_nested.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^

@@ -13,7 +13,7 @@
 # `meta.error("..")` and `input.error("..")` in the derive crate's source
 # contributes its sentence. A `format!("..")` sentence has each `{..}`
 # replaced by a wildcard. Each sentence must appear in some
-# `crates/lumen-static-macros/tests/ui*/*.stderr`, which trybuild compares
+# `crates/fulgurite-macros/tests/ui*/*.stderr`, which trybuild compares
 # against the compiler's real output -- so a pinned sentence is one a
 # test has seen the derive emit.
 #
@@ -26,7 +26,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 python3 - "$@" <<'PY'
 import glob, re, sys
 
-SRC = "crates/lumen-static-macros/src/lib.rs"
+SRC = "crates/fulgurite-macros/src/lib.rs"
 sys.path.insert(0, "scripts/lib")
 import rustsrc  # noqa: E402
 
@@ -64,7 +64,7 @@ for m in site.finditer(code):
     sentences.append((line, unescape(l.group(1)), fmt))
 
 stderr = ""
-for p in sorted(glob.glob("crates/lumen-static-macros/tests/ui*/*.stderr")):
+for p in sorted(glob.glob("crates/fulgurite-macros/tests/ui*/*.stderr")):
     stderr += open(p, encoding="utf-8").read() + "\n"
 
 def pattern(sentence, fmt):

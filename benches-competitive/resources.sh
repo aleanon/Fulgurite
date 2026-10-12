@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resource usage — every arm, every lumen-static configuration, ONE method
+# Resource usage — every arm, every fulgurite configuration, ONE method
 # per metric, so the rows are comparable with each other and with the
 # numbers already in `docs/results-competitive.md` §3-§5.
 #
@@ -39,7 +39,7 @@
 #    **This is not time-to-first-frame and is not reported as one.**
 #    See NOTES/STARTUP, printed under every table this script produces.
 #
-# 5. **Steady-state allocation** — `crates/lumen-static-shell/tests/alloc_gate.rs`,
+# 5. **Steady-state allocation** — `crates/fulgurite-shell/tests/alloc_gate.rs`,
 #    a counting `#[global_allocator]` in its own test binary, asserting
 #    the integer 0 per `Host::pump` (`docs/results-allocation.md`).
 #    Reported pass/fail, not as a number, because the number is 0 and a
@@ -59,7 +59,7 @@
 #   ./resources.sh --list                 # the arm table; measure nothing
 #   ./resources.sh --dry-run              # every command it would run
 #   ./resources.sh                        # everything
-#   ./resources.sh --only lumen-static,lumen-static-gpu
+#   ./resources.sh --only fulgurite,fulgurite-gpu
 #   ./resources.sh --skip-build           # measure what is already staged
 #   ./resources.sh --reuse                # take competitors.sh's `build/`
 #                                         # artifacts where it has one, so the
@@ -134,7 +134,7 @@ ID="-"
 #             bin       headless, runs to completion, takes no workload args
 #             firmware  linked sections, no window, its own units
 #             none      nothing to measure; field 8 says why
-#   3 family  lumen-static | competitor    (which block it prints in)
+#   3 family  fulgurite | competitor    (which block it prints in)
 #   4 build   shell command, eval'd. Empty = nothing to build.
 #   5 exe     the built executable. `=<id>` means "the binary row <id>
 #             already built", for runtime-fallback rows that must be the
@@ -163,16 +163,16 @@ CL="--manifest-path $LUMEN_ROOT/Cargo.toml --release"  # sibling root ws
 
 arm_table() {
 cat <<TABLE
-lumen-static|app|lumen-static|cargo build $CW -p lumen-static-app|$HERE/target/release/lumen-static-app|-|-|
-lumen-static-lean|app|lumen-static|cargo build $CW -p lumen-static-lean|$HERE/target/release/lumen-static-lean|-|-|
-lumen-static-gpu|app|lumen-static|cargo build $CW -p lumen-static-app --features lumen-static-winit/gpu|$HERE/target/release/lumen-static-app|-|-|
-lumen-static-gpu-sw|app|lumen-static||=lumen-static-gpu|LUMEN_BACKEND=software|-|
-lumen-static-observe|app|lumen-static|cargo build $CW -p lumen-static-app --features lumen-static/observe|$HERE/target/release/lumen-static-app|-|-|
-lumen-static-frame|frame|lumen-static|cargo build $CW -p lumen-static-frame|$HERE/target/release/lumen-static-frame|-|$ROWS $ITERS|
-lumen-static-frame-observe|frame|lumen-static|cargo build $CW -p lumen-static-frame --features observe|$HERE/target/release/lumen-static-frame|-|$ROWS $ITERS|
-lumen-static-raster-gpu|bin|lumen-static|cargo build $CW -p raster-scaling|$HERE/target/release/raster-scaling|-|-|
-lumen-static-rebuild|none|lumen-static|||-|-|Retention is a TYPE PARAMETER, not a feature — deliberately, so both modes stay available in one binary (crates/lumen-static-shell/src/lib.rs, \`Host<A, R: Retention = Incremental>\`). No build flag can therefore separate them on the size axis at all, and an RSS row needs a binary that runs exactly ONE mode: \`run()\` takes \`Host<A>\` so every windowed arm is Incremental, arms/frame constructs \`Incremental\` directly, and arms/stages runs \`Rebuild\` and \`Incremental\` in the same process. docs/results-competitive.md §5's \`Rebuild\` row is the \`+render (full)\` timing of the Incremental arm, not a separate build.
-lumen-static-embedded|firmware|lumen-static|cargo build $CR -p embedded --bin firmware --features firmware --target thumbv7em-none-eabihf|$REPO/target/thumbv7em-none-eabihf/release/firmware|-|-|
+fulgurite|app|fulgurite|cargo build $CW -p fulgurite-app|$HERE/target/release/fulgurite-app|-|-|
+fulgurite-lean|app|fulgurite|cargo build $CW -p fulgurite-lean|$HERE/target/release/fulgurite-lean|-|-|
+fulgurite-gpu|app|fulgurite|cargo build $CW -p fulgurite-app --features fulgurite-winit/gpu|$HERE/target/release/fulgurite-app|-|-|
+fulgurite-gpu-sw|app|fulgurite||=fulgurite-gpu|FULGURITE_BACKEND=software|-|
+fulgurite-observe|app|fulgurite|cargo build $CW -p fulgurite-app --features fulgurite/observe|$HERE/target/release/fulgurite-app|-|-|
+fulgurite-frame|frame|fulgurite|cargo build $CW -p fulgurite-frame|$HERE/target/release/fulgurite-frame|-|$ROWS $ITERS|
+fulgurite-frame-observe|frame|fulgurite|cargo build $CW -p fulgurite-frame --features observe|$HERE/target/release/fulgurite-frame|-|$ROWS $ITERS|
+fulgurite-raster-gpu|bin|fulgurite|cargo build $CW -p raster-scaling|$HERE/target/release/raster-scaling|-|-|
+fulgurite-rebuild|none|fulgurite|||-|-|Retention is a TYPE PARAMETER, not a feature — deliberately, so both modes stay available in one binary (crates/fulgurite-shell/src/lib.rs, \`Host<A, R: Retention = Incremental>\`). No build flag can therefore separate them on the size axis at all, and an RSS row needs a binary that runs exactly ONE mode: \`run()\` takes \`Host<A>\` so every windowed arm is Incremental, arms/frame constructs \`Incremental\` directly, and arms/stages runs \`Rebuild\` and \`Incremental\` in the same process. docs/results-competitive.md §5's \`Rebuild\` row is the \`+render (full)\` timing of the Incremental arm, not a separate build.
+fulgurite-embedded|firmware|fulgurite|cargo build $CR -p embedded --bin firmware --features firmware --target thumbv7em-none-eabihf|$REPO/target/thumbv7em-none-eabihf/release/firmware|-|-|
 iced|app|competitor|cargo build $CA -p iced-app|$LUMEN_APPS/target/release/iced-app|-|-|
 xilem|app|competitor|cargo build $CA -p xilem-app|$LUMEN_APPS/target/release/xilem-app|-|-|
 slint|app|competitor|cargo build $CA -p slint-app|$LUMEN_APPS/target/release/slint-app|-|-|
@@ -215,10 +215,10 @@ NA="n/a"   # the one place a metric is allowed to be blank
 reuse_path() {
   local id="$1" b="$HERE/build"
   case "$id" in
-    lumen-static)               echo "$b/lumen-static-app" ;;
-    lumen-static-lean)          echo "$b/lumen-static-lean" ;;
-    lumen-static-frame)         echo "$b/lumen-static-frame" ;;
-    lumen-static-frame-observe) echo "$b/lumen-static-frame-observe" ;;
+    fulgurite)               echo "$b/fulgurite-app" ;;
+    fulgurite-lean)          echo "$b/fulgurite-lean" ;;
+    fulgurite-frame)         echo "$b/fulgurite-frame" ;;
+    fulgurite-frame-observe) echo "$b/fulgurite-frame-observe" ;;
     qt-app)                     echo "$b/qt-app/qt_app" ;;
     gtk-app)                    echo "$b/gtk_app" ;;
     qt-frame)                   echo "$b/qt-frame/qt_frame" ;;
@@ -343,14 +343,14 @@ m_startup() {
     awk -v n="${#vals[@]}" 'NR==int((n+1)/2){printf "%.1f ms", $1}'
 }
 
-# 5. Steady-state allocation. lumen-static only; see NOTES/ALLOC.
+# 5. Steady-state allocation. fulgurite only; see NOTES/ALLOC.
 m_alloc_gate() {
   local log="$LOGS/alloc_gate.log"
   if [ "$DRY" = 1 ]; then
-    printf '  $ cargo test %s -p lumen-static-shell --test alloc_gate\n' "$CR" >&2
+    printf '  $ cargo test %s -p fulgurite-shell --test alloc_gate\n' "$CR" >&2
     echo "(dry run)"; return 0
   fi
-  if eval "cargo test $CR -p lumen-static-shell --test alloc_gate" >"$log" 2>&1; then
+  if eval "cargo test $CR -p fulgurite-shell --test alloc_gate" >"$log" 2>&1; then
     echo "**0** — gate passes (6 tests, both retention modes)"
   else
     echo "GATE FAILED — see $log"
@@ -561,7 +561,7 @@ while IFS='|' read -r id kind fam build exe envp args note; do
   esac
 done < <(arm_table)
 
-if selected lumen-static; then ALLOC=$(m_alloc_gate); else ALLOC="$NA (not selected)"; fi
+if selected fulgurite; then ALLOC=$(m_alloc_gate); else ALLOC="$NA (not selected)"; fi
 
 # ---------------------------------------------------------------------------
 # Report
@@ -571,9 +571,9 @@ report() {
   echo
   sed 's/^/    /' "$OUT/env.txt"
   echo
-  for fam in lumen-static competitor; do
+  for fam in fulgurite competitor; do
     case "$fam" in
-      lumen-static) echo "## lumen-static configurations" ;;
+      fulgurite) echo "## fulgurite configurations" ;;
       competitor)   echo "## Competitor arms" ;;
     esac
     echo
@@ -597,7 +597,7 @@ report() {
   echo
   echo "| arm | allocations per steady-state frame |"
   echo "|---|---|"
-  echo "| lumen-static (five tree shapes, both retention modes) | $ALLOC |"
+  echo "| fulgurite (five tree shapes, both retention modes) | $ALLOC |"
   echo "| every other arm | $NA — see NOTES/ALLOC |"
   echo
   notes
@@ -637,7 +637,7 @@ here — the same effect `docs/results-gpu.md` §5 measures on RSS.
 
 ### NOTES/ALLOC — why only one arm has that column
 
-The lumen-static entry comes from `crates/lumen-static-shell/tests/alloc_gate.rs`:
+The fulgurite entry comes from `crates/fulgurite-shell/tests/alloc_gate.rs`:
 a counting `#[global_allocator]` in its own test binary, asserting **0**
 allocations per `Host::pump` after warm-up, over five tree shapes and
 both retention modes (`docs/results-allocation.md`).
@@ -659,7 +659,7 @@ That instrument does not transfer:
   the same column as the gate's integer would be comparing two things
   because they are both numbers.
 
-This is an asymmetry, not a win: lumen-static asserts an integer, and
+This is an asymmetry, not a win: fulgurite asserts an integer, and
 the other arms are unmeasured on this axis. The script says so rather
 than filling the cell.
 
@@ -719,7 +719,7 @@ the hot-reload fixture; no `winit::platform::*` use; no NDK, Gradle,
 Xcode or `cargo-apk` configuration. CI is `ubuntu-latest` plus one
 non-blocking `macos-latest` job, which is desktop Apple Silicon.
 `docs/competitive-feature-gaps.md` states the position outright:
-lumen-static is desktop-only, plus a `no_std` core with no driver.
+fulgurite is desktop-only, plus a `no_std` core with no driver.
 
 What *does* exist is machine-level, not project-level: `rustup` on this
 box has `aarch64-linux-android`, `armv7-linux-androideabi`,

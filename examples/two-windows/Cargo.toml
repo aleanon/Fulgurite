@@ -9,13 +9,13 @@ publish = false
 # open a detail window (program 1) -- two windows, one process, one agent
 # port. `just windows-drive` drives it.
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["observe"] }
-lumen-static-winit = { path = "../../crates/lumen-static-winit", features = ["agent"] }
+fulgurite = { path = "../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["observe"] }
+fulgurite-winit = { path = "../../crates/fulgurite-winit", features = ["agent"] }
 # `shaping`: the detail program lays its right-to-left label out
 # `Shaping::Complex` while the list stays `Basic` -- each window renders
 # with its own program's stack (second review X2, T89.3 gate 7).
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "shaping"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "shaping"] }
 
 [features]
 default = []
@@ -23,11 +23,11 @@ default = []
 # compile-time choice made in `main.rs`, as examples/tasks-demo's is.
 everything = []
 # The platform accessibility adapter, one per window (T89.3 gate 6).
-a11y = ["lumen-static-winit/a11y"]
-# M36's recovery in a release build (`lumen-static-winit/reload`), so the
+a11y = ["fulgurite-winit/a11y"]
+# M36's recovery in a release build (`fulgurite-winit/reload`), so the
 # drive's panic step (T89.3 gate 4) runs on the release window; without it
 # a release window does not catch panics, by design.
-reload = ["lumen-static-winit/reload"]
+reload = ["fulgurite-winit/reload"]
 # The GPU backend, for `just resume-drive`'s `two-windows-gpu` leg and the
 # per-window `VmRSS` rows (M89b/T89.9, `docs/results-windows.md`).
-gpu = ["lumen-static-winit/gpu"]
+gpu = ["fulgurite-winit/gpu"]

@@ -46,7 +46,7 @@ of 3 green, and both full legs below.
 | widget drive `Tooltip`, harness hovering without `rest` or the sleep | 2 FAIL (the intent landed inside the next action) |
 | one full `Boundaries` leg, both fixes | **61 s**, 0 failed, 184 actions, secondary checked 88 |
 | one full `Boundaries` leg, settle without the gate | 60 s, 0 failed |
-| one full `Boundaries+scale2` leg (`LUMEN_DRIVE_FULLCHECK=1`) | 85 s, 0 failed |
+| one full `Boundaries+scale2` leg (`FULGURITE_DRIVE_FULLCHECK=1`) | 85 s, 0 failed |
 
 The 61 s was taken while nothing else ran a window but with a stopped CI
 run's machine just released; it is indicative, not a K86b measurement.
@@ -57,7 +57,7 @@ real playback and a toast's dismissal; they are what those actions test.
 ## A hung step
 
 The `e446ea2` run's `gpu` step hung for **21 h**: every test in
-`lumen-static-wgpu`'s `parity` binary blocked on a futex, 2 GB of GPU
+`fulgurite-wgpu`'s `parity` binary blocked on a futex, 2 GB of GPU
 memory held, beside the NVIDIA driver's own `vkcf`/`vkps`/`vkrt` threads.
 **The cause is no reachable X server**, not T89.10: the run's `DISPLAY`
 (`:73`) had gone.
@@ -92,10 +92,10 @@ build and needed no change.
 **Adopted (2026-10-09)** where it pays or where it prevents a hang:
 
 - `dev-shape`'s workspace run, `cargo test --workspace --exclude
-  lumen-static-wgpu`, measured 36.5 s for 1,715 tests. It is now `cargo
+  fulgurite-wgpu`, measured 36.5 s for 1,715 tests. It is now `cargo
   nextest run` (1,701 tests, 7.4 s) plus `cargo test --doc` (14
   doctests, 2.2 s). Three nextest runs were all green, with no flakes.
-- `gpu`'s whole-binary runs (`-p lumen-static-wgpu`, the `shaping`
+- `gpu`'s whole-binary runs (`-p fulgurite-wgpu`, the `shaping`
   `parity`, the `shader` `shader`/`parity`/`alloc`). `just gpu` with
   `DISPLAY` empty passes now; under `cargo test` it hung at the `shaping`
   `parity` line, killed after 8 min.
@@ -111,7 +111,7 @@ build and needed no change.
 
 | injection into `just dev-shape` | result |
 |---|---|
-| a test asserting `1 + 1 == 3` | exit 100, `FAIL lumen-static-text::zz_inject injected_failure` |
+| a test asserting `1 + 1 == 3` | exit 100, `FAIL fulgurite-text::zz_inject injected_failure` |
 | a test sleeping 30 s, limit set to 2 s × 2 | exit 100, `TIMEOUT [4.003s] … injected_hang` |
 | a doctest asserting `1 + 1 == 3` | exit 101, `lib.rs - (line 1) ... FAILED` |
 | `PATH` without `cargo-nextest`, `probe.sh nextest` | exit 1, the install line |

@@ -5,7 +5,7 @@
 CHECK='./scripts/check_bss.sh'
 EXPECT='PLANTED_BSS'
 plant() {
-    replace crates/lumen-static/src/pass.rs \
+    replace crates/fulgurite/src/pass.rs \
         'pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut dyn Painter) {' \
         'pub static PLANTED_BSS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 pub fn paint<W: Node + ?Sized>(tree: &W, st: &[NodeState], out: &mut dyn Painter) {

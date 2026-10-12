@@ -9,9 +9,9 @@
 //! Plus the two things a guard can get subtly wrong: events queued behind
 //! the trigger, and a job's panic that M28's spawner already owns.
 
-use lumen_static::retain::Damage;
-use lumen_static::spawn::Immediate;
-use lumen_static_shell::Host;
+use fulgurite::retain::Damage;
+use fulgurite::spawn::Immediate;
+use fulgurite_shell::Host;
 use panic_app::{build, site_line, target, Fx, Ui, SITES};
 
 fn host() -> Host<Fx> {
@@ -25,7 +25,7 @@ fn host() -> Host<Fx> {
 }
 
 fn centre(h: &Host<Fx>, wid: &str) -> (f32, f32) {
-    let i = lumen_static::style::index_of_wid(<Ui as lumen_static::Widget>::SUB_TABLE, wid).unwrap();
+    let i = fulgurite::style::index_of_wid(<Ui as fulgurite::Widget>::SUB_TABLE, wid).unwrap();
     let s = h.states[i];
     (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
 }
@@ -56,14 +56,14 @@ fn session(h: &mut Host<Fx>, site: u8) {
         }
         // And the store the renderer reads, guarded as `Local`'s frame
         // asks it (M84/T84.6).
-        if h.guard(|h| lumen_static::event::App::images(&h.app).is_some()).is_none() {
+        if h.guard(|h| fulgurite::event::App::images(&h.app).is_some()).is_none() {
             return;
         }
         // And the requests, answered guarded as `Local` answers them
         // (M88/T88.3): site 11.
         let answered = h.guard(|h| {
             for o in h.take_requests() {
-                h.answer(o.request.tag().expect("every request here carries a tag"), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+                h.answer(o.request.tag().expect("every request here carries a tag"), fulgurite::request::Answer::Refused(fulgurite::request::Refusal::Unsupported));
             }
         });
         if answered.is_none() {
@@ -87,7 +87,7 @@ fn every_site_is_caught_reported_and_recovered_from() {
         let (file, line, _) = r.location.clone().expect("a location");
         println!("site {site} ({what}): {file}:{line}  app frame {:?}  note {:?}", r.app_frame, r.note);
         if site == 7 {
-            assert!(file.starts_with("crates/lumen-static/src/"), "site 7 is raised in the framework: {file}");
+            assert!(file.starts_with("crates/fulgurite/src/"), "site 7 is raised in the framework: {file}");
             assert_eq!(
                 r.app_frame,
                 Some(("fixtures/panic-app/src/lib.rs".to_string(), site_line(7))),
@@ -124,7 +124,7 @@ fn every_site_is_caught_reported_and_recovered_from() {
         // pointer over the button. After a panic the next move restores
         // hover; compared before one, the frames differ by a hover shade.
         for h in [&mut a, &mut b] {
-            h.post(lumen_static::Event::PointerMove { x: 1.0, y: 199.0 });
+            h.post(fulgurite::Event::PointerMove { x: 1.0, y: 199.0 });
         }
         b.guard(|h| h.pump()).unwrap();
         a.guard(|h| h.pump()).unwrap();

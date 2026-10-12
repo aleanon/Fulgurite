@@ -98,7 +98,7 @@ tick that marked the whole tree. The version is in the command now: an
 for it. `Recording` folds it with everything else:
 
 ```text
-{{#include ../../crates/lumen-static/src/retain.rs:recording_image}}
+{{#include ../../crates/fulgurite/src/retain.rs:recording_image}}
 ```
 
 Writing `frame` therefore damages exactly that image's rect — 1.00× its

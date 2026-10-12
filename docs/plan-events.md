@@ -25,12 +25,12 @@ unlock for §9's action synthesis. This is a plan, not work done.*
 ## Status: E0–E4 implemented 2026-08-31
 
 All five milestones landed in one pass; 14 new tests
-(`lumen-static/tests/events.rs`, `lumen-static-agent/tests/input.rs`).
+(`fulgurite/tests/events.rs`, `fulgurite-agent/tests/input.rs`).
 Deltas from the plan as written are recorded inline below.
 
 ## E0 — vocabulary and queue — **DONE**
 
-`crates/lumen-static/src/event.rs`:
+`crates/fulgurite/src/event.rs`:
 
 ```rust
 pub enum Event {

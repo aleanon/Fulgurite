@@ -36,12 +36,12 @@ use std::hint::black_box;
 use std::mem::size_of;
 
 use benches::bench;
-use lumen_static::assemble::Assembled;
-use lumen_static::cx::BlockMetrics;
-use lumen_static_widgets::ops::{Button, Label};
-use lumen_static::style::Palette;
-use lumen_static::{Constraints, LayoutCx, NodeState, StaticTree, Style, Widget};
-use lumen_static_widgets::{CheckBox, Radio, Switch, Toggle};
+use fulgurite::assemble::Assembled;
+use fulgurite::cx::BlockMetrics;
+use fulgurite_widgets::ops::{Button, Label};
+use fulgurite::style::Palette;
+use fulgurite::{Constraints, LayoutCx, NodeState, StaticTree, Style, Widget};
+use fulgurite_widgets::{CheckBox, Radio, Switch, Toggle};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 100_000.0 };
 const ROWS: usize = 100;
@@ -117,7 +117,7 @@ fn frame(slab: &mut Assembled<Toggles>, case: Case, it: u64) -> u64 {
     let cx = cx.with_palette_generation(if odd && case == Case::Palette { 2 } else { 1 });
     let mut cx = cx;
     slab.layout_with(&mut cx, ROOT_C);
-    let mut out = lumen_static::DisplayList::new();
+    let mut out = fulgurite::DisplayList::new();
     slab.paint(&mut out);
     out.len() as u64
 }
@@ -126,8 +126,8 @@ fn frame(slab: &mut Assembled<Toggles>, case: Case, it: u64) -> u64 {
 mod count {
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use lumen_static::style::{Palette, Status};
-    use lumen_static_widgets::toggle::{default_look, ToggleLook};
+    use fulgurite::style::{Palette, Status};
+    use fulgurite_widgets::toggle::{default_look, ToggleLook};
 
     pub static CALLS: AtomicU64 = AtomicU64::new(0);
 
@@ -145,7 +145,7 @@ mod count {
 #[cfg(feature = "look")]
 fn install(
     slab: &mut Assembled<Toggles>,
-    f: fn(&Palette, lumen_static::style::Status) -> lumen_static_widgets::toggle::ToggleLook,
+    f: fn(&Palette, fulgurite::style::Status) -> fulgurite_widgets::toggle::ToggleLook,
 ) {
     for t in slab.instances.iter_mut() {
         t.a.set_look(f);
@@ -176,7 +176,7 @@ fn calls_per_iteration(slab: &mut Assembled<Toggles>, case: Case) -> u64 {
         black_box(frame(slab, case, it));
     }
     let per = count::take() / N;
-    install(slab, lumen_static_widgets::toggle::default_look);
+    install(slab, fulgurite_widgets::toggle::default_look);
     per
 }
 

@@ -30,7 +30,7 @@ interchangeable:
 | rustdoc | what does this call do | reference, per item |
 | `docs/` | why is it this way, and what was measured | argument and evidence |
 
-rustdoc is already strong — `crates/lumen-static/src/lib.rs` carries
+rustdoc is already strong — `crates/fulgurite/src/lib.rs` carries
 `Node` versus `Widget`, all seven attributes in one table, the two
 `kind_name` conventions and where state lives. The book must not
 reproduce it.
@@ -73,7 +73,7 @@ The four surfaces, the cites-don't-restate rule, and two paragraphs of
 | # | chapter | teaches | code from |
 |---|---|---|---|
 | 1 | Your first tree ✅ | tree, state, `#[bind]`, handlers, a stylesheet | `counter` ×4 |
-| 2 | State, bindings and handlers ✅ | `#[tree]`; `#[bind]` with a format string, with extra arguments, and with `with =` for a projection; `#[app(after_update)]`; why a handler is a bare `fn` and not a message | `crates/lumen-static/tests/derive_app.rs` — **not** an example. It is the only place all four `#[bind]` forms appear in one struct, and each one is asserted there, so the chapter's snippet is a test `just test` already runs. |
+| 2 | State, bindings and handlers ✅ | `#[tree]`; `#[bind]` with a format string, with extra arguments, and with `with =` for a projection; `#[app(after_update)]`; why a handler is a bare `fn` and not a message | `crates/fulgurite/tests/derive_app.rs` — **not** an example. It is the only place all four `#[bind]` forms appear in one struct, and each one is asserted there, so the chapter's snippet is a test `just test` already runs. |
 | 3 | Layout | row and column, the three `Length` cases, padding, spacing, cross-axis `Align`, one axis per container; main-axis centring with two `Fill` spacers, since there is no `justify-content` | `counter-window/app.rs`, the `Page` struct |
 | 4 | Styling | `Rule`, `Selector`, `Patch`; `#[widget_id]` versus `#[widget_class]`; **the lowercase-leaf / PascalCase-container split in `kind_name`** | `counter:style` |
 
@@ -132,7 +132,7 @@ extending the framework actually reads it.
 
 | # | chapter |
 |---|---|
-| 21 | Backends — `Host` and `Canvas` headless, `run()` under winit, `--features gpu`, `LUMEN_BACKEND=software` to force the fallback |
+| 21 | Backends — `Host` and `Canvas` headless, `run()` under winit, `--features gpu`, `FULGURITE_BACKEND=software` to force the fallback |
 | 22 | Windows, dialogs, clipboard, cursors |
 | 23 | Embedded and `no_std` — three additive tiers, why there is deliberately no `no_std` feature, `just thumb` |
 | 24 | Hot reload — `#[reload(keep\|fresh\|reset)]`, the swap sequence, enum-migration fallback |
@@ -149,7 +149,7 @@ merely true.
 |---|---|
 | 26 | Damage and invalidation — why damage is a set of regions and not a bounding box |
 | 27 | The rasteriser — the command vocabulary, band-parallel work, and the clip that was the real bottleneck |
-| 28 | Performance — the budgets, `LUMEN_PROFILE`, the `just profile*` recipes, and **how to add a measurement that can say no** |
+| 28 | Performance — the budgets, `FULGURITE_PROFILE`, the `just profile*` recipes, and **how to add a measurement that can say no** |
 | 29 | What this does not do — the gap list, per framework, and which gaps are decisions |
 
 ### Appendices

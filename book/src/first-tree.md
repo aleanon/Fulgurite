@@ -11,10 +11,10 @@ This is `examples/counter`, taken apart.
 ## The tree
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 # #[derive(Default)] struct Tally { count: i64 }
 # #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
 # fn main() {}
@@ -35,10 +35,10 @@ a stylesheet selector, a test, or the agent protocol. Fields without one
 ## The state, and the binding
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:state}}
@@ -65,10 +65,10 @@ what lets the label cache its measurement
 ## Handlers
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # #[derive(Default)] struct Tally { count: i64 }
 # #[derive(DeriveApp, Default)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
@@ -88,10 +88,10 @@ That assignment has to happen somewhere, and **where** turns out to matter
 more than it looks:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 # #[derive(StaticTree, Default)] #[widget(row)] struct Controls { dec: Button<Tally>, inc: Button<Tally> }
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { title: Label, hint: Label, value: Label<String>, controls: Controls }
 # #[derive(Default)] struct Tally { count: i64 }
@@ -114,12 +114,12 @@ back wired to its placeholder with no crash and no warning.
 The program is then described once, from that same function:
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_shell;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
-# use lumen_static_shell::program::{application, Program};
+# extern crate fulgurite;
+# extern crate fulgurite_shell;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
+# use fulgurite_shell::program::{application, Program};
 # #[derive(StaticTree, Default)] #[widget(column)] struct Ui { value: Label<String> }
 # #[derive(Default)] struct Tally { count: i64 }
 # #[derive(DeriveApp)] struct Counter { #[tree] ui: Ui, #[state] #[bind(ui.value, count, "count: {}")] tally: Tally }
@@ -141,10 +141,10 @@ other silently in force.
 ## Styling
 
 ```rust
-# extern crate lumen_static;
-# extern crate lumen_static_widgets;
-# use lumen_static::prelude::*;
-# use lumen_static_widgets::prelude::*;
+# extern crate fulgurite;
+# extern crate fulgurite_widgets;
+# use fulgurite::prelude::*;
+# use fulgurite_widgets::prelude::*;
 # fn main() {}
 {{#include ../../examples/counter/src/main.rs:style}}
 ```

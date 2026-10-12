@@ -119,7 +119,7 @@ appears; `Row<(Label, Button)>` and `Row<(Button, Label)>` are two.
 
 No gate runs this — `fixtures/binsize` prints one number for one binary
 with no threshold, and nothing in the tree compares code size against
-tree size. To redo it, build a crate depending on `lumen-static` with
+tree size. To redo it, build a crate depending on `fulgurite` with
 `default-features = false` and three `lib.rs` variants: a four-field
 container of one derived row struct; the same with twenty-four fields of
 that struct; and four of that struct plus twenty structurally identical

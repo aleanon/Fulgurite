@@ -5,7 +5,7 @@
 
 Both binaries are the showcase built with `--features agent`, one with the
 window crate's `a11y` and one without. Per run and per binary, alternating:
-launch on a free port in LUMEN_LIVE_PORT_RANGE, settle, then drive REDRAWS
+launch on a free port in FULGURITE_LIVE_PORT_RANGE, settle, then drive REDRAWS
 idle frames -- `ui.waitSettled`, which changes nothing and ends in a redraw
 request -- and read the process's CPU time (utime + stime, /proc) before
 and after. The figure is CPU microseconds per idle redraw, everything the
@@ -24,7 +24,7 @@ TICK = os.sysconf("SC_CLK_TCK")
 
 
 def free_port():
-    lo, hi = (int(x) for x in os.environ.get("LUMEN_LIVE_PORT_RANGE", "7880-7889").split("-"))
+    lo, hi = (int(x) for x in os.environ.get("FULGURITE_LIVE_PORT_RANGE", "7880-7889").split("-"))
     for p in range(lo, hi + 1):
         with socket.socket() as s:
             try:
@@ -32,7 +32,7 @@ def free_port():
                 return p
             except OSError:
                 continue
-    sys.exit("a11y-cost: no free port in LUMEN_LIVE_PORT_RANGE")
+    sys.exit("a11y-cost: no free port in FULGURITE_LIVE_PORT_RANGE")
 
 
 def cpu(pid):
@@ -42,7 +42,7 @@ def cpu(pid):
 
 def one(exe, redraws):
     port = free_port()
-    env = dict(os.environ, LUMEN_AGENT_ADDR=f"127.0.0.1:{port}")
+    env = dict(os.environ, FULGURITE_AGENT_ADDR=f"127.0.0.1:{port}")
     p = subprocess.Popen([exe, "6"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(600):

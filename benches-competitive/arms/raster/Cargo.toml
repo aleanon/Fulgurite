@@ -5,15 +5,15 @@ edition = "2021"
 publish = false
 
 [dependencies]
-lumen-static = { path = "../../../crates/lumen-static" }
-lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite = { path = "../../../crates/fulgurite" }
+fulgurite-shell = { path = "../../../crates/fulgurite-shell", features = ["truetype"] }
 # The GPU arm. This is a benchmark workspace of its own, so pulling wgpu
 # here costs the framework's dependency graph nothing.
-lumen-static-wgpu = { path = "../../../crates/lumen-static-wgpu" }
+fulgurite-wgpu = { path = "../../../crates/fulgurite-wgpu" }
 
 # Passed through so the rasteriser's SIMD path can be measured on the
 # same workload as the scalar one (M17, docs/results-simd.md).
 [features]
 default = []
-simd = ["lumen-static-shell/simd"]
-threads = ["lumen-static-shell/threads"]
+simd = ["fulgurite-shell/simd"]
+threads = ["fulgurite-shell/threads"]

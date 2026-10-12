@@ -179,7 +179,7 @@ produced before the fix.
 > this before: its fixture held no enum, no `Option` and no `Either`, so
 > its byte-identical claim was over trees with nothing hidden in them.
 
-`crates/lumen-static-macros/src/lib.rs:1197` calls `hide_subtree` over
+`crates/fulgurite-macros/src/lib.rs:1197` calls `hide_subtree` over
 `NODE_COUNT - 1` — every variant's slots, the active one included — and
 then lays the active variant out. Under `Everything` layout rewrites it
 the same frame. Under `Boundaries` a clean active subtree returns before
@@ -449,7 +449,7 @@ another 1.33×.
 **ordering**, asserted directly. A differential test against a naive
 copy of the loop would pass under an injection that broke both sides,
 because both sides would be the same code; the plan's own gate line was
-that test. `crates/lumen-static/tests/cascade_levels.rs` asserts what
+that test. `crates/fulgurite/tests/cascade_levels.rs` asserts what
 the four passes exist for instead: the most specific rule that matches
 a node wins, whichever levels the sheet contains, with source order
 within a level, a sheet missing a level, and an empty sheet. *Three
@@ -656,7 +656,7 @@ ratio and must not be restated as a GPU speed-up.
 ### T26.13 — the raster path allocates per strip and per glass command — **DONE 2026-09-19, in three commits**
 
 The repository's stated invariant is zero steady-state allocation, and
-`crates/lumen-static-shell/tests/alloc_gate.rs` cannot see the raster
+`crates/fulgurite-shell/tests/alloc_gate.rs` cannot see the raster
 path.
 
 **Fix, three independent parts — and therefore not one commit:** a fixed
@@ -689,8 +689,8 @@ it. Also `docs/00-handoff-static-tree.md` §10's zero-allocation claim.
 > build, so an application that never attaches an agent paid it on every
 > sheet swap for findings nothing could read.
 >
-> **`lumen-static-shell` gains an `agent` feature**, default-off, which
-> `lumen-static-winit`'s existing `agent` feature turns on. Without it the
+> **`fulgurite-shell` gains an `agent` feature**, default-off, which
+> `fulgurite-winit`'s existing `agent` feature turns on. Without it the
 > lint does not run and the findings are not stored; the sheet itself is
 > still kept, because `Host::set_palette` re-cascades it (M25/T25.11) for
 > reasons that have nothing to do with the agent.
@@ -762,7 +762,7 @@ declared a mask, and the four that did not are `Seed::WIDGET` and three
 test fixtures. `Seed::reading` is deleted rather than kept beside the
 new constructor: two ways to say it is how one of them goes stale.
 
-**Gate:** `crates/lumen-static-widgets/tests/style_reads.rs` still
+**Gate:** `crates/fulgurite-widgets/tests/style_reads.rs` still
 verifies every declared mask — it measures each kind's output field by
 field and compares — and a widget declared without one does not compile.
 That half is a **`compile_fail` doctest** beside a passing one, not
@@ -831,7 +831,7 @@ back inside the spread closes the finding permanently.
 | **9** | a spliced const list of which table indices own arenas, so the three deep walks stop asking every node | **probed: PROMOTED.** The ask is **5.9 ns/node** on a 901-node tree with no arenas; removing it is −4 812 ns (−40%) on `cascade_deep` whole-table and −5 102 (−12%) on the showcase sheet | it and #10 are **one defect**; a third, isolating arm was needed to see it — two arms disagreed and the disagreement was code layout |
 | ~~10~~ | *probed and **SHIPPED**: one pre-walk with an early exit instead of one walk per rule — **166 124 → 41 163 ns, −74.8%, 4.04×**, which is 98.9% of the measured ceiling. No case is made slower* | done | half (b) would allocate and was not built; #9's const list would remove the last 5.3 µs |
 | ~~11~~ | *probed and **closed on cost**. The named arm could not exhibit it — `Ten10` carries no ids, so the compare short-circuits on length. Purpose-built arms: worst case 1.47 ns/compare, real sparse shape 0.24, hash 0.14 — **−2.16 µs** per sheet-vs-table match* | done | the correction decided it: 8 B/node of `.rodata`, +800 B on the embedded fixture, for 2.16 µs on an **event** |
-| **12** | a measurer epoch for scale changes | **probed: CONFIRMED DEFECT, fixed.** The scale is now part of `MeasureKey`; `crates/lumen-static/tests/measure_scale.rs` is the gate | the ordering is not exotic — `ScaleFactorChanged` carries a new scale *and* a new physical size, and a monitor-to-monitor drag holds the **logical** size constant |
+| **12** | a measurer epoch for scale changes | **probed: CONFIRMED DEFECT, fixed.** The scale is now part of `MeasureKey`; `crates/fulgurite/tests/measure_scale.rs` is the gate | the ordering is not exotic — `ScaleFactorChanged` carries a new scale *and* a new physical size, and a monitor-to-monitor drag holds the **logical** size constant |
 | **13** | `FontStack::prepare` re-scans every character | **probed and SHIPPED.** One scan, not two: `layout`/`all_rows` **1372.6 → 1291.4 µs min (−5.9%)**, eight runs a side, fast clusters disjoint by 51.9 µs. Four runs would have read it as noise | exactly two scans, as the correction said — and the substitution gate that should have covered it was vacuous (`tests/shaping.rs`) |
 | **14** | `App::update`'s blast radius | **probed: PROMOTED.** A row measured *inside* `Boundaries`: `mark_all` 6.93 µs — exactly `Everything`'s 6.93 — against one subtree's 0.71. **6.22 µs, 9.7×**, every frame a binding changes anything | the correction was right and the ratio survives it: same number, measured in the right frame |
 | 15 | a shaped-run cache in the canvas | **probed: the named cache is REFUTED, a glyph cache is PROMOTED.** Text is 10 of the 12 µs `render_within` costs; stubbing the raster takes `render_within` to **2 µs, 6×** | the correction killed the run cache correctly; the win is one level down — `FontStack::rasterize` has no cache and allocates per glyph per frame |

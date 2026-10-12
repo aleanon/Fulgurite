@@ -205,7 +205,7 @@ leaves the screen.
 
 ### T11.5 — overlays: dropdown, tooltip, modal — **dropdown DONE 2026-09-14**
 
-> The dropdown shipped as `lumen_static::select::Select` in M24/T24.2;
+> The dropdown shipped as `fulgurite::select::Select` in M24/T24.2;
 > tooltip and modal are still unbuilt. The estimate below — "the widgets
 > are a day after it" — was right about the widget and wrong about what
 > it would find: five framework defects underneath, four of which left
@@ -304,8 +304,8 @@ whole frame's input. Both now decline — `Spacer` always, a container
 where `bg.3 == 0 && shadow <= 0.0`.
 
 **`W1004` becomes real in the same commit.** It is reserved in
-`crates/lumen-static-agent/src/audit.rs` as `_OVERLAP_RESERVED`, its
-reason is pinned by `crates/lumen-static-agent/tests/lint.rs`, and
+`crates/fulgurite-agent/src/audit.rs` as `_OVERLAP_RESERVED`, its
+reason is pinned by `crates/fulgurite-agent/tests/lint.rs`, and
 `docs/text-and-scrolling-decisions.md` says to leave it reserved because
 "sequential placement still holds within a clip". This is the layout
 mode that stops that being true, and T11.5 above already committed
@@ -408,7 +408,7 @@ half of selection.
 Every task gate above is agent-protocol-shaped: `ui.lint` is clean, the
 role appears in `ui.getTree`, `ui_check.py press` passes. (*Since
 M54/T54.3 the role is a gate for every widget, not a per-task claim:
-`crates/lumen-static-widgets/tests/a11y_roles.rs` checks role, name and
+`crates/fulgurite-widgets/tests/a11y_roles.rs` checks role, name and
 state off the emitted node, one row per `Node` impl.*) That is a real
 risk the review named: a widget can satisfy all of it without anyone
 having put it on a screen next to another widget, which is the fastest

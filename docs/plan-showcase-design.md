@@ -53,7 +53,7 @@ squeezing the stage.
 
 ```
 ┌──────────────┬──────────────────────────────────────────────┐
-│ lumen-static │  Input / Button                 ● presses: 2 │  ← breadcrumb 12/600 muted; chip
+│ fulgurite │  Input / Button                 ● presses: 2 │  ← breadcrumb 12/600 muted; chip
 │ WIDGETS      │  Button                                      │  ← 24/700 text
 │              │  Three of them, all wired to one counter.    │  ← blurb 14/400 muted
 │ TEXT         │ ┌──────────────────────────────────────────┐ │
@@ -178,7 +178,7 @@ the `#note` label back, and the test fires naming the entry.
 >   demo now (52 entries), controlled through `Store`.
 > - **Two framework defects, each with its own gate and commit.** A
 >   `Fixed` container laid its content out across its *offer*
->   (`crates/lumen-static/tests/fixed_container.rs`: two halves of 250
+>   (`crates/fulgurite/tests/fixed_container.rs`: two halves of 250
 >   px inside a 100 px box). A scrolled `Repeat` asked the wrong row for
 >   its handler (`tests/repeat_handler.rs`: 10 of 11 rows).
 > - **Centring.** `#demo` was only centred by being one `FILL` third of
@@ -307,7 +307,7 @@ pair, in both palettes:
 - headings and muted text must be ≥ 3:1 (large or secondary).
 
 The test prints each measured ratio beside its bound. Reuse the WCAG
-luminance code from `crates/lumen-static-shell/tests/failure_screen.rs`
+luminance code from `crates/fulgurite-shell/tests/failure_screen.rs`
 (T36.2), lifted into a small shared helper if both need it.
 *Injection:* set muted text to the page colour, and the gate names the
 pair.
@@ -337,7 +337,7 @@ M24/M27. Anything clipped or low-contrast gets fixed in this task.
 >   nothing, so the stage's spacers and transparent row, which move when
 >   a demo grows, merged into the card's whole inner box: 7.47x the
 >   accordion's own box, on a frame the renderer redrew at 1.00x. Fixed
->   with its own gate (`crates/lumen-static-agent/tests/damage_paints.rs`:
+>   with its own gate (`crates/fulgurite-agent/tests/damage_paints.rs`:
 >   1,280 px² against 84,800 without the fix) and recorded as the fourth
 >   amplification in `docs/damage-amplification-decision.md`.
 > - **A measurement artefact in the PaintBox action.** A box centred in
@@ -398,7 +398,7 @@ hover marks stay precise.
   `scripts/agent_drive.sh`.
 
 **Reused:**
-- `Repeat` with wheel scroll (`lumen_static::repeat`);
+- `Repeat` with wheel scroll (`fulgurite::repeat`);
 - `wid_index!` (T26.14);
 - the `~=` selector (T27.12);
 - `Divider`, `Label`, and the M25 palette roles;
@@ -412,7 +412,7 @@ hover marks stay precise.
    green, shadow oracle 0 divergences.
 3. Run `cargo run -p showcase` and click through groups. Check wheel
    scrolling of the sidebar, the selected-row highlight, the chip
-   updating, and `LUMEN_PALETTE=dark`.
+   updating, and `FULGURITE_PALETTE=dark`.
 4. Take `--shot` of all 51 entries in both palettes and review them
    against the T56.0 baseline.
 5. Run each new gate's injection once, and record the ratios or

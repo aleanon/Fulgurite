@@ -1,24 +1,24 @@
 [package]
-name = "lumen-static-stages"
+name = "fulgurite-stages"
 version = "0.0.0"
 edition = "2021"
 publish = false
 
 [dependencies]
-lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
-lumen-static = { path = "../../../crates/lumen-static" }
+fulgurite-widgets = { path = "../../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../../crates/fulgurite" }
 # `truetype`, for the same reason the frame arm takes it: every stage
 # number here is dominated by text, and measuring against the
 # half-em-per-byte stand-in would report arithmetic where the shipped
 # build shapes glyphs.
-lumen-static-shell = { path = "../../../crates/lumen-static-shell", features = ["truetype"] }
+fulgurite-shell = { path = "../../../crates/fulgurite-shell", features = ["truetype"] }
 # The GPU raster stage. This is a benchmark workspace of its own, so
 # pulling wgpu here costs the framework's dependency graph nothing --
 # the same argument the raster arm's manifest makes.
-lumen-static-wgpu = { path = "../../../crates/lumen-static-wgpu" }
+fulgurite-wgpu = { path = "../../../crates/fulgurite-wgpu" }
 
 # Passed through so the rasteriser's SIMD path can be measured on the
 # same workload as the scalar one (M17, docs/results-simd.md).
 [features]
 default = []
-simd = ["lumen-static-shell/simd"]
+simd = ["fulgurite-shell/simd"]

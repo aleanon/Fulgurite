@@ -7,12 +7,12 @@
 //! (`docs/plan-tally-slim.md`), a second application in the tally's
 //! crate that shared only its palette.
 
-use lumen_static::display::Color;
-use lumen_static::prelude::*;
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{FontMetrics, FontStack};
-use lumen_static_shell::Host;
-use lumen_static_widgets::prelude::*;
+use fulgurite::display::Color;
+use fulgurite::prelude::*;
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{FontMetrics, FontStack};
+use fulgurite_shell::Host;
+use fulgurite_widgets::prelude::*;
 
 // The tally's palette, which this fixture was drawn in.
 const PAGE: Color = Color(0x0e, 0x11, 0x18, 0xff);
@@ -30,37 +30,37 @@ fn main() {
 /// A checkbox is a box, not a box-with-text — composing it with a
 /// `Label` in a row is the tree doing the work a `label:` field on every
 /// control would otherwise duplicate.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(row, spacing = 8.0)]
 struct CheckRow {
     #[widget_id("check")]
-    check: lumen_static_widgets::toggle::CheckBox<Form>,
+    check: fulgurite_widgets::toggle::CheckBox<Form>,
     #[widget_id("check_label")]
     label: Label,
 }
 
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(row, spacing = 8.0)]
 struct SwitchRow {
     #[widget_id("switch")]
-    switch: lumen_static_widgets::toggle::Switch<Form>,
+    switch: fulgurite_widgets::toggle::Switch<Form>,
     #[widget_id("switch_label")]
     label: Label,
 }
 
 /// One row: a slider and its label (T11.2).
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(row, spacing = 8.0)]
 struct SliderRow {
     #[widget_id("vol_label")]
     label: Label,
     #[widget_id("vol")]
-    vol: lumen_static_widgets::slider::Slider,
+    vol: fulgurite_widgets::slider::Slider,
 }
 
 /// The second tab's content — deliberately different, so switching is
 /// visible and `ui.lastChange` has something to report.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(column, spacing = 6.0)]
 struct AboutTab {
     #[widget_id("about")]
@@ -75,13 +75,13 @@ struct AboutTab {
 /// table nodes now, so a tab's content is addressable by selector,
 /// styleable by `#id`, and visible to the audit. None of that was true
 /// before 2026-09-04.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(row, spacing = 6.0)]
 struct TabStrip {
     #[widget_id("tab_settings")]
-    settings: lumen_static_widgets::ops::Button<Form, String>,
+    settings: fulgurite_widgets::ops::Button<Form, String>,
     #[widget_id("tab_about")]
-    about: lumen_static_widgets::ops::Button<Form, String>,
+    about: fulgurite_widgets::ops::Button<Form, String>,
 }
 
 /// The growing settings panel — M11's gate behind every task gate.
@@ -92,12 +92,12 @@ struct TabStrip {
 /// satisfy all of that without ever being placed next to another one,
 /// which is the fastest route to a vocabulary that is individually
 /// correct and collectively unusable.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(column, spacing = 10.0)]
 struct FormBody {
     tabs: TabStrip,
     #[widget_id("name")]
-    name: lumen_static_widgets::input::TextInput,
+    name: fulgurite_widgets::input::TextInput,
     check_row: CheckRow,
     switch_row: SwitchRow,
     slider_row: SliderRow,
@@ -113,14 +113,14 @@ struct FormBody {
     r5: Label,
 }
 
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct FormUi {
     #[widget_id("scroll")]
-    scroll: lumen_static_widgets::scroll::ScrollView<FormBody>,
+    scroll: fulgurite_widgets::scroll::ScrollView<FormBody>,
 }
 
-#[derive(lumen_static::App, Default)]
+#[derive(fulgurite::App, Default)]
 struct Form {
     #[tree]
     ui: FormUi,
@@ -133,7 +133,7 @@ struct Form {
     dark: bool,
 }
 
-fn set_on<S: 'static, const K: u8>(t: &mut lumen_static_widgets::toggle::Toggle<S, K>, v: &bool) {
+fn set_on<S: 'static, const K: u8>(t: &mut fulgurite_widgets::toggle::Toggle<S, K>, v: &bool) {
     t.on = *v;
 }
 
@@ -177,7 +177,7 @@ fn form(path: &str) {
         Rule::new(Selector::Id("name"), Patch::new().background(SURFACE).radius(8.0).width(Length::FILL)),
         Rule::new(Selector::Kind("label"), Patch::new().color(INK)),
         // Two colours, four states: the resting body and the on body are
-        // each the other's mark (`crates/lumen-static/src/toggle.rs`).
+        // each the other's mark (`crates/fulgurite/src/toggle.rs`).
         Rule::new(Selector::Kind("checkbox"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(Selector::Kind("switch"), Patch::new().background(SURFACE).color(ACCENT)),
         Rule::new(Selector::Kind("slider"), Patch::new().background(SURFACE).color(ACCENT)),
@@ -215,9 +215,9 @@ fn form(path: &str) {
     // Tabs are a composition, not a widget: two buttons and an
     // `Either`, wired here (T11.4).
     host.app.ui.scroll.content.tabs.settings.on_click =
-        |_f: &mut Form, _: &lumen_static::EventCtx| {};
+        |_f: &mut Form, _: &fulgurite::EventCtx| {};
     host.app.ui.scroll.content.tabs.about.on_click =
-        |_f: &mut Form, _: &lumen_static::EventCtx| {};
+        |_f: &mut Form, _: &fulgurite::EventCtx| {};
 
     // The panel's controls answer to the app's state through bindings.
     host.app.notify = true;
@@ -234,7 +234,7 @@ fn form(path: &str) {
     // became different nodes.
     let table = <FormUi as Widget>::SUB_TABLE;
     let at = |wid: &str| {
-        lumen_static::style::index_of_wid(table, wid).unwrap_or_else(|| panic!("no #{wid}"))
+        fulgurite::style::index_of_wid(table, wid).unwrap_or_else(|| panic!("no #{wid}"))
     };
     let (i_scroll, i_body, i_name, i_last) = (at("scroll"), at("scroll") + 1, at("name"), at("r5"));
 

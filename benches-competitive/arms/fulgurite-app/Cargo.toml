@@ -1,0 +1,26 @@
+[package]
+name = "fulgurite-app"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# The default shape: what `fulgurite-winit` gives you out of the box,
+# clipboard included. This is the row a reader should compare against Qt and
+# GTK for size and for what an application ships -- **not** for a full 4K
+# CPU redraw: the fast software raster needs `fulgurite-winit/simd` and
+# `fulgurite-winit/threads`, both default-off by decision (M50/T50.5,
+# docs/00-handoff-static-tree.md, "How to turn it on"), and the recorded
+# answer for a full redraw is the `gpu` feature.
+[dependencies]
+fulgurite-widgets = { path = "../../../crates/fulgurite-widgets" }
+fulgurite = { path = "../../../crates/fulgurite" }
+fulgurite-winit = { path = "../../../crates/fulgurite-winit" }
+
+# The GPU backend, so its size can be measured under **this workspace's**
+# release profile (lto, one codegen unit, stripped, panic=abort) rather than
+# the framework workspace's, which sets none of those. `docs/results-gpu.md`
+# §5 quoted 5.29/12.26 MB from `examples/minimal` and put them beside §4's
+# 2.7 MB, which were not comparable numbers (M16/T16.5).
+[features]
+default = []
+gpu = ["fulgurite-winit/gpu"]

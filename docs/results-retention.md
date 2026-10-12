@@ -73,7 +73,7 @@ collide would leave stale pixels. At ~2 000 commands per frame that is
 a birthday probability around 10⁻¹³ per frame **for text nobody chose**
 — the figure assumes a random function, and until M46/T46.1 the text
 half of the hash was not one: see "What a text hash guarantees" below.
-`crates/lumen-static-shell/tests/damage_oracle.rs` is the standing
+`crates/fulgurite-shell/tests/damage_oracle.rs` is the standing
 check: whatever computes the damage, a partial redraw must stay
 pixel-identical to a full one. It is parameterised over `Retention` as
 of this task, so `Streaming<256>` gets the same 25-step pixel
@@ -96,12 +96,12 @@ stream is handed the `&str`, so the case does not exist to forget.
 collide whenever a small integer combination of their byte differences
 vanishes; a lattice reduction finds such pairs, and folding the rect
 first does not help, because the prefix cancels (M38's R2-F2, R2-F3).
-`crates/lumen-static-shell/tests/text_hash_collision.rs` shows it
+`crates/fulgurite-shell/tests/text_hash_collision.rs` shows it
 end to end: `" k ih  lsio "` → `"$a#aa$-aaaa("` reported `Damage::None`
 and left **1,440 stale pixels** through the default `Incremental` host.
 The same fold keyed `FoldedText`, from 0 and with no length, so `"x"`
 and `"\0x"` shared a memo and `Button`, `Badge` and `Chip` served the
-wrong width (`crates/lumen-static-widgets/tests/folded_text_identity.rs`).
+wrong width (`crates/fulgurite-widgets/tests/folded_text_identity.rs`).
 
 **Now all three text call sites — `Recording::text_spaced` (`text_weighted` until M80/T80.1),
 `DisplayList::hash_from` and `FoldedText::fold_of` — call
@@ -111,7 +111,7 @@ Scalars keep `fold`. What that guarantees:
 
 - **Structural:** strings of different lengths start from different
   seeds, and below a word the tail is read one-to-one, so every string
-  of up to two bytes has its own hash (`crates/lumen-static/tests/text_hash.rs`,
+  of up to two bytes has its own hash (`crates/fulgurite/tests/text_hash.rs`,
   65,793 of 65,793 distinct).
 - **Algebraic:** the old fold's solved pairs, and a pair *constructed*
   for the review's rotate-xor-multiply mix, are all separated. That mix

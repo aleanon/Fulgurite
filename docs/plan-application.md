@@ -19,7 +19,7 @@
 >   example that teaches the shape, and `fixtures/hot-app` had to write
 >   `impl Default for Session` by hand to avoid it.
 > - **An edited stylesheet never reaches the frame on a reload.**
->   Demonstrated by `crates/lumen-static-shell/tests/reload_sheet.rs`
+>   Demonstrated by `crates/fulgurite-shell/tests/reload_sheet.rs`
 >   (2026-09-22): set a sheet, run the real `save`/`fresh`/`restore`
 >   sequence, and the frame still uses the *previous* build's rules. The
 >   host owns `sheet: Vec<Rule>` and nothing in the reload path re-asks.
@@ -91,7 +91,7 @@ pub trait Application: Sized {
 ```
 
 **On the app type, not on every widget.** A trait the derive had to call
-per field would need all 33 widgets in `lumen-static-widgets` to
+per field would need all 33 widgets in `fulgurite-widgets` to
 implement it, and a blanket `impl<T: Default>` cannot coexist with
 per-widget impls without specialization. Scoped to the application,
 there is one impl per program and no widget churn. Container wiring
@@ -178,7 +178,7 @@ because it is the only shape where the two paths are the same code.
 
 ## T31.0 — the trait, and `fresh()` routed through it
 
-`Application` in `lumen-static`, the `Reloadable` derive keyed on
+`Application` in `fulgurite`, the `Reloadable` derive keyed on
 `#[tree]`, and `Host::launch`/`Host::reload`.
 
 **Gate — the motivating test inverts.** `tests/reload_sheet.rs`'s two
@@ -228,7 +228,7 @@ already proves it for chains.
 > the condition for revisiting.
 >
 > `Application` and `Stylesheet` joined the prelude: every application
-> names both, and `lumen_static::event::Application` is not a path
+> names both, and `fulgurite::event::Application` is not a path
 > anyone should have to learn.
 
 ## T31.2 — `Default` on a reloadable application is a compile error — **DONE 2026-09-23**
@@ -266,8 +266,8 @@ already proves it for chains.
 > *Injection:* delete the emitted block — trybuild reports **"Expected
 > test case to fail to compile, but it succeeded."**
 >
-> The macros crate's dev-dependencies gained `reload` on `lumen-static`
-> and `lumen-static-widgets`: a UI case that expands the `Reloadable`
+> The macros crate's dev-dependencies gained `reload` on `fulgurite`
+> and `fulgurite-widgets`: a UI case that expands the `Reloadable`
 > derive needs the module the derive emits paths into, or it fails on a
 > missing module instead of on the diagnostic it is locking.
 
@@ -303,7 +303,7 @@ already proves it for chains.
 > boundary. A `Host` inside the dylib is destroyed by the swap, so that
 > arrangement cannot exhibit the defect at all. **The scenario that can
 > is a `Host` that outlives the application it holds** — which is what
-> `lumen_static_winit::run` builds and what `Host::adopt` now serves, and
+> `fulgurite_winit::run` builds and what `Host::adopt` now serves, and
 > which `tests/reload_sheet.rs` models in-process. So the dylib test
 > proves the *lifetime* fact and the in-process test proves the
 > *behaviour*; neither proves both, and the pair is the whole claim.

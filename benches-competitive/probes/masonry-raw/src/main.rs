@@ -23,7 +23,7 @@ fn main() {
     // The knob `TestHarness` does not expose: it sends `EnableAccessTree`
     // unconditionally at construction, so every masonry frame it drives
     // rebuilds an AccessKit tree. `docs/results-competitive.md` §1 puts that
-    // row beside a lumen-static row and a `Lumen` row that build no semantics
+    // row beside a fulgurite row and a `Lumen` row that build no semantics
     // (Lumen's own harness notes `pump()` never calls `sem_root()`), and beside
     // a separate `Lumen + semantics` row that does.
     let a11y = std::env::args().nth(2).as_deref() != Some("no-a11y");

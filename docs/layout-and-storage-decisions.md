@@ -153,7 +153,7 @@ once and there is no freeze loop to add. The price is stated rather than
 hidden: `[Flexible 80 px, Flexible 400 px]` in 300 px reads 80/150, where
 CSS §9.7 would give the second 220. On the cross axis, and in a stack,
 wrap or grid, it resolves as `Shrink`. Gates and counts:
-`crates/lumen-static/tests/flexible.rs`, `docs/results-layout-input.md`
+`crates/fulgurite/tests/flexible.rs`, `docs/results-layout-input.md`
 T85.1.
 
 That covers what flexbox is actually used for — toolbars, sidebars, split
@@ -173,7 +173,7 @@ it resolved its box afterwards, so a `Fixed(100)` box offered 500 px let a
 row inside it divide 500 px, and a `Fixed(60)` column gave a `FILL` child
 380 px of height. `ops::within_own_size` now tightens the offer on every
 `Fixed` axis before the content is laid out; the offer is still what the
-relayout boundary records. `crates/lumen-static/tests/fixed_container.rs`
+relayout boundary records. `crates/fulgurite/tests/fixed_container.rs`
 is the gate.
 
 **This deletes the deviation.** The four-pass scheme below was going to
@@ -250,7 +250,7 @@ iteration, and it is less machinery than flexbox rather than more.
 
 ### Note for the intrinsic pass
 
-The audit's two-probe trick (`crates/lumen-static-agent/src/audit.rs`)
+The audit's two-probe trick (`crates/fulgurite-agent/src/audit.rs`)
 already measures intrinsic size using the existing `up` op under generous
 constraints. Pass 1 is that idea promoted from a dev-surface check to a
 first-class layout phase — which also means the audit stops needing its
@@ -315,7 +315,7 @@ the attribute constant goes away.
 > checker will not let the walk descend while the template is borrowed
 > shared and its style row exclusively; the shape that fixes it yields
 > owned handles instead, which is F4.4's territory.
-> `crates/lumen-static/tests/cascade_deep.rs`.
+> `crates/fulgurite/tests/cascade_deep.rs`.
 repeater instances are not in the table — so all rows of a repeater share
 their template's computed style. That is usually what you want; per-row
 overrides (a selected row, a zebra stripe) need either a small per-row

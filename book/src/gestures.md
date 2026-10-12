@@ -57,7 +57,7 @@ is pending the host's next deadline includes it, so a window that sleeps
 until something is due still fires it:
 
 ```text
-{{#include ../../crates/lumen-static-shell/tests/context_routes.rs:held_touch}}
+{{#include ../../crates/fulgurite-shell/tests/context_routes.rs:held_touch}}
 ```
 
 **A control that acts on the press has already acted.** The primary

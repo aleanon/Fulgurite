@@ -4,7 +4,7 @@
 > rebuilt here — a dropdown listing every built-in widget, each one
 > demoed on a stage — and the widgets it needs, in their own crate.
 >
-> **Tranche 1 has landed**: `lumen-static-widgets` with eleven leaf
+> **Tranche 1 has landed**: `fulgurite-widgets` with eleven leaf
 > widgets, and `examples/showcase` with the picker and eighteen entries.
 > The rest of this document is the map.
 
@@ -12,7 +12,7 @@
 
 Lumen's showcase lists **61 widgets in 8 groups** (counted from
 `/mnt/Utvikling-linux/Lumen/examples/widget_showcase/src/catalog.rs`),
-backed by a `lumen-widgets` crate of 17.5k lines. `lumen-static` had
+backed by a `lumen-widgets` crate of 17.5k lines. `fulgurite` had
 **nine** of them. So parity is ~52 widgets, and the honest framing is
 that this is a milestone in the same weight class as M22, not a commit.
 
@@ -47,7 +47,7 @@ in a plan drifts exactly like a stale number in rustdoc; see
 
 ## 1. The crate, and why it is a crate
 
-`lumen-static-widgets`, and the argument is the one this workspace makes
+`fulgurite-widgets`, and the argument is the one this workspace makes
 everywhere: **the crate is the gate**. A widget set grows without limit,
 and an embedded profile that links a pie chart it will never draw has
 paid `.text` for nothing — the M15 gating policy. Nothing here is in the
@@ -75,7 +75,7 @@ Three decisions inside them worth keeping:
 - **`Series` is a fixed array**, like `Stops` and `Regions`, so a chart
   allocates nothing and is `Copy`. Over-long input is truncated, not
   refused: a chart is a read-only view of someone else's numbers.
-- **`Divider`, where Lumen says `Rule`.** `lumen_static::Rule` is
+- **`Divider`, where Lumen says `Rule`.** `fulgurite::Rule` is
   already a *stylesheet* rule and is in the prelude. A widget set may
   differ from its model where the model's name is taken.
 
@@ -225,7 +225,7 @@ put it beside Lumen's, and look.
 
 ## 3d. Steering the running window
 
-**The endpoint existed; the transport did not.** `lumen-static-agent`
+**The endpoint existed; the transport did not.** `fulgurite-agent`
 has carried the whole command surface since M15 — `input.click`,
 `input.pointerDown`/`pointerUp`, `input.type`, `ui.getTree`,
 `ui.resolve`, `ui.screenshot`, `ui.waitSettled` — and
@@ -242,12 +242,12 @@ was added because a turnkey window could not be styled,
 naming — a capability landing in the shell without a line in `Config` is
 a capability no application can use.
 
-`lumen-static-winit` gains an `agent` feature and a reusable `Live`
+`fulgurite-winit` gains an `agent` feature and a reusable `Live`
 bridge. Generic over the application, which is what makes it reusable
 where the example's copy was not: `App::tree` reaches the tree without
 knowing its field name, and `Backend` reaches the pixels without knowing
-which renderer drew them. Default-off, because `lumen-static-agent`
-builds `lumen-static` with `observe` and that takes `NodeDesc` from
+which renderer drew them. Default-off, because `fulgurite-agent`
+builds `fulgurite` with `observe` and that takes `NodeDesc` from
 48 B to 72 B in every binary that links it.
 
 `just agent-drive` is the gate, in `just gpu-parity`'s idiom: it opens

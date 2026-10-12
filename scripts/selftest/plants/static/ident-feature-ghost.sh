@@ -4,6 +4,6 @@
 CHECK='./scripts/check_doc_identifiers.sh'
 EXPECT='`plantedghost` is called a feature, and no \[features\] table has `plantedghost`'
 plant() {
-    append crates/lumen-static/src/lib.rs \
+    append crates/fulgurite/src/lib.rs \
         '// Decoding lives behind the default-off `plantedghost` feature.'
 }

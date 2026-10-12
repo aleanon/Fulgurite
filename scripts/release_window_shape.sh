@@ -4,21 +4,21 @@
 # no outline code -- M52 (docs/plan-embedded-footprint.md §2.2, F-NEW-3).
 #
 # M36's rule 3 (docs/plan-panic-recovery.md) says recovery is there in debug
-# builds and in release builds with `lumen-static-winit/reload`, and that a
+# builds and in release builds with `fulgurite-winit/reload`, and that a
 # release build without it keeps the default behaviour. The behaviour was
 # right: recovery was off, no hook installed, nothing caught. The LINK was
 # not: the window crate chose the policy as a `const` and handed it to a
 # runtime field, every guarded arm tested the field, and so every
-# `lumen_static_shell::recover::` function -- the failure screen, the
+# `fulgurite_shell::recover::` function -- the failure screen, the
 # report, the panic hook -- was compiled into every release window. No gate
 # priced a release window binary: fixtures/binsize depends on neither the
 # shell nor the window crate.
 #
 # So this builds `examples/minimal` in release twice and counts the
-# `lumen_static_shell::recover::` symbols in each, printed beside `.text`:
+# `fulgurite_shell::recover::` symbols in each, printed beside `.text`:
 #
 #   * default features (no `reload`): the count must be 0;
-#   * `--features lumen-static-winit/reload`: the count must be ABOVE 0,
+#   * `--features fulgurite-winit/reload`: the count must be ABOVE 0,
 #     so the `cfg` is shown switching both ways. A count of 0 there means
 #     the pattern matches nothing -- a gate that could not have gone red.
 #
@@ -29,14 +29,14 @@ set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
-PATTERN='lumen_static_shell::recover::'
+PATTERN='fulgurite_shell::recover::'
 # Symbols DEFINED in the recover module: the demangled name begins with
 # its path (or `<` and its path, for an impl). Not `core::ptr::drop_in_place
-# <Option<lumen_static_shell::recover::PanicReport>>` -- the drop glue of
+# <Option<fulgurite_shell::recover::PanicReport>>` -- the drop glue of
 # `Host`'s always-`None` failure field, 3 x 118 B, which is data every
 # host carries under `panic = "unwind"` and not recovery code. Recorded in
 # docs/results-embedded.md (M52/T52.7), not hidden: it prints below.
-DEFINED_RE='^[0-9a-f]+ [0-9a-f]+ [A-Za-z] <?lumen_static_shell::recover::'
+DEFINED_RE='^[0-9a-f]+ [0-9a-f]+ [A-Za-z] <?fulgurite_shell::recover::'
 
 # **Expected red until M52/T52.7**, which makes recovery a type. While this
 # is set, the bound-0 check going red is reported and passes, and it going
@@ -84,10 +84,10 @@ read -r n_off b_off t_off g_off <<<"$(count "$off")" || exit 1
 # ---- M81/T81.1: no shaper in a default window ---------------------------
 #
 # docs/plan-shaped-paint.md (D1 a) puts rustybuzz and unicode-bidi behind
-# the shell's default-off `shaping` feature (lumen-static-winit/shaping
+# the shell's default-off `shaping` feature (fulgurite-winit/shaping
 # forwards it). A default release window links no symbol of either crate.
 # Two positive controls. The SYMBOLS (M81/T81.3, when the feature got its
-# code): a release `minimal` built with `lumen-static-winit/shaping` links
+# code): a release `minimal` built with `fulgurite-winit/shaping` links
 # more than 0 of them, because the stack's mode is a runtime branch in
 # `FontStack::place_run_into` -- so the pattern is shown matching, and the
 # default's 0 is a 0 the pattern could have exceeded. And the GRAPH (T81.1,
@@ -99,20 +99,20 @@ SHAPE_RE='(^|[^A-Za-z0-9_])(rustybuzz|unicode_bidi)::'
 n_shape=$(nm -C "$off" | grep -cE "$SHAPE_RE" || true)
 echo "release-window-shape: default window: $n_shape rustybuzz::/unicode_bidi:: symbols (bound 0)"
 tree_count() {
-    cargo tree -p lumen-static-shell -e normal --prefix none "$@" 2>/dev/null \
+    cargo tree -p fulgurite-shell -e normal --prefix none "$@" 2>/dev/null \
         | sed 's/ (\*)$//' | sort -u | wc -l
 }
-shaped_bin=$(build --features lumen-static-winit/shaping) || exit 1
+shaped_bin=$(build --features fulgurite-winit/shaping) || exit 1
 n_shape_on=$(nm -C "$shaped_bin" | grep -cE "$SHAPE_RE" || true)
-echo "release-window-shape: window with lumen-static-winit/shaping: $n_shape_on rustybuzz::/unicode_bidi:: symbols (bound > 0)"
+echo "release-window-shape: window with fulgurite-winit/shaping: $n_shape_on rustybuzz::/unicode_bidi:: symbols (bound > 0)"
 g_plain=$(tree_count --features truetype)
 g_shape=$(tree_count --features shaping)
-echo "release-window-shape: lumen-static-shell graph: $g_plain packages with \`truetype\` (what a window builds), $g_shape with \`shaping\` (difference $((g_shape - g_plain)), bound > 0)"
+echo "release-window-shape: fulgurite-shell graph: $g_plain packages with \`truetype\` (what a window builds), $g_shape with \`shaping\` (difference $((g_shape - g_plain)), bound > 0)"
 
 # ---- M82/T82.7: no outline code in a default window ---------------------
 #
 # docs/plan-paint-vocabulary.md puts `TextMeasure::outline`'s real answer
-# behind the shell's default-off `vector-text` (lumen-static-winit/
+# behind the shell's default-off `vector-text` (fulgurite-winit/
 # vector-text forwards it). Without it `FontMetrics` keeps the provided
 # `false`, whose symbol is the core trait's, so a default release window
 # links no symbol of the shell's outline code: `FontStack::outline`, its
@@ -121,16 +121,16 @@ echo "release-window-shape: lumen-static-shell graph: $g_plain packages with \`t
 # feature, where the override sits in `FontMetrics`'s vtable and so links.
 # Not ttf-parser's own symbols: fontdue parses every outline through them
 # at load, in every window.
-OUTLINE_RE='lumen_static_shell::text::(OutlinePen|LogicalPath|FontStack::outline)|FontMetrics as lumen_static::cx::TextMeasure>::outline'
+OUTLINE_RE='fulgurite_shell::text::(OutlinePen|LogicalPath|FontStack::outline)|FontMetrics as fulgurite::cx::TextMeasure>::outline'
 n_outline=$(nm -C "$off" | grep -cE "$OUTLINE_RE" || true)
-outline_bin=$(build --features lumen-static-winit/vector-text) || exit 1
+outline_bin=$(build --features fulgurite-winit/vector-text) || exit 1
 n_outline_on=$(nm -C "$outline_bin" | grep -cE "$OUTLINE_RE" || true)
 t_outline_on=$(size -A "$outline_bin" | awk '$1 == ".text" {print $2}')
 echo "release-window-shape: default window: $n_outline outline symbols (bound 0), .text $t_off B"
-echo "release-window-shape: window with lumen-static-winit/vector-text: $n_outline_on outline symbols (bound > 0), .text $t_outline_on B"
+echo "release-window-shape: window with fulgurite-winit/vector-text: $n_outline_on outline symbols (bound > 0), .text $t_outline_on B"
 echo "release-window-shape: without reload: $n_off recover symbols ($b_off B) (bound 0), .text $t_off B; $g_off drop-glue symbols naming a recover type (not code; recorded)"
 
-on=$(build --features lumen-static-winit/reload) || exit 1
+on=$(build --features fulgurite-winit/reload) || exit 1
 read -r n_on b_on t_on g_on <<<"$(count "$on")" || exit 1
 echo "release-window-shape: with reload:    $n_on recover symbols ($b_on B) (bound > 0), .text $t_on B"
 
@@ -148,7 +148,7 @@ if [ "$n_shape_on" -eq 0 ]; then
 fi
 if [ "$g_shape" -le "$g_plain" ]; then
     echo "release-window-shape: \`shaping\` adds no package to the shell's truetype graph ($g_plain -> $g_shape):" >&2
-    echo "the feature does not pull lumen-static-text, so the 0 above proves nothing" >&2
+    echo "the feature does not pull fulgurite-text, so the 0 above proves nothing" >&2
     fail=1
 fi
 if [ "$n_outline" -ne 0 ]; then
@@ -179,7 +179,7 @@ elif [ "$n_off" -ne 0 ]; then
     nm -C --size-sort -S --radix=d "$off" | grep -E "$DEFINED_RE" | sort -k2 -n -r | head -5 | sed 's/^/    /' >&2
     echo "" >&2
     echo "M36's rule 3, as amended by M52/T52.7: a release build without" >&2
-    echo "\`lumen-static-winit/reload\` links no recover:: symbol." >&2
+    echo "\`fulgurite-winit/reload\` links no recover:: symbol." >&2
     fail=1
 fi
 exit "$fail"

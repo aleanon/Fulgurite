@@ -2,7 +2,7 @@
 scripts/resume_drive.sh.
 
 `examples/two-windows`, a DEBUG build on the GPU with
-LUMEN_TEST_RESUME=8000 (not glasswall's 4000: a debug launch opens two
+FULGURITE_TEST_RESUME=8000 (not glasswall's 4000: a debug launch opens two
 GPU contexts, one per window, in most of 4 s, and the first reads must
 land before the round trip -- `docs/plan-windows.md`, What building
 found, T89.9): the list (window 1) opens the detail (window 2),
@@ -60,7 +60,7 @@ def log():
 def backend_lines():
     """The window's one line per backend it made (`open_window`)."""
     return [l for l in log().splitlines()
-            if l.startswith("lumen-static: gpu (") or l.startswith("lumen-static: software")]
+            if l.startswith("fulgurite: gpu (") or l.startswith("fulgurite: software")]
 
 
 def x_windows():
@@ -142,7 +142,7 @@ def shared_lines(lines):
     format, and the second window's counts two surfaces on its context."""
     bad = []
     for i, l in enumerate(lines):
-        print(f"  ..  backend line {i + 1}: {l[len('lumen-static: '):]}")
+        print(f"  ..  backend line {i + 1}: {l[len('fulgurite: '):]}")
         if ", shared context (" not in l or ", surface " not in l:
             bad.append(f"backend line {i + 1} does not say shared and its surface format: {l!r}")
     for i in (1, 3):
@@ -154,8 +154,8 @@ def shared_lines(lines):
 t0 = time.time()
 # Setup: the window started on the GPU, and the detail opens.
 started = backend_lines()
-print(f"  ..  setup: startup line {started[:1]} (want 'lumen-static: gpu (')")
-if not started or not started[0].startswith("lumen-static: gpu ("):
+print(f"  ..  setup: startup line {started[:1]} (want 'fulgurite: gpu (')")
+if not started or not started[0].startswith("fulgurite: gpu ("):
     fail(f"setup: the window did not start on the GPU: {started[:1]}")
 opened = call("input.click", {"selector": "#row2"}).get("opened")
 print(f"  ..  setup: a click on #row2 opened {opened} (want [2])")
@@ -169,11 +169,11 @@ deadline = time.time() + 5.0
 while call("app.presents", window=2)["result"]["presents"] < 1 and time.time() < deadline:
     time.sleep(0.05)
 time.sleep(0.2)
-if "LUMEN_TEST_RESUME" in log():
+if "FULGURITE_TEST_RESUME" in log():
     fail("setup: the round trip fired before the first read (the launch took longer than the hook's 8 s)")
 ids_a, before = shots("before")
 SCALE = call("ui.screenshot", {}, window=1)["result"].get("scale", 1.0)
-if "LUMEN_TEST_RESUME" in log():
+if "FULGURITE_TEST_RESUME" in log():
     fail("setup: the round trip fired during the first reads -- they straddle it")
 print(f"  ..  setup: the first reads done {time.time() - t0:.2f} s into the drive, before the round trip")
 made_before = len(backend_lines())
@@ -183,7 +183,7 @@ if before[1].size == before[2].size:
 # The hook fires 8000 ms after the window started; wait for its line, then
 # for the frames the resume asks for.
 deadline = time.time() + 20.0
-while "LUMEN_TEST_RESUME: suspend and resume" not in log() and time.time() < deadline:
+while "FULGURITE_TEST_RESUME: suspend and resume" not in log() and time.time() < deadline:
     time.sleep(0.25)
 time.sleep(3.0)  # the frames the resume asks for, at a present a second if the display sleeps
 ids_b, after = shots("after")
@@ -191,7 +191,7 @@ for k in WINDOWS:
     before[k].save(f"target/live/{LEG}-window{k}-before.png")
     after[k].save(f"target/live/{LEG}-window{k}-after.png")
 
-hooks = log().count("LUMEN_TEST_RESUME: suspend and resume")
+hooks = log().count("FULGURITE_TEST_RESUME: suspend and resume")
 made = len(backend_lines())
 per_resume = made - made_before
 print(f"  ..  round trips {hooks} (want 1); backends made {made_before} before it (want 2, one per window), "

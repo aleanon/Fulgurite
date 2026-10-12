@@ -34,11 +34,11 @@
 use std::time::Instant;
 
 use benches::Ten10;
-use lumen_static::cx::{BlockMetrics, LayoutCx};
-use lumen_static::invalidate::{Boundaries, Changed, Invalidation};
-use lumen_static::widget::Node;
-use lumen_static::{pass, Constraints, NodeState, Style, Widget};
-use lumen_static_shell::Host;
+use fulgurite::cx::{BlockMetrics, LayoutCx};
+use fulgurite::invalidate::{Boundaries, Changed, Invalidation};
+use fulgurite::widget::Node;
+use fulgurite::{pass, Constraints, NodeState, Style, Widget};
+use fulgurite_shell::Host;
 
 const VIEW: Constraints =
     Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
@@ -90,7 +90,7 @@ fn main() {
         .iter()
         .position(|d| d.parent == 0 && d.child_count > 0)
         .expect("a container child of the root");
-    let range = lumen_static::style::subtree_range(table, root);
+    let range = fulgurite::style::subtree_range(table, root);
     let marked = best(2000, || {
         let mut b: Boundaries<16> = Boundaries::default();
         b.clear();
@@ -133,7 +133,7 @@ fn main() {
     // repositioned whatever changed. That is the whole row — there is no
     // second variant to compare it against until M26/T26.17 #1 adds one.
     let placed = best(2000, || {
-        app.place(lumen_static::Point::default(), &styles, &mut st, 0);
+        app.place(fulgurite::Point::default(), &styles, &mut st, 0);
     });
     println!("\n{:<34}{placed:9.2} us   (whole tree; place takes no `Changed`)", "place");
 
@@ -150,10 +150,10 @@ fn main() {
         let mut m = BlockMetrics;
         let mut cx = LayoutCx::new(&mut m);
         dapp.ui.layout(&mut cx, VIEW, &dstyles, &mut dst, 0);
-        dapp.ui.place(lumen_static::Point::default(), &dstyles, &mut dst, 0);
+        dapp.ui.place(fulgurite::Point::default(), &dstyles, &mut dst, 0);
     }
-    let mut input = lumen_static::event::InputState::default();
-    let ev = lumen_static::Event::PointerMove { x: 12.0, y: 12.0 };
+    let mut input = fulgurite::event::InputState::default();
+    let ev = fulgurite::Event::PointerMove { x: 12.0, y: 12.0 };
     let dispatched = best(2000, || {
         let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &ev);
     });
@@ -176,9 +176,9 @@ fn main() {
         let mut m = BlockMetrics;
         let mut cx = LayoutCx::new(&mut m);
         tapp.ui.layout(&mut cx, VIEW, &tstyles, &mut tst, 0);
-        tapp.ui.place(lumen_static::Point::default(), &tstyles, &mut tst, 0);
+        tapp.ui.place(fulgurite::Point::default(), &tstyles, &mut tst, 0);
     }
-    let mut tinput = lumen_static::event::InputState::default();
+    let mut tinput = fulgurite::event::InputState::default();
     let tiny = best(2000, || {
         let _ = pass::dispatch(&mut tapp, &tstyles, &mut tst, &mut tinput, &ev);
     });
@@ -194,12 +194,12 @@ fn main() {
     // Same tree and entry point as the move row; one press and its release
     // per sample, at the move row's point.
     for (label, button) in [
-        ("dispatch, left press+release", lumen_static::PointerButton::Left),
-        ("dispatch, right press+release", lumen_static::PointerButton::Right),
+        ("dispatch, left press+release", fulgurite::PointerButton::Left),
+        ("dispatch, right press+release", fulgurite::PointerButton::Right),
     ] {
-        let mut input = lumen_static::event::InputState::default();
-        let down = lumen_static::Event::PointerDown { x: 12.0, y: 12.0, button, clicks: 1 };
-        let up = lumen_static::Event::PointerUp { x: 12.0, y: 12.0, button };
+        let mut input = fulgurite::event::InputState::default();
+        let down = fulgurite::Event::PointerDown { x: 12.0, y: 12.0, button, clicks: 1 };
+        let up = fulgurite::Event::PointerUp { x: 12.0, y: 12.0, button };
         let t = best(2000, || {
             let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &down);
             let _ = pass::dispatch(&mut dapp, &dstyles, &mut dst, &mut input, &up);
@@ -212,14 +212,14 @@ fn main() {
     // T90.4's menu query walks. The same tree with one button at its
     // head, since nothing in `Ten10` consumes a click; no menu hook.
     let mut host: Host<ClickTen10App> = Host::new(ClickTen10App::default(), 800, 600);
-    host.app.ui.go.on_click = |n: &mut u64, _: &lumen_static::event::EventCtx| *n += 1;
+    host.app.ui.go.on_click = |n: &mut u64, _: &fulgurite::event::EventCtx| *n += 1;
     host.pump();
     let g = &host.states[1];
     let (gx, gy) = (g.pos.x + g.size.w / 2.0, g.pos.y + g.size.h / 2.0);
     let mut samples = 0u64;
     let pumped = best(2000, || {
-        host.post(lumen_static::Event::down(gx, gy));
-        host.post(lumen_static::Event::up(gx, gy));
+        host.post(fulgurite::Event::down(gx, gy));
+        host.post(fulgurite::Event::up(gx, gy));
         let _ = host.pump();
         samples += 1;
     });
@@ -233,14 +233,14 @@ fn main() {
 }
 
 /// `Ten10` with a button at its head — M90/T90.0's consumed-click row.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct ClickTen10 {
-    go: lumen_static_widgets::Button<u64>,
+    go: fulgurite_widgets::Button<u64>,
     rest: Ten10,
 }
 
-#[derive(lumen_static::App, Default)]
+#[derive(fulgurite::App, Default)]
 struct ClickTen10App {
     #[tree]
     ui: ClickTen10,
@@ -249,13 +249,13 @@ struct ClickTen10App {
 }
 
 /// Two nodes: the smallest tree a pointer can hover — M44/T44.6.
-#[derive(lumen_static::StaticTree, Default)]
+#[derive(fulgurite::StaticTree, Default)]
 #[widget(column, spacing = 0.0)]
 struct Tiny {
-    leaf: lumen_static_widgets::ops::Fixed,
+    leaf: fulgurite_widgets::ops::Fixed,
 }
 
-#[derive(lumen_static::App, Default)]
+#[derive(fulgurite::App, Default)]
 struct TinyApp {
     #[tree]
     ui: Tiny,

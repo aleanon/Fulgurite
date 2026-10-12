@@ -25,8 +25,8 @@ grow = ["v3"]
 v4 = ["grow"]
 
 [dependencies]
-lumen-static = { path = "../../crates/lumen-static", features = ["reload"] }
-lumen-static-widgets = { path = "../../crates/lumen-static-widgets", features = ["reload"] }
-lumen-static-shell = { path = "../../crates/lumen-static-shell", features = ["truetype", "reload"] }
-lumen-static-reload = { path = "../../crates/lumen-static-reload", features = ["window"] }
+fulgurite = { path = "../../crates/fulgurite", features = ["reload"] }
+fulgurite-widgets = { path = "../../crates/fulgurite-widgets", features = ["reload"] }
+fulgurite-shell = { path = "../../crates/fulgurite-shell", features = ["truetype", "reload"] }
+fulgurite-reload = { path = "../../crates/fulgurite-reload", features = ["window"] }
 serde = { version = "1", features = ["derive"] }

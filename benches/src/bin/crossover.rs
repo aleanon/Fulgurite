@@ -7,8 +7,8 @@
 use std::hint::black_box;
 
 use benches::{bench, d_assembled, d_ten, Card, DynWidget, EitherCard, Ten};
-use lumen_static::assemble::Assembled;
-use lumen_static::{pass, Constraints, NodeState, Point, Widget};
+use fulgurite::assemble::Assembled;
+use fulgurite::{pass, Constraints, NodeState, Point, Widget};
 
 const ROOT_C: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 100_000.0 };
 
@@ -18,7 +18,7 @@ fn static_root<W: Widget + Default>(label: &str, iters: usize) {
     let sty = pass::default_styles(&w);
     bench(label, iters, || {
         pass::layout(&mut w, &sty, &mut st, ROOT_C);
-        let mut out = lumen_static::DisplayList::new();
+        let mut out = fulgurite::DisplayList::new();
         pass::paint(&w, &st, &mut out);
         out.len() as u64
     });
@@ -28,7 +28,7 @@ fn static_slab<C: Widget + Default + 'static>(label: &str, iters: usize, count: 
     let mut a = Assembled::<C>::new(count);
     bench(label, iters, || {
         a.layout(ROOT_C);
-        let mut out = lumen_static::DisplayList::new();
+        let mut out = fulgurite::DisplayList::new();
         a.paint(&mut out);
         out.len() as u64
     });
@@ -83,7 +83,7 @@ fn main() {
 /// real message is larger and the slope is a floor, which is the honest
 /// direction for a baseline to err in.
 fn drain_rows() {
-    use lumen_static::inbox::Inbox;
+    use fulgurite::inbox::Inbox;
 
     println!();
     fn apply(state: &mut u64, m: u32) {

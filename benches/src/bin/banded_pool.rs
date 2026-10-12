@@ -30,10 +30,10 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList};
-use lumen_static::Renderer;
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::FontStack;
+use fulgurite::display::{Color, DisplayList};
+use fulgurite::Renderer;
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::FontStack;
 
 const W: u32 = 1920;
 const H: u32 = 1080;
@@ -60,7 +60,7 @@ fn median_of(mut v: Vec<f64>) -> f64 {
 }
 
 fn main() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/lumen-static-shell/tests/fonts/DejaVuSans.ttf");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/fulgurite-shell/tests/fonts/DejaVuSans.ttf");
     let face = FontStack::from_bytes(&std::fs::read(path).expect("the pinned face"), None).expect("parses");
     let list = scene();
     let mut canvas = Canvas::with_font(W, H, face);

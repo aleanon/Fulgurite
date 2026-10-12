@@ -176,7 +176,7 @@ Every node that paints its own box reads `st.bg`, `st.radius` and
 
 | painter | reads | note |
 |---|---|---|
-| the derive's container `paint` | `bg`, `radius`, `shadow` | `crates/lumen-static-macros/src/lib.rs` |
+| the derive's container `paint` | `bg`, `radius`, `shadow` | `crates/fulgurite-macros/src/lib.rs` |
 | the derive's container `hit` | `bg` alpha, `shadow` | **input routing, not only paint**: a container that paints nothing does not claim the hit, which is what stops a transparent stack layer swallowing `examples/glass`'s input |
 | `Repeat::paint` | `bg`, `radius`, `shadow` | how `Select`'s menu panel gets its fill (M24/T24.2) |
 | `Glass::paint` | `radius`, `shadow` | `tests/glass_widget.rs` pins radius-from-style |
@@ -289,7 +289,7 @@ instead, recorded in `docs/results-appearance.md`.
 > **Landed.** `InputState` keeps `hovered` and `pressed`; `Host::pump_with`
 > compares them with `focus` and `focus_visible` across dispatch and marks
 > the subtree of every node whose state changed, old and new.
-> `crates/lumen-static-shell/tests/pointer_invalidation.rs` holds the four
+> `crates/fulgurite-shell/tests/pointer_invalidation.rs` holds the four
 > gates below, and the oracle's `drive` gained the four pointer steps.
 >
 > **Red before the fix**, on `Boundaries<16>`: the oracle diverged at step
@@ -315,9 +315,9 @@ instead, recorded in `docs/results-appearance.md`.
 
 `dispatch` writes `hovered`, `pressed` and `focused` into the state
 array and returns `false` for an unrouted pointer move
-(`crates/lumen-static/src/pass.rs`). `Host::pump_with` marks the dirty
+(`crates/fulgurite/src/pass.rs`). `Host::pump_with` marks the dirty
 set only when a handler ran or a binding wrote
-(`crates/lumen-static-shell/src/lib.rs`). Under `Boundaries<N>` the
+(`crates/fulgurite-shell/src/lib.rs`). Under `Boundaries<N>` the
 derive returns early for a clean subtree with unchanged limits, so
 `record_painted` never re-resolves the shade. Probed by the review on a
 button with background (200,100,50), `hover_dim` 0.5, `pressed_dim` 0.9:
@@ -343,7 +343,7 @@ beside `focus` — per host, not per node, so no `NodeState` byte. `pump`
 reads `(hovered, pressed, focus, focus_visible)` before the event loop
 and after it, and for each that changed marks `subtree_range` of the old
 index and of the new one; a `focus_visible` change marks the focused
-node. No allocation (`crates/lumen-static-shell/tests/alloc_gate.rs`).
+node. No allocation (`crates/fulgurite-shell/tests/alloc_gate.rs`).
 The direct callers of `pass::dispatch` (`fixtures/embedded`,
 `fixtures/miri-smoke`) keep no dirty set and are unaffected.
 
@@ -368,7 +368,7 @@ The direct callers of `pass::dispatch` (`fixtures/embedded`,
   keyboard focus is visible. *Injection:* drop the `focus_visible`
   comparison — fires, printing the ring width.
 
-`crates/lumen-static/tests/events.rs`'s shade test calls `layout` by
+`crates/fulgurite/tests/events.rs`'s shade test calls `layout` by
 hand after each event and so could never see this; it stays as the
 unit-level check.
 
@@ -679,9 +679,9 @@ from each widget's look by then. The derive's container paint and hit,
 stamping.
 
 **(b) Tests and examples off the setters.** The tests that read or write
-them: `crates/lumen-static/tests/{events,repeat_box,cascade_hidden,toggles,glass_widget}.rs`,
-`crates/lumen-static-shell/tests/{damage_oracle,invalidation_oracle}.rs`,
-`crates/lumen-static-agent/tests/explain.rs`. `cascade_hidden.rs` is
+them: `crates/fulgurite/tests/{events,repeat_box,cascade_hidden,toggles,glass_widget}.rs`,
+`crates/fulgurite-shell/tests/{damage_oracle,invalidation_oracle}.rs`,
+`crates/fulgurite-agent/tests/explain.rs`. `cascade_hidden.rs` is
 T24.1's gate; its injection went red on `width`, which stays, so its
 colour assertions move without re-deriving the gate. **Precondition for
 (c):** no appearance setter left in `examples/`.
@@ -690,8 +690,8 @@ colour assertions move without re-deriving the gate. **Precondition for
 from `Style` and `Patch`, and `fg` from `NodeState` — the list T25.4
 settled, not §2's first-draft six. Update in the same commit:
 
-- the size assertions in `crates/lumen-static/tests/cursor.rs`,
-  `crates/lumen-static/tests/focus.rs` and `fixtures/embedded`. The
+- the size assertions in `crates/fulgurite/tests/cursor.rs`,
+  `crates/fulgurite/tests/focus.rs` and `fixtures/embedded`. The
   target's `const` asserts cannot format a value, so their messages carry
   the expected number and `just firmware-size` prints the measured sizes
   beside them;
@@ -709,7 +709,7 @@ settled, not §2's first-draft six. Update in the same commit:
 - `book/src/styling.md` ("What a `Style` costs") and
   `book/src/state-lives.md`, which lists the stamped fields;
 - `docs/results-frame-cost.md` and `docs/results-glass.md`, which cite
-  `pressed_dim`, and `crates/lumen-static-agent/src/session.rs`.
+  `pressed_dim`, and `crates/fulgurite-agent/src/session.rs`.
 
 **Gate:** the new sizes asserted. *Injection:* re-add one `f32` to
 `Style` — the host test fires printing both sizes, and the target build
@@ -786,7 +786,7 @@ baseline, so the fallback is held to the thresholds the pilot failed.
 > `restyle_subtree` and `set_palette`. The last re-cascades the sheet it
 > kept — the whole sheet, since that is the one in force however it was
 > applied — and an equal palette does neither that nor the mark.
-> `lumen_static_winit::Config` gained `palette`, applied before the sheet.
+> `fulgurite_winit::Config` gained `palette`, applied before the sheet.
 >
 > **Every gate was shown to fail, one injection at a time:** `set_palette`
 > without its cascade, `set_stylesheet` and `restyle_subtree` resolving

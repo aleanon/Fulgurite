@@ -4,6 +4,6 @@
 CHECK='./scripts/check_derive_errors.sh'
 EXPECT='no \.stderr pins: .App needs named fields, planted'
 plant() {
-    replace crates/lumen-static-macros/src/lib.rs \
+    replace crates/fulgurite-macros/src/lib.rs \
         '"App needs named fields"' '"App needs named fields, planted"'
 }

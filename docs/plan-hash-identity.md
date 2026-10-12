@@ -30,7 +30,7 @@
 > shadow oracle that can fire) and M42 (a drive harness that can say
 > which binary it drove). Two reasons it waits. T46.1 changes the hash
 > every retained frame is diffed on, so the only evidence that it did
-> not break retention is `crates/lumen-static-shell/tests/damage_oracle.rs`,
+> not break retention is `crates/fulgurite-shell/tests/damage_oracle.rs`,
 > and the evidence that it did not break the agent journal is the
 > drive's damage ratios. Those ratios read the journal that
 > `DisplayList::hash_from` signs, not retention (M40 §2.1), so they
@@ -73,13 +73,13 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 Text identity is a linear fold (R2-F2, R2-F3, R2-F4)
 
-`display::fold` is `h * K + v` (`crates/lumen-static/src/display.rs:52`).
+`display::fold` is `h * K + v` (`crates/fulgurite/src/display.rs:52`).
 It is used for text in three places: `Recording::text_weighted` folds
-each byte into the command's hash (`crates/lumen-static/src/retain.rs:860-867`),
+each byte into the command's hash (`crates/fulgurite/src/retain.rs:860-867`),
 `DisplayList::hash_from` does the same for the agent journal's node
 signatures (`display.rs:965-975`), and `FoldedText::fold_of` folds a
 label's bytes into the memo key for `Button`, `Badge` and `Chip`
-(`crates/lumen-static/src/text.rs:224-225`). Because the fold is linear,
+(`crates/fulgurite/src/text.rs:224-225`). Because the fold is linear,
 two strings of the same length collide whenever a small integer
 combination of their byte differences vanishes mod 2⁶⁴. The review
 solved for such pairs, and a prefix does not help: the difference stays
@@ -114,10 +114,10 @@ The probability claim is at `retain.rs:45-49`, `docs/results-retention.md`
 ### 1.2 An id that names two nodes acts on one (R2-F7)
 
 `Host::invalidate` and `Host::restyle_subtree`
-(`crates/lumen-static-shell/src/lib.rs:629` and `:691`) resolve the id
+(`crates/fulgurite-shell/src/lib.rs:629` and `:691`) resolve the id
 through `index_of_wid`, which returns the first match, and then return
 `true`. Their `#[must_use]` strings speak only of "matched no node".
-`count_wid`'s own rustdoc (`crates/lumen-static/src/style.rs:1191-1202`)
+`count_wid`'s own rustdoc (`crates/fulgurite/src/style.rs:1191-1202`)
 names the consequence, "a `Host::invalidate` that marks one of two,
 forever", and nothing acts on it.
 
@@ -134,15 +134,15 @@ builds only.
 ### 1.3 Table-shape claims that nothing checks (R2-F8, R2-F9)
 
 - **R2-F9.** `assemble::concat_table` writes `count as u16` into the
-  root's child count (`crates/lumen-static/src/assemble.rs:29`), with
+  root's child count (`crates/fulgurite/src/assemble.rs:29`), with
   no bound and no call to `table_is_well_formed`. Above 65,535
   instances the count wraps. At 65,536 it is 0 on a node marked
   `CONTAINER`, and the observe walk then lists no children. The
   re-triage re-ran the probe: at 70,000 the root's child count is 4,464
   and the table is not well formed. The rustdoc that says runtime
-  assembly "calls the same fn" is at `crates/lumen-static/src/widget.rs:379`.
+  assembly "calls the same fn" is at `crates/fulgurite/src/widget.rs:379`.
 - **R2-F8.** `expand_enum`'s rustdoc
-  (`crates/lumen-static-macros/src/lib.rs:1341-1344`) says an enum
+  (`crates/fulgurite-macros/src/lib.rs:1341-1344`) says an enum
   contributes **one** table node and keeps variants off-table, so
   `NODE_COUNT` does not depend on the variants. The same file at
   `:1393` says every variant gets its own index range, `1 + sum`
@@ -227,7 +227,7 @@ Each finding becomes a check that is **red at `1717808`**, committed
 marked expected-to-fail until its task lands, with its red output in
 the commit body, as M35/T35.0 and M36/T36.0 did.
 
-1. `crates/lumen-static-shell/tests/text_hash_collision.rs`, promoted
+1. `crates/fulgurite-shell/tests/text_hash_collision.rs`, promoted
    from the review's `r2_collision.rs` (probe `ae9125b`). Through
    `Host<_, Incremental>` with a bound `Label<String>`. The control
    string (same length, not colliding) must give a damage region and
@@ -236,7 +236,7 @@ the commit body, as M35/T35.0 and M36/T36.0 did.
    `stale_pixels N / bound 0`. The setup asserts that the label holds
    the new text and that the list is non-empty, so a frame in which
    nothing happened cannot pass.
-2. `crates/lumen-static-widgets/tests/folded_text_identity.rs`, promoted
+2. `crates/fulgurite-widgets/tests/folded_text_identity.rs`, promoted
    from `r2_folded.rs` (probe `7cadfa6`). For `Button`, `Badge` and
    `Chip`, under `BlockMetrics` and under a proportional measurer: the
    width served after a text change must equal a fresh widget's, for
@@ -256,14 +256,14 @@ the commit body, as M35/T35.0 and M36/T36.0 did.
    survives=true`). §5's thresholds are printed beside the numbers.
    `--bin retain` gains a text-heavy arm (labels of realistic lengths)
    for the retention half of the kill rule.
-4. `crates/lumen-static-shell/tests/duplicate_id_host.rs`, promoted from
+4. `crates/fulgurite-shell/tests/duplicate_id_host.rs`, promoted from
    `r2_dup.rs` (probe `9823e46`). An `Inner { #[widget_id("leaf")] Label }`
    used twice under the default `Host`. `invalidate("leaf")` must leave
    both instances dirty; `restyle_subtree` must give the new font size
    at both, and must not panic in debug. It prints each instance's
    state. **Red today:** `instance 4 clean=true`, and in debug the
    witness panic that blames the sheet.
-5. `crates/lumen-static/tests/assemble_bounds.rs`. `concat_table(65_535, …)`
+5. `crates/fulgurite/tests/assemble_bounds.rs`. `concat_table(65_535, …)`
    is well formed with child count 65,535. `concat_table(65_536, …)`
    must panic with a message naming the limit (`#[should_panic]`). A
    second test, without `should_panic`, asserts child count == count at
@@ -272,7 +272,7 @@ the commit body, as M35/T35.0 and M36/T36.0 did.
    today:** no panic, and a child count of 0.
 6. **R2-F8 has no red state**, and the commit says so. The derive is
    right and its rustdoc is wrong, so a test of the derive passes today.
-   `crates/lumen-static/tests/table_invariants.rs` gains an assertion
+   `crates/fulgurite/tests/table_invariants.rs` gains an assertion
    that a three-variant enum's `NODE_COUNT` is `1 +` the sum of its
    variants' counts. **Injection:** make the derive emit one node for
    an enum, and the assertion fails. That is the only direction it can
@@ -287,7 +287,7 @@ something M43 builds; no plan in M39–M55 adds a recipe for it.
 
 **Closes:** R2-F2, R2-F3, R2-F4.
 
-**Change.** One byte-string hash in `crates/lumen-static/src/display.rs`,
+**Change.** One byte-string hash in `crates/fulgurite/src/display.rs`,
 per §2.1's decision. `Recording::text_weighted` (`retain.rs:860-867`),
 `DisplayList::hash_from` (`display.rs:965-975`) and `FoldedText::fold_of`
 (`text.rs:224`) call it in place of their per-byte loops.
@@ -304,7 +304,7 @@ with `collision survives=false` for both pairs, and its median inside
 §5's thresholds. A core unit test asserts that the new function
 separates the solved pairs and the length-prefix pair (`"x"` against
 `"\0x"`). `damage_oracle.rs` stays green, and so does
-`crates/lumen-static/tests/text_memo.rs`'s "a still frame measures
+`crates/fulgurite/tests/text_memo.rs`'s "a still frame measures
 nothing", which shows the memo still hits.
 
 **Injection.** Put the per-byte loop back in
@@ -383,7 +383,7 @@ with a message naming the limit and the count, and
 R2-F5 lands its two new clauses in `table_is_well_formed`, the same
 debug assertion also covers pre-order and sibling termination, with no
 further change here. Rewrite `expand_enum`'s rustdoc
-(`crates/lumen-static-macros/src/lib.rs:1341-1344`) to match F4.3: the
+(`crates/fulgurite-macros/src/lib.rs:1341-1344`) to match F4.3: the
 enum contributes one node plus every variant's subtable, each variant
 has its own index range, and inactive variants are hidden, not
 off-table. Check the "like `Either`" half of the sentence against
@@ -397,7 +397,7 @@ assertion (T46.0 item 6) stays green.
 **Injection.** Remove the assert: the `should_panic` test fails, and
 the child-count assertion fails with 0. For R2-F8, as T46.0 item 6.
 **Accepts good input:** every runtime-assembled table in the workspace
-still passes the new debug assertion (`crates/lumen-static/tests/assembled_seeds.rs`
+still passes the new debug assertion (`crates/fulgurite/tests/assembled_seeds.rs`
 and the agent's hatch tests run in debug).
 
 **Docs in the same commit.** The `assemble.rs` rustdoc (the instance
@@ -426,7 +426,7 @@ or `book/src/topology.md`, if either says an enum is one node.
   tree's NODE_COUNT", E0080, from M26/T26.16). The runtime assertion
   in `table_invariants.rs` is kept as the readable statement of the
   count; the compile-time assert is what fires first.
-- `crates/lumen-static/tests/table_invariants.rs` is also edited by M41
+- `crates/fulgurite/tests/table_invariants.rs` is also edited by M41
   (T41.6); this task appends one test at its end.
 
 **Effort:** S. **Depends on:** nothing it cannot land without. **This
@@ -440,7 +440,7 @@ need neither M41 nor M42.
 ## 4. Boundaries of this plan
 
 - **Not the non-text folds.** The agent journal's `fingerprint` and its
-  style signature (`crates/lumen-static-agent/src/journal.rs:118-125`,
+  style signature (`crates/fulgurite-agent/src/journal.rs:118-125`,
   `:195-203`) repeat `fold`'s constant for table shapes and style
   floats. Those inputs are not chosen by whoever supplies displayed
   text, so a linear collision there needs an adversary the milestone

@@ -3,18 +3,18 @@
 # `reload` links no `.lss` reader.**
 #
 # A `.lss` sheet is `const` rules in every build (`include_lss!`), and the
-# reader -- `lumen_static_lss`'s parser and lowering, reached through
-# `lumen_static_shell::lss` -- is for re-reading the file while a debug or
+# reader -- `fulgurite_lss`'s parser and lowering, reached through
+# `fulgurite_shell::lss` -- is for re-reading the file while a debug or
 # `reload` window runs. The window crate calls `Program::live_lss` under
 # its own `cfg(any(debug_assertions, feature = "reload"))`, and nothing
 # else names the reader, so a shipped window should drop it at link time.
 #
 # This builds the tally -- the first program that styles itself from a
 # `.lss` (`Program::style_lss_by`) -- in release twice and counts the
-# symbols whose demangled name contains `lumen_static_lss`:
+# symbols whose demangled name contains `fulgurite_lss`:
 #
 #   * default features (no `reload`): the count must be 0;
-#   * `--features lumen-static-winit/reload`: the count must be ABOVE 0,
+#   * `--features fulgurite-winit/reload`: the count must be ABOVE 0,
 #     so the gating is shown switching both ways. A 0 there would mean the
 #     pattern matches nothing -- a gate that could not have gone red.
 #
@@ -24,7 +24,7 @@ set -uo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 export LC_ALL=C
 
-PATTERN='lumen_static_lss'
+PATTERN='fulgurite_lss'
 
 build() {
     cargo build --release -q -p counter-window "$@" --message-format=json | python3 -c '
@@ -55,7 +55,7 @@ count() {
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 off=$(build) || exit 1
 cp "$off" "$tmp/off" && off="$tmp/off"
-on=$(build --features lumen-static-winit/reload) || exit 1
+on=$(build --features fulgurite-winit/reload) || exit 1
 
 read -r n_off t_off <<<"$(count "$off")"
 read -r n_on t_on <<<"$(count "$on")"

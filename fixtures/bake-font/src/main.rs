@@ -1,7 +1,7 @@
 //! Bake a TTF into `const` glyph data — `docs/plan-embedded.md` T13.7.
 //!
 //! `FontMetrics` is `fontdue`, which needs `alloc`, is a `std` crate,
-//! and lives in `lumen-static-shell` — which M13 keeps `std`. So the
+//! and lives in `fulgurite-shell` — which M13 keeps `std`. So the
 //! target has no measurer at all, and a `Label` there would lay out
 //! glyphs nothing can draw. This writes the other half: advances and
 //! coverage bitmaps in flash, measured and drawn with no allocation and
@@ -10,7 +10,7 @@
 //! Usage: `cargo run -p bake-font -- <font.ttf> <px> <out.rs>`
 //!
 //! Output goes in the *application*, not the core: the machinery
-//! (`lumen_static::font::BakedFace`) is generic, the face is the app's,
+//! (`fulgurite::font::BakedFace`) is generic, the face is the app's,
 //! and a GUI framework should not ship a font.
 
 use std::fmt::Write as _;
@@ -67,7 +67,7 @@ fn main() {
     writeln!(s, "//! Do not edit. Source face: {path} at {px} px, {n} glyphs, {} bytes of", cov.len()).unwrap();
     writeln!(s, "//! coverage. Regenerate rather than patching; `fixtures/embedded/tests/").unwrap();
     writeln!(s, "//! baked_face.rs` checks every byte against a live fontdue render.").unwrap();
-    writeln!(s, "\nuse lumen_static::font::{{BakedFace, Glyph}};\n").unwrap();
+    writeln!(s, "\nuse fulgurite::font::{{BakedFace, Glyph}};\n").unwrap();
     writeln!(s, "pub static FACE: BakedFace = BakedFace {{").unwrap();
     writeln!(s, "    px: {px:?},").unwrap();
     writeln!(s, "    line_height: {:?},", lm.new_line_size).unwrap();

@@ -58,7 +58,7 @@ A verification effort has one central obligation, not a scattered set.
 > by construction. The invariant is *scoped*: content may extend beyond a
 > clipping ancestor and is clipped there; it may not extend beyond a
 > non-clipping one. What is checked, in
-> `crates/lumen-static/tests/paint_containment.rs`, is the consequence
+> `crates/fulgurite/tests/paint_containment.rs`, is the consequence
 > that matters — for every drawing command, its rect intersected with
 > every enclosing clip lies inside the root. Over a corpus crossing
 > `{Repeat, List, Dyn, Either, plain}` x four scroll positions x three
@@ -94,14 +94,14 @@ A verification effort has one central obligation, not a scattered set.
    environment: it fails intercepting build scripts of any proc-macro
    dependency (`quote`, `proc-macro2`) with "contains outdated or invalid
    JSON", independent of target dir, toolchain pin, or explicit
-   `--target`. Making `lumen-static-macros` an optional dependency (so a
+   `--target`. Making `fulgurite-macros` an optional dependency (so a
    hand-written-table profile has no proc macros at all) would sidestep
    it, and is defensible for the embedded profile regardless.
    **Re-checked 2026-09-26 (M49/T49.0):** it is any build script, not
    only a proc macro's — a fresh crate depending only on serde_json fails
    the same way under nightly 2026-02-11 — and a crate with no
    dependencies runs and reports UB. `fixtures/miri-reload`
-   (`just miri-reload`) uses that: it includes `lumen-static-reload`'s
+   (`just miri-reload`) uses that: it includes `fulgurite-reload`'s
    `raw.rs` and `panic.rs` by path, where every pointer operation of the
    hot-reload shims lives, and drives each call shape (14 of 14). A null
    guard removed, or `copy_out` writing past a small buffer, is reported
@@ -134,7 +134,7 @@ facts the compiler checks.
 > to be 0. The review's derive mutation I3 — a last child linked to its
 > parent's end — compiled everywhere under the old check and now fails
 > with 52 const-evaluation errors across 18 targets.
-> `crates/lumen-static/tests/table_invariants.rs` holds the four
+> `crates/fulgurite/tests/table_invariants.rs` holds the four
 > counterexamples, judged against descendants computed from parent
 > links alone.
 

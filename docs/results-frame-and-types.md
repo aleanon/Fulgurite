@@ -24,7 +24,7 @@ internal spread printed beside the delta.
 | embedded flash | `scripts/check_text.sh` | ≤ +300 B over the M26 baseline | it exceeds that |
 | embedded RAM | the const-asserted sizes in `fixtures/embedded` | unchanged unless the task records a new number | an unrecorded change |
 | rustc time | the millisecond figure `just const-budget` prints, four builds, with its own spread | no regression beyond that spread | the delta exceeds it |
-| allocation | `crates/lumen-static-shell/tests/alloc_gate.rs` | stays at zero, and covers the raster path from T26.13 | any steady-state allocation |
+| allocation | `crates/fulgurite-shell/tests/alloc_gate.rs` | stays at zero, and covers the raster path from T26.13 | any steady-state allocation |
 | backend parity | `just gpu-parity` | unchanged | any divergence |
 
 **Why a mode rule and not a fixed bound.** M25/T25.1 wrote a 335 ns
@@ -312,7 +312,7 @@ Confirmed by the compiler — the assert is a `const` one, so the build
 either agrees with the number or names it. The first run of `just
 check` failed on exactly this, which is the assert doing its job.
 
-Gate: `crates/lumen-static/tests/text_memo.rs`, a **counting**
+Gate: `crates/fulgurite/tests/text_memo.rs`, a **counting**
 `TextMeasure` that records every call. Five still frames must ask it
 nothing; changed text must still be shaped; and the cached width must
 equal the measured one, because a cached number that is wrong is worse
@@ -345,7 +345,7 @@ widgets.
 
 **One helper, because it was a convention.** `Button` open-coded a
 fold-keyed memo, `Label` had `Measured` and a `Dirty` bit, and `Badge`
-and `Chip` had nothing. `lumen_static::text::FoldedText` is now the one
+and `Chip` had nothing. `fulgurite::text::FoldedText` is now the one
 type for text a widget does not own — `text` is a plain public field the
 application binds, so a fold of the bytes stands in for the dirty bit.
 
@@ -354,7 +354,7 @@ private field, so `Badge { text }` no longer compiles. Both have `new`
 now, as `Label` has had since it had a memo to keep. Five call sites in
 this repository, all updated in the same commit.
 
-Gate: `crates/lumen-static-widgets/tests/text_memo.rs`, a counting
+Gate: `crates/fulgurite-widgets/tests/text_memo.rs`, a counting
 `TextMeasure` over all four widgets — five still frames must measure
 **zero** times, and the failure names the widget. Plus the two
 directions that make a memo a memo: changed text misses, and a restyle
@@ -406,7 +406,7 @@ against 278.5 ns before — unchanged, which is the expected answer,
 because `Streaming` kept its single buffer and its length-change
 behaviour.
 
-Gate: `crates/lumen-static/tests/container_fill.rs` — four tests, two
+Gate: `crates/fulgurite/tests/container_fill.rs` — four tests, two
 counters. A painter that counts *calls* (not commands, for the reason
 above) and a `Retention` that counts *slots*. Both directions: a
 container given a background still paints one, and alpha 1 is not alpha
@@ -444,7 +444,7 @@ the vectors are swapped and cleared, never reallocated, and
 strategy whose purpose is a bounded allocation-free footprint. A length
 change still answers `Damage::All` there.
 
-Gate: `crates/lumen-static/tests/retain_align.rs`. The good-input half
+Gate: `crates/fulgurite/tests/retain_align.rs`. The good-input half
 is stated **as area**, as the task required — after this change a frame
 in which everything differs reports regions covering the viewport rather
 than the `All` variant, so the assertions compare covered area against
@@ -597,7 +597,7 @@ And it closed a lint hole worth more than the nanoseconds: a `Dyn`
 island passed `seeds: None`, so the sheet lint's arena walk used
 `Fields::ALL` and `SheetIssue::Unread` could not fire for anything
 inside an island. See T26.10 part one above and
-`crates/lumen-static/tests/island_seeds.rs`.
+`crates/fulgurite/tests/island_seeds.rs`.
 
 ## T26.12 — the GPU was handed a bounding box, not M18's regions
 
@@ -626,9 +626,9 @@ put one at the head of the frame.
 **Where the gate lives, and why.** `just test` excludes the wgpu crate
 and `just gpu-parity` runs in neither `test` nor `check`, so a gate
 written beside the pixels runs on nobody's commit. The assertion is on
-what the **shell hands over** — `lumen_static_winit::regions_for`, which
+what the **shell hands over** — `fulgurite_winit::regions_for`, which
 sits outside the `gpu` feature precisely so a test can reach it without
-wgpu — in `crates/lumen-static-winit/tests/gpu_regions.rs`, which
+wgpu — in `crates/fulgurite-winit/tests/gpu_regions.rs`, which
 `dev-shape` runs.
 
 Injection (collapse to `clip_to`): the handed-over set drops to one rect
@@ -680,7 +680,7 @@ and every caller in this repository asserts it, so this buys little
 against the current tree and everything against the next caller and
 third-party code.
 
-Gate: `crates/lumen-static/tests/wid_index.rs` — and the good-input half
+Gate: `crates/fulgurite/tests/wid_index.rs` — and the good-input half
 is the one with work in it. It walks the **table**, asserting that the
 const and runtime lookups agree for every id a tree carries, so an id
 added later is covered without anyone remembering to add it. The
@@ -716,7 +716,7 @@ No measurement: this buys no frame time and does not touch a const-eval
 path. Phase C's other judgement — rustc's time — is unmoved, and the
 task claims nothing there.
 
-Gate: `lumen-static-widgets/tests/style_reads.rs` still measures every
+Gate: `fulgurite-widgets/tests/style_reads.rs` still measures every
 kind's output field by field and compares it to the declared mask; the
 new half is a `compile_fail` doctest beside a passing one, so a widget
 declared without a mask does not build.
@@ -847,7 +847,7 @@ True as a fact and worthless as an optimization, which the probe
 separates and reading could not.
 
 `Painter::clip_bounds` has exactly one caller in the whole workspace —
-`List::paint` (`crates/lumen-static/src/hatch.rs`). The generated
+`List::paint` (`crates/fulgurite/src/hatch.rs`). The generated
 `paint` for a derived container culls nothing. So the finding's premise
 holds.
 
@@ -883,8 +883,8 @@ closes the finding without the optimization ever being built.
 
 True in the source. The derive emits `let cs = style[at];` once per
 child at two sites in the fill-distribution scan
-(`crates/lumen-static-macros/src/lib.rs`), and `Style` is **80 bytes**
-(`crates/lumen-static/tests/cursor.rs` pins it).
+(`crates/fulgurite-macros/src/lib.rs`), and `Style` is **80 bytes**
+(`crates/fulgurite/tests/cursor.rs` pins it).
 
 Rewritten to `let cs = &style[at];` at both sites, `layout`, 10 000
 nodes, idle/rebuild, six runs sorted:
@@ -1031,7 +1031,7 @@ above are unchanged. The const was not built for the reason recorded
 above; the plan's run-time owner list was not built because an arena
 that **appears** inside a narrowed range — an `Option` becoming `Some`,
 an enum switching variant — is on no list made before it existed, and
-`lumen-static-shell/tests/arena_marks.rs` shows the list injected and
+`fulgurite-shell/tests/arena_marks.rs` shows the list injected and
 both cases red. The figure is `docs/results-damage-precision.md` T53.2.
 
 ### Finding 11 — ids and classes compared by content: **closed on cost**
@@ -1073,7 +1073,7 @@ and at that point the 10.7× is worth 8 bytes a node.
 > `TextInput` and `TextArea` keyed their shaped memos on a hand-written
 > tuple without the scale, so this defect survived in them (R2-F6): 129
 > served against 130 fresh after a drag
-> (`crates/lumen-static-widgets/tests/measure_scale_widgets.rs`). Both
+> (`crates/fulgurite-widgets/tests/measure_scale_widgets.rs`). Both
 > build their key from `MeasureKey::new` now, which takes the
 > `LayoutCx` and so the scale and the measurer's generation with it;
 > `MeasureKey::of` takes the generation as a required argument too.
@@ -1141,7 +1141,7 @@ build their own `LayoutCx`, so the one line that gives an application's
 memo the scale — `.with_scale(self.scale)` in `Host::pump_with` — could
 be deleted with every test binary green. The shell's `scale_memo.rs`
 drives the drag through a real `Host` with the same measurer (now
-`crates/lumen-static/tests/support/hinted.rs`, shared by both files) and
+`crates/fulgurite/tests/support/hinted.rs`, shared by both files) and
 compares the dragged label's box with a fresh 2× host's. **Injection**
 d2, deleting that line: `dragged 1x -> 2x: width 129; fresh 2x: 130`,
 measurer calls on the drag frame 0, and the test fails by name; the
@@ -1252,7 +1252,7 @@ still does not know. A binding finds its node by the target's *address*
 at run time, once, cached per site (`bind::node_of`), and
 `App::update_marked` feeds one range per binding that wrote; the paths
 that cannot say where they wrote are asserted to mark everything
-(`crates/lumen-static-shell/tests/conservative_marks.rs`).
+(`crates/fulgurite-shell/tests/conservative_marks.rs`).
 
 - **The derive does not know.** It sees `ui.card.value` as *tokens* and
   has no type information, so it cannot resolve a path to an index
@@ -1380,7 +1380,7 @@ asserted to still cascade) and is task-sized work rather than a tail-end
 addition.
 
 **Injection**: `any_arena` forced to `false`. Three tests in
-`crates/lumen-static/tests/island_seeds.rs` fail by name —
+`crates/fulgurite/tests/island_seeds.rs` fail by name —
 `a_rule_naming_the_islands_kind_matches`,
 `a_field_the_boxed_kind_never_reads_is_reported`, and
 `a_field_the_boxed_kind_reads_is_quiet`. The arena half of the lint was

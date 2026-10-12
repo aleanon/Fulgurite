@@ -435,18 +435,18 @@ dependencies = [
 name = "benches"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-shell",
+ "fulgurite-widgets",
 ]
 
 [[package]]
 name = "binsize"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -619,10 +619,10 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 name = "chain-app"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
  "serde",
 ]
 
@@ -669,8 +669,8 @@ dependencies = [
 name = "const-budget"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -726,10 +726,10 @@ dependencies = [
 name = "counter"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-shell",
+ "fulgurite-widgets",
  "serde_json",
 ]
 
@@ -737,11 +737,11 @@ dependencies = [
 name = "counter-window"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
  "serde_json",
 ]
 
@@ -785,11 +785,11 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 name = "daemon"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -891,8 +891,8 @@ name = "embedded"
 version = "0.1.0"
 dependencies = [
  "fontdue",
- "lumen-static",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -1054,9 +1054,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 name = "form"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -1066,6 +1066,131 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "fulgurite"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "fulgurite-macros",
+ "fulgurite-widgets",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fulgurite-agent"
+version = "0.1.0"
+dependencies = [
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "serde_json",
+]
+
+[[package]]
+name = "fulgurite-lss"
+version = "0.1.0"
+
+[[package]]
+name = "fulgurite-macros"
+version = "0.1.0"
+dependencies = [
+ "fulgurite",
+ "fulgurite-lss",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 2.0.119",
+ "trybuild",
+]
+
+[[package]]
+name = "fulgurite-reload"
+version = "0.1.0"
+dependencies = [
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "libloading",
+ "serde",
+]
+
+[[package]]
+name = "fulgurite-shell"
+version = "0.1.0"
+dependencies = [
+ "fontdue",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-lss",
+ "fulgurite-text",
+ "fulgurite-widgets",
+ "gif",
+ "png",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "ttf-parser",
+ "unicode-bidi",
+ "wide",
+]
+
+[[package]]
+name = "fulgurite-text"
+version = "0.1.0"
+dependencies = [
+ "fulgurite",
+ "rustybuzz",
+ "unicode-bidi",
+ "unicode-linebreak",
+]
+
+[[package]]
+name = "fulgurite-wgpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "fulgurite",
+ "fulgurite-shell",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
+name = "fulgurite-widgets"
+version = "0.1.0"
+dependencies = [
+ "accesskit",
+ "fulgurite",
+ "fulgurite-shell",
+ "serde_json",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "fulgurite-winit"
+version = "0.1.0"
+dependencies = [
+ "accesskit_winit",
+ "arboard",
+ "fulgurite",
+ "fulgurite-agent",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-wgpu",
+ "fulgurite-widgets",
+ "ksni",
+ "notify",
+ "rfd",
+ "serde_json",
+ "softbuffer",
+ "tracing",
+ "winit",
 ]
 
 [[package]]
@@ -1232,21 +1357,21 @@ dependencies = [
 name = "glass"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
 name = "glasswall"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-wgpu",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-wgpu",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -1394,9 +1519,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 name = "hot-app"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-widgets",
  "serde",
  "serde_json",
 ]
@@ -1405,19 +1530,19 @@ dependencies = [
 name = "hot-host"
 version = "0.1.0"
 dependencies = [
+ "fulgurite",
  "libloading",
- "lumen-static",
 ]
 
 [[package]]
 name = "hot-window"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
  "serde",
 ]
 
@@ -1679,131 +1804,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "lumen-static"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "lumen-static-macros",
- "lumen-static-widgets",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "lumen-static-agent"
-version = "0.1.0"
-dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "serde_json",
-]
-
-[[package]]
-name = "lumen-static-lss"
-version = "0.1.0"
-
-[[package]]
-name = "lumen-static-macros"
-version = "0.1.0"
-dependencies = [
- "lumen-static",
- "lumen-static-lss",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
- "proc-macro2",
- "quote",
- "serde",
- "syn 2.0.119",
- "trybuild",
-]
-
-[[package]]
-name = "lumen-static-reload"
-version = "0.1.0"
-dependencies = [
- "libloading",
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "serde",
-]
-
-[[package]]
-name = "lumen-static-shell"
-version = "0.1.0"
-dependencies = [
- "fontdue",
- "gif",
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-lss",
- "lumen-static-text",
- "lumen-static-widgets",
- "png",
- "raw-window-handle",
- "serde",
- "serde_json",
- "ttf-parser",
- "unicode-bidi",
- "wide",
-]
-
-[[package]]
-name = "lumen-static-text"
-version = "0.1.0"
-dependencies = [
- "lumen-static",
- "rustybuzz",
- "unicode-bidi",
- "unicode-linebreak",
-]
-
-[[package]]
-name = "lumen-static-wgpu"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "lumen-static",
- "lumen-static-shell",
- "pollster",
- "wgpu",
-]
-
-[[package]]
-name = "lumen-static-widgets"
-version = "0.1.0"
-dependencies = [
- "accesskit",
- "lumen-static",
- "lumen-static-shell",
- "serde_json",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "lumen-static-winit"
-version = "0.1.0"
-dependencies = [
- "accesskit_winit",
- "arboard",
- "ksni",
- "lumen-static",
- "lumen-static-agent",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-wgpu",
- "lumen-static-widgets",
- "notify",
- "rfd",
- "serde_json",
- "softbuffer",
- "tracing",
- "winit",
-]
-
-[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1831,9 +1831,9 @@ dependencies = [
 name = "minimal"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -1866,8 +1866,8 @@ version = "0.1.0"
 name = "miri-smoke"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -2309,8 +2309,8 @@ name = "observe-tests"
 version = "0.1.0"
 dependencies = [
  "accesskit",
- "lumen-static",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-widgets",
  "serde_json",
 ]
 
@@ -2374,10 +2374,10 @@ dependencies = [
 name = "panic-app"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -2688,10 +2688,10 @@ dependencies = [
 name = "reload-app"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
  "serde",
 ]
 
@@ -2699,11 +2699,11 @@ dependencies = [
 name = "reload-host"
 version = "0.1.0"
 dependencies = [
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
  "libloading",
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
  "serde_json",
 ]
 
@@ -2927,10 +2927,10 @@ dependencies = [
 name = "shader"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -2943,10 +2943,10 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "showcase"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -3087,20 +3087,20 @@ dependencies = [
 name = "stamp-host"
 version = "0.1.0"
 dependencies = [
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
  "libloading",
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
 ]
 
 [[package]]
 name = "stamp-lib"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-reload",
- "lumen-static-shell",
- "lumen-static-widgets",
+ "fulgurite",
+ "fulgurite-reload",
+ "fulgurite-shell",
+ "fulgurite-widgets",
 ]
 
 [[package]]
@@ -3175,9 +3175,9 @@ dependencies = [
 name = "tasks-demo"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -3414,10 +3414,10 @@ dependencies = [
 name = "tray"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -3448,10 +3448,10 @@ dependencies = [
 name = "two-windows"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-shell",
- "lumen-static-widgets",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-shell",
+ "fulgurite-widgets",
+ "fulgurite-winit",
 ]
 
 [[package]]
@@ -3546,8 +3546,8 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "wake-gate"
 version = "0.1.0"
 dependencies = [
- "lumen-static",
- "lumen-static-winit",
+ "fulgurite",
+ "fulgurite-winit",
  "winit",
 ]
 

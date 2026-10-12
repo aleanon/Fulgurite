@@ -62,7 +62,7 @@ smaller than the table's.
 ### RAM, the fixture as it stands
 
 *These are the 2026-09-15 sizes, and both types have grown since; today's
-are asserted in `crates/lumen-static/tests/cursor.rs` and not restated
+are asserted in `crates/fulgurite/tests/cursor.rs` and not restated
 here (R8-F9, M55/T55.8). The arithmetic below is the decision's evidence
 as it stood.*
 
@@ -111,7 +111,7 @@ recorded here, where M25's cascade row reads it.
 
 ### The arena frame — one run
 
-`just stages 10000 150 20` with `LUMEN_NO_GPU=1`, min of 150 per stage,
+`just stages 10000 150 20` with `FULGURITE_NO_GPU=1`, min of 150 per stage,
 `List<Label<String>>` at 10 000 rows, `incremental` retention:
 
 | workload | layout | place | paint |
@@ -124,7 +124,7 @@ pilot's.
 
 ## T25.2 — what each kind reads, measured
 
-`crates/lumen-static-widgets/tests/style_reads.rs` renders each of 32
+`crates/fulgurite-widgets/tests/style_reads.rs` renders each of 32
 kinds with and without each of the 16 `Style` fields — under a fixed and
 a shrink-to-content base, in every pointer state the node can actually be
 in, over the instance states that change what it paints — and requires
@@ -236,7 +236,7 @@ about 3.6 ns a toggle. Small in absolute terms; ten times the
 run-to-run spread the threshold was written against.
 
 **What the pilot bought that nothing smaller would**: a pressed look
-that changes hue (`crates/lumen-static-shell/tests/toggle_status.rs`).
+that changes hue (`crates/fulgurite-shell/tests/toggle_status.rs`).
 The coloured tick, the palette-driven body, and the reload behaviour
 are all within reach of `docs/plan-appearance.md` §2.6's (a) and (b).
 

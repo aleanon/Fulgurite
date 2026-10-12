@@ -8,7 +8,7 @@
 >
 > Yes on both counts. **The enum switch the question describes has been
 > in the derive since T4.4** (2026-09-01;
-> `crates/lumen-static-macros/src/lib.rs`,
+> `crates/fulgurite-macros/src/lib.rs`,
 > `expand_enum`), and the showcase could not use it — because of a
 > cascade defect that makes a hidden subtree resolve its style from the
 > wrong type. That defect is this milestone's first task, and the rest
@@ -106,8 +106,8 @@ widget in both crates. That is the drift check — the two spellings of
 one fact are exactly the thing that rots.
 
 **Injections, and what one of them found.** Six were run
-(`crates/lumen-static/tests/seeds.rs`,
-`crates/lumen-static-widgets/tests/widgets.rs`):
+(`crates/fulgurite/tests/seeds.rs`,
+`crates/fulgurite-widgets/tests/widgets.rs`):
 
 | # | injection | result |
 |---|---|---|
@@ -176,7 +176,7 @@ The cost of the old answer was not only tidiness. The sheet lint's
 arena walk had no mask for a `None` island and used `Fields::ALL`, so
 `SheetIssue::Unread` could not fire for **anything** inside one: a rule
 setting a field the boxed kind never reads was silently accepted.
-`crates/lumen-static/tests/island_seeds.rs` pins both directions.
+`crates/fulgurite/tests/island_seeds.rs` pins both directions.
 
 `ArenaMut` keeps `seeds: Option<&'static [Seed]>` for now — the shape
 is still the one `docs/plan-review-fixes.md` F4.1 specifies — but no
@@ -267,7 +267,7 @@ addressable to be tested at all.
 `#menu > %3` is the fourth row of `#menu`; `%3` alone is every
 repeater's fourth row at once, which `ui.resolve` reports as ambiguous
 rather than guessing. The row index rides in the id
-`lumen_static::observe::instance_id` already built — bits 12..=43, with
+`fulgurite::observe::instance_id` already built — bits 12..=43, with
 the owner in 44..=62 — so nothing new is stored and the decoder sits
 next to the only two things that read it, where it cannot drift from the
 encoder the way four copies of *that* did (F4.4).
@@ -308,7 +308,7 @@ test rather than weakening the injection.
 | 3 | `Repeat` laid its rows out against the limits it was **given**, not its resolved box | 18 rows 932 px wide in a 300 px panel | `tests/repeat_box.rs` |
 | 4 | `Repeat` painted no background and never called `record_painted`, so `style.background` reached no `NodeState` | the panel was transparent | `tests/repeat_box.rs` |
 | 5 | the enum derive emitted **no `defaults`**, inheriting `Node`'s `Shrink`/`Shrink` where every other container is `FILL`/`Shrink` | the stage stopped being centred | `tests/hatches.rs` |
-| 6 | the journal and the auditor painted and probed **stand-in nodes** — `node(i)` answers with the enclosing container for an index inside a branch that is not laid out, and using it *at `i`* runs off the end of `states` | a **release-build panic** the moment the menu opened; `just check` was green and 134 test binaries were green | `lumen-static-agent/tests/hidden_subtree.rs` |
+| 6 | the journal and the auditor painted and probed **stand-in nodes** — `node(i)` answers with the enclosing container for an index inside a branch that is not laid out, and using it *at `i`* runs off the end of `states` | a **release-build panic** the moment the menu opened; `just check` was green and 134 test binaries were green | `fulgurite-agent/tests/hidden_subtree.rs` |
 | 7 | `pass::default_styles` seeded from the live tree, so a hidden subtree got the container's defaults | an inactive variant measured 400 px instead of 40 | `tests/hatches.rs` |
 
 Six and seven are M24's own shape once more, in the two places T24.1

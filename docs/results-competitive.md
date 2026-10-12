@@ -1,4 +1,4 @@
-# lumen-static against Qt, GTK, iced, Xilem, Slint and Lumen
+# fulgurite against Qt, GTK, iced, Xilem, Slint and Lumen
 
 **Measured 2026-09-05.** Every number here was run on this machine on
 this day. Nothing is estimated, and no number comes from a single run.
@@ -34,7 +34,7 @@ to assume otherwise:
   clipboard delta was already measured the careful way and its note
   already says why.
 - **Lumen's default-on ambient audit is not the asymmetry it looks
-  like.** Its rows below are the audit-on build and lumen-static's are
+  like.** Its rows below are the audit-on build and fulgurite's are
   audit-off, which is not symmetric — but measured both ways the audit
   costs Lumen **1.6%** (85.1 vs 86.4 µs at 100 rows; 1 432 vs 1 456 at
   3 000). The gap is architectural, not configurational.
@@ -82,7 +82,7 @@ tree. Nothing is rasterised. Criterion, 20 samples.
 
 | arm | 3000 rows | 100 rows |
 |---|---:|---:|
-| **lumen-static** (layout + display list) | **33.8 µs** | — |
+| **fulgurite** (layout + display list) | **33.8 µs** | — |
 | iced 0.14 | 340.0 µs | 16.5 µs |
 | Lumen (memoized) | 724.0 µs | 67.2 µs |
 | masonry 0.4 (Xilem's widget layer) | 887.6 µs | 32.8 µs |
@@ -93,16 +93,16 @@ tree. Nothing is rasterised. Criterion, 20 samples.
 
 | arm | change → layout | → +pixels | idle floor |
 |---|---:|---:|---:|
-| **lumen-static** | **18.7 µs** | **71.8 µs** (damage) / 215.2 µs (full) | **51.7 µs** |
+| **fulgurite** | **18.7 µs** | **71.8 µs** (damage) / 215.2 µs (full) | **51.7 µs** |
 | Qt 6.4.2 | 304.2 µs | 564.0 µs | 251.2 µs |
 | GTK 4.14.5 | 111.5 µs | — | — |
 
-**lumen-static is 10× faster than iced and 44× faster than Lumen** at
+**fulgurite is 10× faster than iced and 44× faster than Lumen** at
 the matched stopping point, and 16× faster than Qt on the layout half.
 
 The architectural reason is not subtle and is worth stating plainly:
 **every other arm rebuilds or diffs a view tree for a one-row change,
-and lumen-static has no view tree to rebuild.** The topology is in the
+and fulgurite has no view tree to rebuild.** The topology is in the
 type; a text change is a `Dirty` flag on one node and a memo miss on one
 label. That is what the whole design is *for*, and this is the row that
 shows it.
@@ -118,7 +118,7 @@ Four caveats, or the table flatters us:
   What the test harness actually adds is **`WindowEvent::
   EnableAccessTree`, sent unconditionally at construction** — so masonry
   is charged for an accessibility tree rebuilt every frame that
-  lumen-static and plain Lumen are not, and only `Lumen + semantics` is.
+  fulgurite and plain Lumen are not, and only `Lumen + semantics` is.
   A probe driving masonry through the public `RenderRoot` instead
   produces 203 AccessKit nodes at 100 rows with it enabled and 0
   without, while shaping all 100 rows either way. It *can* be driven
@@ -144,7 +144,7 @@ Four caveats, or the table flatters us:
   subtracted from one another. Its idle floor is quoted so a reader does
   not read `natural update+paint` as the marginal cost of the change.
 - **`+render (full)` is the honest comparison with Qt**, which is not
-  being allowed a damage rect. The damage number is what lumen-static
+  being allowed a damage rect. The damage number is what fulgurite
   ships and is reported beside it, not instead of it.
 
 ## 2. Full frame — every row of 3000 changes
@@ -154,7 +154,7 @@ serve 3 000 new strings from one.
 
 | arm | 3000 rows | 100 rows |
 |---|---:|---:|
-| **lumen-static** | **1 392 µs** | — |
+| **fulgurite** | **1 392 µs** | — |
 | Lumen | 15 924 µs | 1 586 µs |
 | iced 0.14 | 18 047 µs | 590 µs |
 
@@ -163,7 +163,7 @@ serve 3 000 new strings from one.
 That margin is *not* the static tree — when every string must be shaped,
 nobody's tree matters. It is that §6.2 removed a rasterisation from the
 measurement path. Before that fix this row read **8 736 µs** and
-lumen-static was 1.8× ahead instead of 11×; the framework has been
+fulgurite was 1.8× ahead instead of 11×; the framework has been
 paying for it since the shell gained real glyphs.
 
 At 100 rows iced is faster than Lumen (590 µs vs 1 586 µs) and the order
@@ -176,8 +176,8 @@ Median of 3 launches, `VmRSS` 4 s after launch.
 
 | arm | RSS |
 |---|---:|
-| **lumen-static (lean)** | **24.3 MB** |
-| **lumen-static** | **24.6 MB** |
+| **fulgurite (lean)** | **24.3 MB** |
+| **fulgurite** | **24.6 MB** |
 | Qt 6.4.2 | 46.4 MB |
 | Slint | 68.5 MB |
 | GTK 4.14.5 | 136.9 MB |
@@ -191,14 +191,14 @@ still the smallest of the eight. The `gpu` feature is its own row
 (`docs/results-gpu.md` §5): 197.8 MB with an adapter open, 26.58 MB in
 the same binary forced to software.
 
-**lumen-static is the smallest resident of the eight, by 1.9× over the
+**fulgurite is the smallest resident of the eight, by 1.9× over the
 next one.** The gap over the GPU-backed arms (iced, Xilem, Lumen) is
 mostly a GPU context: a wgpu device and its driver-side allocations are
 tens of megabytes before a frame is drawn. That is a real cost a user
 pays, and it is also not a fair measure of *framework* overhead — both
 statements are true and the table means less without the second.
 
-**And most of lumen-static's own figure is two parsed fonts** (M38,
+**And most of fulgurite's own figure is two parsed fonts** (M38,
 R8-F10; attributed 2026-09-27 for M50/T50.7). fontdue's parse of Noto
 Sans is **8.61 MB** of heap for the regular face and **8.42 MB** for the
 bold, and `FontStack::system` held **17.03 MB** after start-up — against
@@ -215,8 +215,8 @@ excluding the C runtime every binary on the system already has.
 
 | arm | exe | shared libs |
 |---|---:|---|
-| **lumen-static (lean)** | **2.5 MB** | 0.2 MB in 1 |
-| **lumen-static** | **2.7 MB** | 0.2 MB in 1 |
+| **fulgurite (lean)** | **2.5 MB** | 0.2 MB in 1 |
+| **fulgurite** | **2.7 MB** | 0.2 MB in 1 |
 | iced | 10.7 MB | 0.2 MB in 1 |
 | Xilem | 10.8 MB | 0.2 MB in 1 |
 | Slint | 14.8 MB | 2.0 MB in 9 |
@@ -248,7 +248,7 @@ one: the same core, `no_std` with no allocator, links a **22 458-byte
 `.text`** firmware for `thumbv7em-none-eabihf`
 (`docs/results-embedded.md`).
 
-## 5. lumen-static configurations
+## 5. fulgurite configurations
 
 | configuration | effect |
 |---|---|
@@ -297,7 +297,7 @@ which is the point — see "what M16 changed" at the end.
 
 | arm | 100 | 1 000 | 3 000 | 10 000 |
 |---|---:|---:|---:|---:|
-| **lumen-static** (layout + display list) | **1.9** | **13.0** | **37.4** | **129.0** |
+| **fulgurite** (layout + display list) | **1.9** | **13.0** | **37.4** | **129.0** |
 | GTK 4.14.5 (measure only) | 8.9 | 40.7 | 126.5 | 374.0 |
 | iced 0.14 | 15.6 | 98.8 | 287.9 | 920.9 |
 | Qt 6.4.2 (natural update) | 23.4 | 99.9 | 300.6 | — |
@@ -307,7 +307,7 @@ which is the point — see "what M16 changed" at the end.
 
 At 3 000 rows: **7.7× iced, 8.0× Qt, 20.8× egui, 23.8× masonry, 37.4×
 Lumen.** GTK measures and never paints, so it belongs against
-lumen-static's `layout` alone — 1.4 / 7.3 / 20.2 / 66.2 µs — a **6.3×**
+fulgurite's `layout` alone — 1.4 / 7.3 / 20.2 / 66.2 µs — a **6.3×**
 margin rather than the 3.4× the raw columns suggest.
 
 The 10 000-row column has four gaps: masonry, egui and Lumen have
@@ -318,7 +318,7 @@ driven past it.
 
 | arm | 100 | 1 000 | 3 000 |
 |---|---:|---:|---:|
-| **lumen-static** | **43.7** | **484.6** | **1 478** |
+| **fulgurite** | **43.7** | **484.6** | **1 478** |
 | Lumen | 1 575 | 5 923 | 16 124 |
 | iced 0.14 | 585 | 5 921 | 17 767 |
 
@@ -396,7 +396,7 @@ narrowed frame (`docs/results-damage-precision.md`, T53.1).
 *Which raster build (M50/T50.5):* `raster (software)` is the stages arm's
 default build — scalar, one thread, no `simd` and no `threads`, which
 are default-off and reached from the window crate as
-`lumen-static-winit/simd` and `/threads`. The fast software row this
+`fulgurite-winit/simd` and `/threads`. The fast software row this
 project publishes is `docs/results-vello.md`'s, built with both.
 
 **Paint is the largest stage of a small-update frame** and the damaged
@@ -482,7 +482,7 @@ governor, same harness, `./competitors.sh`.
 
 ### The finding is about the harness, not the frameworks
 
-The first run said lumen-static had regressed **22% on paint** since
+The first run said fulgurite had regressed **22% on paint** since
 2026-09-05. It had not. `refactor(M30): one crate owns the widgets`
 (`6052492`) added `features = ["observe"]` to the *unconditional*
 dependency line of `benches-competitive/arms/frame/Cargo.toml`, so the
@@ -534,7 +534,7 @@ Three builds of the frame arm at 3 000 rows, run interleaved and
 | build | layout (µs) | +paint (µs) | `Label::layout` as its own symbol |
 |---|---:|---:|---|
 | plain | 13.5–14.3 | 30.7–33.1 | no — inlined into `List::layout` |
-| `lumen-static-widgets/observe`, no agent | 17.3–19.4 | 38.3–41.1 | **yes**, 0x21b B; `Label::paint` too, 0x118 B |
+| `fulgurite-widgets/observe`, no agent | 17.3–19.4 | 38.3–41.1 | **yes**, 0x21b B; `Label::paint` too, 0x118 B |
 | the same, with `List::observe`'s one `emit_subtree` call removed | 13.8–14.7 | 31.0–33.0 | no |
 
 Ranges are min–max. The plain and observe rows are over 14 runs each
@@ -617,7 +617,7 @@ to write down.
 
 | arm | 100 | 1 000 | 3 000 |
 |---|---:|---:|---:|
-| **lumen-static** (layout + display list) | **1.7** | **11.2** | **32.3** |
+| **fulgurite** (layout + display list) | **1.7** | **11.2** | **32.3** |
 | GTK 4.14.5 (measure only) | 8.8 | 41.0 | 112.2 |
 | iced 0.14 | 15.6 | — | 290.1 |
 | Qt 6.4.2 (natural update) | 23.6 | 101.9 | 304.8 |
@@ -629,10 +629,10 @@ to write down.
 
 At 3 000 rows: **9.0× iced, 9.4× Qt, 25.2× egui, 27.8× masonry, 44.8×
 Lumen.** GTK measures and never paints, so it belongs against
-lumen-static's `layout` alone — 1.2 / 5.3 / 14.5 µs — a **7.7×** gap at
+fulgurite's `layout` alone — 1.2 / 5.3 / 14.5 µs — a **7.7×** gap at
 3 000.
 
-lumen-static's own stages, for reference: idle floor 1.6 / 16.5 / 49.1
+fulgurite's own stages, for reference: idle floor 1.6 / 16.5 / 49.1
 µs; `+render (damage)` 13.4 / 32.1 / 73.5; `+render (full)` 189.2 /
 200.5 / 229.4. A full-frame churn at 3 000 rows is 1 364 µs of layout
 and 1 477 with paint — every row's text replaced, which is the workload
@@ -647,8 +647,8 @@ quietly folded into the point table's ranking.
 
 | arm | 100 | 3 000 |
 |---|---:|---:|
-| **lumen-static** (layout) | **42.7** | **1 333.7** |
-| **lumen-static** (layout + display list) | **46.1** | **1 446.8** |
+| **fulgurite** (layout) | **42.7** | **1 333.7** |
+| **fulgurite** (layout + display list) | **46.1** | **1 446.8** |
 | GTK 4.14.5 (set + measure) | 459.8 | 14 311.6 |
 | iced 0.14 | 585.2 | 17 608.0 |
 | Qt 6.4.2 (set + layout) | 688.2 | 20 472.8 |
@@ -659,7 +659,7 @@ At 3 000 rows: **12.2× iced, 14.4× Qt, 11.0× Lumen**, and 10.7× GTK
 compared layout-to-layout, since GTK's arm measures and never paints.
 
 **The margin is a third of what the point workload shows, and that is
-the honest reading of both.** On a one-row change lumen-static is 9–45×
+the honest reading of both.** On a one-row change fulgurite is 9–45×
 ahead because nobody else has a tree that can decline to rebuild itself.
 When all 3 000 strings are new, everybody shapes 3 000 strings and no
 tree architecture helps — what is left is the text path and the
@@ -680,7 +680,7 @@ all: Qt and GTK rasterise to pixels, iced and Xilem to a GPU surface,
 egui to a texture, and a matched stopping point is the only place the
 seven can be put on one axis.
 
-lumen-static's own backends are measured against each other on the same
+fulgurite's own backends are measured against each other on the same
 `DisplayList` in `docs/results-gpu.md` §1 (re-run 2026-09-22): **17.6×
 at 4K**, with the crossover at 3–5% surface damage regardless of command
 count. `benches-competitive/arms/raster` is the only arm here that
@@ -691,7 +691,7 @@ than added as a column.
 ### The control, and what actually moved
 
 Every foreign arm is within a few percent of §5b's 2026-09-08 numbers,
-which is what makes the lumen-static comparison meaningful rather than
+which is what makes the fulgurite comparison meaningful rather than
 a story about the machine:
 
 | arm, 3 000 rows | 2026-09-08 | 2026-09-22 |
@@ -702,9 +702,9 @@ a story about the machine:
 | egui | 779.1 | 812.3 |
 | Lumen (audit off) | 1 400.5 | 1 447.4 |
 | GTK | 126.5 | 112.2 |
-| **lumen-static** | **37.4** | **32.3** |
+| **fulgurite** | **37.4** | **32.3** |
 
-**lumen-static is 9–14% faster than it was**, across all three sizes
+**fulgurite is 9–14% faster than it was**, across all three sizes
 (1.9 → 1.7, 13.0 → 11.2, 37.4 → 32.3), which is M26 Phase B's
 optimizations arriving. Nothing regressed.
 
@@ -712,8 +712,8 @@ optimizations arriving. Nothing regressed.
 
 | arm | idle RSS | size |
 |---|---:|---|
-| **lumen-static** | **24.7 MB** | 2.8 MB exe + 0.2 MB in 1 lib |
-| lumen-static (lean) | — | 2.6 MB exe + 0.2 MB in 1 lib |
+| **fulgurite** | **24.7 MB** | 2.8 MB exe + 0.2 MB in 1 lib |
+| fulgurite (lean) | — | 2.6 MB exe + 0.2 MB in 1 lib |
 | Qt 6.4.2 | 46.5 MB | 0.0 MB exe + **70.1 MB in 45 libs** |
 | Slint | 68.3 MB | 14.8 MB exe + 2.0 MB in 9 libs |
 | GTK 4.14.5 | 136.9 MB | 0.0 MB exe + 32.1 MB in 65 libs |
@@ -744,7 +744,7 @@ repository as the thing being measured cannot do that.
   that flatters masonry.
 - **GPU rasterisation.** Every arm here is CPU. iced via `tiny_skia`,
   masonry stopped before vello's GPU pass, Qt via `QWidget::render`,
-  lumen-static via its own software canvas. No arm gets a GPU
+  fulgurite via its own software canvas. No arm gets a GPU
   advantage, and none of these numbers describe a GPU frame.
 - **The rasteriser, until 2026-09-09.** Every arm above stops at a
   display list, which is right for comparing *frameworks* and means none

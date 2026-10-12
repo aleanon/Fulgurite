@@ -171,7 +171,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Measure
         run: |
-          cargo llvm-cov --workspace --exclude lumen-static-wgpu --lcov --output-path lcov.info
+          cargo llvm-cov --workspace --exclude fulgurite-wgpu --lcov --output-path lcov.info
           {
             echo '### Coverage'
             echo '```'
@@ -211,4 +211,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: portability
-      - run: cargo test --workspace --exclude lumen-static-wgpu
+      - run: cargo test --workspace --exclude fulgurite-wgpu

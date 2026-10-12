@@ -47,7 +47,7 @@ What a build does with a secondary button, a long hold, the Menu key and
 a screen reader's "show context menu" before M90 builds anything, and the
 numbers the milestone's kill rules (K90a, K90b, K90c) are judged against.
 
-### The pins (`crates/lumen-static-shell/tests/secondary_button.rs`, `crates/lumen-static-winit/tests/translate.rs`)
+### The pins (`crates/fulgurite-shell/tests/secondary_button.rs`, `crates/fulgurite-winit/tests/translate.rs`)
 
 Each asserts today's behaviour green and names the task that flips it
 (`docs/plan-iced-roadmap.md` §3.1). Identical under `Everything` and
@@ -123,7 +123,7 @@ one step of their own resolution; the press rows print three.
 
 ### Crate counts (K2's method, for K90c)
 
-`cargo tree -p lumen-static-winit -e normal --prefix none [--features F]
+`cargo tree -p fulgurite-winit -e normal --prefix none [--features F]
 | sed 's/ (\*)$//' | sort -u | wc -l`:
 
 | build | crates | over default | without the `sed` |
@@ -133,7 +133,7 @@ one step of their own resolution; the press rows print three.
 | `a11y` | 167 | +71 | 212 |
 
 The manifest's `dialogs` comment already gives +10 by this method
-(`crates/lumen-static-winit/Cargo.toml`); its 79 (218 → 297) is the
+(`crates/fulgurite-winit/Cargo.toml`); its 79 (218 → 297) is the
 whole-workspace graph. K90c bounds `tray` at `a11y`'s +71.
 
 ## T90.2 — secondary buttons stop acting, and `Event::ContextRequest` (2026-10-06, on `baa18ce`)
@@ -143,7 +143,7 @@ A `Right` or `Middle` press or release stops in dispatch before pass 1
 delivered as `Event::ContextRequest { x, y }`, bubbling from the node
 under it.
 
-### The flipped pins (`crates/lumen-static-shell/tests/secondary_button.rs`)
+### The flipped pins (`crates/fulgurite-shell/tests/secondary_button.rs`)
 
 Identical under `Everything` and `Boundaries<256>`. For each widget and
 each of `Right` and `Middle`: `handled`, the effect, and after the press
@@ -160,13 +160,13 @@ The left button at the same point is the setup (accept direction).
 | `TextInput` | handled false, caret 0 → 0, … | handled true, 0 → 11 |
 | left `Slider` drag, a right press+release mid-drag | capture held; the next move to 0.9 reads 0.921 (from 0.500); the left release ends it | the drag captured, 0.237 → 0.500 |
 
-`crates/lumen-static/tests/context_request.rs`, through
+`crates/fulgurite/tests/context_request.rs`, through
 `dispatch_overlaid_into` with a real overlay list: a right press outside
 an open `Select` list closes it (handled true, `consumed` `[3]`, the popup
 node) and its release over a `Button` is handled false with 0 presses; a
 probe that consumes the request receives it once at the pressed point,
 `(50, 254)`, with `ctx.pos` equal, and a left click on it delivers none.
-`crates/lumen-static-agent/tests/button.rs` (T90.1's gate, rewritten):
+`crates/fulgurite-agent/tests/button.rs` (T90.1's gate, rewritten):
 `button: "right"` arrives as one request at `(40, 20)` on `input.click`
 and `input.pointerDown`, and `input.pointerUp` right is handled false;
 `"middle"` is handled false on all three, echoed `"middle"`; omitted and
@@ -240,7 +240,7 @@ host's `LongPress` on the primary touch asks at the touch point and spends
 the touch (its `End` a `PointerCancel`); `Action::ContextMenu` asks at the
 centre of its target. All three end in `Event::ContextRequest`.
 
-### Gates (`crates/lumen-static-shell/tests/context_routes.rs` unless named)
+### Gates (`crates/fulgurite-shell/tests/context_routes.rs` unless named)
 
 Identical under `Everything` and `Boundaries<256>`.
 
@@ -257,8 +257,8 @@ Identical under `Everything` and `Boundaries<256>`.
 | `Action::ContextMenu` on `#probe` | handled true, one request at `(60, 62)`, inside its rect | inside |
 | `Action::ContextMenu` on a `Button` | handled false, 0 clicks | accept |
 | `secondary_button.rs`, the 600 ms hold (T90.0's pin, flipped) | `Button` 0 → 0 → **0**; `Collapsible`, `Tabs` 0 → 1 → 1 | the release is a cancel |
-| `crates/lumen-static-agent/tests/input.rs` | `"F1"`..`"F12"` reach the host as `F(1)`..`F(12)`; `"F10"` + shift as `(F(10), SHIFT)`; `"Menu"` as `Menu`; `"F0"`, `"F13"` refused, naming the key, with 28 known names | both directions |
-| `crates/lumen-static-winit/tests/translate.rs` | `key_of(ContextMenu) = Some(Menu)`; with `a11y`, `action_of(ShowContextMenu) = Some((3, ContextMenu))` | T90.0's pins flipped |
+| `crates/fulgurite-agent/tests/input.rs` | `"F1"`..`"F12"` reach the host as `F(1)`..`F(12)`; `"F10"` + shift as `(F(10), SHIFT)`; `"Menu"` as `Menu`; `"F0"`, `"F13"` refused, naming the key, with 28 known names | both directions |
+| `crates/fulgurite-winit/tests/translate.rs` | `key_of(ContextMenu) = Some(Menu)`; with `a11y`, `action_of(ShowContextMenu) = Some((3, ContextMenu))` | T90.0's pins flipped |
 
 The flip's red run (T90.0's pins against this code): "a 600 ms hold's End
 is a release today ... handler count 0"; "the Menu key translates to
@@ -328,7 +328,7 @@ not fire on it.
 
 ## T90.4 — `ContextMenu<W>`, `CommandList`, `Anchor::At` and `Program::on_menu` (2026-10-07, on `cad8edc`)
 
-A menu is data (`lumen_static::menu`: `MenuEntry`, `Accel`,
+A menu is data (`fulgurite::menu`: `MenuEntry`, `Accel`,
 `MenuSection`, `MenuMask`); a choice is its id, taken once from the node
 that consumed the release or the Enter (`Node::take_menu`, asked only
 with a hook installed) or posted natively as `Event::Menu { id }`, and
@@ -336,7 +336,7 @@ both end in `Program::on_menu`. `ContextMenu<W>` consumes the
 `ContextRequest` that bubbles to it and opens its `CommandList` at the
 point (`Anchor::At`).
 
-### Gates (`crates/lumen-static-shell/tests/context_menu.rs` unless named)
+### Gates (`crates/fulgurite-shell/tests/context_menu.rs` unless named)
 
 Identical under `Everything` and `Boundaries<256>`. A 360 × 420 window; the
 wrapper is `[0, 16, 360, 136]`, under a label.
@@ -352,8 +352,8 @@ wrapper is `[0, 16, 360, 136]`, under a label.
 | `Event::Menu { id: 77 }` | handled true, `on_menu` `[77]`; with no hook handled false | the same hook |
 | the frame that opens the menu | 1 region `[28, 108.2, 272, 264.2]` = the list's ink (`display::shadow_ink`); 38,064 px² against list ink + wrapper 74,481 px² = **0.51×**; outside both **0 px²** | ≤ 1.00×; 0 px² |
 | `size_of::<Event>()` | 16 | 16 (K1) |
-| `crates/lumen-static-widgets/tests/a11y_roles.rs` | `ContextMenu` `GenericContainer` publishing `ShowContextMenu`, handled 1 of 1; `CommandList` `Menu`; 72 rows over 56 impls (55 covered, `ShaderView` excused); all rows published 54, handled 54 | every published action handled |
-| `crates/lumen-static-agent/tests/actions.rs` | `input.invokeAction` `contextMenu` on the wrapper: handled true, open false → true; `contextmenu` refused naming the list | both directions |
+| `crates/fulgurite-widgets/tests/a11y_roles.rs` | `ContextMenu` `GenericContainer` publishing `ShowContextMenu`, handled 1 of 1; `CommandList` `Menu`; 72 rows over 56 impls (55 covered, `ShaderView` excused); all rows published 54, handled 54 | every published action handled |
+| `crates/fulgurite-agent/tests/actions.rs` | `input.invokeAction` `contextMenu` on the wrapper: handled true, open false → true; `contextmenu` refused naming the list | both directions |
 
 ### Injections (red, by name)
 
@@ -456,7 +456,7 @@ accelerators before `Program::on_key`. In a window Ctrl+V is consumed as a
 paste only when the focused node took it (`Session::paste` answers
 `Option<usize>`, `keys::clipboard_shortcut`).
 
-### Gates (`crates/lumen-static-shell/tests/menu_bar.rs` unless named)
+### Gates (`crates/fulgurite-shell/tests/menu_bar.rs` unless named)
 
 Identical under `Everything` and `Boundaries<256>`. A 480 × 360 window:
 the bar (File: New, Save; Edit: Copy, Paste; View: Zoom) over a
@@ -474,9 +474,9 @@ the bar (File: New, Save; Edit: Copy, Paste; View: Zoom) over a
 | hover title 2 with title 0 open | open `Some(2)` | switches |
 | a release on File > Save | `on_menu` `[2]`, closed | once |
 | Down then Enter on the focused bar | opened `Some(0)`, `on_menu` `[1]` (New) | the keyboard opens and chooses |
-| `crates/lumen-static-winit/tests/clipboard_shortcut.rs` (X3): a `Button` focused, `"x"` on the clipboard, Edit > Paste on Ctrl+V | `keys::clipboard_shortcut` consumed **false**; the key then runs `on_menu` `[30]` | not consumed, once; accept: a focused `TextInput` — consumed true, text `"x"`, `on_menu` unchanged |
-| `crates/lumen-static-shell/tests/agent_hooks.rs`: `input.key` chords | Ctrl+K (an accelerator) handled true, count 100; Ctrl+J handled **false** | the key's own answer |
-| `crates/lumen-static-widgets/tests/a11y_roles.rs` | `MenuBar` `Role::MenuBar`, publishes `Focus`, handled 1 of 1; 73 rows over 57 impls (56 covered); all rows published 55, handled 55 | every published action handled |
+| `crates/fulgurite-winit/tests/clipboard_shortcut.rs` (X3): a `Button` focused, `"x"` on the clipboard, Edit > Paste on Ctrl+V | `keys::clipboard_shortcut` consumed **false**; the key then runs `on_menu` `[30]` | not consumed, once; accept: a focused `TextInput` — consumed true, text `"x"`, `on_menu` unchanged |
+| `crates/fulgurite-shell/tests/agent_hooks.rs`: `input.key` chords | Ctrl+K (an accelerator) handled true, count 100; Ctrl+J handled **false** | the key's own answer |
+| `crates/fulgurite-widgets/tests/a11y_roles.rs` | `MenuBar` `Role::MenuBar`, publishes `Focus`, handled 1 of 1; 73 rows over 57 impls (56 covered); all rows published 55, handled 55 | every published action handled |
 
 ### Injections (red, by name)
 
@@ -570,7 +570,7 @@ mask, `Some` only when it changed since last asked, asked through the
 host's guard). Both are required, and `impl Session for Hot` forwards
 them. The `tray` feature that shows it is T90.7.
 
-### Gates (`crates/lumen-static-shell/tests/tray_seam.rs` unless named)
+### Gates (`crates/fulgurite-shell/tests/tray_seam.rs` unless named)
 
 A 240 × 120 window: one button that flips whether "Quit" (bit 1) is
 enabled, kept across a swap.
@@ -637,7 +637,7 @@ what an application pays by default; the default cost is ~3.29 MB.
 Stripped (GNU strip on a copy) release `examples/showcase`; "without
 `a11y`" is `--no-default-features` (the showcase's one default feature is
 `a11y` since this task, so the measurement needs no manifest edit).
-Crates by K2's command (`cargo tree -p lumen-static-winit -e normal
+Crates by K2's command (`cargo tree -p fulgurite-winit -e normal
 --prefix none [--features F] | sed 's/ (\*)$//' | sort -u | wc -l`;
 default 96, `a11y` 167).
 
@@ -739,7 +739,7 @@ exits **77**, and with no session bus **77**, each naming the reason.
 | (5) the tray's Quit answers `KeyOutcome::Quit` | "(f) the process still running after 2019 ms / bound 2000 ms"; the stderr line printed: "the daemon's key or menu hook answered KeyOutcome::Quit; ignored -- ... a daemon ends with Request::Quit" |
 | the hooks, headless: Quit answers `KeyOutcome::Quit`; `enabled` ignores `locked`; Open unguarded | "Quit answered a KeyOutcome a daemon ignores" (`left: Quit`, `right: Handled`); "Open is enabled while locked"; "a second Open asked for a second window" |
 | `tray-no-tracing` turns on `dialogs` too | "(4) tray-no-tracing 161 crates, +10 over tray"; "K90c fires -- tray-no-tracing adds 10 crates over tray" |
-| an unused binding in `tray.rs` | `cargo clippy -p lumen-static-winit --features tray`: "unused variable: `injected`", exit 101; the default-feature line stays green (§3.1) |
+| an unused binding in `tray.rs` | `cargo clippy -p fulgurite-winit --features tray`: "unused variable: `injected`", exit 101; the default-feature line stays green (§3.1) |
 | (6) `ksni` with its default features (tokio) | `check_tray_cost`: (1) stays green at +46; (2) "over a11y the tray adds [bytes ksni mio pastey socket2 tokio tokio-macros]"; (3) "tokio in the tray graph: 1"; `check_tray_symbols`: "K90c fires -- the tray costs 3743024 B stripped without a11y, over the 3300000 B budget" |
 
 ### Firmware

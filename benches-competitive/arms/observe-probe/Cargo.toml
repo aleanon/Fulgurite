@@ -11,11 +11,11 @@ publish = false
 # workspace's release profile (LTO, one codegen unit), unstripped by the
 # script, plain and with `observe`.
 [dependencies]
-lumen-static = { path = "../../../crates/lumen-static" }
-lumen-static-widgets = { path = "../../../crates/lumen-static-widgets" }
-lumen-static-shell = { path = "../../../crates/lumen-static-shell" }
+fulgurite = { path = "../../../crates/fulgurite" }
+fulgurite-widgets = { path = "../../../crates/fulgurite-widgets" }
+fulgurite-shell = { path = "../../../crates/fulgurite-shell" }
 
 [features]
-observe = ["lumen-static/observe", "lumen-static-widgets/observe"]
+observe = ["fulgurite/observe", "fulgurite-widgets/observe"]
 # M54/T54.1: the screen-reader tree alone, which carries the static walk.
-a11y = ["lumen-static/a11y", "lumen-static-widgets/a11y"]
+a11y = ["fulgurite/a11y", "fulgurite-widgets/a11y"]

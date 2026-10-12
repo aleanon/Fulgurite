@@ -5,7 +5,7 @@
 //! do this full time. Every other arm in `benches-competitive` stops at
 //! a display list (`docs/results-competitive.md` §2), so none of them
 //! measure rasterisation at all. This one does, and it is the only arm
-//! where lumen-static is *not* structurally advantaged: both sides take
+//! where fulgurite is *not* structurally advantaged: both sides take
 //! the same scene to the same pixels on the same core.
 //!
 //! **Both renderers in one binary, deliberately.** Two binaries put a
@@ -34,10 +34,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList, Stops};
-use lumen_static::Point;
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::FontStack;
+use fulgurite::display::{Color, DisplayList, Stops};
+use fulgurite::Point;
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::FontStack;
 
 use vello_cpu::color::{AlphaColor, Srgb};
 use vello_cpu::kurbo::{Point as KPoint, Rect as KRect, Shape as _, Stroke};
@@ -48,7 +48,7 @@ use vello_cpu::{
 
 /// The same face both sides load. `FontStack::system` picks the first of
 /// these that exists; this repeats the list so the vello arm and the
-/// lumen arm cannot end up on different faces, which would make the text
+/// fulgurite arm cannot end up on different faces, which would make the text
 /// column a comparison of two fonts.
 const CANDIDATES: &[&str] = &[
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
@@ -72,15 +72,15 @@ const SUB: &str = "a secondary line";
 
 /// The scene from `benches-competitive --bin raster-scaling`, verbatim:
 /// cards with shadows, text, rules, and a gradient header. Kept
-/// identical so this arm's lumen column can be checked against the
+/// identical so this arm's fulgurite column can be checked against the
 /// numbers in `docs/results-raster-scaling.md` rather than standing
 /// alone.
-fn lumen_scene(w: u32, h: u32, list: &mut DisplayList) {
+fn fulgurite_scene(w: u32, h: u32, list: &mut DisplayList) {
     let (fw, fh) = (w as f32, h as f32);
     list.gradient(
         [0.0, 0.0, fw, 64.0],
         Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)),
-        lumen_static::display::GradShape::Linear { angle: 1.57 },
+        fulgurite::display::GradShape::Linear { angle: 1.57 },
         0.0,
     );
     for (x, y) in cards(fw, fh) {
@@ -144,7 +144,7 @@ fn vello_scene(
 ) {
     let (fw, fh) = (w as f32, h as f32);
 
-    // The header. `angle: 1.57` in the lumen list is straight down.
+    // The header. `angle: 1.57` in the fulgurite list is straight down.
     ctx.set_paint(
         Gradient::new_linear(KPoint::new(0.0, 0.0), KPoint::new(0.0, 64.0))
             .with_stops([rgba(Color(30, 40, 80, 255)), rgba(Color(20, 24, 40, 255))]),
@@ -280,13 +280,13 @@ fn main() {
         .expect("the face fontdue just read");
     let fd = FontData::new(Blob::new(Arc::new(bytes.clone()) as Arc<dyn AsRef<[u8]> + Send + Sync>), 0);
 
-    println!("lumen-static software canvas vs vello_cpu {}", env!("CARGO_PKG_VERSION"));
+    println!("fulgurite software canvas vs vello_cpu {}", env!("CARGO_PKG_VERSION"));
     println!("   face: {path}");
-    println!("   lumen: simd={} threads={}", cfg!(feature = "simd"), cfg!(feature = "threads"));
+    println!("   fulgurite: simd={} threads={}", cfg!(feature = "simd"), cfg!(feature = "threads"));
     println!("   vello: num_threads={threads} (0 = single-threaded), OptimizeSpeed, Level::new()\n");
     println!(
         "{:<14} {:>7} {:>10} {:>10} {:>9} {:>8} {:>8} {:>8} {:>8}",
-        "canvas", "Mpx", "lumen ms", "vello ms", "ratio", "v.rec", "dink<4", "dlum<5", "dblk<65"
+        "canvas", "Mpx", "fulgurite ms", "vello ms", "ratio", "v.rec", "dink<4", "dlum<5", "dblk<65"
     );
 
     for (w, h, label) in [
@@ -296,17 +296,17 @@ fn main() {
         (2560, 1440, "1440p"),
         (3840, 2160, "4K"),
     ] {
-        // ---- lumen ----
+        // ---- fulgurite ----
         let mut list = DisplayList::new();
-        lumen_scene(w, h, &mut list);
+        fulgurite_scene(w, h, &mut list);
         let mut canvas = Canvas::with_font(w, h, font.clone());
         let area = [0.0, 0.0, w as f32, h as f32];
-        let draw_lumen = |canvas: &mut Canvas, list: &DisplayList| {
-            canvas.clear(lumen_static_shell::CLEAR);
+        let draw_fulgurite = |canvas: &mut Canvas, list: &DisplayList| {
+            canvas.clear(fulgurite_shell::CLEAR);
             canvas.render_within(list, area);
         };
-        best_of(5, || draw_lumen(&mut canvas, &list));
-        let lumen = best_of(30, || draw_lumen(&mut canvas, &list));
+        best_of(5, || draw_fulgurite(&mut canvas, &list));
+        let fulgurite = best_of(30, || draw_fulgurite(&mut canvas, &list));
         let (l_ink, l_luma) = shape(&canvas.pixels);
         let l_blocks = blocks(&canvas.pixels, w, h);
 
@@ -332,7 +332,7 @@ fn main() {
         best_of(5, || frame(&mut ctx, &mut res, &mut pixmap));
         let vello = best_of(30, || frame(&mut ctx, &mut res, &mut pixmap));
         let v_record = best_of(30, || record(&mut ctx, &mut res));
-        let v_px = over_page(&pixmap, lumen_static_shell::CLEAR);
+        let v_px = over_page(&pixmap, fulgurite_shell::CLEAR);
         let (v_ink, v_luma) = shape(&v_px);
         let d_block = l_blocks
             .iter()
@@ -345,7 +345,7 @@ fn main() {
         // renderers agreeing about an ink fraction is exactly the shape
         // of a comparison of two wrong frames.
         if std::env::var("VELLO_DUMP").is_ok() && label == "tally window" {
-            std::fs::write("lumen.ppm", canvas.to_ppm()).unwrap();
+            std::fs::write("fulgurite.ppm", canvas.to_ppm()).unwrap();
             let copy = Pixmap::from_parts(pixmap.data().to_vec(), w as u16, h as u16);
             std::fs::write("vello.png", copy.into_png().unwrap()).unwrap();
         }
@@ -371,18 +371,18 @@ fn main() {
         // does not see the glyphs go. Both are deterministic.
         let d_ink = (l_ink - v_ink).abs() * 100.0;
         let d_luma = (l_luma - v_luma).abs();
-        assert!(l_ink > 0.10, "{label}: lumen inked {l_ink:.3} of the canvas -- it drew nothing");
+        assert!(l_ink > 0.10, "{label}: fulgurite inked {l_ink:.3} of the canvas -- it drew nothing");
         assert!(v_ink > 0.10, "{label}: vello inked {v_ink:.3} of the canvas -- it drew nothing");
         assert!(
             d_ink <= 4.0,
-            "{label}: ink differs by {d_ink:.1} points (lumen {:.1}%, vello {:.1}%) -- \
+            "{label}: ink differs by {d_ink:.1} points (fulgurite {:.1}%, vello {:.1}%) -- \
              the two arms are not drawing the same scene",
             l_ink * 100.0,
             v_ink * 100.0
         );
         assert!(
             d_luma <= 5.0,
-            "{label}: mean luminance differs by {d_luma:.1} (lumen {l_luma:.1}, vello \
+            "{label}: mean luminance differs by {d_luma:.1} (fulgurite {l_luma:.1}, vello \
              {v_luma:.1}) -- one arm is missing a command class",
         );
         assert!(
@@ -393,9 +393,9 @@ fn main() {
 
         let mpx = (w as f64 * h as f64) / 1e6;
         println!(
-            "{label:<14} {mpx:>7.2} {lumen:>10.2} {vello:>10.2} {:>8.2}x {v_record:>8.2} \
+            "{label:<14} {mpx:>7.2} {fulgurite:>10.2} {vello:>10.2} {:>8.2}x {v_record:>8.2} \
              {d_ink:>8.1} {d_luma:>8.1} {d_block:>8.0}",
-            vello / lumen
+            vello / fulgurite
         );
     }
 }

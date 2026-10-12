@@ -3,7 +3,7 @@
 # (docs/plan-architecture-v2.md, docs/results-safe-prototype.md).
 #
 # **The compiler is the gate; this script is the early warning.** Since
-# M43/T43.1 every crate under crates/ except lumen-static-reload carries
+# M43/T43.1 every crate under crates/ except fulgurite-reload carries
 # `#![forbid(unsafe_code)]`, which no inner `allow` can override and which
 # covers what a text scan cannot see: a `#[path]` module outside `src/`,
 # and code a build script writes into OUT_DIR and the crate `include!`s
@@ -12,7 +12,7 @@
 # build, and it checks that the attribute is PRESENT, because removing it
 # is the one edit the compiler cannot refuse.
 #
-# One limit: `forbid` in lumen-static-macros covers the macro crate's own
+# One limit: `forbid` in fulgurite-macros covers the macro crate's own
 # code, not the tokens its derives emit. Emitted code is checked by the
 # `forbid` of whichever crate uses the derive -- for the core's own tests,
 # the core.
@@ -25,7 +25,7 @@
 # Two exclusions, both because the code *is* the FFI boundary:
 #   - fixtures/hot-host: dlopen requires unsafe, and it is a fixture (it is
 #     not under crates/, so neither the scan nor the presence check reads it).
-#   - crates/lumen-static-reload: the `extern "C"` shims a reloadable app
+#   - crates/fulgurite-reload: the `extern "C"` shims a reloadable app
 #     exports. They exist in their own crate precisely so this check can stay
 #     absolute over the core rather than growing a cfg-gated exception --
 #     which is how a gate stops meaning anything.
@@ -34,7 +34,7 @@
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
-EXEMPT=lumen-static-reload
+EXEMPT=fulgurite-reload
 status=0
 
 # --- 1. the attribute is present on every crate but the FFI one ---------

@@ -1,0 +1,5 @@
+error: fail_unknown_property.lss:3:5: unknown property `colour`; did you mean `color`?
+  --> tests/ui-lss/fail_unknown_property.rs:13:55
+   |
+13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_unknown_property.lss");
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -400,7 +400,7 @@ def _decode(png: bytes):
 # `link_target`; the Markdown itself repaints nothing on a click, so the
 # readout is the action's subject.
 LINK = "#d_mdlinks_a > ~=changelog"
-CHANGES = "link: https://lumen.example/changes"
+CHANGES = "link: https://fulgurite.example/changes"
 
 LINKED_MARKDOWN = ("LinkedMarkdown", "#d_mdlinks_a", [
     Action(

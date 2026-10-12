@@ -5,8 +5,8 @@
 # `cargo test --workspace` unifies features across the whole selection, so
 # a crate whose manifest forgets a feature its tests need still passes
 # there, because some neighbour turns the feature on. That is how
-# `lumen-static-agent`'s tests passed while `cargo test -p
-# lumen-static-agent` failed 19 of them (R13-F7): core's dev-dependency
+# `fulgurite-agent`'s tests passed while `cargo test -p
+# fulgurite-agent` failed 19 of them (R13-F7): core's dev-dependency
 # enabled the widgets' `observe`, and the agent's own manifest did not.
 #
 # Only crates/*: those are the published libraries, whose manifests someone

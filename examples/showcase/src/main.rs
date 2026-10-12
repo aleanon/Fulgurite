@@ -20,19 +20,19 @@
 //! this example once used left for content whose shape is genuinely
 //! unknown.
 
-use lumen_static::display::Color;
-use lumen_static::prelude::*;
-use lumen_static::Rule as StyleRule;
-use lumen_static::style::Palette;
-use lumen_static_widgets::Toggle;
-use lumen_static_widgets::prelude::*;
-use lumen_static_winit::{application, Program, Run};
+use fulgurite::display::Color;
+use fulgurite::prelude::*;
+use fulgurite::Rule as StyleRule;
+use fulgurite::style::Palette;
+use fulgurite_widgets::Toggle;
+use fulgurite_widgets::prelude::*;
+use fulgurite_winit::{application, Program, Run};
 
 mod catalog;
 mod chip;
 mod nav;
 mod stage;
-use lumen_static::repeat::Repeat;
+use fulgurite::repeat::Repeat;
 use chip::StatusChip;
 use nav::{NavRow, RowKind};
 use catalog::CATALOG;
@@ -42,7 +42,7 @@ pub use stage::*;
 
 /// The showcase's colours, by role (M25/T25.11). The sheet names roles
 /// rather than these values, so one `set_palette` re-themes every rule
-/// that does. `LUMEN_PALETTE=dark` starts in [`SHOW_DARK`]; a running
+/// that does. `FULGURITE_PALETTE=dark` starts in [`SHOW_DARK`]; a running
 /// window built with `--features agent` also takes `app.setPalette`, which
 /// swaps to the core's `Palette::LIGHT` or `Palette::DARK`.
 const SHOW_LIGHT: Palette = Palette {
@@ -97,9 +97,9 @@ const SHOW_DARK: Palette = Palette {
     on_danger: Color(0x1a, 0x0a, 0x0a, 0xff),
 };
 
-/// The palette to start in: [`SHOW_DARK`] under `LUMEN_PALETTE=dark`.
+/// The palette to start in: [`SHOW_DARK`] under `FULGURITE_PALETTE=dark`.
 fn palette() -> Palette {
-    match std::env::var("LUMEN_PALETTE").as_deref() {
+    match std::env::var("FULGURITE_PALETTE").as_deref() {
         Ok("dark") => SHOW_DARK,
         _ => SHOW_LIGHT,
     }
@@ -109,7 +109,7 @@ fn palette() -> Palette {
 /// text nor a control's body, and a chip's or a ghost button's tint is one
 /// widget's, so they are values; but they are **picked with the palette**,
 /// because the light values on the dark page were a bright rule and a
-/// glaring chip. Chosen once, by the same `LUMEN_PALETTE` as
+/// glaring chip. Chosen once, by the same `FULGURITE_PALETTE` as
 /// [`palette`]. A palette swapped at run time through the agent's
 /// `app.setPalette` re-resolves the sheet's roles and not these —
 /// `every_role_rule_follows_the_palette` prints them rather than hides
@@ -149,7 +149,7 @@ const CHROME_DARK: Chrome = Chrome {
 
 /// The chrome's colours for the palette in force at start.
 fn chrome() -> Chrome {
-    match std::env::var("LUMEN_PALETTE").as_deref() {
+    match std::env::var("FULGURITE_PALETTE").as_deref() {
         Ok("dark") => CHROME_DARK,
         _ => CHROME_LIGHT,
     }
@@ -255,7 +255,7 @@ pub struct Screen {
 #[derive(DeriveApp, Default)]
 #[app(tick = advance, after_update = refresh, wake = wake, images = app_images)]
 // M84/T84.8: the Video demo's frames arrive as messages from a subscription.
-#[app(msg = lumen_static_shell::video::VideoFrame, apply = catalog::apply_clip)]
+#[app(msg = fulgurite_shell::video::VideoFrame, apply = catalog::apply_clip)]
 #[app(subscriptions = subscriptions, jobs = catalog::clip_jobs)]
 pub struct Show {
     #[tree]
@@ -361,26 +361,26 @@ pub struct Store {
     /// frame and whether it plays. The pause button flips `playing`,
     /// `advance` writes its frame into the image, and `wake` answers its
     /// next change.
-    spin: lumen_static::Playback,
+    spin: fulgurite::Playback,
     /// **The Video demo** (M84/T84.8): what the widget shows, the
     /// application's own image store its feed fills (`App::images`), and
     /// the subscription set its play button and seeks declare.
     clip: catalog::Clip,
-    clip_images: lumen_static_shell::image::ImageStore,
-    subs: lumen_static::spawn::Subs,
+    clip_images: fulgurite_shell::image::ImageStore,
+    subs: fulgurite::spawn::Subs,
 }
 
 /// **The application's images** — `#[app(images = app_images)]`
 /// (M84/T84.6): the Video demo's store, which the renderer reads through
 /// the frame before the window's own (`Program::images`, the Image demo's
 /// GIF).
-fn app_images(s: &Show) -> Option<&dyn lumen_static::ImageSource> {
+fn app_images(s: &Show) -> Option<&dyn fulgurite::ImageSource> {
     Some(&s.store.clip_images)
 }
 
 /// **What should be running** — `#[app(subscriptions = subscriptions)]`
 /// (M84/T84.8): the Video demo's feed while it plays.
-fn subscriptions(s: &mut Show) -> Option<&mut lumen_static::spawn::Subs> {
+fn subscriptions(s: &mut Show) -> Option<&mut fulgurite::spawn::Subs> {
     Some(&mut s.store.subs)
 }
 
@@ -518,7 +518,7 @@ fn refresh(s: &mut Show) -> bool {
     // **A context menu's enabled entries are state** (M90/T90.4): Paste
     // once something was cut or copied. Compared first, as above.
     if let Demo::ContextMenu(d) = &mut s.ui.main.stage.row.demo {
-        let want = lumen_static::menu::MenuMask::ALL.with(2, s.store.clipped);
+        let want = fulgurite::menu::MenuMask::ALL.with(2, s.store.clipped);
         if d.a.enabled != want {
             d.a.enabled = want;
             changed = true;
@@ -760,7 +760,7 @@ fn choose(s: &mut Store, i: usize) {
 /// `open` or not (it only shows on the `Select` entry).
 fn build(entry: usize, open: bool) -> Show {
     let mut app = Show::default();
-    app.ui.side.brand.set("lumen-static");
+    app.ui.side.brand.set("fulgurite");
     app.ui.side.sub.set("Widgets");
     // **The whole wiring of the sidebar.** One `fn` for the rows, the
     // count as data.
@@ -774,7 +774,7 @@ fn build(entry: usize, open: bool) -> Show {
     // rather than as a starting state.
     app.store.phase = 0.35;
     // The Image demo's clock, from the decoded GIF's own delays (M84/T84.3).
-    app.store.spin = lumen_static::Playback::new(&catalog::spin().delays_ms);
+    app.store.spin = fulgurite::Playback::new(&catalog::spin().delays_ms);
     rebuild(&mut app);
     app
 }
@@ -786,24 +786,24 @@ fn build(entry: usize, open: bool) -> Show {
 /// stay the window's frame, which M57's D5 parity compares them against.
 /// Built `FontStack::system()` directly, a `Complex` window's `--demo`
 /// would differ from it by construction.
-fn stack_of(p: &Program<Show>) -> Option<lumen_static_shell::text::FontStack> {
-    lumen_static_shell::text::FontStack::system().map(|f| f.with_shaping(p.shaping))
+fn stack_of(p: &Program<Show>) -> Option<fulgurite_shell::text::FontStack> {
+    fulgurite_shell::text::FontStack::system().map(|f| f.with_shaping(p.shaping))
 }
 
 /// **A headless frame as the window draws it** — the application's images
 /// (`App::images`, the Video demo's store, M84/T84.8) resolved before the
 /// canvas's own, as a session's present does (`FrameSource::images`).
-fn render_app(c: &mut lumen_static_shell::software::Canvas, host: &lumen_static_shell::Host<Show>) {
-    c.render_within_from(&host.list, [0.0, 0.0, W as f32, H as f32], lumen_static::event::App::images(&host.app));
+fn render_app(c: &mut fulgurite_shell::software::Canvas, host: &fulgurite_shell::Host<Show>) {
+    c.render_within_from(&host.list, [0.0, 0.0, W as f32, H as f32], fulgurite::event::App::images(&host.app));
 }
 
 /// One frame, headless — what the tests and the screenshots use.
 fn shot(path: &str, entry: usize, open: bool) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::FontMetrics;
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::FontMetrics;
     let p = program(entry, open);
     let stack = stack_of(&p);
-    let mut host: lumen_static_shell::Host<Show> = p.host();
+    let mut host: fulgurite_shell::Host<Show> = p.host();
     let mut metrics = stack.clone().map(FontMetrics::new);
     for _ in 0..2 {
         match metrics.as_mut() {
@@ -844,16 +844,16 @@ fn shot(path: &str, entry: usize, open: bool) {
 /// position.** The helpers below used to take "every node below the
 /// stage's top edge", which a full-height sidebar (M56) now also is.
 fn demo_span() -> core::ops::Range<usize> {
-    let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-    let demo = lumen_static::style::index_of_wid(table, "demo").expect("the stage has no `#demo` node");
-    lumen_static::style::subtree_range(table, demo)
+    let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+    let demo = fulgurite::style::index_of_wid(table, "demo").expect("the stage has no `#demo` node");
+    fulgurite::style::subtree_range(table, demo)
 }
 
 /// The leaves of the `#demo` subtree — its controls, not the rows that
 /// hold them. A size filter alone could not tell them apart once a demo
 /// shrank to its content (M56).
 fn demo_leaves() -> Vec<usize> {
-    let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+    let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
     demo_span().filter(|&i| table[i].child_count == 0).collect()
 }
 
@@ -869,11 +869,11 @@ fn demo_leaves() -> Vec<usize> {
 /// the popup's rect, and this is the number that says so.
 fn profile_popup() {
     let select = CATALOG.iter().position(|e| e.name == "Select").expect("a Select entry");
-    let mut host: lumen_static_shell::Host<Show> =
+    let mut host: fulgurite_shell::Host<Show> =
         program(select, false).host();
-    let mut metrics = lumen_static_shell::text::FontStack::system()
-        .map(lumen_static_shell::text::FontMetrics::new);
-    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+    let mut metrics = fulgurite_shell::text::FontStack::system()
+        .map(fulgurite_shell::text::FontMetrics::new);
+    let mut pump = |h: &mut fulgurite_shell::Host<Show>| match metrics.as_mut() {
         Some(m) => {
             h.pump_with(m);
         }
@@ -884,7 +884,7 @@ fn profile_popup() {
     let viewport = [0.0, 0.0, W as f32, H as f32];
     // `.max(0.0)`: an empty region set sums to a negative zero, which
     // prints as "-0 px" and reads like a measurement error.
-    let area = |d: lumen_static::Damage| -> f32 {
+    let area = |d: fulgurite::Damage| -> f32 {
         let px: f32 = {
         // `regions` already yields rects inside the viewport; `clip_to`
         // is a different thing — it answers the clipped *bounding* rect
@@ -955,11 +955,11 @@ fn demo_shot(path: &str, entry: usize) {
 /// two pumps, once the first has seeded the stage — a test's hook;
 /// `demo_shot` passes nothing. Measured and drawn with [`stack_of`]`(p)`,
 /// the program's own `Shaping`.
-fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host<Show>)) -> (Vec<u8>, [usize; 4]) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::FontMetrics;
+fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut fulgurite_shell::Host<Show>)) -> (Vec<u8>, [usize; 4]) {
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::FontMetrics;
     let stack = stack_of(p);
-    let mut host: lumen_static_shell::Host<Show> = p.host();
+    let mut host: fulgurite_shell::Host<Show> = p.host();
     let mut metrics = stack.clone().map(FontMetrics::new);
     let mut prep = Some(prep);
     for _ in 0..2 {
@@ -991,13 +991,13 @@ fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host
     // in a function whose whole purpose is that "a review ends up
     // looking at the wrong 240 px" cannot happen (M27/T27.11, finding
     // 11). The subtree is what the crop always meant.
-    let table = <<Show as lumen_static::event::App>::Tree as
-        lumen_static::widget::Widget>::SUB_TABLE;
+    let table = <<Show as fulgurite::event::App>::Tree as
+        fulgurite::widget::Widget>::SUB_TABLE;
     let demo = table
         .iter()
         .position(|d| d.wid == "demo")
         .expect("the stage has no `#demo` node");
-    let span = lumen_static::style::subtree_range(table, demo);
+    let span = fulgurite::style::subtree_range(table, demo);
     let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for st in host.states[span.clone()].iter() {
         if st.size.w <= 0.0 || st.size.h <= 0.0 {
@@ -1021,12 +1021,12 @@ fn demo_frame(p: &Program<Show>, prep: impl FnOnce(&mut lumen_static_shell::Host
 /// taken after the release shows nothing. This posts the down, pumps,
 /// and renders — which is the only way to see what a user sees mid-click.
 fn press_shot(path: &str, entry: usize, which: usize) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    let mut host: lumen_static_shell::Host<Show> =
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    let mut host: fulgurite_shell::Host<Show> =
         program(entry, false).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
-    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+    let mut pump = |h: &mut fulgurite_shell::Host<Show>| match metrics.as_mut() {
         Some(m) => {
             h.pump_with(m);
         }
@@ -1060,7 +1060,7 @@ fn press_shot(path: &str, entry: usize, which: usize) {
         None => Canvas::new(W, H),
     };
     c.clear(palette().page);
-    lumen_static::Renderer::render(&mut c, &host.list, W, H);
+    fulgurite::Renderer::render(&mut c, &host.list, W, H);
     // Centred on the control that is held, not on the stage's top —
     // the first version cropped y 150..270 while the buttons sit at 423
     // and produced three identical blank images.
@@ -1089,13 +1089,13 @@ fn press_shot(path: &str, entry: usize, which: usize) {
 /// which is why "nothing happens when I click" is a report that a
 /// still image cannot confirm or deny.
 fn seq_shot(stem: String) {
-    use lumen_static_shell::software::Canvas;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::software::Canvas;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
     let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
-    let mut host: lumen_static_shell::Host<Show> =
+    let mut host: fulgurite_shell::Host<Show> =
         program(entry, false).host();
     let mut metrics = FontStack::system().map(FontMetrics::new);
-    let mut pump = |h: &mut lumen_static_shell::Host<Show>| match metrics.as_mut() {
+    let mut pump = |h: &mut fulgurite_shell::Host<Show>| match metrics.as_mut() {
         Some(m) => {
             h.pump_with(m);
         }
@@ -1112,7 +1112,7 @@ fn seq_shot(stem: String) {
             s.size.w > 40.0 && s.size.h > 20.0
         })
         .collect();
-    let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
+    let at = |h: &fulgurite_shell::Host<Show>, i: usize| {
         let s = &h.states[i];
         (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
     };
@@ -1134,7 +1134,7 @@ fn seq_shot(stem: String) {
             None => Canvas::new(W, H),
         };
         c.clear(palette().page);
-        lumen_static::Renderer::render(&mut c, &host.list, W, H);
+        fulgurite::Renderer::render(&mut c, &host.list, W, H);
         let (cw, chh) = (400usize, 64usize);
         let x0 = ((x0c - 60.0).max(0.0) as usize).min(W as usize - cw);
         let y0 = ((y0c - chh as f32 / 2.0).max(0.0) as usize).min(H as usize - chh);
@@ -1207,7 +1207,7 @@ fn main() {
     // ANCHOR_END: accessible
     // Built `--features agent`, the window can be steered from outside:
     // `input.click` on the picker, `ui.screenshot` of the result.
-    // `LUMEN_AGENT_ADDR` overrides the address, read by the window
+    // `FULGURITE_AGENT_ADDR` overrides the address, read by the window
     // (M48/T48.11).
     if let Some(addr) = agent_addr() {
         program = program.agent(addr);
@@ -1215,7 +1215,7 @@ fn main() {
     // M55/T55.4: the drive's `Everything` leg is this application's
     // choice, made here -- not a feature of the window crate.
     #[cfg(feature = "everything")]
-    program.invalidation::<lumen_static::Everything>().run();
+    program.invalidation::<fulgurite::Everything>().run();
     #[cfg(not(feature = "everything"))]
     program.run();
 }
@@ -1257,7 +1257,7 @@ fn program(entry: usize, open: bool) -> Program<Show> {
 /// **A chosen menu entry** — `Program::on_menu` (M90/T90.4): the
 /// context menu demo's command, recorded by id for the readout. A seed
 /// clears it, so the demo opens on "nothing yet".
-fn on_menu(s: &mut Store, id: u32) -> lumen_static_winit::KeyOutcome {
+fn on_menu(s: &mut Store, id: u32) -> fulgurite_winit::KeyOutcome {
     // The menu bar's ids are 11 and up (`catalog::MENU_BAR`, M90/T90.5).
     if id >= 10 {
         s.bar = Some(id);
@@ -1266,18 +1266,18 @@ fn on_menu(s: &mut Store, id: u32) -> lumen_static_winit::KeyOutcome {
         s.context = Some(id);
         s.clipped |= matches!(id, 1 | 2);
     }
-    lumen_static_winit::KeyOutcome::Handled
+    fulgurite_winit::KeyOutcome::Handled
 }
 
 // ANCHOR: menu_enabled
 /// **Which menu bar entries are enabled** — `Program::menu`'s function
 /// (M90/T90.5): none unless the MenuBar demo is on the stage, and Paste
 /// once Copy has run. `refresh` writes the same mask to the bar.
-fn menu_enabled(s: &Store) -> lumen_static::menu::MenuMask {
+fn menu_enabled(s: &Store) -> fulgurite::menu::MenuMask {
     if catalog::CATALOG.get(s.selected).is_none_or(|e| e.name != "MenuBar") {
-        return lumen_static::menu::MenuMask::NONE;
+        return fulgurite::menu::MenuMask::NONE;
     }
-    lumen_static::menu::MenuMask::ALL.with(catalog::BAR_PASTE, s.bar_clipped)
+    fulgurite::menu::MenuMask::ALL.with(catalog::BAR_PASTE, s.bar_clipped)
 }
 // ANCHOR_END: menu_enabled
 
@@ -1289,26 +1289,26 @@ fn menu_enabled(s: &Store) -> lumen_static::menu::MenuMask {
 /// transparent, because a fill paints *under* the flat background, and
 /// its corners round the fill by the card's radius.
 // ANCHOR: card_fill
-const FILLS: [lumen_static::style::Fill; 1] = [lumen_static::style::Fill::new(
-    lumen_static::display::Stops::two(Color(255, 255, 255, 255), Color(0xd5, 0xdb, 0xe4, 255)),
-    lumen_static::display::GradShape::Radial { center: [0.5, 0.5], radius: 1.0 },
+const FILLS: [fulgurite::style::Fill; 1] = [fulgurite::style::Fill::new(
+    fulgurite::display::Stops::two(Color(255, 255, 255, 255), Color(0xd5, 0xdb, 0xe4, 255)),
+    fulgurite::display::GradShape::Radial { center: [0.5, 0.5], radius: 1.0 },
 )
-.role(0, lumen_static::style::Role::Raised)
-.role(1, lumen_static::style::Role::Track)];
+.role(0, fulgurite::style::Role::Raised)
+.role(1, fulgurite::style::Role::Track)];
 // ANCHOR_END: card_fill
 
 /// How the showcase lays text out: `Complex` when built with its
 /// `shaping` feature, `Basic` otherwise (M81/T81.4). The window, `--shot`
 /// and `--demo` all follow it through [`program`].
 #[cfg(feature = "shaping")]
-const SHAPING: lumen_static_shell::text::Shaping = lumen_static_shell::text::Shaping::Complex;
+const SHAPING: fulgurite_shell::text::Shaping = fulgurite_shell::text::Shaping::Complex;
 #[cfg(not(feature = "shaping"))]
-const SHAPING: lumen_static_shell::text::Shaping = lumen_static_shell::text::Shaping::Basic;
+const SHAPING: fulgurite_shell::text::Shaping = fulgurite_shell::text::Shaping::Basic;
 
 /// The program's sheet for the `Label` demo's switches (M80/T80.2, T80.3).
 // ANCHOR: line_height
 fn sheet_for((spaced, ellipsis): (bool, bool)) -> Vec<StyleRule> {
-    use lumen_static::style::{Patch, Selector};
+    use fulgurite::style::{Patch, Selector};
     let mut rules = stylesheet();
     if spaced {
         // A ratio of the font size; the cascade keeps it in sixteenths.
@@ -1317,7 +1317,7 @@ fn sheet_for((spaced, ellipsis): (bool, bool)) -> Vec<StyleRule> {
     // ANCHOR: text_overflow
     if ellipsis {
         // One line, cut at a grapheme boundary so the prefix and `…` fit.
-        let cut = lumen_static::TextOverflow::Ellipsis;
+        let cut = fulgurite::TextOverflow::Ellipsis;
         rules.push(StyleRule::new(Selector::Id("d_label_a"), Patch::new().overflow(cut)));
     }
     // ANCHOR_END: text_overflow
@@ -1345,8 +1345,8 @@ fn agent_addr() -> Option<String> {
 const ROW_H: f32 = 30.0;
 
 /// A control's own label — the text beside a checkbox or a switch.
-fn lbl() -> lumen_static::style::Patch {
-    use lumen_static::style::{Patch, Role};
+fn lbl() -> fulgurite::style::Patch {
+    use fulgurite::style::{Patch, Role};
     Patch::new().color_role(Role::Text).font_size(15.0)
 }
 
@@ -1359,8 +1359,8 @@ fn lbl() -> lumen_static::style::Patch {
 /// arena's template — and that rule sets a `FILL` width and a fixed
 /// height. An id beats a kind, so these three win; leaving either out
 /// let the row rule through and the demo buttons came out full-width.
-fn btn() -> lumen_static::style::Patch {
-    use lumen_static::style::Patch;
+fn btn() -> fulgurite::style::Patch {
+    use fulgurite::style::Patch;
     Patch::new()
         // **The hover shade, restated.** The menu rows' `Kind("button")`
         // rule below sets `hover_dim(0.0)`, and an id rule beats a kind
@@ -1379,8 +1379,8 @@ fn btn() -> lumen_static::style::Patch {
 
 /// The one-line fields' look: `#d_textinput_a` and, since M81/T81.6,
 /// `#d_textinput_rtl`.
-fn field() -> lumen_static::style::Patch {
-    use lumen_static::style::{Edges, Patch, Role};
+fn field() -> fulgurite::style::Patch {
+    use fulgurite::style::{Edges, Patch, Role};
     Patch::new()
         .width(Length::Fixed(260.0))
         .height(Length::Fixed(38.0))
@@ -1405,10 +1405,10 @@ fn stylesheet() -> Vec<StyleRule> {
 }
 
 /// The sheet, with its role-less colours taken from `c` — so a test can
-/// build the dark sheet without the `LUMEN_PALETTE` environment variable
+/// build the dark sheet without the `FULGURITE_PALETTE` environment variable
 /// (M57/A8's demo contrast gate).
 fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
-    use lumen_static::style::{Patch, Role, Selector};
+    use fulgurite::style::{Patch, Role, Selector};
     let mut rules = vec![
         // ---- the chrome (M56, `docs/plan-showcase-design.md`) -------
         //
@@ -1519,7 +1519,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // own ids or nothing can reach inside it, not a stylesheet and
         // not the agent. `select::PART_*` are those names.
         StyleRule::new(
-            Selector::Id(lumen_static_widgets::select::PART_TRIGGER),
+            Selector::Id(fulgurite_widgets::select::PART_TRIGGER),
             Patch::new()
                 .width(Length::Fixed(220.0))
                 .background_role(Role::Raised)
@@ -1531,7 +1531,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // Its menu. A `Popup` anchors itself on its parent, so the sheet
         // only says how big: six rows, the whole list.
         StyleRule::new(
-            Selector::Id(lumen_static_widgets::select::PART_MENU),
+            Selector::Id(fulgurite_widgets::select::PART_MENU),
             Patch::new()
                 .width(Length::Fixed(220.0))
                 .height(Length::Fixed(6.0 * ROW_H))
@@ -1599,7 +1599,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         StyleRule::new(Selector::Id("d_image_pause"), btn().background_role(Role::Accent)
             .color_role(Role::OnAccent).width(Length::Fixed(96.0))),
         StyleRule::new(
-            Selector::Id(lumen_static_widgets::surface::PART_CONTENT),
+            Selector::Id(fulgurite_widgets::surface::PART_CONTENT),
             btn().background_role(Role::Accent).color_role(Role::OnAccent),
         ),
         // The field: a ground, a rounded edge, room for a caret.
@@ -1674,7 +1674,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         // A19, and a left-packed wrap sat 31 px off the card's centre.
         StyleRule::new(
             Selector::Kind("DWrap"),
-            Patch::new().width(Length::Fixed(260.0)).align(lumen_static::style::Align::Center),
+            Patch::new().width(Length::Fixed(260.0)).align(fulgurite::style::Align::Center),
         ),
         // Tall enough for any one section open, so opening one does not
         // re-centre the column and move the header out from under the
@@ -1682,7 +1682,7 @@ fn stylesheet_with(c: Chrome) -> Vec<StyleRule> {
         StyleRule::new(Selector::Kind("DAccordion"), Patch::new().height(Length::Fixed(200.0))),
         StyleRule::new(Selector::Kind("DGrid"), Patch::new().width(Length::Fixed(420.0))),
         // M85/T85.1: `flexible(1)` beside `fill` in a 300 px row, the case
-        // `crates/lumen-static/tests/flexible.rs` gates at 80/220.
+        // `crates/fulgurite/tests/flexible.rs` gates at 80/220.
         StyleRule::new(Selector::Kind("DLayout"), Patch::new().width(Length::Fixed(300.0))),
         StyleRule::new(
             Selector::Id("d_layout_flex"),
@@ -1890,7 +1890,7 @@ mod tests {
     /// showcase runs is named here rather than trusted.
     #[test]
     fn the_lss_mirror_is_the_hand_written_sheet() {
-        const LSS: &[StyleRule] = lumen_static::include_lss!(Screen, "../showcase.lss");
+        const LSS: &[StyleRule] = fulgurite::include_lss!(Screen, "../showcase.lss");
         // M83/T83.6: the `ShaderView` demo's kind rule exists only with the
         // `shader` feature, and the mirror is the default build's sheet.
         let hand: Vec<StyleRule> = stylesheet()
@@ -1909,14 +1909,14 @@ mod tests {
         assert!(differ.is_empty(), "{} rules differ:\n{}", differ.len(), differ.join("\n"));
         // T61.5's parity: the run-time reader lowers the file to the same
         // rules the macro emitted.
-        let read = lumen_static_shell::lss::load(concat!(env!("CARGO_MANIFEST_DIR"), "/showcase.lss"), None)
+        let read = fulgurite_shell::lss::load(concat!(env!("CARGO_MANIFEST_DIR"), "/showcase.lss"), None)
             .unwrap_or_else(|e| panic!("{e}"));
         println!("lss::load: {} rules", read.len());
         assert_eq!(read, LSS, "include_lss! and lss::load disagree on showcase.lss");
     }
-    use lumen_static_shell::text::{FontMetrics as FontMetrics2, FontStack as FontStack2};
-    use lumen_static::display::Cmd;
-    use lumen_static::style::Selector;
+    use fulgurite_shell::text::{FontMetrics as FontMetrics2, FontStack as FontStack2};
+    use fulgurite::display::Cmd;
+    use fulgurite::style::Selector;
 
     /// An `EventCtx` for a press, for calling a handler directly.
     fn press_at(x: f32, y: f32) -> EventCtx {
@@ -1927,8 +1927,8 @@ mod tests {
             target_is_control: false,
             row: None,
             inner: 0,
-            pos: lumen_static::Point { x, y },
-            local: lumen_static::Point { x, y },
+            pos: fulgurite::Point { x, y },
+            local: fulgurite::Point { x, y },
             button: PointerButton::Left,
             clicks: 1,
             mods: Mods::NONE,
@@ -1945,16 +1945,16 @@ mod tests {
     /// exactly as wide as a "button-shaped" size filter's 300 px bound,
     /// and the filter then counted the demo and its row as buttons too.
     fn button_ids() -> Vec<usize> {
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
         ["d_button_a", "d_button_b", "d_button_c"]
             .iter()
-            .map(|w| lumen_static::style::index_of_wid(table, w).expect("a demo button"))
+            .map(|w| fulgurite::style::index_of_wid(table, w).expect("a demo button"))
             .collect()
     }
 
-    fn stage_origin(h: &lumen_static_shell::Host<Show>) -> (f32, f32) {
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let i = lumen_static::style::index_of_wid(table, "stage").expect("no `#stage` node");
+    fn stage_origin(h: &fulgurite_shell::Host<Show>) -> (f32, f32) {
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let i = fulgurite::style::index_of_wid(table, "stage").expect("no `#stage` node");
         (h.states[i].pos.x, h.states[i].pos.y)
     }
 
@@ -1964,13 +1964,13 @@ mod tests {
     /// The live half is `just widget-drive Label`.
     #[test]
     fn the_label_demos_switch_sets_a_line_height() {
-        use lumen_static_shell::text::{FontMetrics, FontStack};
+        use fulgurite_shell::text::{FontMetrics, FontStack};
         let Some(font) = FontStack::system() else {
             eprintln!("no system font; skipping");
             return;
         };
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let label = lumen_static::style::index_of_wid(table, "d_label_a").expect("#d_label_a");
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let label = fulgurite::style::index_of_wid(table, "d_label_a").expect("#d_label_a");
         let entry = CATALOG.iter().position(|e| e.name == "Label").unwrap();
         let mut h = host(entry, false);
         let mut m = FontMetrics::new(font);
@@ -1982,8 +1982,8 @@ mod tests {
             .expect("a focusable switch above the label");
         let st = h.states[sw];
         let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
-        h.post(lumen_static::Event::down(x, y));
-        h.post(lumen_static::Event::up(x, y));
+        h.post(fulgurite::Event::down(x, y));
+        h.post(fulgurite::Event::up(x, y));
         h.pump_with(&mut m);
         h.pump_with(&mut m);
         let after = h.states[label].size.h;
@@ -2009,13 +2009,13 @@ mod tests {
     /// `just widget-drive Label`.
     #[test]
     fn the_label_demos_ellipsis_switch_cuts_to_one_line() {
-        use lumen_static_shell::text::{FontMetrics, FontStack};
+        use fulgurite_shell::text::{FontMetrics, FontStack};
         let Some(font) = FontStack::system() else {
             eprintln!("no system font; skipping");
             return;
         };
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let label = lumen_static::style::index_of_wid(table, "d_label_a").expect("#d_label_a");
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let label = fulgurite::style::index_of_wid(table, "d_label_a").expect("#d_label_a");
         let entry = CATALOG.iter().position(|e| e.name == "Label").unwrap();
         let mut h = host(entry, false);
         let mut m = FontMetrics::new(font.clone());
@@ -2028,12 +2028,12 @@ mod tests {
             .expect("a second focusable switch above the label");
         let st = h.states[sw];
         let (x, y) = (st.pos.x + st.size.w / 2.0, st.pos.y + st.size.h / 2.0);
-        h.post(lumen_static::Event::down(x, y));
-        h.post(lumen_static::Event::up(x, y));
+        h.post(fulgurite::Event::down(x, y));
+        h.post(fulgurite::Event::up(x, y));
         h.pump_with(&mut m);
         h.pump_with(&mut m);
         let after = h.states[label].size.h;
-        let one = lumen_static::TextMeasure::measure_weighted(
+        let one = fulgurite::TextMeasure::measure_weighted(
             &mut FontMetrics::new(font),
             "The",
             h.styles[label].font_size,
@@ -2051,9 +2051,9 @@ mod tests {
         assert!(catalog::LABEL_PROSE.starts_with(shown), "the shown text is not a prefix of the paragraph");
     }
 
-    pub(super) fn host(entry: usize, open: bool) -> lumen_static_shell::Host<Show> {
-        use lumen_static_shell::text::{FontMetrics, FontStack};
-        let mut h: lumen_static_shell::Host<Show> =
+    pub(super) fn host(entry: usize, open: bool) -> fulgurite_shell::Host<Show> {
+        use fulgurite_shell::text::{FontMetrics, FontStack};
+        let mut h: fulgurite_shell::Host<Show> =
             program(entry, open).palette(SHOW_LIGHT).host();
         let mut m = FontStack::system().map(FontMetrics::new);
         for _ in 0..2 {
@@ -2073,14 +2073,14 @@ mod tests {
     /// on whole pixels, which is why only the showcase's layout showed it.
     #[test]
     fn a_popup_repaints_partially_to_the_same_pixels_at_scale_2() {
-        use lumen_static::retain::Damage;
-        use lumen_static_shell::software::Canvas;
-        use lumen_static_shell::text::{FontMetrics, FontStack};
+        use fulgurite::retain::Damage;
+        use fulgurite_shell::software::Canvas;
+        use fulgurite_shell::text::{FontMetrics, FontStack};
         let Some(font) = FontStack::system() else {
             eprintln!("no system font; skipping");
             return;
         };
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
         let mut worst = Vec::new();
         for name in ["DatePicker", "FilePicker", "PickList"] {
             let entry = CATALOG.iter().position(|e| e.name == name).unwrap();
@@ -2094,17 +2094,17 @@ mod tests {
             h.set_scale(2.0);
             let mut m = FontMetrics::new(font.clone());
             h.pump_with(&mut m);
-            h.post(Event::Key { key: lumen_static::event::Key::Escape, down: true });
+            h.post(Event::Key { key: fulgurite::event::Key::Escape, down: true });
             h.pump_with(&mut m);
             let (mut full, mut part) = (Canvas::with_font(w, hh, font.clone()), Canvas::with_font(w, hh, font.clone()));
             for c in [&mut full, &mut part] {
                 c.clear(palette().page);
-                lumen_static::Renderer::render(c, &h.list, w, hh);
+                fulgurite::Renderer::render(c, &h.list, w, hh);
             }
             h.take_damage_for_age(1);
             // The trigger, found by part id under the demo.
-            let demo = lumen_static::style::index_of_wid(table, "demo").unwrap();
-            let trig = lumen_static::style::subtree_range(table, demo)
+            let demo = fulgurite::style::index_of_wid(table, "demo").unwrap();
+            let trig = fulgurite::style::subtree_range(table, demo)
                 .find(|&k| matches!(table[k].wid, "picker-trigger" | "chooser-trigger") && h.states[k].size.w > 0.0)
                 .expect("setup: no trigger on stage");
             let (mut partial, mut differ) = (0, 0);
@@ -2116,12 +2116,12 @@ mod tests {
                 h.post(Event::up(x, y));
                 h.pump_with(&mut m);
                 full.clear(palette().page);
-                lumen_static::Renderer::render(&mut full, &h.list, w, hh);
+                fulgurite::Renderer::render(&mut full, &h.list, w, hh);
                 match h.take_damage_for_age(1) {
                     Damage::None => {}
                     Damage::All => {
                         part.clear(palette().page);
-                        lumen_static::Renderer::render(&mut part, &h.list, w, hh);
+                        fulgurite::Renderer::render(&mut part, &h.list, w, hh);
                     }
                     d @ Damage::Regions(_) => {
                         partial += 1;
@@ -2165,13 +2165,13 @@ mod tests {
         // at the old 960 px window, true only by coincidence — M56 moved
         // it, and the literal went on describing a grid that was no
         // longer there.
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let grid = lumen_static::style::index_of_wid(table, "d_datagrid_a").expect("no `#d_datagrid_a`");
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let grid = fulgurite::style::index_of_wid(table, "d_datagrid_a").expect("no `#d_datagrid_a`");
         let width = h.states[grid].size.w;
         let want = d.a.column_width(width);
         // The cells by id within the row's own table, not by index: the
         // cells pad themselves now, which moved every index after the first.
-        let row = <stage::GridRow as lumen_static::widget::Widget>::SUB_TABLE;
+        let row = <stage::GridRow as fulgurite::widget::Widget>::SUB_TABLE;
         let cells: Vec<_> = ["d_grid_name", "d_grid_kind", "d_grid_size", "d_grid_lines"]
             .iter()
             .map(|id| d.a.rows.instance_state(0, row.iter().position(|n| n.wid == *id).expect("no cell id")))
@@ -2191,7 +2191,7 @@ mod tests {
 
     /// **A wheel over the grid scrolls it — through the real host.**
     ///
-    /// `crates/lumen-static-widgets/tests/data.rs`'s
+    /// `crates/fulgurite-widgets/tests/data.rs`'s
     /// `a_wheel_over_the_body_scrolls_it` walks the same path on a bare
     /// `DataGrid` and is green; `just widget-drive` found the live
     /// window ignoring the wheel anyway. The difference is everything
@@ -2207,8 +2207,8 @@ mod tests {
         };
         let (x, y) = {
             let table =
-                <<Show as lumen_static::event::App>::Tree as
-                    lumen_static::widget::Widget>::SUB_TABLE;
+                <<Show as fulgurite::event::App>::Tree as
+                    fulgurite::widget::Widget>::SUB_TABLE;
             let i = table
                 .iter()
                 .position(|d| d.wid == "d_datagrid_a")
@@ -2280,7 +2280,7 @@ mod tests {
             let sheet = h.stylesheet();
             rules = sheet.len();
             for f in h.sheet_findings() {
-                if matches!(f.issue, lumen_static::style::SheetIssue::Unread(_)) {
+                if matches!(f.issue, fulgurite::style::SheetIssue::Unread(_)) {
                     found.push(format!(
                         "entry {entry}: rule {} {:?}: {:?}",
                         f.rule, sheet[f.rule].selector, f.issue
@@ -2302,8 +2302,8 @@ mod tests {
     /// table alone would miss most of the sheet.
     #[test]
     fn every_role_rule_follows_the_palette() {
-        use lumen_static::style::{Fields, Role, Rule};
-        use lumen_static::widget::Node as _;
+        use fulgurite::style::{Fields, Role, Rule};
+        use fulgurite::widget::Node as _;
 
         const ROLES: [Role; 15] = [
             Role::Page,
@@ -2338,7 +2338,7 @@ mod tests {
         /// wrong.
         type Row = (&'static str, &'static [&'static str], &'static str, Style);
 
-        fn nodes(h: &mut lumen_static_shell::Host<Show>) -> Vec<Row> {
+        fn nodes(h: &mut fulgurite_shell::Host<Show>) -> Vec<Row> {
             let table = <Screen as Widget>::SUB_TABLE;
             let mut out: Vec<_> = table
                 .iter()
@@ -2429,11 +2429,11 @@ mod tests {
     }
 
     /// The catalogue's painted text, entry by entry, under `palette`, with
-    /// the real stylesheet (`lumen_static_shell::contrast`) — M54/T54.0,
+    /// the real stylesheet (`fulgurite_shell::contrast`) — M54/T54.0,
     /// T54.5. Returns the runs under `bound`, the runs measured, the
     /// unmeasured count and the catalogue's count of text commands.
     fn catalogue_contrast(palette: Palette, bound: f32) -> (Vec<String>, usize, usize, usize) {
-        use lumen_static_shell::contrast::text_contrast;
+        use fulgurite_shell::contrast::text_contrast;
         let mut h = host(0, false);
         h.set_palette(palette);
         let (mut measured, mut texts, mut unmeasured) = (0usize, 0usize, 0usize);
@@ -2633,7 +2633,7 @@ mod tests {
     /// bold).
     #[test]
     fn every_demo_text_reads_in_both_palettes() {
-        use lumen_static_shell::text::{FontMetrics, FontStack};
+        use fulgurite_shell::text::{FontMetrics, FontStack};
         let mut failed = Vec::new();
         let mut checked = 0usize;
         let mut on_gradient = 0usize;
@@ -2675,7 +2675,7 @@ mod tests {
                                     ground = over(*f, f.3, ground);
                                 }
                                 Cmd::Gradient { rect: r, stops, kind, geom, .. } if inside(r, cx, cy) => {
-                                    let axis = lumen_static::display::GradAxis::new(*r, *kind, *geom);
+                                    let axis = fulgurite::display::GradAxis::new(*r, *kind, *geom);
                                     let f = stops.sample(axis.t(x.clamp(r[0], r[2]), cy));
                                     ground = over(f, f.3, ground);
                                 }
@@ -2877,7 +2877,7 @@ mod tests {
             // And `VectorText` (M82/T82.8), for the same reason: the
             // stand-in has no outlines either, so it paints its fallback,
             // the axis-aligned string. Its turned outlines are held by
-            // `lumen-static-shell/tests/vector_text.rs` and its live drive.
+            // `fulgurite-shell/tests/vector_text.rs` and its live drive.
             if e.name != "Label" && e.name != "RichText" && e.name != "Selectable" && e.name != "VectorText" {
                 let shapes = h
                     .list
@@ -2923,7 +2923,7 @@ mod tests {
         let (shut, open) = (host(select, false), host(select, true));
         let (a, b) = (shut.list.cmds.len(), open.list.cmds.len());
         println!("closed {a} commands, open {b}");
-        let menu = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+        let menu = |h: &fulgurite_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
             Demo::Select(d) => (d.a.is_open(), d.a.menu.content.window_len()),
             _ => panic!("the Select demo is not on the stage"),
         };
@@ -2996,10 +2996,10 @@ mod tests {
     /// press leaves it paused, by name.
     #[test]
     fn the_image_demo_plays_at_its_own_rate_and_its_button_flips_it() {
-        use lumen_static::event::App as _;
+        use fulgurite::event::App as _;
         let entry = CATALOG.iter().position(|e| e.name == "Image").expect("an Image entry");
         let mut h = host(entry, false);
-        let frame = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+        let frame = |h: &fulgurite_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
             Demo::Image(d) => d.a.frame,
             _ => panic!("setup: the Image demo is not on the stage"),
         };
@@ -3015,9 +3015,9 @@ mod tests {
         assert!(left.is_some_and(|l| (l - 40.0).abs() < 0.01), "wake_in_ms is {left:?}, want 40");
         assert!(at && frame(&h) == 1, "the tick at the delay did not write frame 1 and report it");
 
-        let press = |h: &mut lumen_static_shell::Host<Show>| {
-            let i = lumen_static::style::index_of_wid(
-                <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE,
+        let press = |h: &mut fulgurite_shell::Host<Show>| {
+            let i = fulgurite::style::index_of_wid(
+                <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE,
                 "d_image_pause",
             )
             .expect("the pause button has an id");
@@ -3056,13 +3056,13 @@ mod tests {
     /// genuinely unknown, and this is what it now costs to use.
     #[test]
     fn a_dyn_island_routes_a_handler() {
-        use lumen_static::event::{Handlers, NodeSel};
+        use fulgurite::event::{Handlers, NodeSel};
         let mut b = Button::<Store, String>::default();
         b.label = "live".into();
         b.on_click = |s: &mut Store, _: &EventCtx| s.presses += 1;
         let direct: Option<fn(&mut Store, &EventCtx)> =
             Handlers::<Store>::handler(&b, NodeSel { i: 0, inner: None });
-        let island: lumen_static::Dyn<Store> = lumen_static::Dyn::new(b);
+        let island: fulgurite::Dyn<Store> = fulgurite::Dyn::new(b);
         let through: Option<fn(&mut Store, &EventCtx)> =
             Handlers::<Store>::handler(&island, NodeSel { i: 0, inner: None });
         println!("direct {:?}, through a Dyn {:?}", direct.is_some(), through.is_some());
@@ -3083,11 +3083,11 @@ mod tests {
         let mut h = host(entry, false);
         let btns = button_ids();
         assert_eq!(btns.len(), 3, "expected three buttons, found {}", btns.len());
-        let at = |h: &lumen_static_shell::Host<Show>, i: usize| {
+        let at = |h: &fulgurite_shell::Host<Show>, i: usize| {
             let s = &h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };
-        let show = |h: &lumen_static_shell::Host<Show>, tag: &str| {
+        let show = |h: &fulgurite_shell::Host<Show>, tag: &str| {
             let v: Vec<String> = btns
                 .iter()
                 .map(|&i| {
@@ -3131,7 +3131,7 @@ mod tests {
     /// is exactly what "it happens when I click the next one" describes.
     #[test]
     fn a_press_damages_the_button_it_is_on() {
-        use lumen_static::retain::Damage;
+        use fulgurite::retain::Damage;
         let entry = CATALOG.iter().position(|e| e.name == "Button").unwrap();
         let mut h = host(entry, false);
         let btns = button_ids();
@@ -3178,8 +3178,8 @@ mod tests {
     fn the_wrap_demos_lines_are_centred() {
         let entry = CATALOG.iter().position(|e| e.name == "Wrap").unwrap();
         let h = host(entry, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| fulgurite::style::index_of_wid(table, w).expect(w);
         let (a, c) = (h.states[idx("d_wrap_a")], h.states[idx("d_wrap_c")]);
         let wrap = h.states[table[idx("d_wrap_a")].parent as usize];
         let left = a.pos.x - wrap.pos.x;
@@ -3199,14 +3199,14 @@ mod tests {
     fn an_accordion_keeps_one_section_open_and_its_headers_still() {
         let entry = CATALOG.iter().position(|e| e.name == "Accordion").unwrap();
         let mut h = host(entry, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let b = lumen_static::style::index_of_wid(table, "d_acc_b").expect("the second section");
-        let open = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let b = fulgurite::style::index_of_wid(table, "d_acc_b").expect("the second section");
+        let open = |h: &fulgurite_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
             Demo::Accordion(d) => [d.a.is_open(), d.b.is_open(), d.c.is_open()],
             _ => panic!("setup: not the Accordion demo"),
         };
         assert_eq!(open(&h), [true, false, false], "the first section does not start open");
-        let a = lumen_static::style::index_of_wid(table, "d_acc_a").unwrap();
+        let a = fulgurite::style::index_of_wid(table, "d_acc_a").unwrap();
         let (y0, ya0) = (h.states[b].pos.y, h.states[a].pos.y);
         let (x, y) = (h.states[b].pos.x + 30.0, y0 + 10.0);
         h.post(Event::down(x, y));
@@ -3240,9 +3240,9 @@ mod tests {
     fn a_confirm_is_counted_apart_from_a_dismissal() {
         let entry = CATALOG.iter().position(|e| e.name == "Modal").unwrap();
         let mut h = host(entry, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
-        let press = |h: &mut lumen_static_shell::Host<Show>, x: f32, y: f32| {
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| fulgurite::style::index_of_wid(table, w).expect(w);
+        let press = |h: &mut fulgurite_shell::Host<Show>, x: f32, y: f32| {
             h.post(Event::down(x, y));
             h.post(Event::up(x, y));
             h.pump();
@@ -3269,7 +3269,7 @@ mod tests {
     fn a_search_field_has_no_box_inside_it() {
         let entry = CATALOG.iter().position(|e| e.name == "SearchField").unwrap();
         let h = host(entry, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
         let i = table
             .iter()
             .position(|d| d.wid == "search-field")
@@ -3287,11 +3287,11 @@ mod tests {
     /// (`docs/widget-audit.md`, NumberInput).
     #[test]
     fn the_number_readout_follows_the_field() {
-        use lumen_static::event::Key;
+        use fulgurite::event::Key;
         let entry = CATALOG.iter().position(|e| e.name == "NumberInput").unwrap();
         let mut h = host(entry, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let i = lumen_static::style::index_of_wid(table, "d_number_a").expect("the number field");
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let i = fulgurite::style::index_of_wid(table, "d_number_a").expect("the number field");
         h.input.focus = Some(i as u32);
         h.post(Event::Key { key: Key::Up, down: true });
         h.post(Event::Key { key: Key::Up, down: false });
@@ -3314,9 +3314,9 @@ mod tests {
     /// widget will paint.
     #[test]
     fn a_toggles_drawn_state_follows_its_click() {
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
-        let click = |h: &mut lumen_static_shell::Host<Show>, i: usize| {
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| fulgurite::style::index_of_wid(table, w).expect(w);
+        let click = |h: &mut fulgurite_shell::Host<Show>, i: usize| {
             let s = h.states[i];
             let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
             h.post(Event::down(x, y));
@@ -3348,11 +3348,11 @@ mod tests {
     /// button asks, `refresh` shows it, `advance` runs its countdown.
     #[test]
     fn save_shows_a_toast_that_times_out() {
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let idx = |w: &str| lumen_static::style::index_of_wid(table, w).expect(w);
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let idx = |w: &str| fulgurite::style::index_of_wid(table, w).expect(w);
         let entry = CATALOG.iter().position(|e| e.name == "Toast").unwrap();
         let mut h = host(entry, false);
-        let shown = |h: &lumen_static_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
+        let shown = |h: &fulgurite_shell::Host<Show>| match &h.app.ui.main.stage.row.demo {
             Demo::Toast(d) => d.a.content.t.is_shown(),
             _ => panic!("setup: not the Toast demo"),
         };
@@ -3429,7 +3429,7 @@ mod tests {
             let h = host(entry, false);
             let mut unmatched = vec![false; sheet.len()];
             for f in h.sheet_findings() {
-                if matches!(f.issue, lumen_static::style::SheetIssue::Unmatched) {
+                if matches!(f.issue, fulgurite::style::SheetIssue::Unmatched) {
                     unmatched[f.rule] = true;
                 }
             }
@@ -3470,8 +3470,8 @@ mod tests {
     fn every_sidebar_row_picks_its_own_entry() {
         let start = CATALOG.len() - 1;
         let mut h = host(start, false);
-        let table = <<Show as lumen_static::event::App>::Tree as lumen_static::widget::Widget>::SUB_TABLE;
-        let nav = lumen_static::style::index_of_wid(table, "nav").expect("no `#nav`");
+        let table = <<Show as fulgurite::event::App>::Tree as fulgurite::widget::Widget>::SUB_TABLE;
+        let nav = fulgurite::style::index_of_wid(table, "nav").expect("no `#nav`");
         let (nx, ny, nh) = (h.states[nav].pos.x, h.states[nav].pos.y, h.states[nav].size.h);
         let (mut items, mut headings, mut dismissals) = (0, 0, 0);
         for r in 0..catalog::nav_len() {
@@ -3575,7 +3575,7 @@ mod tests {
         // The handler gets the state (M33); `refresh` then rebuilds the
         // header and moves the highlight, as the next pump would.
         (row.on_click)(&mut s.store, &cx);
-        lumen_static::event::App::update(&mut s);
+        fulgurite::event::App::update(&mut s);
         println!("after picking sidebar row {r}: {} ({})", CATALOG[s.store.selected].name, s.store.selected);
         assert_eq!(s.store.selected, target, "the handler picked the wrong entry");
         assert_eq!(nav::selected(), target, "the sidebar's highlight did not follow");
@@ -3595,10 +3595,10 @@ mod tests {
 #[cfg(test)]
 mod flip {
     use super::*;
-    use lumen_static::invalidate::{Boundaries, Everything, Invalidation};
-    use lumen_static::retain::Incremental;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite::invalidate::{Boundaries, Everything, Invalidation};
+    use fulgurite::retain::Incremental;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     const RUNS: usize = 8;
     const ITERS: usize = 40;
@@ -3610,9 +3610,9 @@ mod flip {
         for _ in 0..3 {
             h.pump_with(m);
         }
-        let table = <Screen as lumen_static::Widget>::SUB_TABLE;
+        let table = <Screen as fulgurite::Widget>::SUB_TABLE;
         let at = |h: &Host<Show, Incremental, I>, wid: &str| {
-            let i = lumen_static::style::index_of_wid(table, wid).unwrap();
+            let i = fulgurite::style::index_of_wid(table, wid).unwrap();
             let s = h.states[i];
             (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0)
         };
@@ -3622,11 +3622,11 @@ mod flip {
                 "idle" => {}
                 "hover" => {
                     let (x, y) = at(&h, if k % 2 == 0 { "d_button_a" } else { "d_button_b" });
-                    h.post(lumen_static::Event::PointerMove { x, y });
+                    h.post(fulgurite::Event::PointerMove { x, y });
                 }
                 "press" => {
                     let (x, y) = at(&h, "d_button_a");
-                    h.post(if k % 2 == 0 { lumen_static::Event::down(x, y) } else { lumen_static::Event::up(x + 400.0, y + 400.0) });
+                    h.post(if k % 2 == 0 { fulgurite::Event::down(x, y) } else { fulgurite::Event::up(x + 400.0, y + 400.0) });
                 }
                 "tick" => {
                     h.tick(16.0);
@@ -3682,9 +3682,9 @@ mod flip {
 #[cfg(test)]
 mod boundary {
     use super::*;
-    use lumen_static::display::Cmd;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite::display::Cmd;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     const RUNS: usize = 8;
     const ITERS: usize = 40;
@@ -3714,11 +3714,11 @@ mod boundary {
                 let mut text = String::with_capacity(1 << 16);
                 let (mut f, mut c, mut en) = (Vec::new(), Vec::new(), Vec::new());
                 let mut wire = Vec::with_capacity(1 << 16);
-                let mut back = lumen_static::DisplayList::new();
+                let mut back = fulgurite::DisplayList::new();
                 for k in 0..ITERS {
                     // The frame arm: a hover that moves, as T34.2's.
                     let (x, y) = if k % 2 == 0 { (40.0, 120.0) } else { (300.0, 200.0) };
-                    h.post(lumen_static::Event::PointerMove { x, y });
+                    h.post(fulgurite::Event::PointerMove { x, y });
                     h.pump_with(&mut m);
                     let (l, p, pa) = h.timings3();
                     f.push((l + p + pa) as f64 / 1000.0);
@@ -3731,8 +3731,8 @@ mod boundary {
                     c.push(t.elapsed().as_nanos() as f64 / 1000.0);
                     let t = std::time::Instant::now();
                     wire.clear();
-                    lumen_static::wire::encode(&h.list, &mut wire);
-                    lumen_static::wire::decode_into(&wire, &mut back).unwrap();
+                    fulgurite::wire::encode(&h.list, &mut wire);
+                    fulgurite::wire::decode_into(&wire, &mut back).unwrap();
                     std::hint::black_box(&back);
                     en.push(t.elapsed().as_nanos() as f64 / 1000.0);
                     wire_len = wire.len();
@@ -3773,8 +3773,8 @@ mod boundary {
 #[cfg(test)]
 mod snap_cost {
     use super::*;
-    use lumen_static_shell::text::{FontMetrics, FontStack};
-    use lumen_static_shell::Host;
+    use fulgurite_shell::text::{FontMetrics, FontStack};
+    use fulgurite_shell::Host;
 
     const RUNS: usize = 8;
     const ITERS: usize = 40;
@@ -3797,12 +3797,12 @@ mod snap_cost {
                 for k in 0..ITERS {
                     // A hover that moves, the frame arm T34.2 and T37.0 use.
                     let (x, y) = if k % 2 == 0 { (40.0, 120.0) } else { (300.0, 200.0) };
-                    h.post(lumen_static::Event::PointerMove { x, y });
+                    h.post(fulgurite::Event::PointerMove { x, y });
                     h.pump_with(&mut m);
                     v.push(h.timings3().2 as f64 / 1000.0);
                 }
                 rects = (
-                    h.list.cmds.iter().filter(|c| matches!(c, lumen_static::Cmd::Rect { .. })).count(),
+                    h.list.cmds.iter().filter(|c| matches!(c, fulgurite::Cmd::Rect { .. })).count(),
                     h.list.cmds.len(),
                 );
                 v.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -3825,18 +3825,18 @@ mod snap_cost {
         // entries cannot see a per-rect cost. The worst case, isolated:
         // 2 000 `rect` calls through `Scaled` at 1.0 into a list.
         let mut runs = Vec::new();
-        let mut list = lumen_static::DisplayList::new();
+        let mut list = fulgurite::DisplayList::new();
         for _ in 0..RUNS {
             let mut v = Vec::new();
             for _ in 0..ITERS {
                 list.clear();
                 let t = std::time::Instant::now();
                 {
-                    let mut s = lumen_static::Scaled::new(&mut list, 1.0);
-                    let p: &mut dyn lumen_static::Painter = &mut s;
+                    let mut s = fulgurite::Scaled::new(&mut list, 1.0);
+                    let p: &mut dyn fulgurite::Painter = &mut s;
                     for k in 0..2000 {
                         let y = (k % 400) as f32 * 1.7;
-                        p.rect([3.0, y, 180.3, y + 1.0], lumen_static::Color(40, 40, 40, 255));
+                        p.rect([3.0, y, 180.3, y + 1.0], fulgurite::Color(40, 40, 40, 255));
                     }
                 }
                 std::hint::black_box(&list);
@@ -3868,7 +3868,7 @@ mod snap_cost {
 #[cfg(all(test, feature = "shaping"))]
 mod shaping_shot {
     use super::*;
-    use lumen_static_shell::text::{FontStack, Shaping};
+    use fulgurite_shell::text::{FontStack, Shaping};
 
     fn differing(a: &(Vec<u8>, [usize; 4]), b: &(Vec<u8>, [usize; 4])) -> usize {
         assert_eq!(a.1, b.1, "the two crops differ, so the frames were not of one layout");
@@ -3886,14 +3886,14 @@ mod shaping_shot {
     #[test]
     fn demo_frames_follow_the_programs_shaping() {
         if FontStack::system().is_none() {
-            assert!(std::env::var("LUMEN_REQUIRE_FONTS").as_deref() != Ok("1"), "LUMEN_REQUIRE_FONTS=1 but no system face");
+            assert!(std::env::var("FULGURITE_REQUIRE_FONTS").as_deref() != Ok("1"), "FULGURITE_REQUIRE_FONTS=1 but no system face");
             println!("no system face -- skipped");
             return;
         }
         let rtl = CATALOG.iter().position(|e| e.name == "TextInput RTL").expect("a TextInput RTL entry");
         let latin = CATALOG.iter().position(|e| e.name == "TextInput").expect("a TextInput entry");
         let seeded = {
-            let mut h: lumen_static_shell::Host<Show> = program(rtl, false).host();
+            let mut h: fulgurite_shell::Host<Show> = program(rtl, false).host();
             h.pump();
             h.pump();
             matches!(&h.app.ui.main.stage.row.demo, Demo::TextInputRtl(d) if d.a.as_str() == catalog::TEXTINPUT_RTL)

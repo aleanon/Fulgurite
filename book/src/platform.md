@@ -232,7 +232,7 @@ gets it, including custom widgets that implement nothing.
 
 It is also free in the sense the gating policy cares about: `Cursor` fits
 in `Style`'s existing tail padding, which is asserted in
-`crates/lumen-static/tests/cursor.rs` — because it would stop being free
+`crates/fulgurite/tests/cursor.rs` — because it would stop being free
 if a future field pushed the struct over, and a byte in `Style` is a byte
 times every node of every tree.
 

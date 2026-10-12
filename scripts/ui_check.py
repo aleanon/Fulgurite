@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measurable GUI-quality checks against a live lumen-static window.
+"""Measurable GUI-quality checks against a live fulgurite window.
 
 Each check turns a rule from GUI practice into a number the agent
 endpoint can produce, and a budget it is judged against. Bounds come

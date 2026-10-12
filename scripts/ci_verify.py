@@ -8,7 +8,7 @@ scripts/ci.sh writes, and refuses, by name:
 
   * no record -- `no CI record for <sha>`;
   * a failed step, or a tree the run left changed (rule 5);
-  * a skipped step -- even one LUMEN_ALLOW_SKIP=1 accepted at run time --
+  * a skipped step -- even one FULGURITE_ALLOW_SKIP=1 accepted at run time --
     unless `--allow-skip` is given here too. A green record must never
     hide a skip, so accepting one is said twice: when it ran, and when it
     is cited.
@@ -53,7 +53,7 @@ def main() -> int:
         if s["status"] == "fail":
             bad.append(f"step {s['name']} failed (exit {s['exit']})")
         elif s["status"] == "skip" and not allow:
-            why = "accepted at run time by LUMEN_ALLOW_SKIP=1" if rec.get("allow_skip") else "refused"
+            why = "accepted at run time by FULGURITE_ALLOW_SKIP=1" if rec.get("allow_skip") else "refused"
             bad.append(f"step {s['name']} skipped ({why}); --allow-skip accepts it")
     if not rec.get("tree_clean", False):
         bad.append("tree changed during the run: " + " ".join(rec.get("tree_changes", [])))

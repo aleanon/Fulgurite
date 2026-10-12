@@ -92,7 +92,7 @@ Last week's logic, running after the swap, with no crash and no warning.
 
 **Corrected 2026-09-27 (M49/T49.10, R4-F3): that demonstration ran on the
 fixture's own code.** `fixtures/hot-host` keeps the pending descriptor
-itself and calls the library's `hot_step`. No `lumen_static::spawn` or
+itself and calls the library's `hot_step`. No `fulgurite::spawn` or
 `inbox` code is on the path, so it shows the rule and not the framework
 keeping it. The framework's window swap carried no work in flight until
 T49.10. Now the old session saves its host's ledger beside the kept state
@@ -162,5 +162,5 @@ T88.3 has the output.
   fresh index from hit testing — the latch is what checks identity, and
   "identity" is "the list did not change shape", not an item key (the
   key function §2.2 C describes is deferred until an application needs
-  a click to survive a reorder). `crates/lumen-static/tests/activation.rs`
+  a click to survive a reorder). `crates/fulgurite/tests/activation.rs`
   is the gate.

@@ -19,12 +19,12 @@
 
 use std::time::Instant;
 
-use lumen_static::{App as DeriveApp, Event, Key, StaticTree};
-use lumen_static::{Color, Renderer};
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::{text_counters, FontMetrics, FontStack, Shaping};
-use lumen_static_shell::Host;
-use lumen_static_widgets::TextArea;
+use fulgurite::{App as DeriveApp, Event, Key, StaticTree};
+use fulgurite::{Color, Renderer};
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::{text_counters, FontMetrics, FontStack, Shaping};
+use fulgurite_shell::Host;
+use fulgurite_widgets::TextArea;
 
 #[derive(StaticTree, Default)]
 #[widget(column, spacing = 0.0)]

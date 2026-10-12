@@ -5,7 +5,7 @@ whether it moved the application — M39/T39.0 (R14-F1).
 Usage: browser_replay.py ADDR FIXTURE WATCH [--xfail TASK] [--pid PID]
 
 ADDR     the agent endpoint, host:port
-FIXTURE  a file under crates/lumen-static-agent/tests/browser/, replayed
+FIXTURE  a file under crates/fulgurite-agent/tests/browser/, replayed
          byte for byte on its own connection (the bytes a real browser
          sent; see scripts/capture_browser_requests.py)
 WATCH    a selector whose shown text the fixture's JSON lines would move

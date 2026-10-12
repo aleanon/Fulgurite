@@ -12,7 +12,7 @@
 >   limit 1 call (was 5). `Ui` 1,168 → 1,176 B on the target.
 > - **T45.3** fallback faces, read on first need: `你好` and `שלום` drawn,
 >   Latin pixel-identical; the kill rule fired once (+3.4%) and was fixed.
-> - **T45.4** `lumen-static-text` is measurement only, pinned by a
+> - **T45.4** `fulgurite-text` is measurement only, pinned by a
 >   `should_panic` test and the limitation stated as a test.
 > - **T45.5** editing by grapheme: 40 / 40 (was 0); leaf `.text` unchanged.
 > - **T45.7** a paste is one edit through `Node::paste`: newlines kept,
@@ -82,7 +82,7 @@ and prints the measured quantity beside its bound.*
    is not marked is not drawn. Each such gate runs through `Host<A>` and
    `Host<A, _, Everything>` and requires the same frame.
 3. **A gate that needs a system face says so when it has none.** At
-   `1717808`, `crates/lumen-static-text/tests/shaping.rs` returns
+   `1717808`, `crates/fulgurite-text/tests/shaping.rs` returns
    silently when no face loads (`let Some(mut t) = face() else { return };`),
    which is a pass that proved nothing. This plan follows M43's policy
    for it (M43 §2.2 and T43.11): a gate that only needs *a* face shapes
@@ -102,7 +102,7 @@ and prints the measured quantity beside its bound.*
 - **Pen, not ink origin (R10-F1).** `FontStack` computes a run's width
   as `max(g.x + max(advance, ink width))` in three places:
   `place_run`, `measure_run` and `shape_into`
-  (`crates/lumen-static-shell/src/text.rs:182`, `:276`, `:336`).
+  (`crates/fulgurite-shell/src/text.rs:182`, `:276`, `:336`).
   fontdue's `g.x` already includes the glyph's left bearing, so a run
   ending in a negative-bearing glyph (`j`, `J`) is measured short, and
   the painter, which wraps inside the measured box, moves the last glyph
@@ -111,26 +111,26 @@ and prints the measured quantity beside its bound.*
   the same way. The comment at `text.rs:176-181` says this re-wrap was
   fixed; it was fixed for positive bearings. The GPU backend calls the
   same `place_run` with the rect width
-  (`crates/lumen-static-wgpu/src/lib.rs:1009`).
+  (`crates/fulgurite-wgpu/src/lib.rs:1009`).
 - **Shaping measures and nothing paints it (R10-F2).**
-  `lumen-static-text`'s `ComplexText` shapes, orders and reports
+  `fulgurite-text`'s `ComplexText` shapes, orders and reports
   clusters. The painter then draws the original string with fontdue:
   cmap glyphs in logical order. So Arabic is painted unjoined and left
   to right, a bidi line is painted in logical order, and because
   `ComplexText`'s box is narrower than fontdue's own width for *every*
   string (the verifier's correction: plain ASCII wraps too), the painter
   wraps inside it (R10-F2). `TextInput::x_of`
-  (`crates/lumen-static-widgets/src/input.rs:371`) assumes cluster
+  (`crates/fulgurite-widgets/src/input.rs:371`) assumes cluster
   bytes rise with x, which a right-to-left run breaks. And no window
   can install `ComplexText` at all: the winit `Session` builds a
   `FontMetrics` and `Program` has no measurer parameter. Yet
   `docs/plan-capabilities.md` T15.8 is marked DONE on the gate "an
   Arabic string measures and paints right-to-left", and the crate's
   rustdoc says it "changes *where the glyphs go*"
-  (`crates/lumen-static-text/src/lib.rs:25-26`).
+  (`crates/fulgurite-text/src/lib.rs:25-26`).
 - **The test named for this cannot see it (R10-F11).**
   `shaping.rs`'s `a_right_to_left_run_is_laid_out_and_stays_on_boundaries`
-  (`crates/lumen-static-text/tests/shaping.rs:75-87`) asserts a positive
+  (`crates/fulgurite-text/tests/shaping.rs:75-87`) asserts a positive
   width, more than one cluster, and offsets on character boundaries.
   `BlockMetrics` satisfies all three, and the review's injection that
   shapes RTL runs left to right left it green (R10-F11).
@@ -140,13 +140,13 @@ and prints the measured quantity beside its bound.*
 - **Scale (R2-F6).** `TextInput`'s shaped key is
   `(text length, font size, weight, limits.max_w)`
   (`input.rs:474-479`) and `TextArea`'s is the same with the inner width
-  (`crates/lumen-static-widgets/src/textarea.rs:463-468`). Neither
+  (`crates/fulgurite-widgets/src/textarea.rs:463-468`). Neither
   carries the display scale, so M26/T26.17's monitor-drag defect,
   fixed for `Label` through `MeasureKey`, survives in the two editable
   widgets (R2-F6). The caret positions come from the cached clusters,
   so after a drag the caret is placed from the old scale's shaping.
 - **NaN limits (R2-F10).** `MeasureKey` stores its `Constraints` by
-  value (`crates/lumen-static/src/text.rs:110-111`), compared with f32
+  value (`crates/fulgurite/src/text.rs:110-111`), compared with f32
   `PartialEq`, so a NaN limit never hits. The rustdoc's "bit patterns,
   not values" (`:128`) covers the other fields. Nothing in the tree
   produces NaN limits; it is a memo miss, not a stale box.
@@ -163,7 +163,7 @@ and prints the measured quantity beside its bound.*
 
 ### 1.3 Paste is per-character, loses newlines and is quadratic (R8-F4, R8-F5, R10-F5, R10-F6)
 
-`Host::paste` (`crates/lumen-static-shell/src/lib.rs:1422-1433`) posts
+`Host::paste` (`crates/fulgurite-shell/src/lib.rs:1422-1433`) posts
 one `Event::Text` per character, keeping `'\n'` in its filter. A
 `TextArea` accepts text only `if !ch.is_control()`
 (`textarea.rs:566`) and takes a newline only as `Key::Enter`, so every
@@ -172,10 +172,10 @@ R10-F5; two reviewers found it). It pumps once per 64 characters, and
 each pump is linear in the text length, so a large paste is quadratic
 and blocks the UI (R8-F5; the verifier split the attribution and a
 single edit costs a small fraction of it). The window now reaches this
-through `Session::paste` (`crates/lumen-static-shell/src/session.rs:294-297`),
+through `Session::paste` (`crates/fulgurite-shell/src/session.rs:294-297`),
 which discards the count. The test named for newlines,
 `paste_skips_control_characters_but_keeps_newlines`
-(`crates/lumen-static-shell/tests/clipboard.rs:99-107`), pastes no
+(`crates/fulgurite-shell/tests/clipboard.rs:99-107`), pastes no
 newline into a single-line field (R10-F6).
 
 ### 1.4 Editing steps by the wrong unit (R10-F7, R10-F14, R10-F8)
@@ -192,19 +192,19 @@ newline into a single-line field (R10-F6).
   exactly this. `TextArea::on_event` has no Home or End arm.
 - **Key text past its first character is lost (R10-F8).**
   `translate::keyboard` emits `Event::Text` for the first non-control
-  character only (`crates/lumen-static-winit/src/translate.rs:202-205`).
+  character only (`crates/fulgurite-winit/src/translate.rs:202-205`).
   The verifier's case: a dead key followed by a consonant it cannot
   combine with, on Windows's US-International layout, delivers two
   characters and loses the second.
 
 ### 1.5 The clipboard and composition reach less than they claim (R10-F13, R10-F15)
 
-`clipboard_shortcut` (`crates/lumen-static-winit/src/lib.rs:401-434`)
+`clipboard_shortcut` (`crates/fulgurite-winit/src/lib.rs:401-434`)
 returns `true`, which drops the event, for Ctrl or Cmd with `c`/`x`
 when there is nothing to copy and for `v` always, so an application
 never sees those keys, not even with nothing focused. It accepts Ctrl
 or Meta on every OS, so Super+C copies on Linux. And `NumberInput`'s
-`node_mut` returns itself (`crates/lumen-static-widgets/src/field.rs:275`)
+`node_mut` returns itself (`crates/fulgurite-widgets/src/field.rs:275`)
 and forwards neither `selection` nor `compose` to its inner field, so
 it cannot copy (R10-F13) and refuses IME composition (R10-F15).
 
@@ -222,14 +222,14 @@ it cannot copy (R10-F13) and refuses IME composition (R10-F15).
 - **One run for the whole value (R8-F3).** `TextArea` paints its whole
   value as a single text command. The software backend culls per run
   and shapes and rasterises every glyph of a run before clipping
-  (`crates/lumen-static-shell/src/software.rs:122`), so a caret move in
+  (`crates/fulgurite-shell/src/software.rs:122`), so a caret move in
   a long document rasterises the document, about twice per frame since
   a caret move damages two small regions (R8-F3, with the verifier's
   correction).
 
 ### 1.7 The embedded face breaks words (R10-F10)
 
-`BakedFace`'s wrap (`crates/lumen-static/src/font.rs:139-160`), on
+`BakedFace`'s wrap (`crates/fulgurite/src/font.rs:139-160`), on
 overflow with a space behind it, rewinds only the widest-line counter
 and resets x. The glyphs of the word already placed stay on the old
 line, so it breaks mid-word and measures the wrong width (R10-F10).
@@ -345,14 +345,14 @@ marked expected-to-fail until its task lands, as M35/T35.0 did, with
 the red output in the commit body. Where a finding cannot be red, the
 commit says why and records the injection instead.
 
-1. `crates/lumen-static-shell/tests/text_containment.rs` (R10-F1),
+1. `crates/fulgurite-shell/tests/text_containment.rs` (R10-F1),
    feature `truetype`: 12 strings × 10 sizes × 2 weights × 5 scales,
    measured with `FontMetrics` and painted with `Canvas::with_font`
    through a `Host` label. Zero wrapped runs, zero ink rows more than
    1 px outside the box. Includes `Taj`, `Tj`, `fj`, and `Settings`
    bold at 13 px and scale 1.5. Prints `wrapped N / 1200, worst
    overhang x/y px (bound 1.0)`. **Red today.**
-2. `crates/lumen-static-text/tests/paint_shaped.rs` (R10-F2): paint
+2. `crates/fulgurite-text/tests/paint_shaped.rs` (R10-F2): paint
    `مرحبا` through the window's painter at `ComplexText`'s box, and
    assert what T15.8 claims: painted glyph ids equal the shaper's, in
    visual order, and the ink stays in the box. **Red today**, with the
@@ -367,24 +367,24 @@ commit says why and records the injection instead.
    `ca8547c` (`let rtl = false && …`), which must turn it red, and a
    feature set without `init`/`medi`/`fina` must turn the joining half
    red. The commit records both.
-4. In `crates/lumen-static-widgets/tests/text_memo.rs`, or a new
+4. In `crates/fulgurite-widgets/tests/text_memo.rs`, or a new
    `measure_scale_widgets.rs` (R2-F6): a `TextInput` and a `TextArea`
    laid out at scale 1, then 2 with the same limits, against fresh
    instances at 2. For `TextArea` the assertion is on the caret x, since
    its box does not move. Uses the non-linear `Hinted` measurer that M40
-   shares from `crates/lumen-static/tests/measure_scale.rs`. **Red
+   shares from `crates/fulgurite/tests/measure_scale.rs`. **Red
    today** for `TextInput` (served ≠ fresh); the `TextArea` leg's red
    state is recorded if it has one, and if the caret does not move
    either, the commit says the leg is by reading.
-5. In `crates/lumen-static/tests/measure_key.rs` (R2-F10): five layouts
+5. In `crates/fulgurite/tests/measure_key.rs` (R2-F10): five layouts
    at NaN `max_w` make one measurer call. Prints calls beside `bound 1`.
    **Red today:** five.
-6. `crates/lumen-static-shell/tests/font_fallback.rs` (R10-F12),
+6. `crates/fulgurite-shell/tests/font_fallback.rs` (R10-F12),
    skipping with a printed reason when the fallback faces are absent:
    `你好` and `שלום` measure and paint differently from `??` and
    `????`, with glyph ids that are not `?`'s. Prints the face index per
    character. **Red today:** identical pixels.
-7. `crates/lumen-static-shell/tests/paste.rs` (R8-F4, R8-F5, R10-F5,
+7. `crates/fulgurite-shell/tests/paste.rs` (R8-F4, R8-F5, R10-F5,
    R10-F6), through `Host` under both invalidations. Paste
    `"ab\ncd\r\nef"` into a `TextArea`: `"ab\ncd\nef"`, and the count is
    the characters kept. The same paste into a `TextInput`: `"abcdef"`.
@@ -394,32 +394,32 @@ commit says why and records the injection instead.
    `clipboard.rs`'s newline test is rewritten against a `TextArea`, and
    the review's injection `ec07f29` (the filter drops `'\n'`) must turn
    it red.
-8. `crates/lumen-static-widgets/tests/graphemes.rs` (R10-F7): for each
+8. `crates/fulgurite-widgets/tests/graphemes.rs` (R10-F7): for each
    of `TextInput`, `TextArea`, `SearchField`, `Combobox` and
    `RichTextEditor`, through `Host` after Tab, Backspace after a
    combining accent, a ZWJ family, a flag and a skin-tone emoji leaves
    `x`; Right then Delete removes a whole cluster. Prints codepoints left
    beside the expected count. **Red today:** 0 of 15.
-9. `crates/lumen-static-widgets/tests/text_motion.rs` (R10-F14), with a
+9. `crates/fulgurite-widgets/tests/text_motion.rs` (R10-F14), with a
    lone field so the arrow rule cannot mask it: Ctrl+Left moves by word,
    a double click selects a word, a triple click selects the line, and
    Home and End in a `TextArea` go to line bounds. **Red today.**
-10. `crates/lumen-static-winit/tests/key_text.rs` (R10-F8), through the
+10. `crates/fulgurite-winit/tests/key_text.rs` (R10-F8), through the
     window's key-text routing factored out as a function: `"^a"`,
     `"e\u{301}"`, a flag and `"क्ष"` reach the focused field whole. **Red
     today:** first character only.
-11. `crates/lumen-static-winit/tests/clipboard_shortcut.rs` (R10-F13),
+11. `crates/fulgurite-winit/tests/clipboard_shortcut.rs` (R10-F13),
     on the shortcut decision factored out as a pure function: nothing
     focused plus Ctrl+C routes on; a selection plus Ctrl+C copies;
     Super+C on Linux routes on; Cmd+C on macOS copies; Ctrl+V with an
     empty clipboard routes on. Prints the table. And `NumberInput`,
     Ctrl+A, copy gives its text. **Red today.**
-12. In M41's `crates/lumen-static-shell/tests/compose_marks.rs`
+12. In M41's `crates/fulgurite-shell/tests/compose_marks.rs`
     (R10-F15): Tab to a `NumberInput`, commit `"12"`: accepted, and the
     value contains it; commit `"ab"`: refused. **Red today:** refused
     both. This item lands with M41's file, or as its own file if M41
     has not landed.
-13. `crates/lumen-static-shell/tests/textarea_scale.rs` (R16-F7),
+13. `crates/fulgurite-shell/tests/textarea_scale.rs` (R16-F7),
     feature `truetype`: the minimum of five keystroke-plus-layout timings
     at 20 KB and 200 KB, ratio below 25 (linear is about 10, quadratic
     about 100), printed as `keystroke 20KB=a ms 200KB=b ms ratio=r
@@ -488,7 +488,7 @@ round-down at fractional scales. The GPU backend's `place_run` call
 takes the same rule.
 
 **Gate.** T45.0 item 1 goes green: `wrapped 0 / 1200`, overhang within
-1 px. `crates/lumen-static-shell/tests/glyph_placement.rs` and
+1 px. `crates/fulgurite-shell/tests/glyph_placement.rs` and
 `just gpu-parity` stay green.
 
 **Injection.** Restore the ink-origin width: the gate reports the
@@ -520,7 +520,7 @@ part-way; it paints in its run's width now.
 **Closes:** R2-F6, R2-F10.
 
 **Change.** Per §2.3. The single constructor on `MeasureKey`, taking the
-`LayoutCx`; its callers in `crates/lumen-static-widgets/src/ops.rs` and
+`LayoutCx`; its callers in `crates/fulgurite-widgets/src/ops.rs` and
 `trim.rs` move to it. Limits are stored as bit patterns. `TextMeasure`
 gains the provided generation method, and `FontMetrics` bumps it when
 its stack changes. `TextInput`'s and `TextArea`'s shaped keys are built
@@ -534,7 +534,7 @@ also delivers the measurer-identity half of M41's R2-F1, as M41 asks.
 scale change, and one measurer call for five NaN layouts. A new case: a
 `FontMetrics` whose generation is bumped between two layouts re-shapes
 a warm `TextInput`, printed as calls before and after.
-`crates/lumen-static/tests/text_memo.rs`'s "a still frame measures
+`crates/fulgurite/tests/text_memo.rs`'s "a still frame measures
 nothing" stays green, so the memo still hits.
 
 **Injection.** Remove the scale from the key: item 4 fires. Store the
@@ -604,7 +604,7 @@ generation). §5's kill rule applies.
 
 **Change.** Per §2.1 B. `docs/plan-capabilities.md` T15.8 becomes
 "measurement only", with a pointer to the proposed shaped-paint
-milestone. `lumen-static-text`'s crate rustdoc replaces "changes where
+milestone. `fulgurite-text`'s crate rustdoc replaces "changes where
 the glyphs go" with what it changes (the box and the clusters), and
 says a window cannot install it. `ComplexText`'s rustdoc says to pair it
 only with a painter that consumes its clusters. The book's capability
@@ -636,7 +636,7 @@ remaining harm).
 `textarea.rs` step by extended grapheme cluster, using the
 `unicode-segmentation` crate behind the widgets crate's `alloc` feature
 (it is `no_std`). Backspace, Delete, Left, Right and Shift-selection all
-go through them. Where `lumen-static-text`'s clusters exist they still
+go through them. Where `fulgurite-text`'s clusters exist they still
 place the caret; graphemes decide editing.
 
 **Gate.** T45.0 item 8 goes green: 15 of 15, with codepoints printed. A
@@ -680,7 +680,7 @@ for `TextInput` and `TextArea`.
 
 *Not built (2026-09-26).* M44/T44.1 was on `impl/m44`, not on this
 branch's base, and the brief said not to build `owns_arrows` here. The
-gate was written and committed red (`crates/lumen-static-shell/tests/text_motion.rs`,
+gate was written and committed red (`crates/fulgurite-shell/tests/text_motion.rs`,
 12 of 12 motions wrong at `826c7c3`), with each field alone in its tree
 so it measured this task and not M44's.
 
@@ -828,7 +828,7 @@ input:** the self-ratio sits near 1, which shows timing noise is well
 under the bound.
 
 **Docs in the same commit.** `textarea.rs`'s module rustdoc (the size
-it is built for). `crates/lumen-static/src/cx.rs:93-99` (accurate; add
+it is built for). `crates/fulgurite/src/cx.rs:93-99` (accurate; add
 the per-edit cost). The results doc.
 
 *What building found (2026-09-26).* The "table built in one pass" is
@@ -851,7 +851,7 @@ per-run cull bounds a frame by what is on screen. `RichText` and
 checks and says.
 
 **Gate.** T45.0 item 14 goes green: the glyph count at 64 KB within the
-visible-lines bound, printed beside it. `crates/lumen-static-shell/tests/alloc_gate.rs`
+visible-lines bound, printed beside it. `crates/fulgurite-shell/tests/alloc_gate.rs`
 gains a `truetype` arm for the same frame, which is the load-
 independent twin of the count.
 

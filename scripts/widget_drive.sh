@@ -46,18 +46,18 @@ status=0
 #   `compared > 0` and no divergence where the leg declares it, and
 #   `supported: false` everywhere else.
 #
-# LUMEN_DRIVE_LEGS (comma-separated leg names, e.g. `Boundaries`) runs only
+# FULGURITE_DRIVE_LEGS (comma-separated leg names, e.g. `Boundaries`) runs only
 # those legs -- `just ci-fast` drives one (docs/results-ci-time.md). A name
 # that is not a leg is refused, so a typo cannot drive nothing and pass.
 ALL_LEGS="Everything Boundaries Boundaries+oracle Boundaries+scale2 Everything+shaping Boundaries+shaping"
-if [ -n "${LUMEN_DRIVE_LEGS:-}" ]; then
-    for l in ${LUMEN_DRIVE_LEGS//,/ }; do
-        case " $ALL_LEGS " in *" $l "*) ;; *) echo "widget-drive: LUMEN_DRIVE_LEGS: '$l' is not a leg ($ALL_LEGS)" >&2; exit 2 ;; esac
+if [ -n "${FULGURITE_DRIVE_LEGS:-}" ]; then
+    for l in ${FULGURITE_DRIVE_LEGS//,/ }; do
+        case " $ALL_LEGS " in *" $l "*) ;; *) echo "widget-drive: FULGURITE_DRIVE_LEGS: '$l' is not a leg ($ALL_LEGS)" >&2; exit 2 ;; esac
     done
 fi
 run_one() {
     local leg="$1" features="$2" expect="$3"
-    if [ -n "${LUMEN_DRIVE_LEGS:-}" ] && [[ ",$LUMEN_DRIVE_LEGS," != *",$leg,"* ]]; then
+    if [ -n "${FULGURITE_DRIVE_LEGS:-}" ] && [[ ",$FULGURITE_DRIVE_LEGS," != *",$leg,"* ]]; then
         return 0
     fi
     cargo build --release -p showcase --features "$features" >/dev/null
@@ -79,7 +79,7 @@ run_one Boundaries+oracle  agent,shadow-oracle  shadow-oracle
 # pixels, and every action's damaged frame is compared with a full
 # repaint of the same state. A `Boundaries` process, so the leg is named
 # for the strategy it must report, as the oracle's is.
-WINIT_X11_SCALE_FACTOR=2 LUMEN_DRIVE_FULLCHECK=1 \
+WINIT_X11_SCALE_FACTOR=2 FULGURITE_DRIVE_FULLCHECK=1 \
 run_one Boundaries+scale2  agent                ""
 # M81/T81.6: the catalogue laid out `Shaping::Complex` (the showcase's
 # `shaping` feature), under both strategies -- every entry's Latin through

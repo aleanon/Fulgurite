@@ -1,7 +1,7 @@
 //! What a binding costs per frame, decomposed — and what it guards.
 //!
 //! The design runs the formatter every frame and skips only the *write*
-//! when the output is unchanged (`crates/lumen-static/src/bind.rs`). The
+//! when the output is unchanged (`crates/fulgurite/src/bind.rs`). The
 //! question "does the comparison pay for itself?" is answered by arm C
 //! against arm B below, with everything else held constant. The
 //! thread-local scratch buffer is isolated separately (A against C),
@@ -14,9 +14,9 @@ use core::fmt::Write;
 use std::hint::black_box;
 
 use benches::bench;
-use lumen_static::bind::format_into;
-use lumen_static_widgets::ops::Label;
-use lumen_static::{BlockMetrics, Constraints, LayoutCx, Node, NodeState, Style};
+use fulgurite::bind::format_into;
+use fulgurite_widgets::ops::Label;
+use fulgurite::{BlockMetrics, Constraints, LayoutCx, Node, NodeState, Style};
 
 const LIMITS: Constraints = Constraints { min_w: 0.0, max_w: 1920.0, min_h: 0.0, max_h: 1080.0 };
 
@@ -37,7 +37,7 @@ fn measure(l: &mut Label<String>, style: &[Style], st: &mut [NodeState]) -> u64 
 /// widget whose missing memo it exists to price.
 fn measure_node<N: Node>(
     w: &mut N,
-    m: &mut dyn lumen_static::TextMeasure,
+    m: &mut dyn fulgurite::TextMeasure,
     style: &[Style],
     st: &mut [NodeState],
     limits: Constraints,
@@ -50,7 +50,7 @@ fn measure_node<N: Node>(
 /// the stand-in costs, which is not the question the memo exists for.
 fn measure_real(
     l: &mut Label<String>,
-    m: &mut dyn lumen_static::TextMeasure,
+    m: &mut dyn fulgurite::TextMeasure,
     style: &[Style],
     st: &mut [NodeState],
     limits: Constraints,
@@ -159,10 +159,10 @@ fn main() {
     // and the T7.3 trap about warm-shaper caches does not apply
     // (docs/text-render-adoption-decision.md).
     println!("\n-- T7.3: the memo against a real face (fontdue) --");
-    match lumen_static_shell::text::FontStack::system() {
+    match fulgurite_shell::text::FontStack::system() {
         None => println!("   no system font found; skipped"),
         Some(stack) => {
-            let mut real = lumen_static_shell::text::FontMetrics::new(stack);
+            let mut real = fulgurite_shell::text::FontMetrics::new(stack);
             let short = "count: 41";
             // Exactly 60 characters, as T7.3 specifies.
             let long: String = "the quick brown fox jumps over the lazy dog and then some mo".into();
@@ -207,12 +207,12 @@ fn main() {
             // their unchanged row *is* a miss, and only a real face can
             // show that. M26/T26.8's baseline — after it, these must fall
             // to the hit cost printed above.
-            let mut badge: lumen_static_widgets::Badge<String> =
-                lumen_static_widgets::Badge::default();
+            let mut badge: fulgurite_widgets::Badge<String> =
+                fulgurite_widgets::Badge::default();
             badge.set(short.into());
             let bstyle = [badge.defaults()];
-            let mut chip: lumen_static_widgets::Chip<String> =
-                lumen_static_widgets::Chip::default();
+            let mut chip: fulgurite_widgets::Chip<String> =
+                fulgurite_widgets::Chip::default();
             chip.set(short.into());
             let cstyle = [chip.defaults()];
             // Warm the face at these widgets' own font sizes, as the
@@ -243,12 +243,12 @@ fn main() {
             // it is about, and against the real face, because with the
             // block stand-in a measure is 4 ns and the saving is
             // invisible by construction.
-            let mut field: lumen_static_widgets::input::TextInput<String> =
-                lumen_static_widgets::input::TextInput::new(short);
-            let fstyle = [<lumen_static_widgets::input::TextInput<String> as Node>::defaults(&field)];
-            let mut area: lumen_static_widgets::textarea::TextArea<String> =
-                lumen_static_widgets::textarea::TextArea::new(long.as_str());
-            let astyle = [<lumen_static_widgets::textarea::TextArea<String> as Node>::defaults(&area)];
+            let mut field: fulgurite_widgets::input::TextInput<String> =
+                fulgurite_widgets::input::TextInput::new(short);
+            let fstyle = [<fulgurite_widgets::input::TextInput<String> as Node>::defaults(&field)];
+            let mut area: fulgurite_widgets::textarea::TextArea<String> =
+                fulgurite_widgets::textarea::TextArea::new(long.as_str());
+            let astyle = [<fulgurite_widgets::textarea::TextArea<String> as Node>::defaults(&area)];
             for _ in 0..100 {
                 measure_node(&mut field, &mut real, &fstyle, &mut st, LIMITS);
                 measure_node(&mut area, &mut real, &astyle, &mut st, LIMITS);

@@ -24,7 +24,7 @@ rather than as a display-list command: see the first decision.*
 - **Shaping happens where it already happens: at paint, inside
   `FontStack::place_run_into`.** Both backends already shape every run
   every frame through that one function (`text.rs` `place_run`'s doc,
-  "Both paths shape here"; `software.rs:161`, `lumen-static-wgpu`
+  "Both paths shape here"; `software.rs:161`, `fulgurite-wgpu`
   `lib.rs:1296`), so the renderer holds the shaper beside its faces and
   `Cmd::Text` stays the command (T4, option (a)). **No `Cmd` variant, no
   `Painter` method and no `TextMeasure` method are added.** The per-frame
@@ -36,7 +36,7 @@ rather than as a display-list command: see the first decision.*
   retention, `svg.rs` (`<text>`, which a viewer shapes itself) and the
   contrast walk are unchanged, and S2 does not arise in M81. **Budget:**
   `Cmd` 60 B unchanged; D3's accepted `glyphs` growth is not used.
-  **Crate:** `lumen-static-shell`.
+  **Crate:** `fulgurite-shell`.
 - **The shaping mode is a property of the `FontStack`.** A `Shaping {
   Basic, Complex }` enum (`#[repr(u8)]`, `Copy`; `Complex` exists only
   with the shell's `shaping` feature) and `FontStack::with_shaping`.
@@ -54,12 +54,12 @@ rather than as a display-list command: see the first decision.*
   new library image with its own table, so each swap re-reads the faces
   once, as it already leaks the library (M37: v1 never unloads).
   **Crate:** shell.
-- **D1 (a): the dependency turns round.** `lumen-static-text/src/lib.rs`
-  names only `lumen_static`; its `lumen-static-shell` dependency serves
+- **D1 (a): the dependency turns round.** `fulgurite-text/src/lib.rs`
+  names only `fulgurite`; its `fulgurite-shell` dependency serves
   `tests/paint_shaped.rs` alone, so it becomes a `[dev-dependencies]`
   entry, and the shell gains `shaping = ["truetype",
-  "dep:lumen-static-text"]`, default-off. `lumen-static-winit`,
-  `lumen-static-wgpu` (dev), `benches` and
+  "dep:fulgurite-text"]`, default-off. `fulgurite-winit`,
+  `fulgurite-wgpu` (dev), `benches` and
   `benches-competitive/arms/frame` forward it, all from T81.1 (the
   frame arm has only `simd` and `observe` today, so K3's "shaping on,
   `Basic` selected" could not otherwise be built). In T81.1–T81.2 the
@@ -69,11 +69,11 @@ rather than as a display-list command: see the first decision.*
   dev cycle under `shaping`, which would compile two copies of the text
   crate. Crate count and stripped size are recorded under K2 and K81e.
   `deny.toml` accepts RUSTSEC-2026-0206 (rustybuzz unmaintained) as
-  "lumen-static-text's shaper ... a default-off crate"; T81.1 rewrites
+  "fulgurite-text's shaper ... a default-off crate"; T81.1 rewrites
   that reason and its comment to the new placement (the shell's
   default-off `shaping` feature, and the window's `Complex` paint), in
   the same commit that moves the dependency.
-- **D1 (c): `GlyphKey` in the core.** `lumen_static::text::GlyphKey {
+- **D1 (c): `GlyphKey` in the core.** `fulgurite::text::GlyphKey {
   px_bits: u32, index: u16, face: u8, phase: u8 }`, `Copy + Eq + Hash`,
   8 B. It is the type the shaper (text crate) hands the rasteriser
   (shell), which neither crate could otherwise name across D1 (a). The
@@ -83,7 +83,7 @@ rather than as a display-list command: see the first decision.*
   `GlyphId` stays 8 B (its 1 spare byte takes `phase`), so
   `GlyphCache` and `Atlas<GlyphId>` keep their sizes. **Budget:** a
   type the firmware never names links nothing: 0 B `.text`, printed.
-- **The shaper: `Shaper` in `lumen-static-text`, over a `FaceSource`.**
+- **The shaper: `Shaper` in `fulgurite-text`, over a `FaceSource`.**
   `FaceSource` is a two-method trait the shell implements for
   `FontStack`: `face_for(ch, weight) -> (u8, char)` answers by the
   stack's own rule (`face`, `other`, `fallback_for`, the substitution
@@ -122,7 +122,7 @@ rather than as a display-list command: see the first decision.*
   forward it or fail to compile, which is the whole forwarding gate (no
   stamp-change test: the stamp is a whole-crate source hash, M49/T49.1).
   `Win::new` builds its stack with `FontStack::system()` today,
-  independent of the session (`lumen-static-winit` `lib.rs:676-677`), so
+  independent of the session (`fulgurite-winit` `lib.rs:676-677`), so
   it applies `session.shaping()` **before the first backend is built**;
   otherwise a static window with `.shaping(Complex)` would measure
   `Complex` in `Local` and render `Basic`. After a swap, `Win` compares
@@ -137,7 +137,7 @@ rather than as a display-list command: see the first decision.*
   feature (index §2.3), because `Complex`'s discriminant
   crossing to a loader built without it is exactly the M37 "the feature
   field is the load-bearing one" case (A25). `Offscreen::new`, the
-  `LUMEN_SHOT` path, and the showcase's headless `shot` and `demo_shot`
+  `FULGURITE_SHOT` path, and the showcase's headless `shot` and `demo_shot`
   (`examples/showcase/src/main.rs:638ff`, `:768-785`, which build
   `FontStack::system()` directly for the measurer and the `Canvas`, and
   which M57's D5 parity compares the live window against) take the program's
@@ -159,7 +159,7 @@ rather than as a display-list command: see the first decision.*
   `text_weighted` by M80/T80.1, which deletes the wrappers'
   `text_weighted` overrides), so the fraction is
   always 0 and "on request for Basic" would do nothing (T2). The three
-  `.round()` sites (`software.rs:164`, `:248`; `lumen-static-wgpu`
+  `.round()` sites (`software.rs:164`, `:248`; `fulgurite-wgpu`
   `lib.rs:1302`) call one shell function, `text::pen_of`, so the
   backends cannot disagree. **The phase is decided there**, by
   `pen_of(rect_x + p.x)` at the round sites, not in `place_run_into`,
@@ -187,7 +187,7 @@ rather than as a display-list command: see the first decision.*
 **Tasks — M81a.**
 
 - **T81.0 — pins and baselines that compile today.**
-  - `crates/lumen-static-text/tests/paint_shaped.rs` gains
+  - `crates/fulgurite-text/tests/paint_shaped.rs` gains
     `hebrew_paints_right_to_left`, `#[should_panic(expected = "the
     painter drew Hebrew in logical order")]`: `FontStack::place_run` on
     the pinned face for `שלום` must give glyph x strictly decreasing in
@@ -197,7 +197,7 @@ rather than as a display-list command: see the first decision.*
     **Accept direction:** fed `ComplexText::shaped_glyphs`' x in place of
     `place_run`'s, the assertion passes and the harness reports "did not
     panic" (red), shown once in this commit and recorded in its body.
-  - `crates/lumen-static-shell/tests/basic_placements.rs`: every
+  - `crates/fulgurite-shell/tests/basic_placements.rs`: every
     placement of `tests/text_containment.rs`' corpus at scales 1, 1.25,
     2 through `FontStack::place_run_into` on the pinned face, folded into
     one checksum and asserted equal to `BASIC_CHECKSUM`, the cross-build
@@ -210,10 +210,10 @@ rather than as a display-list command: see the first decision.*
     `tests/font_heap.rs`' printed heap for the pinned face.
   - **S4:** `docs/results-text.md` rows; nothing else moves.
 - **T81.1 — D1 (a) and (c): the dependency turned, and `GlyphKey`.** No
-  behaviour change. `lumen-static-text/Cargo.toml` moves the shell to
+  behaviour change. `fulgurite-text/Cargo.toml` moves the shell to
   `[dev-dependencies]`; the shell gains `shaping` (empty of code yet,
-  pulling the text crate); `lumen-static-winit`, `lumen-static-wgpu`
-  (dev), `benches` (`shaping = ["lumen-static-shell/shaping"]`; its
+  pulling the text crate); `fulgurite-winit`, `fulgurite-wgpu`
+  (dev), `benches` (`shaping = ["fulgurite-shell/shaping"]`; its
   features today are `threads`, `observe`, `rdyn_opaque`, `look`,
   `cached`) and `benches-competitive/arms/frame` (same line) forward it.
   `abi_fields` and `process_features` gain `shaping` (index §2.3: in
@@ -226,7 +226,7 @@ rather than as a display-list command: see the first decision.*
     `benches-competitive/Cargo.lock`. `deny.toml`'s RUSTSEC-2026-0206
     reason and comment become "rustybuzz: the shell's default-off
     `shaping` feature (the window's `Complex` paint, via
-    lumen-static-text); the harfrust port is not scheduled", and
+    fulgurite-text); the harfrust port is not scheduled", and
     `just deny` runs green with it; the RUSTSEC-2026-0192 (ttf-parser)
     reason, which names rustybuzz as a path, is reread and kept.
   - **Gates:**
@@ -242,10 +242,10 @@ rather than as a display-list command: see the first decision.*
       positive control and its injection wait for T81.3: `shaping` is
       empty of code here, so nothing references either crate and the
       linker keeps 0 symbols with the feature too. Here the positive
-      side is the graph: `cargo tree -e normal -p lumen-static-shell`
+      side is the graph: `cargo tree -e normal -p fulgurite-shell`
       unique packages with and without `--features shaping` differ by
       the text crate and its dependencies (both counts printed; bound:
-      > 0). **Injection:** drop `dep:lumen-static-text` from `shaping`;
+      > 0). **Injection:** drop `dep:fulgurite-text` from `shaping`;
       the difference prints 0.
     - `abi_fields`: a library built with `shaping` and a loader without
       are refused (`just abi-stamp` gains the pair). Accept: both with
@@ -256,9 +256,9 @@ rather than as a display-list command: see the first decision.*
       `scripts/firmware_delta.sh`): the four binaries' `.text`/`.rodata`
       deltas printed, Δ 0 on all four (`GlyphKey` is named by no
       firmware).
-    - `cargo clippy -p lumen-static-shell --features shaping
+    - `cargo clippy -p fulgurite-shell --features shaping
       --all-targets -- -D warnings` and `RUSTDOCFLAGS="-D warnings"
-      cargo doc -p lumen-static-shell --no-deps --features shaping`
+      cargo doc -p fulgurite-shell --no-deps --features shaping`
       (the feature adds public items, `Shaping::Complex`; index §3.1)
       join `just fonts`, from the task that adds the feature.
 - **T81.2 — `Shaper`, `FaceSource`, and clusters in source order.**
@@ -311,7 +311,7 @@ rather than as a display-list command: see the first decision.*
   reaches the `Basic` one: the placer re-places each line at the pitch
   itself, and fontdue's `LayoutSettings.line_height` is not used (M80,
   `docs/plan-text-fit.md`). The pins move into
-  `crates/lumen-static-shell/tests/paint_shaped.rs`
+  `crates/fulgurite-shell/tests/paint_shaped.rs`
   (`required-features = ["shaping", "truetype"]`), lose `should_panic`
   and build the stack `.with_shaping(Shaping::Complex)`; since the pin
   reads `FontStack::place_run`, which *is* the painter's placement, it
@@ -360,7 +360,7 @@ rather than as a display-list command: see the first decision.*
       and a mixed label's `…` sits at its base direction's end (x
       printed). **Injection:** the `Complex` branch ignores
       `line_height`; the painted gap prints short.
-    - GPU, `just gpu` (`lumen-static-wgpu/tests/parity.rs`): a new
+    - GPU, `just gpu` (`fulgurite-wgpu/tests/parity.rs`): a new
       region holding `שלום world 123` on a `Complex` stack, bounded and
       printed like the others; setup: the region has ink. **Injection:**
       the GPU shapes with a `Basic` clone of the stack it was given
@@ -387,7 +387,7 @@ rather than as a display-list command: see the first decision.*
       (printed).
     - `just release-window-shape` positive control (moved from T81.1,
       where `shaping` held no code): above 0 `rustybuzz::` and
-      `unicode_bidi::` symbols with `--features lumen-static-winit/shaping`
+      `unicode_bidi::` symbols with `--features fulgurite-winit/shaping`
       (printed), still 0 by default. **Injection:** make `shaping` a
       default feature of the shell; the default count goes above 0.
     - K2/K81e: `cargo tree` counts for the shell and winit with
@@ -400,7 +400,7 @@ rather than as a display-list command: see the first decision.*
     `docs/text-render-adoption-decision.md`, which gains a DECIDED
     section (renderer-side shaping, and why not a glyph command);
     T15.8 in `docs/plan-capabilities.md` done; `book/src/text.md`'s
-    capability-table row for `lumen-static-text`; `Program` and
+    capability-table row for `fulgurite-text`; `Program` and
     `Session` rustdoc; `plan-text-correctness.md` §4's pointer.
   - **Gates:**
     - `tests/program.rs`: a `Program` with `.shaping(Shaping::Complex)`
@@ -450,7 +450,7 @@ rather than as a display-list command: see the first decision.*
       matches neither); `Win` skips `Backend::set_font` after a swap.
     - `just abi-stamp`'s `shaping` pair (T81.1) re-runs now that the
       feature carries code: refused without, accepted with.
-    - `cargo check -p lumen-static-shell` (default features, truetype
+    - `cargo check -p fulgurite-shell` (default features, truetype
       off) builds with `Program::shaping` in place. **Injection:** drop
       the `cfg` on `Program::shaping`; the build fails naming
       `Shaping`.
@@ -529,7 +529,7 @@ rather than as a display-list command: see the first decision.*
 **Tasks — M81b.**
 
 - **T81.7 — the phase probe, compiling today.**
-  `crates/lumen-static-shell/tests/subpixel_phase.rs` (truetype) holds
+  `crates/fulgurite-shell/tests/subpixel_phase.rs` (truetype) holds
   the derivation as a test-local function over fontdue's public
   `rasterize_indexed_subpixel`, for `l`, `o`, `W` and `ע` at 12, 16 and
   32 px on the pinned face. **Printed:** per glyph, `offset_x`; phase
@@ -628,10 +628,10 @@ rather than as a display-list command: see the first decision.*
   px, 0.09%). **When it fires:** the `Complex`
   raster moves to `ab_glyph`, which takes a fractional position, behind
   the shell's `shaping` feature. The rasteriser is
-  `FontStack::rasterize` in `lumen-static-shell`, whose graph has no
-  `ab_glyph` (its dependencies are fontdue, lumen-static,
-  lumen-static-lss, wide, the agent and serde_json); `Offscreen`,
-  `LUMEN_SHOT`, hot libraries and every shell test link it without
+  `FontStack::rasterize` in `fulgurite-shell`, whose graph has no
+  `ab_glyph` (its dependencies are fontdue, fulgurite,
+  fulgurite-lss, wide, the agent and serde_json); `Offscreen`,
+  `FULGURITE_SHOT`, hot libraries and every shell test link it without
   winit. So the count is taken on the shell's own `cargo tree -e normal
   --features shaping` (+3 expected: `ab_glyph`, `ab_glyph_rasterizer`,
   `owned_ttf_parser`, `Cargo.lock`), and on winit's Linux graph, where
@@ -649,7 +649,7 @@ rather than as a display-list command: see the first decision.*
   it on and `Basic` selected, K3's arms by their printed labels
   (index K3) stay inside their parent spreads, eight invocations a
   side under `just bench-lock`: `R=1 benches-competitive/run.sh -p
-  lumen-static-frame` with the arm's `shaping` feature (forwarded
+  fulgurite-frame` with the arm's `shaping` feature (forwarded
   since T81.1), rows `idle (floor)` and `ALL rows: +paint`, and the
   one-row rows `layout`, `+paint` and `+render (damage)`; `cargo run
   --release -p benches --features shaping --bin textarea -- 100`, row
@@ -671,10 +671,10 @@ rather than as a display-list command: see the first decision.*
   (`docs/results-text.md`, M81 baselines). The zero fractional count is
   also T81.8's "the `Basic` corpus has 0 phased glyphs" baseline.
 - T81.1: **the graph's positive control compares against `truetype`,
-  not the bare default.** `shaping = ["truetype", "dep:lumen-static-text"]`
+  not the bare default.** `shaping = ["truetype", "dep:fulgurite-text"]`
   implies `truetype`, so the shell's graph with `--features shaping`
   against no features counts fontdue's eight packages too, and with the
-  planned injection (drop `dep:lumen-static-text`) still printed a
+  planned injection (drop `dep:fulgurite-text`) still printed a
   difference of 8. Against `--features truetype`, what every window
   builds, the difference is 11 and the injection prints 0
   (`scripts/release_window_shape.sh`).
@@ -807,7 +807,7 @@ rather than as a display-list command: see the first decision.*
   accept direction. The showcase's `shaping` feature, which T81.6 names,
   lands here (it forwards the shell's and sets `Complex` in `program()`),
   since the gate's `Complex` program needs the variant compiled in.
-- T81.4: **`lumen_static_reload::hot::boot` took only `Program<A>`**, the
+- T81.4: **`fulgurite_reload::hot::boot` took only `Program<A>`**, the
   default strategy, so a library whose program said
   `.invalidation::<Everything>()` could not be exported and the drive's
   `Everything` leg could not build. `boot` is generic over the strategy
@@ -1193,14 +1193,14 @@ rather than as a display-list command: see the first decision.*
   firmware invocations take M80's positional form (T81.1, T81.5).
 - T6 (from plan-shaped-paint.md, M83's digest) → adopted:
   `Program::shaping` and its field are `#[cfg(feature = "truetype")]`;
-  T81.4 gates `cargo check -p lumen-static-shell` with the cfg-drop
+  T81.4 gates `cargo check -p fulgurite-shell` with the cfg-drop
   injection.
 - R16 (from plan-shaped-paint.md) → adopted: `Style`/`NodeState` sizes
   are "unchanged from the parent commit's, printed", not literals.
 - X2 (from plan-shaped-paint.md) → adopted: per-slot stacks under M89,
   compared in `swap_all`'s per-slot adopt step.
 - consistency-3 item 12 → T81.1 adds `RUSTDOCFLAGS="-D warnings"
-  cargo doc -p lumen-static-shell --features shaping` beside its clippy
+  cargo doc -p fulgurite-shell --features shaping` beside its clippy
   line (`Shaping::Complex` is public).
 - consistency-3 item 19 → M57's parity gate is "M57's D5" (four
   sites), since owner D5 is the 80 KB ceiling.

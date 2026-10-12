@@ -15,7 +15,7 @@ by the task that measures it, never edited here.
 | rule | quantity | threshold | measured by | if it fires |
 |---|---|---|---|---|
 | K86a | each firmware binary's `.text` Δ against the parent, `just firmware-delta <parent> firmware=64 firmware_bind=64 firmware_cascade=96 firmware_interactive=96` if `Style` or `NodeState` grew, `firmware=0 firmware_bind=0 firmware_cascade=32 firmware_interactive=32` if neither did | **0 B**, or ≤ **64 B** of struct Δ (copy and offset changes only); plus ≤ **32 B** on `firmware_cascade` and `firmware_interactive` for `Patch::apply_to`'s branch, attributed by symbol diff; `firmware_interactive` ≤ **81,920 B** | T86.1 | the task stops and finds what linked by a symbol diff; the feature is not made default |
-| K86b | `benches --bin appearance` rows `still` and `hover`, and `benches-competitive/run.sh -p lumen-static-frame`'s `idle (floor)`, eight runs a side under `just bench-lock`, every tree at `transition == 0` with the shell enabling `transitions` | inside each row's T86.0 spread (below) | T86.1 onward | the blend moves out of line (`#[cold]`) behind the `pointer_mix != 0` test and is re-measured; if a row still fires, M86 stops at T86.1 and the number is recorded |
+| K86b | `benches --bin appearance` rows `still` and `hover`, and `benches-competitive/run.sh -p fulgurite-frame`'s `idle (floor)`, eight runs a side under `just bench-lock`, every tree at `transition == 0` with the shell enabling `transitions` | inside each row's T86.0 spread (below) | T86.1 onward | the blend moves out of line (`#[cold]`) behind the `pointer_mix != 0` test and is re-measured; if a row still fires, M86 stops at T86.1 and the number is recorded |
 | K86c | the new `transition` case in `benches --bin appearance` (the two toggles carry an advancing `pointer_mix`) against `hover` | ≤ **1.10 ×** `hover` | T86.2, T86.4 | T86.4 does not ship: `type_defaults` stay at 0, transitions stay opt-in per sheet, the number is recorded |
 | K86d | `size_of::<Style>()`, `size_of::<NodeState>()`, `PER_NODE_RAM` after T86.1 | ≤ **84 / 88 / 172 B** (K1's end-of-plan maxima; 16.8 KB per 100 nodes against 24 KB) | T86.1 | `pointer_mix` becomes a `u8` with 4-bit levels; the quantisation is printed |
 | K86e | any action's `ui.waitSettled` in T86.4's full `just widget-drive` | no timeout at 1,000 ms with no transition running | T86.4 | a settle defect: it blocks T86.4 until fixed |
@@ -26,7 +26,7 @@ by the task that measures it, never edited here.
 
 | gate | prints today | injection (red) | used by |
 |---|---|---|---|
-| `crates/lumen-static-shell/tests/transition_oracle.rs`: one script on a `Host<_, Incremental, Everything>` and a `Host<_, Incremental, Boundaries<256>>` (a `Button`, a `TextInput`, a `Switch`) — hover `#go`, press, release, hover `#sw`, Tab to `#field`, each followed by twelve `tick(16.0)` + `pump()`; every frame's `NodeState` arrays field for field and the lists' `hash_from(0)` | setup landed on every move (hovered **1** = `#go`, pressed **1**, released with clicks **1**, hovered **3** = `#sw`, focus **2** = `#field` with `focus_visible`); **65** frames compared (5 × 13), **0** differ | the `after.hovered != before.hovered` marks deleted from `pump_with` (T25.0): red under `Boundaries` at step 0 frame 0, node 1 (`#go`), on the field **`bg`** | T86.1–T86.3 |
+| `crates/fulgurite-shell/tests/transition_oracle.rs`: one script on a `Host<_, Incremental, Everything>` and a `Host<_, Incremental, Boundaries<256>>` (a `Button`, a `TextInput`, a `Switch`) — hover `#go`, press, release, hover `#sw`, Tab to `#field`, each followed by twelve `tick(16.0)` + `pump()`; every frame's `NodeState` arrays field for field and the lists' `hash_from(0)` | setup landed on every move (hovered **1** = `#go`, pressed **1**, released with clicks **1**, hovered **3** = `#sw`, focus **2** = `#field` with `focus_visible`); **65** frames compared (5 × 13), **0** differ | the `after.hovered != before.hovered` marks deleted from `pump_with` (T25.0): red under `Boundaries` at step 0 frame 0, node 1 (`#go`), on the field **`bg`** | T86.1–T86.3 |
 
 The Tab order puts the field before the switch so one Tab from the
 button a press focused lands on it — the fifth move is one event and
@@ -52,7 +52,7 @@ rows). Median of the eight medians, (min–max of them):
 |---|---:|---:|
 | `appearance` `1k-toggles/still` | 17,342 ns | 15,604–29,002 |
 | `appearance` `1k-toggles/hover` | 15,779 ns | 15,573–28,839 |
-| frame arm `lumen-static/idle (floor)` (`R=1`) | 62.25 µs | 56.4–102.2 |
+| frame arm `fulgurite/idle (floor)` (`R=1`) | 62.25 µs | 56.4–102.2 |
 
 The spreads are wide because the machine was shared; K86b is judged
 against a fresh base side taken in the same lock as the tree it judges,
@@ -64,29 +64,29 @@ interleaved, which is how M85 measured K85a and K85c.
 `Fields::TRANSITION` (bit 20, `Fields::EACH` 20 → 21),
 `NodeState::pointer_mix`, `ops::MIX_LEVELS` and `ops::encode_mix`, the
 blend in `ops::shaded` behind the additive core feature `transitions`
-(enabled by `lumen-static-shell`, never by `fixtures/embedded`), and
+(enabled by `fulgurite-shell`, never by `fixtures/embedded`), and
 `.lss` `transition-duration` (`Takes::Millis`, `Val::Millis`, `Unit::Ms`).
 Nothing writes `pointer_mix` yet except tests.
 
 | gate | prints | injection (red) |
 |---|---|---|
-| `crates/lumen-static-shell/tests/transition_shade.rs`, endpoints: 64 colours × `hover_dim` {0, 0.07, 0.12} × `pressed_dim` {0, 0.15} = 384 cases, at the four encoded level pairs against the bit path | **0 of 1,536** differ (bound 0); every `pointer_mix` written has bit 15 set | `shaded` ignoring the press level: **376 of 1,536** differ, first `#ffffffff`, `pressed_dim` 0.15, pressed: bit path `(216,216,216)`, blend `(255,255,255)` |
+| `crates/fulgurite-shell/tests/transition_shade.rs`, endpoints: 64 colours × `hover_dim` {0, 0.07, 0.12} × `pressed_dim` {0, 0.15} = 384 cases, at the four encoded level pairs against the bit path | **0 of 1,536** differ (bound 0); every `pointer_mix` written has bit 15 set | `shaded` ignoring the press level: **376 of 1,536** differ, first `#ffffffff`, `pressed_dim` 0.15, pressed: bit path `(216,216,216)`, blend `(255,255,255)` |
 | the same file, a level between: `#c8783c`, `hover_dim` 0.12, `h = 64/127` | red channel rest **200**, mid **188**, hover **176** (strictly between) | — |
 | the same file, interior: `h = p = 64` over the 384 cases against `a + ((b − a)·t + 63.5)/127` floored, in `f32` | **0 of 1,152** channels differ (bound 0) | a truncating `lerp` (`a + (b − a)·t/127`): **584 of 1,152** differ, first `#ffffffff` channel 0 got 236, want 235. The endpoint check stays **0 of 1,536** under it — truncation is exact at `t = 0` and `t = 127` |
-| `crates/lumen-static/tests/cursor.rs` and `focus.rs`, sizes (K86d, K1) | `Style` **84** B (82 used), `NodeState` **88** B (88 used), **172** B/node, **16.8 KB** per 100 nodes (parent 84 / 84, 168 B, 16.4 KB; bound 84 / 88 / 172, 24 KB); `Cmd` **60**, `Event` **16** | `pointer_mix: u64`: `NodeState` **96** B (92 used), 180 B/node, fails by name |
+| `crates/fulgurite/tests/cursor.rs` and `focus.rs`, sizes (K86d, K1) | `Style` **84** B (82 used), `NodeState` **88** B (88 used), **172** B/node, **16.8 KB** per 100 nodes (parent 84 / 84, 168 B, 16.4 KB; bound 84 / 88 / 172, 24 KB); `Cmd` **60**, `Event` **16** | `pointer_mix: u64`: `NodeState` **96** B (92 used), 180 B/node, fails by name |
 | `fixtures/embedded/src/lib.rs` on the target | `NODE_STATE == 88`, `STYLE == 84`, `PER_NODE_RAM == 172`; `Ui` **1,216** unchanged | — |
-| `lumen-static-lss` unit tests | `transition-duration: 150ms` → `transition_ms(150)`; `155ms`, `2560ms`, `150` and `150.5ms` refused at 1:27 with `Takes::Millis`'s description; accept: `0ms` → `Millis(0)`, `2550ms` → `Millis(2550)` | — |
+| `fulgurite-lss` unit tests | `transition-duration: 150ms` → `transition_ms(150)`; `155ms`, `2560ms`, `150` and `150.5ms` refused at 1:27 with `Takes::Millis`'s description; accept: `0ms` → `Millis(0)`, `2550ms` → `Millis(2550)` | — |
 | `scripts/check_lss_setters.sh` | `Patch` **26** setters, the table **26** | the `transition-duration` row removed: "Patch setters with no .lss declaration: ['transition_ms']", exit 1 |
-| `crates/lumen-static-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `transition-duration: 150ms` on `#title, #badge`) | `include_lss!` and `lss::load` agree, 6 and 7 rules | the shell's `set` arm dropped: `load` panics, "no setter `transition_ms` taking Millis(150)" |
-| `crates/lumen-static/tests/sheet_lint.rs` (`W1010`) | on `#go` (a `Button`): **0** findings; on `Kind("fixed")`: `Unread(TRANSITION)` | `Fields::TRANSITION` dropped from `Button`'s seed: "a transition on a `Button` is read: [Unread(Fields(1048576))]" |
-| `crates/lumen-static-widgets/tests/style_reads.rs` — `transition` changes no frame, so it counts as read exactly when `hover_dim` or `pressed_dim` is measured as read | every kind's declared mask equals the measured set (`label`, `button`, `checkbox`, `radio`, `switch`, … measure `transition`) | `Fields::TRANSITION` dropped from `Button`'s seed: the mask check fails |
-| the `justfile` lint line, `cargo clippy -p lumen-static --features transitions --all-targets -- -D warnings` and its `cargo doc` | green | an unused binding inside `blend`: "unused variable: `unused_in_blend`", the line fails; `cargo clippy -p lumen-static --all-targets` (default features) stays green |
+| `crates/fulgurite-shell/tests/lss_parity.rs` (`pass_accept.lss` gains `transition-duration: 150ms` on `#title, #badge`) | `include_lss!` and `lss::load` agree, 6 and 7 rules | the shell's `set` arm dropped: `load` panics, "no setter `transition_ms` taking Millis(150)" |
+| `crates/fulgurite/tests/sheet_lint.rs` (`W1010`) | on `#go` (a `Button`): **0** findings; on `Kind("fixed")`: `Unread(TRANSITION)` | `Fields::TRANSITION` dropped from `Button`'s seed: "a transition on a `Button` is read: [Unread(Fields(1048576))]" |
+| `crates/fulgurite-widgets/tests/style_reads.rs` — `transition` changes no frame, so it counts as read exactly when `hover_dim` or `pressed_dim` is measured as read | every kind's declared mask equals the measured set (`label`, `button`, `checkbox`, `radio`, `switch`, … measure `transition`) | `Fields::TRANSITION` dropped from `Button`'s seed: the mask check fails |
+| the `justfile` lint line, `cargo clippy -p fulgurite --features transitions --all-targets -- -D warnings` and its `cargo doc` | green | an unused binding inside `blend`: "unused variable: `unused_in_blend`", the line fails; `cargo clippy -p fulgurite --all-targets` (default features) stays green |
 | `transition_oracle.rs` (T86.0), now comparing `pointer_mix` too | **65** frames, **0** differ | — |
 
 **Seeds that declare `Fields::TRANSITION`**, from `grep -rlE
 'HOVER_DIM|PRESSED_DIM' --include=*.rs` at landing (not `style.rs`):
 **17 sites in 15 files** — the derive's container seed, core `Repeat`,
-`lumen-static-widgets`' `chart.rs` (2), `input.rs`, `ops.rs` (2: `Label`,
+`fulgurite-widgets`' `chart.rs` (2), `input.rs`, `ops.rs` (2: `Label`,
 `Button`), `pick.rs`, `rich.rs`, `scroll.rs`, `selectable.rs`, `slider.rs`,
 `textarea.rs`, `toggle.rs`, `trim.rs`, `vector.rs`, and
 `examples/showcase/src/nav.rs`. The plan counted twelve at `553fa5e`;
@@ -108,7 +108,7 @@ fixture's `place` +8 to +12, the focus walks and `dispatch` +8 to +16 for
 the 88 B stride, every `type_defaults` −2 to −12) and `cascade_range`
 **+2** for `Patch::apply_to`'s branch (allowance 32). No blend symbol
 links. Injection: `features = ["transitions"]` on the fixture's
-`lumen-static` line prints **+324 / +344 / +320 / +328** and fails all
+`fulgurite` line prints **+324 / +344 / +320 / +328** and fails all
 four; removed, the figures above return.
 
 **The first spelling fired K86a.** With `pointer_mix: u16` (the plan's

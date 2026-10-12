@@ -1,0 +1,37 @@
+//! M31/T31.2: a reloadable application must not also derive `Default`.
+//!
+//! A reloadable application is built by its program's boot (M49/T49.4),
+//! so a `Default` beside it is a **second construction path** —
+//! the boot takes one, anything calling `Default` the other, and a
+//! handler assigned in only one of them comes back as its placeholder.
+//!
+//! Rust has no negative bounds, so the derive emits a blanket impl that
+//! overlaps only when `Self: Default`. The error is E0119 and the
+//! trait's name is the message.
+//!
+//! The passing direction is `pass_reloadable_app_without_default.rs`.
+
+use fulgurite::{App, Reloadable, StaticTree};
+use fulgurite_widgets::ops::Label;
+
+#[derive(StaticTree, Default, Reloadable)]
+#[widget(column, spacing = 0.0)]
+struct Ui {
+    a: Label,
+}
+
+#[derive(App, Reloadable, Default)]
+struct Session {
+    #[tree]
+    ui: Ui,
+    #[reload(keep)]
+    n: u32,
+}
+
+impl Session {
+    fn build() -> Self {
+        Session { ui: Ui::default(), n: 0 }
+    }
+}
+
+fn main() {}

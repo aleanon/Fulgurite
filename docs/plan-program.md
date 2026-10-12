@@ -57,7 +57,7 @@ and prints the measured quantity beside its bound.*
 ## 1. What exists today
 
 - `Program<A>` (the prototype) holds `build: fn() -> A`, an optional
-  style `fn`, and a `Config`. `run()` calls `lumen_static_winit::run`,
+  style `fn`, and a `Config`. `run()` calls `fulgurite_winit::run`,
   which always builds an `EventLoop` and blocks. There is no headless
   path through it. `Win` is private, and the sheet is installed only in
   `Win::new`.
@@ -165,11 +165,11 @@ found that bounding `Program` on `Application` would force exactly that
 ### 2.4 Where it lives
 
 The description (`Program`, `Boot`, `Title`, `Style`, `host()`) lives in
-**`lumen-static-shell`**. `run()` is an extension trait in
-`lumen-static-winit`. This is so M37's hot library can build a
+**`fulgurite-shell`**. `run()` is an extension trait in
+`fulgurite-winit`. This is so M37's hot library can build a
 description without linking a window system, and so a shell test can
 call `host()` without winit, which `just test` keeps out of
-`lumen-static-shell`'s dependency graph.
+`fulgurite-shell`'s dependency graph.
 
 ## T32.0 — the description, `host()`, and the one-path gate
 
@@ -273,10 +273,10 @@ the same design (X-1, X-2). What changed:
   is fixed in its own commit, with the sheet lint asserted. The
   injection that fires: removing glass's bar height changes **1 380 of
   285 200** pixels, and restoring it brings back byte identity.
-- **`LUMEN_SHOT` instead of a `--shot` per example.** The plan had
+- **`FULGURITE_SHOT` instead of a `--shot` per example.** The plan had
   minimal and tasks-demo each gain a `--shot`. That broke the book, which
   includes minimal whole, so the window crate's `run()` now renders one
-  headless frame from `host()` when `LUMEN_SHOT=frame.ppm` is set. Every
+  headless frame from `host()` when `FULGURITE_SHOT=frame.ppm` is set. Every
   program gets it without writing one.
 - **counter-window was not excluded after all.** Its style is a
   *function of the state* (the sheet for the count's sign), which the

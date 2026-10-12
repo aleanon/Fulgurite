@@ -32,7 +32,7 @@ fail=0
 for build in plain second a11y; do
     for bin in list repeat; do
         syms=$(nm -C -S "target/probe-$build/release/$bin" \
-            | grep -E 'Label<.*> as lumen_static::widget::Node>::(layout|paint)$' || true)
+            | grep -E 'Label<.*> as fulgurite::widget::Node>::(layout|paint)$' || true)
         if [ -n "$syms" ]; then
             echo "FAIL $build/$bin: a row widget's layout/paint is not inlined:"
             echo "$syms" | awk '{n=$4; for(i=5;i<=NF;i++) n=n" "$i; printf "    %s (0x%s bytes)\n", n, $2}'
@@ -47,12 +47,12 @@ if [ "$mode" = --clock ]; then
     # fast-cluster minima, beside the plain build's fast-cluster width.
     # The fast cluster is every run within 5% of that build's minimum —
     # a rule in the script, not a judgement by eye.
-    CARGO_TARGET_DIR=target/clock-plain cargo build -q --locked --release -p lumen-static-frame
-    CARGO_TARGET_DIR=target/clock-obs cargo build -q --locked --release -p lumen-static-frame --features lumen-static-widgets/observe
+    CARGO_TARGET_DIR=target/clock-plain cargo build -q --locked --release -p fulgurite-frame
+    CARGO_TARGET_DIR=target/clock-obs cargo build -q --locked --release -p fulgurite-frame --features fulgurite-widgets/observe
     for i in 1 2 3 4 5 6 7 8; do
         for b in plain obs; do
             printf "%s " $b
-            "target/clock-$b/release/lumen-static-frame" 3000 200 \
+            "target/clock-$b/release/fulgurite-frame" 3000 200 \
                 | awk '/\/layout / && !/ALL/{printf "%s ", $(NF-3)} /\/\+paint / && !/ALL|culled/{printf "%s", $(NF-3)}'
             echo
         done

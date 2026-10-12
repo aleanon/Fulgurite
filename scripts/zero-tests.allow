@@ -1,5 +1,5 @@
 # Integration-test binaries allowed to list ZERO tests in the dev-shape
-# selection (`cargo test --workspace --exclude lumen-static-wgpu`), each
+# selection (`cargo test --workspace --exclude fulgurite-wgpu`), each
 # with why. Checked by scripts/check_test_counts.sh (M43/T43.9).
 #
 # Format: `package/test: reason`. A reason of exactly `justfile` is
@@ -9,9 +9,9 @@
 # `#![cfg(not(feature = "truetype"))]`: a golden recorded with system text
 # would record the recording machine's fonts (golden.rs's module docs).
 # `--workspace` turns `truetype` on, so it runs alone in `dev-shape`.
-lumen-static-shell/golden: justfile
+fulgurite-shell/golden: justfile
 
 # `#![cfg(all(feature = "truetype", feature = "shaping"))]` since M81/T81.8:
 # the phase probe reaches the shipped raster through a `Complex` stack, and
 # `--workspace` does not turn `shaping` on, so `just fonts` runs it alone.
-lumen-static-shell/subpixel_phase: justfile
+fulgurite-shell/subpixel_phase: justfile

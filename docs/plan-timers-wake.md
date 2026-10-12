@@ -70,14 +70,14 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 Nothing turns a deadline into a frame (R7-F1, R7-F10)
 
-`Win::about_to_wait` (`crates/lumen-static-winit/src/lib.rs:557-564`)
+`Win::about_to_wait` (`crates/fulgurite-winit/src/lib.rs:557-564`)
 arms WaitUntil for `now + remaining`, where `remaining` is what the
 host's timers said at the last frame. When the loop wakes at that
 instant, nothing asks for a redraw: `Win` has no `new_events`, and the
 only redraw requests come from input, the agent, a worker's wake or an
 animation. So the timer is not checked until something else produces a
 frame. The rustdoc on `about_to_wait` (`:546-556`) and on
-`Host::next_deadline_ms` (`crates/lumen-static-shell/src/lib.rs:1334-1343`)
+`Host::next_deadline_ms` (`crates/fulgurite-shell/src/lib.rs:1334-1343`)
 both say the opposite.
 
 The re-triage reproduced it at `1717808` on two runs: after a click on
@@ -90,7 +90,7 @@ re-triage's numbers.
 
 The same expression converts the deadline with Duration::from_secs_f32
 (`:558-563`). `Timers::every` refuses only non-finite and non-positive
-periods (`crates/lumen-static/src/spawn.rs:507-508`), so a period it
+periods (`crates/fulgurite/src/spawn.rs:507-508`), so a period it
 accepts can panic the loop (R7-F10; re-triage: periods of 1e30 and
 `f32::MAX` panic, 1e9 and 1e20 do not). Downgraded to S4: it needs a
 period above about 1.8e22 ms.
@@ -106,7 +106,7 @@ whole time the screen was up.
 
 `scripts/tasks_drive.py` polls through `settle()` (`:47`) every 20 ms,
 and every agent reply ends in `request_redraw`
-(`crates/lumen-static-winit/src/lib.rs:651-653`). The window is never
+(`crates/fulgurite-winit/src/lib.rs:651-653`). The window is never
 idle while the drive watches it. The re-triage ran both of the review's
 injections at `1717808`:
 
@@ -126,7 +126,7 @@ tasks drive with proving both.
 
 ### 1.3 A large `dt` hangs the catch-up or loses its firings (R7-F3, R7-F4)
 
-`Timers::advance` (`crates/lumen-static/src/spawn.rs:537-552`) catches up
+`Timers::advance` (`crates/fulgurite/src/spawn.rs:537-552`) catches up
 one period at a time in `f32`: `while remaining <= 0 { remaining +=
 period }`. For a large enough `dt`, adding the period no longer changes
 `remaining`, and the loop never ends. The re-triage ported the review's
@@ -136,7 +136,7 @@ one hour at period 16 returned with 225000 fired.
 
 When the loop does return, each firing is a push into an `Outbox` whose
 capacity is 32 (`spawn.rs:334`). `Host::tick`
-(`crates/lumen-static-shell/src/lib.rs:1288-1318`) advances into a
+(`crates/fulgurite-shell/src/lib.rs:1288-1318`) advances into a
 stack-local scratch outbox and drops its `refused()` count. The
 re-triage's probe: a 10 ms timer with `tick(1000)` **fired 100, delivered
 32, lost 68, and counted 0** anywhere a caller can read. `advance`'s own
@@ -148,8 +148,8 @@ Now a window can: keep the panic screen up and press R (§1.1).
 ### 1.4 A thread per firing (R7-F5)
 
 `Host::tick`'s comment says "no thread is created for a timer"
-(`crates/lumen-static-shell/src/lib.rs:1289-1294`). Under the only
-spawner a window installs, `Threads` (`crates/lumen-static-shell/src/session.rs:199`),
+(`crates/fulgurite-shell/src/lib.rs:1289-1294`). Under the only
+spawner a window installs, `Threads` (`crates/fulgurite-shell/src/session.rs:199`),
 each job is one `std` thread, and a timer firing is a job. The
 re-triage ran `strace -f -e clone,clone3` on stock `tasks-demo`: **28
 ticks came with 28 new clones**. `docs/results-tasks.md` T28.11's row
@@ -157,7 +157,7 @@ ticks came with 28 new clones**. `docs/results-tasks.md` T28.11's row
 
 ### 1.5 Frames that should have been asked for again (R7-F7, R7-F8)
 
-`Gpu::present` (`crates/lumen-static-wgpu/src/lib.rs:1216-1230`) returns
+`Gpu::present` (`crates/fulgurite-wgpu/src/lib.rs:1216-1230`) returns
 `()` and swallows Outdated, Lost and Timeout. Its comment says dropping
 one frame "is what every other backend does here too", which is false:
 softbuffer panics. `Win::redraw` asks for another frame only while
@@ -165,11 +165,11 @@ something animates or the inbox has a backlog (`winit/src/lib.rs:528-534`),
 so on an idle window a dropped present stays unrepaired until input
 arrives (R7-F7; the review's forced-Outdated run left the window blank).
 The winit `Backend::present` now returns a `Frame`
-(`crates/lumen-static-winit/src/surface.rs:25`), which is a ready place
+(`crates/fulgurite-winit/src/surface.rs:25`), which is a ready place
 to report the drop.
 
-`Animated::tick` (`crates/lumen-static/src/anim.rs:178`) and
-`LongPress::tick` (`crates/lumen-static/src/gesture.rs:205`) clamp `dt`
+`Animated::tick` (`crates/fulgurite/src/anim.rs:178`) and
+`LongPress::tick` (`crates/fulgurite/src/gesture.rs:205`) clamp `dt`
 with `num::clamp`, which returns a NaN unchanged. A NaN `dt` then leaves
 the animation unsettled forever (R7-F8; re-triage: still unsettled after
 10000 ticks against a bound of 13). The winit shell cannot produce a NaN
@@ -177,7 +177,7 @@ today; a custom shell can.
 
 ### 1.6 A failure that leaves no trace (R7-F9)
 
-`FailFn`'s rustdoc (`crates/lumen-static/src/spawn.rs:104-107`) says the
+`FailFn`'s rustdoc (`crates/fulgurite/src/spawn.rs:104-107`) says the
 host "counts the drop" when an application does not model a failure.
 `report()` (`:217-223`) drops it, and its own comment says a spawner has
 no host. The re-triage's probe: a panicking job in an application that
@@ -186,21 +186,21 @@ counter; the panic reached stderr only.
 
 ### 1.7 Images lost on a second `resumed` (R15-F6)
 
-`resumed_impl` (`crates/lumen-static-winit/src/lib.rs:669-697`) creates a
+`resumed_impl` (`crates/fulgurite-winit/src/lib.rs:669-697`) creates a
 new window and backend on every call and hands images over with
 `self.config.images.take()` (`:686`). A second `resumed` gets none, and
 every image vanishes. There is no `suspended` handler. `Config::images`
 says "Taken once" (`:179-190`). M32 did not add a re-creatable source:
-`Program::images` (`crates/lumen-static-shell/src/program.rs:165`, set
+`Program::images` (`crates/fulgurite-shell/src/program.rs:165`, set
 at `:240`) is also a take-once box that `run` moves into `Config`
 (`winit/src/lib.rs:867`).
 
 ### 1.8 A citation to a section that does not exist (R7-F11)
 
 Four comments say they keep "the idle frame numbers in
-`docs/results-frame-cost.md`" true: `crates/lumen-static-winit/src/lib.rs:530-531`
-and `:554-555`, `crates/lumen-static/src/anim.rs:23`, and
-`crates/lumen-static/src/event.rs:954` (new since the review). That file
+`docs/results-frame-cost.md`" true: `crates/fulgurite-winit/src/lib.rs:530-531`
+and `:554-555`, `crates/fulgurite/src/anim.rs:23`, and
+`crates/fulgurite/src/event.rs:954` (new since the review). That file
 has no idle figure at all. `just static` checks only that the file
 exists.
 
@@ -273,7 +273,7 @@ the next job waits, timer jobs included. §5 names the reveal.
 because both backends own the source and a provided default returning
 nothing would reproduce this bug. That is `AGENT.md`'s rule that a
 provided method is right for a leaf and wrong for a wrapper.
-`Backend::set_images` stays provided (`crates/lumen-static-winit/src/backend.rs:61-70`),
+`Backend::set_images` stays provided (`crates/fulgurite-winit/src/backend.rs:61-70`),
 because a backend that cannot draw images is a real configuration.
 
 ## 3. Tasks
@@ -293,13 +293,13 @@ added to `just static`.
 | R7-F1 | `scripts/tasks_drive.py`, new **unobserved** phase: click `#toggle-sub`, sleep 3.0 s with no RPCs, then one read. Prints `ticks N (expected E, bound B) after X ms unobserved`; asserts `N >= 1 + floor(X/120) - 2` | 1 against about 26 |
 | R7-F2 | the same phase for the waker: click `#start-slow`, sleep 1.5 s, one read. Prints `slow N (want M) after X ms unobserved, job takes 400` | green on stock, **red under injection A** (0 against 1) while the old phases stay green, which is the finding |
 | R7-F1 (panic path) | `fixtures/panic-app` gains a 120 ms timer and a tick label. `scripts/panic_drive.py` turns it on, arms a panic, keeps the screen up 2 s, presses R, and asserts that the retry frame added at most 2 ticks, printed beside the bound | about 16 against 2 |
-| R7-F3 | `crates/lumen-static-shell/tests/timers.rs`: `advance` with `dt` 1e9 at period 16, on a thread with a 200 ms watchdog. Prints elapsed time beside the bound. The 80/25 → 3 case stays | does not return |
+| R7-F3 | `crates/fulgurite-shell/tests/timers.rs`: `advance` with `dt` 1e9 at period 16, on a thread with a 200 ms watchdog. Prints elapsed time beside the bound. The 80/25 → 3 case stays | does not return |
 | R7-F4 | the same file: a 10 ms timer, `tick(1000)`. Asserts `delivered + counted == fired` and prints all three; counted is the sum of every counter a caller can read today | 32 + 0 against 100 |
 | R7-F5 | the same file: the spawner a session installs, driven through 20 firings, with OS threads counted from the process's task list before and after. Prints `threads created N for 20 firings (bound P)` | 20 against the pool size |
-| R7-F7 | a debug-only switch in the wgpu crate, LUMEN_GPU_DROP_FIRST=n, makes the first n presents answer Outdated. A new step in `just gpu-parity`: `tasks-demo` on the GPU with n=2, idle 2 s, sample the window, assert more than one distinct pixel value, printed beside the bound | one distinct value |
+| R7-F7 | a debug-only switch in the wgpu crate, FULGURITE_GPU_DROP_FIRST=n, makes the first n presents answer Outdated. A new step in `just gpu-parity`: `tasks-demo` on the GPU with n=2, idle 2 s, sample the window, assert more than one distinct pixel value, printed beside the bound | one distinct value |
 | R7-F8 | unit tests in `anim.rs` and `gesture.rs`: after `tick(f32::NAN)`, 13 ticks of 16 ms must settle with a finite value. Prints frames taken against 13. The `-inf` and `1e9` arms stay | unsettled after 10000 |
-| R7-F9 | `crates/lumen-static-shell/tests/failure.rs`: a panicking job, `App::failed` at its default, the `Threads` spawner, pumped until the job settles. The accessor `Host::unmodelled_failures` is added here, reading a shared counter that nothing increments yet | 0 against 1 |
-| R7-F10 | a unit test in `crates/lumen-static-winit`: `control_flow_for` with `Some(f32::MAX)` and `Some(1e30)` must not panic; `Some(120.0)` must give WaitUntil at now + 120 ms ± 1 ms | panics |
+| R7-F9 | `crates/fulgurite-shell/tests/failure.rs`: a panicking job, `App::failed` at its default, the `Threads` spawner, pumped until the job settles. The accessor `Host::unmodelled_failures` is added here, reading a shared counter that nothing increments yet | 0 against 1 |
+| R7-F10 | a unit test in `crates/fulgurite-winit`: `control_flow_for` with `Some(f32::MAX)` and `Some(1e30)` must not panic; `Some(120.0)` must give WaitUntil at now + 120 ms ± 1 ms | panics |
 | R7-F11 | `just static`: a comment citing "the idle … numbers in X" requires X to contain an idle heading. Prints the citing sites | four sites, no heading |
 | R15-F6 | a unit test over the extracted resume step with a fake backend recording what it was given: resume, suspend, resume, and print `backend #2 images: …` | `None` |
 
@@ -320,7 +320,7 @@ M42/T42.2 lands; the rest of this table waits for M42.
 
 **Closes:** R7-F1, R7-F2, R7-F10.
 
-**Change:** §2.1(b) in `crates/lumen-static-winit/src/lib.rs`: an
+**Change:** §2.1(b) in `crates/fulgurite-winit/src/lib.rs`: an
 absolute deadline on `Win`; `new_events`; no deadline while
 `session.failed()`; `last_frame` reset on retry. `control_flow_for`
 uses the fallible conversion and falls back to waiting without a
@@ -448,7 +448,7 @@ feeds it).
 
 **Closes:** R7-F5.
 
-**Change:** §2.3(b) in `crates/lumen-static/src/spawn.rs`: `Threads`
+**Change:** §2.3(b) in `crates/fulgurite/src/spawn.rs`: `Threads`
 keeps its name and becomes a fixed pool of long-lived workers fed
 through a channel, sized from the available parallelism with a small
 cap. The pool size is exposed for the gate. The "no thread is created
@@ -517,7 +517,7 @@ T28.11 ("zero threads for a timer" becomes what is measured); the
 sets a dropped flag on the `Frame` it returns. `Win::redraw` requests
 another frame when the flag is set, with a bound on consecutive retries
 so a permanently lost surface cannot spin. The comment at
-`crates/lumen-static-wgpu/src/lib.rs:1224-1226` is corrected.
+`crates/fulgurite-wgpu/src/lib.rs:1224-1226` is corrected.
 
 **Gate:** T47.0's `just gpu-parity` step, plus a unit test in the winit
 crate of the retry decision (retry on a drop, stop after the bound),
@@ -611,7 +611,7 @@ window.
 
 **Gate:** T47.0's fake-backend test, now printing `backend #2 images:
 Some`. A live step: a debug-only resume hook in `examples/glasswall`
-(an env switch, LUMEN_TEST_RESUME) calls the suspend and resume paths
+(an env switch, FULGURITE_TEST_RESUME) calls the suspend and resume paths
 once; a drive compares `ui.screenshot` before and after and prints
 `differing pixels: n / total (bound 0.1%)` and the distinct colours on
 each side.
@@ -635,7 +635,7 @@ the `Backend` trait's rustdoc; `docs/mobile-decision.md`, lifecycle;
 
 - **The hook lives in the window crate, not in `examples/glasswall`.**
   `suspended` and `resumed` are `Win`'s, which an example cannot call;
-  the debug-only `LUMEN_TEST_RESUME=<ms>` is read by `Win::new` and runs
+  the debug-only `FULGURITE_TEST_RESUME=<ms>` is read by `Win::new` and runs
   both from `about_to_wait` once, `<ms>` in. Glasswall gained an `agent`
   feature so the drive can reach it (`just resume-drive`).
 - **`ui.screenshot` cannot see the GPU backend**: it answers "this host
@@ -741,7 +741,7 @@ Risks, and what would reveal each:
   going green again, which is why B is re-run in every commit that
   touches `answer_agent`.
 - **The GPU retry spins on a surface that never comes back.** Revealed
-  by T47.4's unit test of the bound, and by LUMEN_GPU_DROP_FIRST set
+  by T47.4's unit test of the bound, and by FULGURITE_GPU_DROP_FIRST set
   larger than the bound: the window must stop asking.
 
 ## Appendix: finding → task

@@ -3,7 +3,7 @@
 //! coverage. Regenerate rather than patching; `fixtures/embedded/tests/
 //! baked_face.rs` checks every byte against a live fontdue render.
 
-use lumen_static::font::{BakedFace, Glyph};
+use fulgurite::font::{BakedFace, Glyph};
 
 pub static FACE: BakedFace = BakedFace {
     px: 16.0,

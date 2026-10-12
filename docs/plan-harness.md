@@ -86,13 +86,13 @@ it deliberately, and producing something to look at when it fails.
 
 - Store under `tests/golden/` as **PPM**, which `Canvas::to_ppm`
   already writes and which needs no dependency at all. Not the PNG
-  encoder in `lumen-static-agent`: that crate depends on
-  `lumen-static` with `features = ["observe"]`, not optional, and Cargo
+  encoder in `fulgurite-agent`: that crate depends on
+  `fulgurite` with `features = ["observe"]`, not optional, and Cargo
   unifies features across a selection — so a dev-dependency on it from
-  `lumen-static-shell/tests` would switch `observe` on for
+  `fulgurite-shell/tests` would switch `observe` on for
   `alloc_gate.rs`'s process and grow `NodeDesc` from 48 B to 72 B. That
   is the same unification hazard M13's feature polarity is argued from.
-- `LUMEN_UPDATE_GOLDENS=1` to re-record, as Lumen does.
+- `FULGURITE_UPDATE_GOLDENS=1` to re-record, as Lumen does.
 - On mismatch write `<name>.actual.png` **and `<name>.diff.png`** — red
   over a dimmed base. The diff is the part that makes a golden usable;
   a bare "1,482 pixels differ" is a number, not a diagnosis.
@@ -110,7 +110,7 @@ it deliberately, and producing something to look at when it fails.
   `fontdue = "0.9"`, a caret range. A golden recorded that way records
   which fonts the recording machine had installed. So: **goldens are
   recorded and compared with `truetype` off**, and the runner refuses to
-  record or compare with it on. Otherwise `LUMEN_UPDATE_GOLDENS=1`
+  record or compare with it on. Otherwise `FULGURITE_UPDATE_GOLDENS=1`
   becomes a button that bakes in the author's font install — the exact
   "masked by a re-recorded golden" failure the next rule warns about.
   `text.rs` already says this in its own module doc: "a deterministic
@@ -129,7 +129,7 @@ radius change on a 120×80 frame is `92 of 9600 pixels differ, inside
 rounded rect's four corners and nowhere else, which is the only place a
 radius change can move a pixel. `docs/results-harness.md` prints the
 map. Artifacts are PPM, not PNG, for the feature-unification reason
-above; `LUMEN_UPDATE_GOLDENS=1` re-records; a first run **records and
+above; `FULGURITE_UPDATE_GOLDENS=1` re-records; a first run **records and
 does not pass**; and `compare` panics under `truetype` rather than
 baking in the recording machine's font install.
 
@@ -143,10 +143,10 @@ baking in the recording machine's font install.
 > selector passed. Each step now keeps its reply's `handled` and error
 > code, a divergence is an error naming the step, the stylesheet is
 > checked, and an export asserts every step and a final `ui.getTree`
-> digest (`crates/lumen-static-agent/tests/session_replay_fails.rs`).
+> digest (`crates/fulgurite-agent/tests/session_replay_fails.rs`).
 
 The invariant holds and is **already exercised for a single click at
-the `Event` level** — `crates/lumen-static-agent/tests/input.rs`
+the `Event` level** — `crates/fulgurite-agent/tests/input.rs`
 replays a synthesized click's trace on a fresh host and asserts the same
 state, and `docs/plan-agent-parity.md` says so. An earlier draft of this
 task claimed nothing exercised it at all, which was wrong. What is
@@ -204,7 +204,7 @@ every one of those as an agent method already (`ui.lastChange`,
 `ui.explain`); what is missing is writing them out at the moment of
 failure instead of making the reader re-run and re-query.
 
-`LUMEN_TRACE` already exists in `examples/counter-window` for two
+`FULGURITE_TRACE` already exists in `examples/counter-window` for two
 stderr redraw dumps and appears in no document. Either subsume it or
 name the new one distinctly; do not ship two.
 

@@ -136,7 +136,7 @@ pub struct DVectorText {
 #[widget(column, spacing = 0.0)]
 pub struct DShaderView {
     #[widget_id("d_shaderview_a")]
-    pub a: lumen_static_widgets::ShaderView<16>,
+    pub a: fulgurite_widgets::ShaderView<16>,
 }
 
 /// M84/T84.3: an animated image -- the committed GIF `catalog::SPIN`,
@@ -323,7 +323,7 @@ pub struct DPickList {
 #[widget(column, spacing = 0.0)]
 pub struct DSelect {
     #[widget_id("d_select_a")]
-    pub a: lumen_static_widgets::select::Select<crate::Store>,
+    pub a: fulgurite_widgets::select::Select<crate::Store>,
 }
 
 #[derive(StaticTree, Default)]
@@ -897,7 +897,7 @@ macro_rules! demos {
         /// Every demo struct's kind, in `Demo`'s order — M56. The sheet
         /// sets each to `Shrink` so the stage can centre what a demo
         /// actually draws (`stylesheet()` says why it has to).
-        pub const DEMO_KINDS: &[&str] = &[$($(#[$m])* <$t as lumen_static::widget::Widget>::KIND),*];
+        pub const DEMO_KINDS: &[&str] = &[$($(#[$m])* <$t as fulgurite::widget::Widget>::KIND),*];
     };
 }
 

@@ -41,7 +41,7 @@ which is not M.*
   size. Absolute line heights (iced's `LineHeight::Absolute`) are not
   built. `Patch::line_height(ratio: f32)` stores the ratio and the
   cascade rounds it to sixteenths; `.lss` `line-height: 1.5`
-  (`Takes::Number`). Crate: `lumen-static`. Bytes: 1 of `Style`'s 2.
+  (`Takes::Number`). Crate: `fulgurite`. Bytes: 1 of `Style`'s 2.
 - **Its semantics are CSS's and iced's, not fontdue's.** A run of *n*
   lines measures exactly `n × pitch`, `pitch = line_height/16 × px`,
   **a single line included**. Glyphs sit at half-leading: line *k* moves
@@ -83,7 +83,7 @@ which is not M.*
   height, which is the existing contract of `TextMeasure::shape` ("a
   caller that gets no clusters falls back to the run's size"). No
   signature changes across the 28 `TextMeasure` implementors.
-  Crate: `lumen-static` (`LineCount` beside `NoSink` in `cx.rs`).
+  Crate: `fulgurite` (`LineCount` beside `NoSink` in `cx.rs`).
 - **Paint gets it through a new required `Painter` method.**
   `Painter::text_spaced(rect, s, size, weight, line_height: u8, color)`
   is **required**. `text_weighted` becomes **provided** and forwards to
@@ -98,8 +98,8 @@ which is not M.*
   it and bumps `VERSION` by one from the current version (expected
   1 → 2; M82 and M84 bump it after). `svg.rs` names the field and ignores it
   (an SVG `<text>` is one line; recorded in its rustdoc). Every
-  implementor is listed in T80.1. Crate: `lumen-static`, with
-  `FontStack::place_run_into` (`lumen-static-shell`) taking the byte.
+  implementor is listed in T80.1. Crate: `fulgurite`, with
+  `FontStack::place_run_into` (`fulgurite-shell`) taking the byte.
   **The wrappers lose their `text_weighted` overrides**: `Scaled`
   (`display.rs`, whose origin rounding, M57/A15, moves into
   `Scaled::text_spaced`), `Deferring` (`overlay.rs`) and `Recording`
@@ -128,32 +128,32 @@ which is not M.*
   `BACKGROUND_FILL` and M86's `TRANSITION` take the bits after these.
 - **Overflow is a `Style` enum**, `TextOverflow { Wrap, Clip, Ellipsis }`
   (`#[repr(u8)]`, default `Wrap`), named so it cannot be confused with
-  `lumen-static-wgpu`'s private `Overflow`. Bytes: 2 of `Style`'s 2. New
+  `fulgurite-wgpu`'s private `Overflow`. Bytes: 2 of `Style`'s 2. New
   bit `Fields::OVERFLOW` (the next free bit at landing, printed;
   expected 18); read by `Label` and `AppBar`. `.lss`
   `text-overflow: ellipsis`, with a `Takes::Overflow` keyword mirror,
   and `scripts/check_lss_setters.sh`'s enum list gains it. Crate:
-  `lumen-static`.
+  `fulgurite`.
 - **A `.lss` property is five sites, and the check sees two.**
   `scripts/check_lss_setters.sh` compares `style.rs`'s `impl Patch`
   with `lower.rs`'s `PROPERTIES` (and the `Align`/`Cursor`/`Role`
   mirrors) only. The others: the shell's runtime applier
-  (`crates/lumen-static-shell/src/lss.rs`, `fn set`, one arm per
+  (`crates/fulgurite-shell/src/lss.rs`, `fn set`, one arm per
   `(setter, Val)` pair, panicking "no setter `{m}` taking {v:?}" on an
   unknown one); for a new value kind, a `lower::Val` variant
   (`lower.rs` has `F32`, `U8`, `Bool`, `Color`, `Role`, `Length`,
   `Edges`, `Align`, `Cursor`, no overflow enum) with its shell mapping;
-  and its quote arm in `crates/lumen-static-macros/src/lss.rs`'s `val`.
+  and its quote arm in `crates/fulgurite-macros/src/lss.rs`'s `val`.
   `line-height` (`Takes::Number` → `Val::F32`) needs only the
   `set` arm, since the macro quotes `.#method(#value)` generically;
   `text-overflow` needs all of them. Each lands with a rule in a sheet
-  `crates/lumen-static-shell/tests/lss_parity.rs` compares, which is
+  `crates/fulgurite-shell/tests/lss_parity.rs` compares, which is
   the gate for the arms the check cannot see.
 - **`Clip` and `Ellipsis` are one line, cut in layout, by grapheme.**
   The first draft said it generalised a grapheme search; `fit_title`
   searches **char** boundaries (`nav.rs`, `t.char_indices().nth(k)`) and
   so already splits a combining sequence or a ZWJ cluster. The shared
-  helper is new: `fit::cut` in `lumen-static-widgets` (new module
+  helper is new: `fit::cut` in `fulgurite-widgets` (new module
   `fit.rs`), a binary search over **byte offsets** snapped down to a
   grapheme boundary with `edit::floor_boundary` (new, beside
   `prev_boundary`), measuring prefixes with `measure_weighted` and the
@@ -199,7 +199,7 @@ which is not M.*
   its row pitch, and reuses `edit::word_at`, the grapheme steps and
   `input::selection_tint`. **`alloc`-tier only**, beside `Select` and
   `RichText`, so the leaf firmware does not link it. Crate:
-  `lumen-static-widgets` (new module `selectable.rs`). `Label` gains
+  `fulgurite-widgets` (new module `selectable.rs`). `Label` gains
   only a `pub(crate)` split of its paint (background, then run), so the
   tint can go between them. **Not over `RichText` or `Markdown`**: they
   paint word by word, so one cluster list does not describe them.
@@ -210,7 +210,7 @@ which is not M.*
   `selection`, so `keys::clipboard_decision` returns `Clip::Cut` for it
   (`keys.rs`, `Key::Char('x') if s.selection`), and
   `Win::clipboard_shortcut` sets the clipboard and then posts a
-  `Backspace` (`lumen-static-winit/src/lib.rs`). Decided: that is
+  `Backspace` (`fulgurite-winit/src/lib.rs`). Decided: that is
   correct for read-only text as long as the `Backspace` does nothing,
   so the text reaches the clipboard and nothing changes, which is a
   copy. `Selectable::on_event` does not handle `Backspace` or `Delete`
@@ -219,7 +219,7 @@ which is not M.*
   input would need a new required `Session` method and a `Node` slot
   for a case one widget's `on_event` already decides.
 - **IME placement is `Node::caret_rect`, asked of the focused index.**
-  Provided `None` on `Node` (`lumen-static`), overridden by `TextInput`
+  Provided `None` on `Node` (`fulgurite`), overridden by `TextInput`
   and `TextArea`, and **forwarded by `NumberInput`**, the one widget
   that shares its editable child's index (`SearchField`, `Chooser` and
   `RichTextEditor` give theirs a node of its own, so they need nothing;
@@ -256,7 +256,7 @@ which is not M.*
   `KeyboardInput`, so a drive's `input.key` Ctrl+C never copies. `Win`
   answers `app.copy` itself: `session.copy()`, then `clipboard.set`,
   then `clipboard.get`, and replies `{"copied", "clipboard"}` so a drive
-  sees what reached the system clipboard. Crate: `lumen-static-winit`.
+  sees what reached the system clipboard. Crate: `fulgurite-winit`.
   M88's rich clipboard may extend it; it does not depend on S1's
   `Request` queue, because the user, not a handler, starts a copy.
 - **S1 and S2.** M80 adds no platform request, so no `Request` variant.
@@ -295,16 +295,16 @@ in the accept direction in the same session.*
   overlays, multi-window, complex-script text) with pointers;
   `book/src/gaps.md` already flags that table as stale and is not
   touched. Re-measures the winit manifest's three crate deltas with
-  K2's exact command, `cargo tree -p lumen-static-winit -e normal
+  K2's exact command, `cargo tree -p fulgurite-winit -e normal
   --prefix none [--features F] | sed 's/ (\*)$//' | sort -u | wc -l`:
   default, `--no-default-features` with and without `clipboard`,
   `dialogs`, `a11y` (at `553fa5e`: 96 default; clipboard +5, 91 → 96;
   dialogs +10, 96 → 106; a11y +71, 96 → 167 — re-measured at landing
   and printed). Records them in `docs/results-a11y-platform.md` and
-  rewrites `crates/lumen-static-winit/Cargo.toml`:47 (clipboard "11"),
+  rewrites `crates/fulgurite-winit/Cargo.toml`:47 (clipboard "11"),
   :90–91 (dialogs "79"; "clipboard's 11 and a11y's 62") and :115
   (dialogs "79") with the method named and the doc cited. **Gates:**
-  - `crates/lumen-static-shell/tests/ellipsis_graphemes.rs`: for each
+  - `crates/fulgurite-shell/tests/ellipsis_graphemes.rs`: for each
     of the four `graphemes.rs` clusters, titles whose prefix length
     puts the cluster at every candidate cut, swept over room widths
     in 1 px steps through `AppBar` under `FontMetrics`. Prints, per
@@ -353,7 +353,7 @@ in the accept direction in the same session.*
     2026-09-30, `docs/plan-iced-roadmap.md` header and K4). Changes,
     found by grepping `scripts/`, `justfile`, `AGENT.md`, `book/src`
     and `docs/` for `65536`, `65,536` and `64 KB`:
-    - `scripts/check_text.sh`: `CEILING=${LUMEN_TEXT_CEILING:-65536}`
+    - `scripts/check_text.sh`: `CEILING=${FULGURITE_TEXT_CEILING:-65536}`
       becomes `81920`. Its header ("under an eighth of flash", "The
       interactive one keeps the same 64 KB"), the comment above
       that line ("An eighth of the T13.0 device's 512 KB flash") and
@@ -364,7 +364,7 @@ in the accept direction in the same session.*
       budget row**: it reads the `Framework .text` row of
       `docs/results-embedded.md` (`≤ 80 KB` → 81,920) and fails by name
       when the unset default differs, so the script and the doc stop
-      being two copies of one number. `LUMEN_TEXT_CEILING` still
+      being two copies of one number. `FULGURITE_TEXT_CEILING` still
       overrides the comparison and skips the agreement check, which is
       about the default.
     - `docs/results-embedded.md`: the budget row "Framework `.text` ≤
@@ -402,7 +402,7 @@ in the accept direction in the same session.*
       `docs/plan-hash-identity.md` (65,536 instances).
   - **Gate: the raised ceiling fires and accepts.** `just firmware`
     (`scripts/check_text.sh`) prints each binary's `.text` "of 81920".
-    - Injection: `LUMEN_TEXT_CEILING=60000 ./scripts/check_text.sh`
+    - Injection: `FULGURITE_TEXT_CEILING=60000 ./scripts/check_text.sh`
       fails by name, `firmware_interactive: .text is 61922 B, over the
       60000 B ceiling by 1922 B` (byte counts as measured that day).
     - Accept: the unset default (81,920) passes all four, each printed
@@ -431,16 +431,16 @@ in the accept direction in the same session.*
   field, `Cmd::hash_into`, `wire.rs` (`VERSION` + 1, expected 2),
   `svg.rs`, and every full-field `Cmd::Text` pattern or construction:
   the exhaustive match and the construction at
-  `crates/lumen-static-shell/tests/svg.rs:78`,
-  `crates/lumen-static-wgpu/tests/parity.rs:282`,
-  `crates/lumen-static-shell/tests/clip_test.rs:262`, the showcase's
+  `crates/fulgurite-shell/tests/svg.rs:78`,
+  `crates/fulgurite-wgpu/tests/parity.rs:282`,
+  `crates/fulgurite-shell/tests/clip_test.rs:262`, the showcase's
   destructuring in `examples/showcase/src/main.rs`, and any other an
   `rg 'Cmd::Text \{'` at landing finds (count printed; the compiler
   finds the rest, the list is what the commit body checks).
   `FontStack::place_run_into` gains `line_height: u8` and the
   re-placement; `place_run` passes 0. `software.rs` and
-  `lumen-static-wgpu`'s run path pass the command's byte. **Gates:**
-  - placement, `crates/lumen-static-shell/tests/line_height.rs` (new):
+  `fulgurite-wgpu`'s run path pass the command's byte. **Gates:**
+  - placement, `crates/fulgurite-shell/tests/line_height.rs` (new):
     a two-line run through `place_run_into` at `line_height` 16, 24
     and 32. Prints the top of line 2's first glyph minus line 1's,
     against `pitch` ± 0.5 px, and the extent's height against
@@ -464,14 +464,14 @@ in the accept direction in the same session.*
     drop the `max(0, nls − pitch)` term from both the measure and the
     placer shift; the ascenders' rows above the rect print > 0.
   - each backend passes the byte: a `line_height = 24` case in
-    `crates/lumen-static-wgpu/tests/parity.rs` (`just gpu`). Parity
+    `crates/fulgurite-wgpu/tests/parity.rs` (`just gpu`). Parity
     cannot see a placer bug, because both backends call the same
     `place_run_into` (`text.rs`'s own rustdoc says parity is about
     rasterisation); it **can** see a backend that drops the byte.
     Injection: the GPU path passes 0; the case's differing-pixel count
     is printed against the file's existing bound. The software half is
     the pixel rows of the placement gate's run on the canvas.
-  - retention, `crates/lumen-static/tests/retain_align.rs` (which
+  - retention, `crates/fulgurite/tests/retain_align.rs` (which
     already drives `Recording` directly; `damage_regions.rs` is a
     pure `Regions`/`Damage` unit file): the same rect, text, size,
     weight and colour recorded twice with only the byte changed is
@@ -492,7 +492,7 @@ in the accept direction in the same session.*
     `Scaled::text_spaced` forwards 0) and for `Recording` (its inner
     list receives the byte; injection: forwards 0). M82's and M83's
     counts follow from 6, printed at landing.
-  - **No golden gate**: `crates/lumen-static-shell/tests/golden.rs`
+  - **No golden gate**: `crates/fulgurite-shell/tests/golden.rs`
     holds one rect and one rounded rect plus the panic-screen images,
     built with `BlockMetrics`, and the `justfile` runs it with
     `truetype` off, where `software.rs` draws block glyphs and never
@@ -519,7 +519,7 @@ in the accept direction in the same session.*
   declaration (its `PROPERTIES` row, `Takes::Number`; the shell
   `lss.rs` `set` arm `("line_height", Val::F32(x))`; a `line-height`
   rule in a sheet `lss_parity.rs` compares),
-  `crates/lumen-static-widgets/tests/style_reads.rs`'s `patch_for`
+  `crates/fulgurite-widgets/tests/style_reads.rs`'s `patch_for`
   arm for `line_height` (it panics "no probe value for field" on any
   new `Fields::EACH` name), `NodeState.line_height` stamped by `record_painted`,
   `MeasureKey`'s `flow` word, `LineCount`. `Label` measures
@@ -536,7 +536,7 @@ in the accept direction in the same session.*
   row in `scripts/drive/roles.py` (`run.py --manifest-only` refuses an
   entry with none); manifest counts updated.
   **Gates:**
-  - measured and painted agree, `crates/lumen-static-shell/tests/line_height.rs`:
+  - measured and painted agree, `crates/fulgurite-shell/tests/line_height.rs`:
     a `Label` that wraps to 3 lines at `line_height = 24`, 16 px, laid
     out through a `Host` with `FontMetrics` and painted on the software
     canvas at scale 1.0 and 2.0. Prints content height against exactly
@@ -550,12 +550,12 @@ in the accept direction in the same session.*
     32`, the caret's top minus the content top prints against
     `2 × pitch` and against line 3's ink rows ± 1 px. Injection:
     `TextArea` keeps `cx.text.line_height(px)`; the drift prints.
-  - the memo, `crates/lumen-static/tests/measure_key.rs`: a `Label`
+  - the memo, `crates/fulgurite/tests/measure_key.rs`: a `Label`
     laid out, then only `line_height` changed, is re-measured (warm
     before, cold after, heights printed and different); the same for
     only `overflow` (for T80.3). Injection: drop `flow` from
     `MeasureKey::of`; the stale height is served and printed.
-  - the lint, `crates/lumen-static/tests/sheet_lint.rs`: a rule setting
+  - the lint, `crates/fulgurite/tests/sheet_lint.rs`: a rule setting
     `line_height` on a `Button` reports `W1010`, and on a `Label` does
     not. Injection: `Label`'s seed omits the bit; the `Label` rule is
     reported.
@@ -590,7 +590,7 @@ in the accept direction in the same session.*
   `Patch::overflow`, `Fields::OVERFLOW`, `.lss` `text-overflow` and its
   keyword mirror (the `PROPERTIES` row with `Takes::Overflow`, a
   `lower::Val::TextOverflow` variant, the shell `set` arm and its mapping
-  function, the quote arm in `crates/lumen-static-macros/src/lss.rs`'s
+  function, the quote arm in `crates/fulgurite-macros/src/lss.rs`'s
   `val`, a `text-overflow` rule in a sheet `lss_parity.rs` compares),
   `style_reads.rs`'s `overflow` probe (the `Label` and `AppBar`
   probes' text lengthened so it wraps at `BASE`'s 200 px; today's
@@ -620,7 +620,7 @@ in the accept direction in the same session.*
     `Wrap` printed, > 1). Injection: the probe text left short; both
     print as declared and not measured, which is the setup check
     firing.
-  - fits its box, `crates/lumen-static-shell/tests/text_containment.rs`:
+  - fits its box, `crates/fulgurite-shell/tests/text_containment.rs`:
     widths 40–400 px in 8 px steps over five label texts; for each
     truncated case the **painted ink bounding box** on the software
     canvas is inside the content box (overhang printed, bound 0 px) and
@@ -629,11 +629,11 @@ in the accept direction in the same session.*
     untruncated `Ellipsis` label's display list is byte-identical to
     the same label under `Wrap`. Injection: `fit::cut` forgets the
     ellipsis's width; the ink overhang prints > 0.
-  - the S2 shape, `crates/lumen-static-agent/tests/damage_shape.rs`,
+  - the S2 shape, `crates/fulgurite-agent/tests/damage_shape.rs`,
     beside `a_text_length_change_does_not_report_later_nodes` (the
     existing gate for this defect; `Cmd::hash_into` is read by the
     agent journal, not by `Recording`, which hashes the `&str` itself,
-    so a `lumen-static` test cannot see it): two truncated labels in a
+    so a `fulgurite` test cannot see it): two truncated labels in a
     column; changing the first's text so its cut moves reports the
     first and **not** the second in the journal's changed ids (both
     printed; bound: second absent). Setup: the first label is
@@ -646,7 +646,7 @@ in the accept direction in the same session.*
     under a clip; damage prints > 1.00×.
   - the key: T80.2's `overflow`-only memo case is green here.
   - cost (K80d), in its own test binary
-    `crates/lumen-static-shell/tests/fit_cost.rs` with a single
+    `crates/fulgurite-shell/tests/fit_cost.rs` with a single
     `#[test]`: `text_counters()` is process-wide and asks for "one
     test at a time" (`text.rs`), and cargo runs a binary's tests in
     parallel. `measured` read before and after each cut, the
@@ -675,11 +675,11 @@ in the accept direction in the same session.*
   "Label"` row in `scripts/drive/roles.py`, a `scripts/drive/keys.py`
   `KEYS` entry (Tab reaches it, Ctrl+A selects all), an `observe` impl
   (`Role::Label`, the whole text as the value), a row in
-  `crates/lumen-static-widgets/tests/a11y_roles.rs`'s table, a field in
+  `crates/fulgurite-widgets/tests/a11y_roles.rs`'s table, a field in
   `tests/catalogue/mod.rs` so the role and contrast harnesses see it, a
   showcase entry, `app.copy` in the skill's method list and
   `book/src/agent.md` (`scripts/check_agent_methods.sh`). **Gates:**
-  - `crates/lumen-static-widgets/tests/selectable.rs` (new), through a
+  - `crates/fulgurite-widgets/tests/selectable.rs` (new), through a
     `Host` with `FontMetrics`: a press and a drag over a two-line
     label; `Host::copy()` is exactly the dragged substring (length
     printed). Setup: both pumps `handled`, and the focused index is the
@@ -739,12 +739,12 @@ in the accept direction in the same session.*
   `None`), `TextInput`/`TextArea` overrides (scroll offset included),
   `NumberInput`'s forward, `Host::caret_rect`, the required
   `Session::caret_rect` with `Local`'s body and `Hot`'s forward
-  (`crates/lumen-static-reload/src/lib.rs`), `Win`'s call and
+  (`crates/fulgurite-reload/src/lib.rs`), `Win`'s call and
   `app.imeArea` (skill and book lists). `fixtures/hot-window` gains a
   `TextInput` and `scripts/hot_window_drive.py` a step. The rustdoc on
   `widget.rs`'s `paste` and on `caret_rect` name the same
   index-sharing rule. **Gates:**
-  - against the painted caret, `crates/lumen-static-shell/tests/ime_area.rs`
+  - against the painted caret, `crates/fulgurite-shell/tests/ime_area.rs`
     (new): for `TextInput` empty, mid-text and filled past its width
     (the scrolled case), `TextArea` on line 3, and `NumberInput`, at
     scale 1.0 and 2.0: `Host::caret_rect()`'s x against the caret
@@ -755,7 +755,7 @@ in the accept direction in the same session.*
     scroll offset (the scrolled case prints the offset); `Host`
     returns the logical rect (scale 2.0 prints half).
   - every composing node answers,
-    `crates/lumen-static-widgets/tests/caret_rect.rs` (new): each
+    `crates/fulgurite-widgets/tests/caret_rect.rs` (new): each
     focusable node of the catalogue that accepts a `Preedit` answers
     `caret_rect` with a rect inside its box. Prints how many composed
     (bound ≥ 5: `TextInput`, `TextArea`, `NumberInput`, the search and
@@ -849,7 +849,7 @@ in the accept direction in the same session.*
 - T80.1: **the firmware cost is +52–56 B, not ≈ +676 B.** T27.1's figure
   was a new `Cmd` variant painted by every painter; T80.1 adds a vtable
   slot beside one that became a provided forward, and a byte `Checksum`
-  folds. The re-placement lives in `lumen-static-shell`, which the
+  folds. The re-placement lives in `fulgurite-shell`, which the
   firmware does not link (`docs/results-embedded.md`).
 
 - T80.2: **`RichText`'s mask had never been measured.** `style_reads.rs`
@@ -937,7 +937,7 @@ in the accept direction in the same session.*
   field's selection; recorded in `docs/results-text.md` M80/T80.4, not
   changed here (it is `TextInput`'s and `TextArea`'s look, and the
   scrollbar track's).
-- T80.4: **the Ctrl+X gate lives in `lumen-static-winit/tests/clipboard_shortcut.rs`**,
+- T80.4: **the Ctrl+X gate lives in `fulgurite-winit/tests/clipboard_shortcut.rs`**,
   not `widgets/tests/selectable.rs`: it asserts `keys::clipboard_decision`
   for the state the drag left, and the widgets crate cannot name the
   window's crate. Everything else in it is the plan's.
@@ -1176,7 +1176,7 @@ in the accept direction in the same session.*
 - G1 → adopted: the golden claim is dropped; the placement gate's
   accept direction observes "treat 0 as 1.0×".
 - G2 → adopted: the S2 gate moves to
-  `crates/lumen-static-agent/tests/damage_shape.rs` and asserts on the
+  `crates/fulgurite-agent/tests/damage_shape.rs` and asserts on the
   journal's changed ids. T80.1's retention gate moves from
   `damage_regions.rs` to `retain_align.rs`, which drives `Recording`.
 - G3 → adopted (with A5, M1, R5): T80.1 extends
@@ -1235,7 +1235,7 @@ in the accept direction in the same session.*
   needs no `xclip`, and never reports skipped on the reference machine;
   `xclip`'s install step is M88's.
 - B9/M17/R13 (from plan-iced-roadmap.md) → adopted: T80.0 rewrites
-  `lumen-static-winit/Cargo.toml:91`'s a11y count 62 → 71 (95 → 166,
+  `fulgurite-winit/Cargo.toml:91`'s a11y count 62 → 71 (95 → 166,
   `docs/results-a11y-platform.md`, K2's method); C20 updated.
   Superseded by consistency-3 item 1.
 - M7, M3, R6 (from plan-iced-roadmap.md) → adopted in part: the `.lss`

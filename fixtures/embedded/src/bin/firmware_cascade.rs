@@ -13,9 +13,9 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use embedded::{frame_changed, Checksum, Panel, NODES, SHEET};
-use lumen_static::invalidate::Changed;
-use lumen_static::style::{cascade_deep_with, Palette};
-use lumen_static::{NodeState, Style};
+use fulgurite::invalidate::Changed;
+use fulgurite::style::{cascade_deep_with, Palette};
+use fulgurite::{NodeState, Style};
 
 #[panic_handler]
 fn panicked(_: &PanicInfo) -> ! {

@@ -13,7 +13,7 @@
 //! origin, and `#swatch` recolours it: the one control whose click
 //! changes pixels, so `just tasks-drive`'s GPU leg can prove that
 //! `ui.screenshot` reads the GPU back per call. Since M88/T88.3 it also
-//! **asks the window for a screenshot** (`lumen_static::request`): `#shot`
+//! **asks the window for a screenshot** (`fulgurite::request`): `#shot`
 //! recolours the swatch and pushes a `Screenshot` request from its
 //! handler, `#shot-timer` does it from a timer tick, and `answered`
 //! shows the pixel the answer holds at the swatch. Since M88/T88.4 it
@@ -31,13 +31,13 @@
 //! Run it: `cargo run -p tasks-demo`, or `just tasks-drive` to have the
 //! script click every button and check what happened.
 
-use lumen_static::event::App;
-use lumen_static::prelude::*;
-use lumen_static_widgets::prelude::*;
-use lumen_static::spawn::{Descriptor, Failure, JobFn, Outbox, Subs, Timers};
-use lumen_static::style::{Edges, Length, Patch, Rule, Selector};
-use lumen_static::Color;
-use lumen_static_winit::{application, Program, Run};
+use fulgurite::event::App;
+use fulgurite::prelude::*;
+use fulgurite_widgets::prelude::*;
+use fulgurite::spawn::{Descriptor, Failure, JobFn, Outbox, Subs, Timers};
+use fulgurite::style::{Edges, Length, Patch, Rule, Selector};
+use fulgurite::Color;
+use fulgurite_winit::{application, Program, Run};
 
 // ---- the job table. Stable, append-only ids (plan-tasks.md §2.1) -----
 
@@ -66,8 +66,8 @@ const TAG_READ_IMAGE: u64 = 10;
 /// HTML gets. Markup, an entity, and a two-byte character, so a
 /// round trip that re-encoded or trimmed anything would differ
 /// (`just tasks-drive` compares it byte for byte).
-const COPY_HTML: &str = "<p>caf\u{e9} <b>&amp;</b> <i>lumen</i></p>";
-const COPY_HTML_ALT: &str = "caf\u{e9} & lumen";
+const COPY_HTML: &str = "<p>caf\u{e9} <b>&amp;</b> <i>fulgurite</i></p>";
+const COPY_HTML_ALT: &str = "caf\u{e9} & fulgurite";
 /// What `#copy-primary` puts on the primary selection.
 const COPY_PRIMARY: &str = "B";
 
@@ -246,7 +246,7 @@ struct Tasks {
     /// ([`swatch_color`]).
     swatch_clicks: u32,
     /// The platform requests out to the window (M88/T88.3).
-    requests: lumen_static::request::Requests,
+    requests: fulgurite::request::Requests,
     /// `#shot-timer`'s ticks since it was armed.
     shot_ticks: u32,
     /// Screenshot answers applied, and what the last one showed:
@@ -296,88 +296,88 @@ impl Default for Swatch {
     }
 }
 
-impl lumen_static::widget::Widget for Swatch {
+impl fulgurite::widget::Widget for Swatch {
     const NODE_COUNT: usize = 1;
     const DEPTH: usize = 1;
     const IS_RIGID: bool = true;
-    const SUB_TABLE: &'static [lumen_static::desc::NodeDesc] = &[lumen_static::desc::NodeDesc::new(
+    const SUB_TABLE: &'static [fulgurite::desc::NodeDesc] = &[fulgurite::desc::NodeDesc::new(
         0,
-        lumen_static::desc::NO_PARENT,
+        fulgurite::desc::NO_PARENT,
         0,
         0,
-        lumen_static::desc::NodeDesc::RIGID,
+        fulgurite::desc::NodeDesc::RIGID,
     )];
     const KIND: &'static str = "swatch";
-    const SEEDS: &'static [lumen_static::style::Seed] = &[lumen_static::style::Seed::new(
+    const SEEDS: &'static [fulgurite::style::Seed] = &[fulgurite::style::Seed::new(
         Self::KIND,
         Self::type_defaults,
-        lumen_static::style::Fields::of(&[lumen_static::style::Fields::VISIBLE]),
+        fulgurite::style::Fields::of(&[fulgurite::style::Fields::VISIBLE]),
     )];
 }
 
-impl lumen_static::widget::Node for Swatch {
+impl fulgurite::widget::Node for Swatch {
     fn layout(
         &mut self,
-        _cx: &mut lumen_static::cx::LayoutCx,
-        limits: lumen_static::desc::Constraints,
-        style: &[lumen_static::Style],
-        st: &mut [lumen_static::NodeState],
+        _cx: &mut fulgurite::cx::LayoutCx,
+        limits: fulgurite::desc::Constraints,
+        style: &[fulgurite::Style],
+        st: &mut [fulgurite::NodeState],
         i: usize,
-    ) -> lumen_static::desc::Size {
-        let content = lumen_static::desc::Size { w: 16.0, h: 16.0 };
-        lumen_static::ops::record_painted(
+    ) -> fulgurite::desc::Size {
+        let content = fulgurite::desc::Size { w: 16.0, h: 16.0 };
+        fulgurite::ops::record_painted(
             st,
             i,
             limits,
-            lumen_static::ops::resolve_self(limits, &style[i], content),
+            fulgurite::ops::resolve_self(limits, &style[i], content),
             &style[i],
         )
     }
-    fn paint(&self, st: &[lumen_static::NodeState], i: usize, out: &mut dyn lumen_static::display::Painter) {
-        out.rect(lumen_static::ops::rect_of(&st[i]), self.color);
+    fn paint(&self, st: &[fulgurite::NodeState], i: usize, out: &mut dyn fulgurite::display::Painter) {
+        out.rect(fulgurite::ops::rect_of(&st[i]), self.color);
     }
-    lumen_static::leaf_common!(Swatch, lumen_static::desc::NodeDesc::RIGID, nohit);
+    fulgurite::leaf_common!(Swatch, fulgurite::desc::NodeDesc::RIGID, nohit);
 
     fn observe(
         &self,
-        _st: &[lumen_static::NodeState],
+        _st: &[fulgurite::NodeState],
         _i: usize,
         _id: u64,
-        node: &mut lumen_static::observe::accesskit::Node,
-        _extra: &mut Vec<(lumen_static::observe::accesskit::NodeId, lumen_static::observe::accesskit::Node)>,
+        node: &mut fulgurite::observe::accesskit::Node,
+        _extra: &mut Vec<(fulgurite::observe::accesskit::NodeId, fulgurite::observe::accesskit::Node)>,
     ) {
-        node.set_role(lumen_static::observe::accesskit::Role::Image);
+        node.set_role(fulgurite::observe::accesskit::Role::Image);
         node.set_label("swatch");
     }
 }
 
-impl<S> lumen_static::event::Handlers<S> for Swatch {
-    fn handler(&self, _sel: lumen_static::event::NodeSel) -> Option<fn(&mut S, &lumen_static::EventCtx)> {
+impl<S> fulgurite::event::Handlers<S> for Swatch {
+    fn handler(&self, _sel: fulgurite::event::NodeSel) -> Option<fn(&mut S, &fulgurite::EventCtx)> {
         None
     }
 }
 
 // ---- job bodies. Non-capturing `fn` items, by type ------------------
 
-fn one(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn one(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::One(d.payload));
 }
-fn batch(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn batch(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::Batch(d.payload));
 }
-fn chain(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn chain(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::Chain { step: d.step, value: d.payload * 2 });
 }
 /// Long enough that a cancel can land while it is still running — which
 /// is the only way to demonstrate what cancel actually does.
-fn slow(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn slow(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     std::thread::sleep(std::time::Duration::from_millis(400));
     let _ = tx.send(Msg::Slow(d.payload));
 }
-fn tick(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn tick(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::Tick(d.payload));
 }
-fn shot_tick(_: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn shot_tick(_: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     let _ = tx.send(Msg::ShotTick);
 }
 
@@ -388,7 +388,7 @@ fn shot_tick(_: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
 /// the newest value at most once a frame, and the last one is always
 /// applied. Through `send` this stream lost 9,744 values to the bounded
 /// inbox, its last one among them (`docs/results-tasks.md`).
-fn sip(d: Descriptor, tx: &lumen_static::inbox::Sender<Msg>) {
+fn sip(d: Descriptor, tx: &fulgurite::inbox::Sender<Msg>) {
     for i in 0..d.payload {
         tx.progress(Msg::Sip(i));
     }
@@ -420,7 +420,7 @@ impl App for Demo {
     fn timers(&mut self) -> Option<&mut Timers> {
         Some(&mut self.state.timers)
     }
-    fn requests(&mut self) -> Option<&mut lumen_static::request::Requests> {
+    fn requests(&mut self) -> Option<&mut fulgurite::request::Requests> {
         Some(&mut self.state.requests)
     }
 
@@ -430,8 +430,8 @@ impl App for Demo {
     /// reads the pixel at physical (4, 4), inside the 16×16 swatch, and
     /// the message is applied inside the same call (`Host::answer`), so
     /// nothing converted waits for a frame a swap could pre-empt.
-    fn answered(tag: u64, a: lumen_static::request::Answer<'_>) -> Option<Msg> {
-        use lumen_static::request::Answer;
+    fn answered(tag: u64, a: fulgurite::request::Answer<'_>) -> Option<Msg> {
+        use fulgurite::request::Answer;
         match (tag, a) {
             (TAG_SHOT | TAG_SHOT_TIMER, Answer::Image { width, height, rgba, .. }) => {
                 let i = ((4 * width + 4) * 4) as usize;
@@ -456,8 +456,8 @@ impl App for Demo {
     /// **What a clipboard write puts there**, asked by the host while it
     /// drains the request — synchronously, in the build loaded now — so
     /// the bytes never live in the request (M88/T88.4).
-    fn clip_for(&mut self, tag: u64) -> Option<lumen_static::request::Clip<'_>> {
-        use lumen_static::request::Clip;
+    fn clip_for(&mut self, tag: u64) -> Option<fulgurite::request::Clip<'_>> {
+        use fulgurite::request::Clip;
         match tag {
             TAG_COPY_TEXT => Some(Clip::Text(&self.state.copy_text)),
             TAG_COPY_PRIMARY => Some(Clip::Text(COPY_PRIMARY)),
@@ -538,7 +538,7 @@ impl App for Demo {
                 if this.shot_ticks > 2 {
                     return false;
                 }
-                this.requests.push(lumen_static::request::Request::Screenshot { tag: TAG_SHOT_TIMER });
+                this.requests.push(fulgurite::request::Request::Screenshot { tag: TAG_SHOT_TIMER });
                 if this.shot_ticks == 1 {
                     this.swatch_clicks += 1;
                 } else {
@@ -584,8 +584,8 @@ impl App for Demo {
     /// only what changed.
     fn update(&mut self) -> bool {
         let s = &self.state;
-        let a = lumen_static::bind::format_into(&mut self.ui.status, format_args!("last: {}", s.last));
-        let b = lumen_static::bind::format_into(
+        let a = fulgurite::bind::format_into(&mut self.ui.status, format_args!("last: {}", s.last));
+        let b = fulgurite::bind::format_into(
             &mut self.ui.counts,
             format_args!(
                 "one={} batch={} chain={} slow={} ticks={} failed={} sub={}",
@@ -599,76 +599,76 @@ impl App for Demo {
             ),
         );
         let c = match s.sip {
-            Some(v) => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
-            None => lumen_static::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
+            Some(v) => fulgurite::bind::format_into(&mut self.ui.sip_value, format_args!("sip {v}")),
+            None => fulgurite::bind::format_into(&mut self.ui.sip_value, format_args!("sip -")),
         };
         let want = swatch_color(s.swatch_clicks);
         let d = self.ui.swatch_box.color != want;
         self.ui.swatch_box.color = want;
         let e = match s.shots {
-            0 => lumen_static::bind::format_into(&mut self.ui.shot_value, format_args!("shot pending")),
-            _ => lumen_static::bind::set_if_changed(&mut self.ui.shot_value, &s.shot_value),
+            0 => fulgurite::bind::format_into(&mut self.ui.shot_value, format_args!("shot pending")),
+            _ => fulgurite::bind::set_if_changed(&mut self.ui.shot_value, &s.shot_value),
         };
-        let f = lumen_static::bind::format_into(&mut self.ui.shot_log, format_args!("log{}", s.shot_log));
+        let f = fulgurite::bind::format_into(&mut self.ui.shot_log, format_args!("log{}", s.shot_log));
         let g = match s.writes {
-            0 => lumen_static::bind::format_into(&mut self.ui.clip_write, format_args!("write -")),
-            _ => lumen_static::bind::set_if_changed(&mut self.ui.clip_write, &s.clip_write),
+            0 => fulgurite::bind::format_into(&mut self.ui.clip_write, format_args!("write -")),
+            _ => fulgurite::bind::set_if_changed(&mut self.ui.clip_write, &s.clip_write),
         };
         let h = match s.reads {
-            0 => lumen_static::bind::format_into(&mut self.ui.clip_read, format_args!("read -")),
-            _ => lumen_static::bind::set_if_changed(&mut self.ui.clip_read, &s.clip_read),
+            0 => fulgurite::bind::format_into(&mut self.ui.clip_read, format_args!("read -")),
+            _ => fulgurite::bind::set_if_changed(&mut self.ui.clip_read, &s.clip_read),
         };
         a | b | c | d | e | f | g | h
     }
 }
 
-fn on_one(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_one(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_ONE, 7));
 }
 
 /// A batch: several descriptors pushed together. There is no batch type.
-fn on_batch(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_batch(s: &mut Tasks, _: &fulgurite::EventCtx) {
     for i in 1..=3 {
         s.outbox.push(Descriptor::new(KIND_BATCH, i));
     }
 }
 
-fn on_chain(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_chain(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_CHAIN, 1));
 }
 
-fn on_slow(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_slow(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_SLOW, 99));
 }
 
 /// Cancel is a *request*, pushed like any other — the handler cannot
 /// reach the host, and `EventCtx` carries no inbox. The host's
 /// `pump` sees the flag on the next frame.
-fn on_cancel(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_cancel(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.cancel_requested = true;
     s.last = "cancel requested".into();
 }
 
-fn on_sip(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_sip(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.outbox.push(Descriptor::new(KIND_SIP, 10_000));
 }
 
 /// M88/T88.2: recolour the swatch. The binding step paints it.
-fn on_swatch(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_swatch(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.swatch_clicks += 1;
 }
 
 /// M88/T88.3: recolour the swatch and ask the window for a screenshot.
 /// The click arrives through the agent in a drive, so the window answers
 /// it after that call, from the frame the call presented.
-fn on_shot(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_shot(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.swatch_clicks += 1;
-    s.requests.push(lumen_static::request::Request::Screenshot { tag: TAG_SHOT });
+    s.requests.push(fulgurite::request::Request::Screenshot { tag: TAG_SHOT });
 }
 
 /// M88/T88.3: arm a 500 ms timer whose ticks ask for screenshots — so the
 /// window answers from its redraw, with no agent call in flight.
-fn on_shot_timer(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_shot_timer(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.shot_ticks = 0;
     s.timers.cancel(KIND_SHOT, 1);
     s.timers.every(KIND_SHOT, 1, 500.0);
@@ -676,42 +676,42 @@ fn on_shot_timer(s: &mut Tasks, _: &lumen_static::EventCtx) {
 
 // ---- the clipboard (M88/T88.4): each button pushes one request ------
 
-fn on_copy_text(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipKind, Request};
+fn on_copy_text(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipKind, Request};
     s.copy_clicks += 1;
     s.copy_text = char::from(b'A' + ((2 * (s.copy_clicks - 1)) % 26) as u8).to_string();
     s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_TEXT, kind: ClipKind::Clipboard });
 }
-fn on_copy_primary(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipKind, Request};
+fn on_copy_primary(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipKind, Request};
     s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_PRIMARY, kind: ClipKind::Primary });
 }
-fn on_copy_html(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipKind, Request};
+fn on_copy_html(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipKind, Request};
     s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_HTML, kind: ClipKind::Clipboard });
 }
-fn on_copy_image(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipKind, Request};
+fn on_copy_image(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipKind, Request};
     s.requests.push(Request::ClipboardWrite { tag: TAG_COPY_IMAGE, kind: ClipKind::Clipboard });
 }
-fn on_read_image(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipFormat, ClipKind, Request};
+fn on_read_image(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipFormat, ClipKind, Request};
     s.requests.push(Request::ClipboardRead { tag: TAG_READ_IMAGE, kind: ClipKind::Clipboard, format: ClipFormat::Image });
 }
-fn on_read_text(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipFormat, ClipKind, Request};
+fn on_read_text(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipFormat, ClipKind, Request};
     s.requests.push(Request::ClipboardRead { tag: TAG_READ_TEXT, kind: ClipKind::Clipboard, format: ClipFormat::Text });
 }
-fn on_read_primary(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipFormat, ClipKind, Request};
+fn on_read_primary(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipFormat, ClipKind, Request};
     s.requests.push(Request::ClipboardRead { tag: TAG_READ_PRIMARY, kind: ClipKind::Primary, format: ClipFormat::Text });
 }
-fn on_read_html(s: &mut Tasks, _: &lumen_static::EventCtx) {
-    use lumen_static::request::{ClipFormat, ClipKind, Request};
+fn on_read_html(s: &mut Tasks, _: &fulgurite::EventCtx) {
+    use fulgurite::request::{ClipFormat, ClipKind, Request};
     s.requests.push(Request::ClipboardRead { tag: TAG_READ_HTML, kind: ClipKind::Clipboard, format: ClipFormat::Html });
 }
 
-fn on_toggle_sub(s: &mut Tasks, _: &lumen_static::EventCtx) {
+fn on_toggle_sub(s: &mut Tasks, _: &fulgurite::EventCtx) {
     s.sub_on = !s.sub_on;
     s.subs.clear();
     s.timers.cancel(KIND_SUB, 1);
@@ -794,11 +794,11 @@ fn program() -> Program<Demo> {
 }
 
 fn main() {
-    // The endpoint's address is `LUMEN_AGENT_ADDR`, read by the window
+    // The endpoint's address is `FULGURITE_AGENT_ADDR`, read by the window
     // (M48/T48.11); unset, this window serves none.
     // M55/T55.4: the strategy is this application's choice, made here.
     #[cfg(feature = "everything")]
-    program().invalidation::<lumen_static::Everything>().run();
+    program().invalidation::<fulgurite::Everything>().run();
     #[cfg(not(feature = "everything"))]
     program().run();
 }
@@ -811,7 +811,7 @@ mod tests {
     /// a node and changes something.
     #[test]
     fn every_stylesheet_rule_changes_something() {
-        let host = program().host::<lumen_static::retain::Incremental, lumen_static::Everything>();
+        let host = program().host::<fulgurite::retain::Incremental, fulgurite::Everything>();
         let sheet = host.stylesheet();
         let found: Vec<String> = host
             .sheet_findings()

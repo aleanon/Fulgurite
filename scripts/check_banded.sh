@@ -16,7 +16,7 @@ export LC_ALL=C
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 ck() {
-    cargo test -q -p lumen-static-shell --features "$1" --test banded \
+    cargo test -q -p fulgurite-shell --features "$1" --test banded \
         -- --nocapture print_checksums 2>/dev/null \
       | grep -E '^[0-9]+x[0-9]+/' | sort
 }

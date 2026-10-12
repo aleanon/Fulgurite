@@ -18,8 +18,8 @@
 //! whole point.
 
 use benches::bench;
-use lumen_static::display::{Cmd, Color, DisplayList, Painter};
-use lumen_static::retain::{Damage, Incremental, Rebuild, Recording, Retention, Streaming};
+use fulgurite::display::{Cmd, Color, DisplayList, Painter};
+use fulgurite::retain::{Damage, Incremental, Rebuild, Recording, Retention, Streaming};
 
 // ---- the copying implementation, as it was ---------------------------
 
@@ -50,11 +50,11 @@ fn ink(c: &Cmd) -> [f32; 4] {
         Cmd::Line { a, b, .. } => [a.x, a.y, b.x, b.y],
         Cmd::PopClip => [0.0; 4],
         // M83/T83.3: a bracket inks its rect, as `Recording::shader` does;
-        // its end, like a pop, has no geometry. `cfg(lumen_shader)` from
+        // its end, like a pop, has no geometry. `cfg(fulgurite_shader)` from
         // this crate's `build.rs`, never its own feature.
-        #[cfg(lumen_shader)]
+        #[cfg(fulgurite_shader)]
         Cmd::Shader { rect, .. } => *rect,
-        #[cfg(lumen_shader)]
+        #[cfg(fulgurite_shader)]
         Cmd::ShaderEnd => [0.0; 4],
     }
 }
@@ -225,7 +225,7 @@ fn run(n: usize) {
         struct Sink;
         impl Painter for Sink {
             // M82/T82.3: a leaf with no fill table.
-            fn fills(&self) -> &[lumen_static::style::Fill] {
+            fn fills(&self) -> &[fulgurite::style::Fill] {
                 &[]
             }
             fn rect(&mut self, _: [f32; 4], _: Color) {}
@@ -235,7 +235,7 @@ fn run(n: usize) {
             fn shadow(&mut self, _: [f32; 4], _: f32, _: f32) {}
             fn push_clip(&mut self, _: [f32; 4]) {}
             fn pop_clip(&mut self) {}
-            fn path(&mut self, _: &[lumen_static::display::PathEl], _: lumen_static::display::Affine, _: lumen_static::display::PathPaint) {}
+            fn path(&mut self, _: &[fulgurite::display::PathEl], _: fulgurite::display::Affine, _: fulgurite::display::PathPaint) {}
         }
         let mut ret: Streaming<4096> = Streaming::default();
         bench("streaming: NO list + Streaming<4096>", 20_000, || {

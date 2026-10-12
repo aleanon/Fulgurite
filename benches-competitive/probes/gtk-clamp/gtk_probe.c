@@ -29,6 +29,6 @@ static void on_activate(GtkApplication *app, gpointer _u){ (void)_u;
     g_application_quit(G_APPLICATION(app));
 }
 int main(int argc, char**argv){ if(argc>1) N=atoi(argv[1]);
-    GtkApplication *app = gtk_application_new("dev.lumenstatic.probe", G_APPLICATION_DEFAULT_FLAGS);
+    GtkApplication *app = gtk_application_new("dev.fulgurite.probe", G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app,"activate",G_CALLBACK(on_activate),NULL);
     int r = g_application_run(G_APPLICATION(app),1,argv); g_object_unref(app); return r; }

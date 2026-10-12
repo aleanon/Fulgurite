@@ -123,7 +123,7 @@ def leg_shaping() -> str:
     """The mode the live window lays text out in: `Complex` when the
     process reports `shaping` (through the launcher, never a label this
     script sets), else `Basic`."""
-    feats = os.environ.get("LUMEN_LIVE_FEATURES", "").split(",")
+    feats = os.environ.get("FULGURITE_LIVE_FEATURES", "").split(",")
     return "Complex" if "shaping" in feats else "Basic"
 
 
@@ -174,7 +174,7 @@ def run_parity(c, pick, strategy: str, only: set[str] | None = None) -> tuple[li
         failures += 1
         out.append(f"  FAIL parity [{strategy}]: no entry compared -- {sorted(only or [])} named none")
     out.append(f"parity [{strategy}]: --demo stack {', '.join(sorted(modes)) or 'none run'}, "
-               f"leg {want_mode} (process features {os.environ.get('LUMEN_LIVE_FEATURES', '')!r})")
+               f"leg {want_mode} (process features {os.environ.get('FULGURITE_LIVE_FEATURES', '')!r})")
     out.append(f"parity [{strategy}]: {checked - (failures - unmatched)} of {checked} entries byte-identical "
                f"to a headless render with no agent; skipped (animated): {', '.join(skipped) or 'none'}; "
                f"--demo rendered another entry than the one picked: {unmatched} (bound 0)")

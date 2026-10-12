@@ -10,14 +10,14 @@ the book.
 |---|---|---|---|
 | **K1** | the firmwares' `.text` and `.rodata`, byte for byte, with the sheet authored by `include_lss!` against the hand-written one | **0 bytes** apart in all four firmwares | **holds** |
 | **K2** | `include_lss!` adds under 100 ms to a warm incremental build of the invoking crate, 8 runs a side under `just bench-lock` | tally **+9 ms**, showcase **+44 ms** (was +94 ms before the one-pass tree check) | **holds** |
-| **K3** | a release build without `reload` links no `lumen_static_lss` symbol | **0** symbols; **63** with `reload` | **holds** |
+| **K3** | a release build without `reload` links no `fulgurite_lss` symbol | **0** symbols; **63** with `reload` | **holds** |
 
 ## K1 — zero bytes
 
 `scripts/check_lss_parity.sh`, in `just firmware` (so `just test`). The
 firmwares are linked twice: `SHEET` as the hand-written slice in
 `fixtures/embedded/src/lib.rs`, and as `fixtures/embedded/src/sheet.lss`
-through `include_lss!` (`LUMEN_SHEET=lss`). Bytes of each section are
+through `include_lss!` (`FULGURITE_SHEET=lss`). Bytes of each section are
 compared, not sizes.
 
 | firmware | `.text` hand / lss | `.rodata` hand / lss | |
@@ -89,12 +89,12 @@ compiling rules a hand-written sheet compiles too.
 `scripts/check_lss_release.sh`, in `just release-window-shape`
 (`check-extra`). The tally — the first program that styles itself from a
 `.lss` — built in release twice, counting symbols whose demangled name
-contains `lumen_static_lss`:
+contains `fulgurite_lss`:
 
 | build | symbols | `.text` |
 |---|---:|---:|
 | release, no `reload` | **0** (bound 0) | 3,272,886 B |
-| release, `lumen-static-winit/reload` | 63 (bound > 0) | 3,398,102 B |
+| release, `fulgurite-winit/reload` | 63 (bound > 0) | 3,398,102 B |
 
 The reader is compiled into the shell unconditionally and reached only
 through `Program::live_lss`, which the window calls under its own
@@ -106,7 +106,7 @@ what the reader costs a window that links it.
 ## The pilot — the tally's frames
 
 `examples/counter-window/app.lss` replaces the hand-written
-`stylesheet_for`. `LUMEN_SHOT` at counts −3, 0 and 7, against shots taken
+`stylesheet_for`. `FULGURITE_SHOT` at counts −3, 0 and 7, against shots taken
 before the migration (686,415 B each):
 
 | count | debug window (file read live) | release window (compiled in) |

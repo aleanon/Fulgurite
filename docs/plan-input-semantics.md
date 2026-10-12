@@ -48,11 +48,11 @@ and prints the measured quantity beside its bound.*
 1. **Every input fix is checked against T29.6's narrowing.** Since
    M29/T29.6, a split application redraws only the nodes in the
    `Consumed` set, plus what its bindings write
-   (`crates/lumen-static-shell/src/lib.rs:1064-1071`). A widget that
+   (`crates/fulgurite-shell/src/lib.rs:1064-1071`). A widget that
    takes an event without being pushed into `Consumed` is a stale frame
    under the default. So every task that changes what consumes an event
    adds that action to the session in
-   `crates/lumen-static-shell/tests/handled_narrowing.rs`, whose oracle
+   `crates/fulgurite-shell/tests/handled_narrowing.rs`, whose oracle
    requires every frame to be byte-identical under `Everything` and
    `Boundaries`. **The review's prototype for R3-F1 (`11492f9`) is the
    example of what this rule catches:** it offers the arrow to the
@@ -60,13 +60,13 @@ and prints the measured quantity beside its bound.*
 2. **No new call site dispatches to `on_event` without pushing.** Where
    a fix needs a widget to see a key it does not see today, the fix
    routes the key into Pass 1 of `dispatch_at`
-   (`crates/lumen-static/src/pass.rs:716-755`), which already pushes,
+   (`crates/fulgurite/src/pass.rs:716-755`), which already pushes,
    rather than calling the widget from a new branch.
 3. **Every overlay change is checked against M33's controlled
    `Select`** (`5161612`). Whether a menu is open is the application's
    state, and a dismissal must reach the owner through `tell_owner` or
-   the next binding reopens it. `crates/lumen-static/tests/dismiss_click.rs`,
-   `crates/lumen-static/tests/select.rs` and `handled_narrowing.rs`'s
+   the next binding reopens it. `crates/fulgurite/tests/dismiss_click.rs`,
+   `crates/fulgurite/tests/select.rs` and `handled_narrowing.rs`'s
    two-select step run in every overlay task's gate.
 4. **Assert that the action landed**, not only that the result matches:
    `handled`, the node the probe hit, a count that moved. Two of the
@@ -128,7 +128,7 @@ case: a release after a press that dismissed an overlay.
   `Consumed`, so it is marked and re-laid-out while invisible; that is
   more work but no new harm.
 - **Touch reaches no widget (R15-F4).** `Event::Touch` is translated
-  one to one from winit (`crates/lumen-static-winit/src/translate.rs:143-149`),
+  one to one from winit (`crates/fulgurite-winit/src/translate.rs:143-149`),
   and nothing in `pass.rs` or the shell promotes the primary touch to
   pointer events. No stock widget handles `Event::Touch`, so a tap on a
   Wayland touchscreen activates nothing (R15-F4). `docs/mobile-decision.md`
@@ -137,7 +137,7 @@ case: a release after a press that dismissed an overlay.
 ### 1.4 Intake: the queue refuses silently, and every event sweeps (R3-F2, R3-F11, R3-F12)
 
 - **Overflow (R3-F2).** `Host::post` is `self.queue.push(ev);` with the
-  refusal discarded (`crates/lumen-static-shell/src/lib.rs:731-733`).
+  refusal discarded (`crates/fulgurite-shell/src/lib.rs:731-733`).
   Nothing outside `event.rs` reads `InputQueue::dropped`. The winit
   shell posts every `CursorMoved` without merging. So more than 64
   events between redraws loses the tail, and when the tail holds a
@@ -148,9 +148,9 @@ case: a release after a press that dismissed an overlay.
   probes at `1717808` with the same results.
 - **Stale comments (R3-F11).** `pass.rs:506-508` says Shift+Tab is not
   implemented, directly above its implementation. The agent's
-  `input.type` comment (`crates/lumen-static-agent/src/lib.rs:724-726`)
+  `input.type` comment (`crates/fulgurite-agent/src/lib.rs:724-726`)
   says the queue has no cap. `InputQueue`'s generic `Extend` impl
-  (`crates/lumen-static/src/event.rs:970-972`) cites
+  (`crates/fulgurite/src/event.rs:970-972`) cites
   `InputQueue::<64>::CAP`. **This plan found a fourth at `1717808`:**
   the activation comment at `pass.rs:765-772` says Space does not
   activate because `Key` has no variant for it. `Key::Space` exists and
@@ -166,7 +166,7 @@ case: a release after a press that dismissed an overlay.
 ### 1.5 Rows the pass reaches wrongly (R3-F5, R3-F10, R15-F7)
 
 - **Ring slot (R3-F5).** `Repeat`'s window is a ring: position `k` lives
-  in slot `(first + k) % len` (`crates/lumen-static/src/repeat.rs:143`).
+  in slot `(first + k) % len` (`crates/fulgurite/src/repeat.rs:143`).
   `hit` and `paint` use the slot. `Handlers::handler`
   (`repeat.rs:651-656`) indexes the window by position, so once the
   ring has rotated, a bind that gives rows different handlers routes a
@@ -178,7 +178,7 @@ case: a release after a press that dismissed an overlay.
   and the failure is overlapping rows whose probe disagrees with paint,
   not gaps (R3-F10). The agent's audit lint is the only guard.
 - **Cursor (R15-F7).** `Host::cursor` walks only the main table's
-  hovered bits (`crates/lumen-static-shell/src/lib.rs:1378-1386`). A
+  hovered bits (`crates/fulgurite-shell/src/lib.rs:1378-1386`). A
   `Button` in a `Repeat` row reads as `Default`, which is the exact case
   `docs/plan-desktop.md` T14.6 names.
 
@@ -191,13 +191,13 @@ case: a release after a press that dismissed an overlay.
   focus (`:268-277`) or, on a modal whose panel closed, leaves it on a
   button that now has no area, which the next event's C5 check clears.
   Focus never returns to the trigger. M33/T33.3 added the passive-overlay
-  idea (`Node::dismissal_consumes_press`, `crates/lumen-static/src/widget.rs:199-211`)
+  idea (`Node::dismissal_consumes_press`, `crates/fulgurite/src/widget.rs:199-211`)
   for the press path only.
 - **Stacking is untested (R18-F7).** Two mutants survive the whole
   suite at `1717808`: Escape closing the bottom overlay instead of the
   top (`pass.rs:269`), and the overlay hit loop running bottom-first
   (the `.rev()` at `:329`). The test named `escape_closes_the_topmost`
-  (`crates/lumen-static/tests/overlay.rs:266`) builds one overlay. Two
+  (`crates/fulgurite/tests/overlay.rs:266`) builds one overlay. Two
   tests added since the review (`dismiss_click.rs`, `handled_narrowing.rs`)
   close two selects with one press, but their overlays do not overlap
   and nothing presses Escape with two open.
@@ -236,7 +236,7 @@ The method is asked of `node(i)` at the focused index, which resolves to
 the widget that owns that index. That makes it a leaf's answer, like
 `dismissal_consumes_press`, and a wrapper does not forward it. The one
 trap is a composite whose `node_mut` returns itself for its inner
-field's index. `NumberInput` does exactly that (`crates/lumen-static-widgets/src/field.rs:275`),
+field's index. `NumberInput` does exactly that (`crates/fulgurite-widgets/src/field.rs:275`),
 so `NumberInput` itself must answer `true`. T44.1's gate includes it
 for that reason.
 
@@ -255,7 +255,7 @@ The re-triage proposed latching the press target together with the
 row's `%k` key from M24/T24.4, and comparing keys on release, so that
 removing a row mid-gesture cancels the click. **At `1717808` `%k` is not
 an identity.** It is the agent selector for the *k*-th row
-(`crates/lumen-static-agent/src/lib.rs:1633-1647`), a positional
+(`crates/fulgurite-agent/src/lib.rs:1633-1647`), a positional
 index. `Repeat` has no item identity at all: `bind` is
 `fn(&mut T, usize)` and never sees the application's data. So comparing
 `%k` is comparing row indices, and the "item 105 becomes item 106" case
@@ -300,7 +300,7 @@ and false for `Popup`, rather than reusing `dismissal_consumes_press`,
 which answers a different question (whether the dismissing click is
 eaten). **This plan agrees on the separate hook, but `Popup` cannot
 answer `false` unconditionally.** At `1717808`
-`crates/lumen-static/tests/overlay.rs`'s `focus_trap` module builds its
+`crates/fulgurite/tests/overlay.rs`'s `focus_trap` module builds its
 modal as a `Popup<Dialog>`, and `tab_cycles_inside_the_modal_and_never_leaves`
 relies on the trap. `Popup` is the general overlay primitive (a menu, a
 tooltip and that test's dialog are all `Popup`s).
@@ -335,7 +335,7 @@ before the capture block, so capture survives it.
 
 - **A. A new event, `PointerCancel { x, y }`**, delivered to the capture
   holder like a release, activating nothing. `Event` stays 16 bytes,
-  which `crates/lumen-static/tests/modifiers.rs` asserts.
+  which `crates/fulgurite/tests/modifiers.rs` asserts.
 - **B. The host resets capture and pressed state directly.** No new
   vocabulary, but a widget that keeps drag state of its own never learns
   the gesture ended.
@@ -367,7 +367,7 @@ marked expected-to-fail until its task lands, as M35/T35.0 did, with
 its red output in the commit body. Where a finding cannot be red
 (R18-F7, R3-F11) the commit says so and shows the injection instead.
 
-1. `crates/lumen-static/tests/arrow_ownership.rs`. Through
+1. `crates/fulgurite/tests/arrow_ownership.rs`. Through
    `pass::dispatch` and through `Host`, for an unsplit and a split
    application: `row { TextInput "abc", Button }`, End, **one** Left:
    focus unchanged and caret 2. `NumberInput` beside a `Button`: End,
@@ -376,11 +376,11 @@ its red output in the commit body. Where a finding cannot be red
    (R10-F3's shape): Left in the first field, and Up in the `TextArea`
    on line 0, keep focus. Each prints `(focus, caret)` beside the
    expected pair. **Red today** with focus on the sibling.
-2. In `crates/lumen-static/tests/focus.rs`: a row of 20 `Button`s. Right
+2. In `crates/fulgurite/tests/focus.rs`: a row of 20 `Button`s. Right
    ×20 visits 20 distinct members and returns to the start, and Right
    from member 18 moves to 19. Prints `visited N / 20`. **Red today:**
    16, and a dead key on member 18 (R3-F9).
-3. `crates/lumen-static/tests/activation.rs` (R3-F3). Press `#save`,
+3. `crates/fulgurite/tests/activation.rs` (R3-F3). Press `#save`,
    release on `#other`: nothing fires. Press row 1, release on row 7:
    nothing picked. Press row 5, remove row 4 through `App::apply`,
    relayout, release at the same point: nothing picked. A control press
@@ -388,49 +388,49 @@ its red output in the commit body. Where a finding cannot be red
    press hit the intended node, and prints the latched
    `(node, row, generation)` beside the release's. **Red today** in all
    three cases.
-4. `crates/lumen-static/tests/capture.rs` (R3-F4). `column { Either<Slider, Label> }`.
+4. `crates/fulgurite/tests/capture.rs` (R3-F4). `column { Either<Slider, Label> }`.
    The press captures, the switch hides the slider (its size is asserted
    0 as setup), and a move of +80 must leave the value unchanged and
    capture `None`. **Red today:** value 0.1 → 0.9.
-5. `crates/lumen-static-shell/tests/touch_as_pointer.rs` (R15-F4), from
+5. `crates/fulgurite-shell/tests/touch_as_pointer.rs` (R15-F4), from
    the review's `r15_touch_only` fixture (probe `85ad947`): a `Button`,
    a `CheckBox` and a `Slider`, each tapped by touch Begin/End at its
    centre. Prints `touch actions handled: N / 3 (pointer: 3 / 3)`.
    **Red today:** 0 / 3.
-6. `crates/lumen-static-shell/tests/input_overflow.rs` (R3-F2). Press a
+6. `crates/fulgurite-shell/tests/input_overflow.rs` (R3-F2). Press a
    slider, post 200 moves and an Up without pumping, pump once: capture
    and pressed must be `None`, and a later unpressed move must not
    change the value. Prints queue length and dropped count beside `CAP`.
-   And in `crates/lumen-static-agent/tests/input.rs`: `input.type` of
+   And in `crates/fulgurite-agent/tests/input.rs`: `input.type` of
    100 characters leaves 100 in the field and the reply says 100;
    `input.fill` of 40 over 40 succeeds. **Red today:** capture stranded,
    and 64 of 100.
-7. A write-counting test for R3-F12, in `crates/lumen-static/tests/hover.rs`:
+7. A write-counting test for R3-F12, in `crates/fulgurite/tests/hover.rs`:
    a test-only counter of `NodeState` writes per dispatched
    `PointerMove`, on a 1,685-node table, bounded at 4 and printed beside
    the node count. **Red today:** twice the node count.
-8. In `crates/lumen-static/tests/events.rs`, beside `bind_row` (R3-F5):
+8. In `crates/fulgurite/tests/events.rs`, beside `bind_row` (R3-F5):
    count 100, extent 20, scrolled so the ring has rotated (asserted as
    setup). The bind gives even and odd rows different handlers; ten
    clicks print `misrouted N of 10`. **Red today:** 5 of 10. The
    unrotated arm is green.
-9. In `crates/lumen-static/tests/scroll_view.rs` (R3-F10): count 50
+9. In `crates/fulgurite/tests/scroll_view.rs` (R3-F10): count 50
    million, extent 20. In debug, `#[should_panic]` naming the ceiling.
    In release, zero probe/paint disagreements at maximum scroll,
    printing the count and the worst offset beside 0. **Red today:** no
    panic, and 14 of 20 disagree.
-10. `crates/lumen-static-shell/tests/cursor_rows.rs` (R15-F7), from probe
+10. `crates/fulgurite-shell/tests/cursor_rows.rs` (R15-F7), from probe
     `07eb009`: a table `Button` and a `Repeat` of rows holding a
     `Button`, plus a row holding a `Label`. Asserts the probe's hit
     (printed, with `inner.row`), then the cursor over each, printing
     `table=Pointer row=Pointer label-row=Default`. **Red today:** the
     row reads `Default`.
-11. `crates/lumen-static-shell/tests/overlay_focus.rs` (R3-F7). A tooltip
+11. `crates/fulgurite-shell/tests/overlay_focus.rs` (R3-F7). A tooltip
     open (asserted as setup): Tab moves focus to the next control, the
     same as with no tooltip. A modal opened by Enter: Tab cycles inside
     it, and Escape returns focus to the trigger, printed beside the
     trigger's index. **Red today:** `None`, and the panel's button.
-12. `crates/lumen-static/tests/overlay_stack.rs` (R18-F7). Two overlays
+12. `crates/fulgurite/tests/overlay_stack.rs` (R18-F7). Two overlays
     with overlapping rects, opened A then B, with the overlap rect
     printed and asserted non-empty. Escape closes B only, and the
     consumed set is `{B}`. A press in the overlap reaches B's handler
@@ -441,7 +441,7 @@ its red output in the commit body. Where a finding cannot be red
     `.rev()`) and the `.rev()` at `pass.rs:378`, each run in the commit
     and each red by name. **This closes R18-F7**, and it lands first on
     purpose: T44.9 edits the code these tests protect.
-13. In `crates/lumen-static/tests/select.rs` (R3-F6): Tab, Enter (open,
+13. In `crates/fulgurite/tests/select.rs` (R3-F6): Tab, Enter (open,
     asserted), Down, Down, Enter picks row 1 and closes the menu; Tab
     while open keeps focus inside the menu. **Red today:** nothing
     picked, and focus `None`.
@@ -563,7 +563,7 @@ capture).
 
 **Change.** Per §2.4 A. `Event` gains `PointerCancel`. In `Host::pump`'s
 intake, before dispatch: the raw `Event::Touch` is dispatched first, as
-today, so recognisers in `crates/lumen-static/src/gesture.rs` keep
+today, so recognisers in `crates/fulgurite/src/gesture.rs` keep
 their stream. Then the first touch id becomes the primary. Its `Begin`
 synthesises a move and a left-button press at its point; its `Move`
 synthesises a move; its `End` a release; its `Cancel` a
@@ -581,7 +581,7 @@ does not click. A `handled_narrowing.rs` step taps a button by touch.
 **Injection.** (a) Remove the promotion: 0 / 3. (b) Map `Cancel` to a
 release: the cancel case fires with one press. (c) Promote every id: the
 two-finger case fires twice. **Accepts good input:** the pointer arm of
-the same fixture stays 3 / 3, and `crates/lumen-static/tests/gesture.rs`
+the same fixture stays 3 / 3, and `crates/fulgurite/tests/gesture.rs`
 still sees its raw `Touch` stream.
 
 **Docs in the same commit.** `Event::Touch`'s and the new variant's
@@ -637,7 +637,7 @@ re-seeded (a reload, or a structural change), which is the only case
 `set_hovered`'s rustdoc gives for it.
 
 **Gate.** T44.0 item 7 goes green: at most 4 writes per move, printed
-beside the node count. `crates/lumen-static-shell/tests/invalidation_oracle.rs`'s
+beside the node count. `crates/fulgurite-shell/tests/invalidation_oracle.rs`'s
 hover session stays green (no stale hover bit). The clock is a
 **record, not a gate** (M35's rule 3): a bench arm at 2 and 1,685 nodes,
 eight runs a side under the bench lock, recorded in a new section of
@@ -662,7 +662,7 @@ the sweep. The results section.
 > R3-F5 half was fixed independently by M56's `af902b9` on
 > `m56-showcase-design`, which was not merged when this plan was
 > written. That commit maps `Handlers::handler` through `slot` and adds
-> `crates/lumen-static/tests/repeat_handler.rs`: 40 rows whose handlers
+> `crates/fulgurite/tests/repeat_handler.rs`: 40 rows whose handlers
 > differ by parity, scrolled one row. Its recorded injection gave "10 of
 > 11 rows answered by another row's handler". Once it is on `main`, this
 > task's R3-F5 half is to check that the gate catches **this** finding's
@@ -692,7 +692,7 @@ Remove the clamp: the release test reports 14 of 20.
 **Docs in the same commit.** `Handlers::handler`'s rustdoc on `Repeat`
 (the ring slot). `Repeat::MAX_ADDRESSABLE_EXTENT`'s rustdoc.
 `docs/step3-repeaters.md` if it states the behaviour. The agent's
-audit lint comment (`crates/lumen-static-agent/src/audit.rs`).
+audit lint comment (`crates/fulgurite-agent/src/audit.rs`).
 
 **Effort:** S. **Depends on:** T44.0 only. **The ring half may land
 before Phase 3**: it is one line, it routes to a handler that already
@@ -796,9 +796,9 @@ the chosen row printed beside the expected one.
 **Injection.** Make `Repeat` ignore Down: nothing is picked. Make Enter
 on the active row leave `ctx.row` unset: the test's row handler
 panics by name on its `expect("a row index arrives from hit testing")`
-(`crates/lumen-static/tests/select.rs:69`). **Accepts good input:**
+(`crates/fulgurite/tests/select.rs:69`). **Accepts good input:**
 `select.rs`'s pointer choose path stays green, and so does
-`crates/lumen-static-widgets/tests/focus_overlay.rs`.
+`crates/fulgurite-widgets/tests/focus_overlay.rs`.
 
 **Docs in the same commit.** `docs/plan-capabilities.md` T15.6
 (keyboard scope). `docs/plan-widget-parity.md`'s action inventories,
@@ -896,7 +896,7 @@ records the case that forced it.
   first with T44.1 straight after them, and the other items landed as a
   second T44.0 commit. Every item is still committed red before its
   fix. Item 1's `Host` legs live in
-  `crates/lumen-static-shell/tests/arrow_ownership_host.rs`, because
+  `crates/fulgurite-shell/tests/arrow_ownership_host.rs`, because
   core's tests cannot depend on the shell.
 - **T44.1's injection (c) was green on the first gate.** A caret move
   repaints correctly with no mark at all, because `paint` reads the

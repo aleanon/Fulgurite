@@ -38,9 +38,9 @@ if backend == "gpu":
     # Setup landed: the window really is on the GPU. No adapter is a
     # supported configuration and a skip, as `just gpu-parity` has it.
     gpu_log = open("target/live/tasks-drive-gpu.log", errors="replace").read()
-    started = [l for l in gpu_log.splitlines() if l.startswith("lumen-static: ") and "(" in l]
+    started = [l for l in gpu_log.splitlines() if l.startswith("fulgurite: ") and "(" in l]
     print(f"  ..  startup line {started[:1]} (must name 'gpu (')")
-    if not any(l.startswith("lumen-static: gpu (") for l in started):
+    if not any(l.startswith("fulgurite: gpu (") for l in started):
         print("tasks-drive[gpu]: no adapter on this machine -- skipped (77)")
         sys.exit(77)
 
@@ -50,10 +50,10 @@ if backend == "gpu":
 # on `#spawn-one`; step 1 below is the ordinary click that must move it.
 here = os.path.dirname(os.path.abspath(__file__))
 replay = [sys.executable, os.path.join(here, "browser_replay.py"), f"127.0.0.1:{port}",
-          os.path.join(here, "..", "crates/lumen-static-agent/tests/browser/firefox156-fetch-no-cors.bin"),
+          os.path.join(here, "..", "crates/fulgurite-agent/tests/browser/firefox156-fetch-no-cors.bin"),
           "#counts"]
-if os.environ.get("LUMEN_TASKS_PID"):
-    replay += ["--pid", os.environ["LUMEN_TASKS_PID"]]
+if os.environ.get("FULGURITE_TASKS_PID"):
+    replay += ["--pid", os.environ["FULGURITE_TASKS_PID"]]
 if backend == "software" and subprocess.call(replay) != 0:
     sys.exit(f"tasks-drive[{strategy}]: a browser's request reached the application")
 
@@ -298,7 +298,7 @@ def xclip_read(selection):
 
 
 # What tasks-demo's `#copy-html` writes (COPY_HTML in its main.rs).
-COPY_HTML = "<p>caf\u00e9 <b>&amp;</b> <i>lumen</i></p>"
+COPY_HTML = "<p>caf\u00e9 <b>&amp;</b> <i>fulgurite</i></p>"
 
 
 def clipboard_phase():

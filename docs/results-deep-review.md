@@ -17,7 +17,7 @@ object store.*
 
 **The stale lock.** R6's `cargo tree` rewrote
 `benches-competitive/Cargo.lock` (+12 lines, adding
-`lumen-static-widgets`), because the committed lock has been stale since
+`fulgurite-widgets`), because the committed lock has been stale since
 M30 (R6-F6, R17-F12). The rewrite was reverted before this document was
 committed. Any `cargo` run in that workspace repeats it until R17-F12's
 fix lands.
@@ -201,7 +201,7 @@ from the author's; medium where the verdict is PLAUSIBLE.
 
 - **Severity** S1 · **Category** doc-drift · **Goal** (4) · **Verdict** CONFIRMED ×2 (S1, S1)
 - **Claim:** handoff §10 Step 4 "DONE 2026-08-30 ... Live dylib swap demo passes the full §7 sequence"; §1 "supports hot reload during development"; `book/src/first-tree.md:98-99`, `:104-105`; `book/src/agent.md:94-96`; `book/src/component-boundary.md:41-42`.
-- **Premise:** held. The only dlopen is `fixtures/hot-host` (headless, no Host, no window); the only cdylib is `fixtures/hot-app`; `lumen-static-winit` has no `reload` feature; nothing calls `Host::reload`.
+- **Premise:** held. The only dlopen is `fixtures/hot-host` (headless, no Host, no window); the only cdylib is `fixtures/hot-app`; `fulgurite-winit` has no `reload` feature; nothing calls `Host::reload`.
 - **Evidence:** by `cargo metadata` target list and the inverse dependency graph (verifier), not grep alone. `plan-panic-recovery.md:13-18` already says "Nothing in the workspace calls Host::reload". Missing (M37 §1–§2): build step or watcher, a loader in winit or shell, an example cdylib, the Host in the library, a list-taking present, agent forwarding, failure display.
 - **Injection:** n/a (absence).
 - **Repro:** read at `ac91d51`.
@@ -269,10 +269,10 @@ from the author's; medium where the verdict is PLAUSIBLE.
 - **Fix and owner:** width from pen plus advance in `measure_run`, `place_run`, `shape_into`; a containment gate pairing FontMetrics with Canvas at fractional scales. **M45**.
 - **Confidence:** high. The reproducer used DisplayList+Canvas with no Host and a different corpus (234/520 failures, all ending in 'j'); the skeptic confirmed from fontdue's source that it wraps on ceiled pen advances.
 
-#### R10-F2 — `lumen-static-text` (T15.8) shapes only the measurement: Arabic is painted unjoined and left to right
+#### R10-F2 — `fulgurite-text` (T15.8) shapes only the measurement: Arabic is painted unjoined and left to right
 
 - **Severity** S1 · **Category** perf-claim (capability claim) · **Goal** (1), (2) · **Verdict** CONFIRMED + PLAUSIBLE (both S1)
-- **Claim:** `plan-capabilities.md` T15.8 gate "an Arabic string measures and paints right-to-left"; `book/src/text.md:31`; `lumen-static-text/src/lib.rs:25` "this changes where the glyphs go, not how they are drawn".
+- **Claim:** `plan-capabilities.md` T15.8 gate "an Arabic string measures and paints right-to-left"; `book/src/text.md:31`; `fulgurite-text/src/lib.rs:25` "this changes where the glyphs go, not how they are drawn".
 - **Premise:** held; also, no turnkey window can install `ComplexText` at all (`Config`/`Program` have no measurer seam, `lib.rs:312`).
 - **Evidence:** "مرحبا": ComplexText 37×18.6, FontMetrics 51×19, unconstrained ink 47 wide. Painted in the 37 px box the run wraps: ink 29 px tall against an 18.6 px box. Pixel hash equals the isolated presentation forms U+FEE1… (`911a29388d32e60a` both); fontdue places م at x=1 and ا at x=46. "abc אבג def": measured 92 against ink 96, wraps to 31 px tall. `TextInput::x_of` assumes monotone byte order, so every caret offset but the end maps to x=0 for visual-order clusters (read).
 - **Injection:** `44fac1a` (bidi reorder deleted) turns only `a_mixed_line_produces_runs_in_both_directions` red; see R10-F11.
@@ -422,7 +422,7 @@ the section readable.
 #### R4-F3 — T28.7's cross-swap chain gate exercises no framework code
 - **S2** · vacuous-gate · (4), (1) · CONFIRMED (S2)
 - **Claim:** `plan-tasks.md` T28.7 "the inbox, the epoch and the pending descriptor live in `hot-host`"; `events-decision.md`/`results-tasks.md` "demonstrated rather than argued".
-- **Evidence (premise false: the finding):** no `epoch`/`inbox` in `hot-host`; `nm -C` finds 0 `lumen_static::(spawn|inbox)` symbols in `libhot_app_v2.so` and in hot-host; the chain calls the fixture's own `hot_step`.
+- **Evidence (premise false: the finding):** no `epoch`/`inbox` in `hot-host`; `nm -C` finds 0 `fulgurite::(spawn|inbox)` symbols in `libhot_app_v2.so` and in hot-host; the chain calls the fixture's own `hot_step`.
 - **Injection:** `79e7c7c` (`Descriptor::at` ignores its step): demo PASS, "5 -> 5000".
 - **Repro / scope:** `79e7c7c`; M28's rule-3 evidence.
 - **Fix and owner:** a real Inbox and Spawner across a swap with a framework-side injection. **M49** / M37.
@@ -431,7 +431,7 @@ the section readable.
 #### R4-F4 — `check_no_unsafe.sh` can be bypassed three ways
 - **S2** · vacuous-gate · safety of the core · CONFIRMED (S2)
 - **Claim:** `check_no_unsafe.sh:28-29` "it cannot hide a real `unsafe` token outside a string literal".
-- **Evidence:** `dea0bb6` plants `"a//b"; unsafe {..}` on one line, a `#[path]` module outside `src`, and a `build.rs`-generated `include!`. Gate exit 0; `cargo build --release -p lumen-static` succeeds; a plain unsafe is refused. Only `lumen-static-widgets` had `forbid(unsafe_code)`.
+- **Evidence:** `dea0bb6` plants `"a//b"; unsafe {..}` on one line, a `#[path]` module outside `src`, and a `build.rs`-generated `include!`. Gate exit 0; `cargo build --release -p fulgurite` succeeds; a plain unsafe is refused. Only `fulgurite-widgets` had `forbid(unsafe_code)`.
 - **Injection:** fix `54d3d79` (string-aware strip) refuses 1 of 3; `c275587` (`forbid(unsafe_code)` on 7 crates) refuses 3 of 3 and accepts the current tree.
 - **Repro / scope:** `dea0bb6`; the M0 "no unsafe" claim.
 - **Fix and owner:** both fixes; forbid is the gate. **M43**. Same mechanism as R17-F2.
@@ -694,7 +694,7 @@ the section readable.
 #### R12-F1 — `just release-shape` compiles core with `observe` on in its test and clippy steps
 - **S2** · vacuous-gate · (2) · CONFIRMED (S2)
 - **Claim:** `justfile:30-31` "This is the ONLY build that compiles what docs/verification-notes.md scopes its argument to".
-- **Evidence:** the `lumen_static` lib rustc line under `cargo test -p lumen-static` carries `observe` and `std`, even with `--no-default-features`; cause `Cargo.toml:52` dev-dep on widgets[observe].
+- **Evidence:** the `fulgurite` lib rustc line under `cargo test -p fulgurite` carries `observe` and `std`, even with `--no-default-features`; cause `Cargo.toml:52` dev-dep on widgets[observe].
 - **Injection:** `520ed2e` (`compile_error!` under observe): test and clippy red; build, miri-smoke, const-budget green. Reverted `759675e`.
 - **Fix and owner:** a separate test crate or a tripwire; correct `justfile:30`. **M43**. **Confidence:** high.
 
@@ -741,7 +741,7 @@ the section readable.
 - **Evidence:** a corrupted recording replays Ok with n=1 of 3; a mismatched stylesheet replays Ok; the exported test passes with `#does-not-exist`.
 - **Injection:** `580f9f6`. **Fix and owner:** Err on divergent replies; check the stylesheet; assert in `export_test`. **M48**. **Confidence:** high.
 
-#### R13-F7 — `cargo test -p lumen-static-agent` fails 19 tests
+#### R13-F7 — `cargo test -p fulgurite-agent` fails 19 tests
 - **S2** · config · (3)(2) · CONFIRMED (S2)
 - **Evidence:** `audit_is_inert` 0/3, `input` 14/19, `protocol` 6/9, `rows` 2/10; dev-dep lacks `observe`; with it all pass.
 - **Injection:** building the crate alone. **Fix and owner:** add the feature; a per-package step. **M43**. **Confidence:** high. (R3-F8 records the same fact at S3.)
@@ -754,7 +754,7 @@ the section readable.
 
 #### R14-F2 — A non-loopback bind is accepted silently
 - **S2** (adjusted from S1 by both verifiers) · security · (3) · CONFIRMED + PLAUSIBLE (S2, S2)
-- **Evidence:** `LUMEN_AGENT=0.0.0.0:7614`: LISTEN 0.0.0.0, the LAN address answered with the tree. Not tested from a second machine.
+- **Evidence:** `FULGURITE_AGENT=0.0.0.0:7614`: LISTEN 0.0.0.0, the LAN address answered with the tree. Not tested from a second machine.
 - **Injection:** n/a. **Fix and owner:** refuse without an override. **M39**. **Confidence:** high on the behaviour; every documented address is loopback, hence S2.
 
 #### R14-F3 — One idle client blocks every other; a line has no length cap
@@ -822,7 +822,7 @@ the section readable.
 #### R17-F6 — With no GPU adapter the parity gate reports 6/6 ok, and the skip notice is invisible
 - **S2** · vacuous-gate · (1) · CONFIRMED (S2)
 - **Evidence:** adapter removed: 6 ok in 0.01 s; the notice appears only with `--nocapture`. `parity.rs:65` "so a skipped test does not look like a passing one".
-- **Injection:** environmental. **Fix and owner:** LUMEN_REQUIRE_GPU. **M43**. **Confidence:** high.
+- **Injection:** environmental. **Fix and owner:** FULGURITE_REQUIRE_GPU. **M43**. **Confidence:** high.
 
 #### R17-F8 — The milestone-defining live gates are manual-only, and all five exit 0 without an X display
 - **S2** · vacuous-gate · (3) · CONFIRMED (S2)
@@ -873,7 +873,7 @@ failed it, the verdict, and the owner.
 | R2-F8 | S4 | doc-drift | `expand_enum`'s rustdoc says an enum contributes one table node | `macros lib.rs:1304` vs `:1356` (F4.3) | CONFIRMED | doc pass |
 | R2-F9 | S4 | correctness | `Assembled` truncates `child_count` to u16 and is never checked | `concat_table(70000)` → child_count 4464, wf=false (`f7d5def`) | CONFIRMED | M46 |
 | R2-F10 | S4 | doc-drift | `MeasureKey` compares limits with f32 `PartialEq`, so NaN limits always miss | 5 layouts, 5 measurer calls (`3cc8149`) | CONFIRMED | M45 |
-| R3-F8 | S3 (from S2) | vacuous-gate | 19 agent tests pass only through workspace feature unification | `-p lumen-static-agent`: 19 red; `30a1b0f` adds observe → green | PLAUSIBLE: tests are real in every gate that runs; see R13-F7 | M43 |
+| R3-F8 | S3 (from S2) | vacuous-gate | 19 agent tests pass only through workspace feature unification | `-p fulgurite-agent`: 19 red; `30a1b0f` adds observe → green | PLAUSIBLE: tests are real in every gate that runs; see R13-F7 | M43 |
 | R3-F9 | S3 | a11y | Arrow groups larger than 16: members 17+ unreachable and a dead key | 16 of 20 visited; `heapless_vec::Small` CAP=16 | CONFIRMED | M44 |
 | R3-F10 | S3 | doc-drift | Past the addressable ceiling rows overlap and probe disagrees with paint; no debug_assert exists | 50M×20 px: 14/20 rows probe elsewhere, up to 72 px | CONFIRMED | M44 |
 | R3-F11 | S4 | doc-drift | Shift+Tab "not implemented" above its implementation; "the queue has no cap" | `pass.rs:419-430`; agent `lib.rs:702` | CONFIRMED | M44 |
@@ -881,7 +881,7 @@ failed it, the verdict, and the owner.
 | R4-F5 | S3 | safety | The loader destroys v1 before checking v2 | missing `hot_step` → exit 101 after `hot_drop`; v2 panics → SIGABRT 134; `d2b71c9` ABI swap → SIGSEGV 139 | CONFIRMED | M49/M36 |
 | R4-F6 | S3 | safety | `hot_restore(p, null, 0)` is UB | debug abort on `from_raw_parts` precondition; release returns 1; miri transcription flags it | CONFIRMED | M49 |
 | R4-F7 | S3 | doc-drift | "Swap the dylib, and the identity survives" fails for a shape change | `#check` node 4/6 (v1, v2) → 2/7 (v3), `3e4e032` | CONFIRMED | M37 docs |
-| R4-F8 | S3 | vacuous-gate | CI miri job cannot reach the only unsafe code | miri-smoke does not depend on `lumen-static-reload` | CONFIRMED | M49 |
+| R4-F8 | S3 | vacuous-gate | CI miri job cannot reach the only unsafe code | miri-smoke does not depend on `fulgurite-reload` | CONFIRMED | M49 |
 | R5-F1 | S3 (from S2) | correctness | A reload keeps code-authored values (Button label, Label text, Repeat count/extent), 0 log lines | `204955c`: count 18 vs 19, label "Save" vs "Submit" | PLAUSIBLE: `#[reload(fresh)]` exists and is documented; a DX gap | M49 |
 | R5-F3 | S3 | correctness | Option-typed keep fields restore None over the fresh value on NaN or save failure | `79b0c1f`: Some(NaN)→None, 0 restore log lines | CONFIRMED | M49 |
 | R5-F4 | S3 | doc-drift | A kept struct that gains a field loses all old subfields | Settings{a:7,b} → {0,"",false}, 1 log line | CONFIRMED | M49 |
@@ -914,11 +914,11 @@ failed it, the verdict, and the owner.
 | R10-F15 | S3 | correctness | NumberInput refuses IME composition | Preedit and Commit accepted false | CONFIRMED | M45 |
 | R11-F6 | S3 | vacuous-gate | `check_text.sh`/`check_bss.sh` read `./target` and pass a stale binary under CARGO_TARGET_DIR | static in paint: both exit 0 with the env var | CONFIRMED | M43 |
 | R12-F3 | S3 (from S2) | dx | `winit/agent` without `widgets/observe` reports every widget as GenericContainer, silently | `3635061` both directions | PLAUSIBLE: the seam is documented in `results-widget-crate.md` | M55 |
-| R12-F5 | S3 | config | `lumen-static-winit/boundaries` is non-additive: spelling `Everything` breaks under unification | E0308 in `r12_inval.rs` | CONFIRMED | M55 |
+| R12-F5 | S3 | config | `fulgurite-winit/boundaries` is non-additive: spelling `Everything` breaks under unification | E0308 in `r12_inval.rs` | CONFIRMED | M55 |
 | R12-F6 | S4 | doc-drift | `mobile-decision.md` says core `cargo check` for Android cannot complete; it completes | core, widgets, shell Finished; winit needs `android-native-activity`, fails with `clipboard`/`dialogs` | CONFIRMED | M54 |
 | R12-F7 | S4 | doc-drift | The widgets Cargo.toml features comment has lost its identifiers | `cat -A` shows "#  implies ," | CONFIRMED | doc pass |
 | R13-F9 | S3 | dx | `agent_client.py quit` reports success against windows with no `app.quit` | -32601 turned into `{"ok": true}` | CONFIRMED | M48 |
-| R13-F10 | S3 | dx | Launchers and clients read different env vars for the agent address | `LUMEN_AGENT` vs `LUMEN_AGENT_ADDR` across 6 sites | CONFIRMED | M48/M32 |
+| R13-F10 | S3 | dx | Launchers and clients read different env vars for the agent address | `FULGURITE_AGENT` vs `FULGURITE_AGENT_ADDR` across 6 sites | CONFIRMED | M48/M32 |
 | R13-F11 | S4 | doc-drift | Stale agent module and trait docs (in-process only, no input, no AgentHost impl, no scheduler) | `lib.rs:5-8, 24-25, 787, 1370` | CONFIRMED | M48 |
 | R14-F5 | S3 | safety | A panic in dispatch kills the whole application | `e00c288`: exit 101; 1,250 hostile requests found no real panic | CONFIRMED | M39 |
 | R14-F6 | S3 | correctness | A trailing `>` garbles error messages and amplifies the reply 15× on the UI thread | 10 MB → 150 MB, 3.45 s | CONFIRMED | M39 |
@@ -1368,7 +1368,7 @@ thing end to end.
 | `parity.rs` vs the atlas reset path (R9) | its only text fits a 64² atlas | injection | `70f4713`: green |
 | `clipboard.rs` `..._keeps_newlines` (R10) | input has no newline | injection | `ec07f29`: 8/8 |
 | `Host::compose` routing (R10) | tests call the inherent method | injection | `125aa35`: 352 green |
-| lumen-static-text RTL test (R10) | asserts what BlockMetrics satisfies | injection | `ca8547c`: green |
+| fulgurite-text RTL test (R10) | asserts what BlockMetrics satisfies | injection | `ca8547c`: green |
 | `check_text.sh` vs flt2dec (R11) | ceiling loose for a paint-only firmware | injection | `2189c21`: 48,720 / 65,536, exit 0 |
 | "f64 in the frame path: zero" (R11) | prose; nothing reads symbols | injection | `12e6d3d`: 6 symbols, all green |
 | fixture `STACK <= 4096` assert (R11) | computed from depth × 272, not the stack used | quantity + injection | `937885b`: 5,016 B measured, green |
@@ -1483,8 +1483,8 @@ of its tier (`static` in `just test`, `build` in `just check`, `slow` and
 | `golden.rs` | **nowhere** | always 0 tests under unification | yes only per crate. **M43/T43.9: runs alone in `dev-shape`; plants `build/golden-corrupt`, `build/golden-deleted`, `build/zero-tests`** |
 | `glass_oracle.rs`, `glass_*.rs` | `just test` | no | **no** for `MAX_DEPS` |
 | `svg.rs` | `just test` | no | **no** for StrokedRect, Glass |
-| `just gpu-parity` (live) | manual | skips without display, adapter, xwd | not run (llvmpipe only). **in `just live` since M43/T43.13; a missing display, adapter or `xwd` exits 77, refused unless LUMEN_ALLOW_SKIP=1** |
-| `lumen-static-text` `shaping.rs` | `just test` | skips silently without a face | partially: 1 of 6 red under two injections. **M43/T43.11: shapes the committed face; discovery refused without a face, plant `build/fonts-hidden`** |
+| `just gpu-parity` (live) | manual | skips without display, adapter, xwd | not run (llvmpipe only). **in `just live` since M43/T43.13; a missing display, adapter or `xwd` exits 77, refused unless FULGURITE_ALLOW_SKIP=1** |
+| `fulgurite-text` `shaping.rs` | `just test` | skips silently without a face | partially: 1 of 6 red under two injections. **M43/T43.11: shapes the committed face; discovery refused without a face, plant `build/fonts-hidden`** |
 | `clipboard.rs` | `just test` (BlockMetrics) | no | **no** for newlines |
 | `ime.rs` | `just test` | no | **no** for routing |
 | `baked_face.rs` | `just test` | skips without DejaVuSans | checks bytes, not wrap. **M43/T43.11: reads the committed face; no skip** |
@@ -1495,7 +1495,7 @@ of its tier (`static` in `just test`, `build` in `just check`, `slow` and
 | `just const-budget` | `just test` / CI | warm cache is a no-op | red only via rustc's lint; timer green on rerun. **M43/T43.5: yes, plants `slow/const-quadratic` (red on rerun), `slow/const-count-wid`** |
 | "f64 in the frame path: zero" | nowhere | n/a | cannot fail |
 | `just release-shape` | `just test`, CI | no | yes for `compile_error!` and widgets observe list; runs with observe on. **M43/T43.7: observe off; plant `build/observe-tripwire`** |
-| `just thumb` | `check-extra` | type-checks only | **no** for `fa64952`. **M43/T43.8: `bind_nostd.rs` under LUMEN_REQUIRE_NOSTD=1; plant `build/nostd-bind` (`fa64952`)** |
+| `just thumb` | `check-extra` | type-checks only | **no** for `fa64952`. **M43/T43.8: `bind_nostd.rs` under FULGURITE_REQUIRE_NOSTD=1; plant `build/nostd-bind` (`fa64952`)** |
 | `counter-window --drive2` | fixtures / live | one app | not re-run |
 | `protocol.rs` waitSettled | `just test` | no | red only by pinning a constant |
 | `changes.rs`/`hidden_subtree.rs`/`lint.rs`/`off_table_visibility.rs` | `just test` | no | yes: `2b21ded`, `1e1c180` |
@@ -1518,7 +1518,7 @@ of its tier (`static` in `just test`, `build` in `just check`, `slow` and
 | dev-shape `cargo test --workspace` | `just test`, CI | 15 font tests skip; golden 0 tests | 911/911 with and without fonts. **M43/T43.9, T43.11: zero-test binaries refused (`build/zero-tests`); fonts pinned (`build/fonts-hidden`)** |
 | `floats`, `simd`/`threads` (`check_banded`), `book`, fixtures | `check` / `test` | varies | not tested here |
 | `simd_shadow.rs` + clippy | `just simd` in `check` | no | **no**: I8 |
-| `live_gate.sh` | `check` with a display | skips without one | **no**: I6. **In `just live` (M43/T43.13): no display is a 77, refused unless LUMEN_ALLOW_SKIP=1** |
+| `live_gate.sh` | `check` with a display | skips without one | **no**: I6. **In `just live` (M43/T43.13): no display is a 77, refused unless FULGURITE_ALLOW_SKIP=1** |
 | compile_fail doctests (4) | `just test` | dropped under nextest alone | yes: I1a, I1c, I1d |
 | `cargo deny` / `cargo audit` | nowhere | n/a | run here: 0 vulnerabilities; 2 unmaintained (rustybuzz, ttf-parser); no license policy. **M43/T43.12: `just deny`, a `just ci` step; plant `static/deny-unaccepted`** |
 | shell debug-assertions off (profile) | all dev/test builds | n/a | turning them on found nothing |
@@ -1610,7 +1610,7 @@ probe `09f76e5`; injection `9879464`, reverted `1edde20`.
 duplicate of `25f360d`). One semantic conflict:
 `benches-competitive/arms/stages/src/main.rs:180`, E0046 missing
 `State`, `state_mut` — the impl T33.0 names, and no other is missed.
-`cargo check --workspace --all-targets --exclude lumen-static-wgpu`
+`cargo check --workspace --all-targets --exclude fulgurite-wgpu`
 exits 0; the four core crates with `widgets/observe` pass 872/0.
 `#[bind]`'s source path keeps compare-before-write: forcing
 `changed |= true` (`9879464`) turns `derive_app.rs:198` and the probe
@@ -1665,7 +1665,7 @@ its gate must turn red. Every SHA is a reviewer's scratch commit.
 | **M40** | Physical-space damage and edge snapping; a Host-level scale→memo test | — | R1-F1, R1-F8, R9-F5, R1-F7 | oracle at 1.5 and 2.0: reverting prints bbox [63,30,117,81], 2073 px; removing the snap brings back the 32 px row; d2 turns the memo test red |
 | **M41** | Boundaries completeness: mark on compose, on tick; a Repeat decision; probe overrides; table clauses; Host-level compose and mark tests; T34.1 redesign | M40 | R1-F2, R1-F3, R1-F4, R1-F5, R1-F6, R5-F6, R10-F9, R18-F6, R18-F8, R2-F5 | R1's oracle (`2feb332`) promoted: s16 72 px, s17 908 px, s24 912 px red on revert; probe override removal → x=8; mark-2 (`1cb070a`), I4a (`9a74944`), I3 (`3051257`) red |
 | **M42** | Drive-harness and live-gate integrity: strategy/features/pid in `app.diagnostics`; refuse a pre-bound port; pinned coverage + `pub use` check; skip = 77; live_gate exit codes; empty damage fails; Select, TextArea, ScrollView inventories | — | R18-F1, R18-F2, R18-F3, R18-F9, R17-F8, R13-F8, R18-F11 | I5a `1a1f478`, leftover `3d3333a`, I5b/I5c `9623a3e`, I6 `481773e`, `1beed32` red; DISPLAY removed exits nonzero under `check` |
-| **M43** | Static-gate and CI hygiene: `forbid(unsafe_code)`; per-package tests; agent dev-dep observe; release-shape without observe edge; no_std runtime crate; golden per crate; LUMEN_REQUIRE_GPU; pinned test face; thumb target; drift-check fixes; `--locked` | — | R17-F1, R9-F4, R17-F2, R4-F4, R17-F3, R17-F4, R17-F5, R17-F6, R17-F7, R17-F9, R11-F6, R17-F10, R17-F11, R17-F12, R6-F6, R17-F14, R17-F15, R17-F16, R3-F8, R13-F7, R12-F1, R12-F2, R12-F7 | `6881359` red where golden runs; `dea0bb6`, `6105909` fail to compile; `520ed2e` fails release-shape; `fa64952` red; adapter-less red under the flag; `--bin serde`, `ghostr17`, trailing-comment plants red |
+| **M43** | Static-gate and CI hygiene: `forbid(unsafe_code)`; per-package tests; agent dev-dep observe; release-shape without observe edge; no_std runtime crate; golden per crate; FULGURITE_REQUIRE_GPU; pinned test face; thumb target; drift-check fixes; `--locked` | — | R17-F1, R9-F4, R17-F2, R4-F4, R17-F3, R17-F4, R17-F5, R17-F6, R17-F7, R17-F9, R11-F6, R17-F10, R17-F11, R17-F12, R6-F6, R17-F14, R17-F15, R17-F16, R3-F8, R13-F7, R12-F1, R12-F2, R12-F7 | `6881359` red where golden runs; `dea0bb6`, `6105909` fail to compile; `520ed2e` fails release-shape; `fa64952` red; adapter-less red under the flag; `--bin serde`, `ghostr17`, trailing-comment plants red |
 | **M44** | Input semantics and keyboard reach: arrows to the widget first; `post` reports refusals, merges moves; press/release latch with row key; capture cleared on hidden; `slot(k)`; keyboard rows; modal-only trap with focus restore; touch promotion; cursor from the arena hit | M42 | R3-F1, R10-F3, R3-F2, R3-F3, R3-F4, R3-F5, R3-F6, R3-F7, R3-F9, R3-F10, R3-F11, R3-F12, R15-F4, R15-F7, R18-F7 | reverting `11492f9` reddens `r3_q3_*`; reverting `4c6bab6` gives 5/10; 65 events red, 64 green; `85ad947` 0/3; `7f47109`, `78e8e07` fail a two-overlay fixture |
 | **M45** | Text correctness: pen width; measurer + scale in memo keys; `paste_with`, newline as Enter; graphemes; multi-codepoint keys via compose; fallback faces; clipboard routing; word/line motion; NumberInput compose/selection; BakedFace wrap; shaped paint or measure-only; per-line runs; the `line_of` quadratic | M41 | R10-F1, R10-F2, R10-F4, R2-F1, R2-F6, R8-F4, R10-F5, R10-F6, R10-F7, R10-F8, R10-F10, R10-F11, R10-F12, R10-F13, R10-F14, R10-F15, R8-F3, R8-F5, R16-F7, R2-F10 | reverting `dcde5ef` returns the containment gate to 205/1200; `7e0b30d` control equals typed (169 vs 168); `ec07f29` fails a TextArea paste of "a\nb"; `ca8547c`, `44fac1a` fail a visual-order RTL assertion |
 | **M46** | Hash identity: nonlinear text fold in `Recording`, `FoldedText`, `hash_from`; duplicate-id refusal; `concat_table` bounds | — | R2-F2, R2-F3, R2-F4, R2-F7, R2-F8, R2-F9 | reverting `e8bbd21`/`1f78718`: 1440 stale px, stale width; `r2_dup` refuses |

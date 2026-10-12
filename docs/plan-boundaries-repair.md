@@ -109,10 +109,10 @@ and prints the measured quantity beside its bound.*
 ### 1.1 Writes the host makes that mark nothing (R1-F2 = R10-F9, WORSE, now S0; R1-F3's residue; I-NEW-2)
 
 **`Host::compose` never marks.** It calls `node_mut(i).compose(c)` and
-returns (`crates/lumen-static-shell/src/lib.rs:1356-1363`). The window
+returns (`crates/fulgurite-shell/src/lib.rs:1356-1363`). The window
 routes `Ime::Preedit`, `Ime::Commit` and `Ime::Disabled` to
-`Session::compose` (`crates/lumen-static-winit/src/lib.rs:742-744`,
-`crates/lumen-static-shell/src/session.rs:299-302`), and the redraw that
+`Session::compose` (`crates/fulgurite-winit/src/lib.rs:742-744`,
+`crates/fulgurite-shell/src/session.rs:299-302`), and the redraw that
 follows pumps an empty queue. So nothing marks the field, and under
 `Boundaries` its layout, which computes the scroll offset and the
 clusters, is skipped. **WORSE since 6116a8b**, which made
@@ -132,7 +132,7 @@ window uses.
 FIXED by 10b7362). `lib.rs:1327-1331` marks everything when a tick
 reports a change with a positive `dt`. A tick that writes the tree and
 returns `false`, or that writes on a zero `dt`, is still unmarked, and
-`App::tick`'s rustdoc (`crates/lumen-static/src/event.rs:938-963`) does
+`App::tick`'s rustdoc (`crates/fulgurite/src/event.rs:938-963`) does
 not say that either is forbidden. **Correction to the re-triage**: it
 says the window's first frame after an idle wait has a zero `dt`. The
 window resets `last_frame` only on a hot swap (`winit/src/lib.rs:458`),
@@ -169,11 +169,11 @@ wrong value.
   after `Host::invalidate`, was not re-run.
 - **The agent audit's probe writes a live `TextInput`** (R1-F5, S1). The
   provided `Node::probe` is `self.layout(..)`
-  (`crates/lumen-static/src/widget.rs:258-268`). `TextInput` and
+  (`crates/fulgurite/src/widget.rs:258-268`). `TextInput` and
   `TextArea` do not override it, and their `layout` writes `self.scroll`
-  from the limits it is given (`crates/lumen-static-widgets/src/input.rs:505-513`,
+  from the limits it is given (`crates/fulgurite-widgets/src/input.rs:505-513`,
   `textarea.rs:490-495`). The audit probes every leaf at 1e6 and 2e6 px
-  (`crates/lumen-static-agent/src/audit.rs:511-527`). **The re-triage's
+  (`crates/fulgurite-agent/src/audit.rs:511-527`). **The re-triage's
   numbers at 1717808**: under `Boundaries` with the agent, the scrolled
   field paints at x = −148 and then at x = 8 on the second unrelated
   hover. `Everything` with the agent, and `Boundaries` without it, stay
@@ -217,7 +217,7 @@ measured on repaired frames.
 **No test shows the oracle can fire** (I-NEW-1). The re-triage replaced
 the scratch layout with `scratch.clone_from(&self.states)`, so the
 oracle compared the states with themselves.
-`crates/lumen-static-shell/tests/shadow.rs` still printed "compared 5
+`crates/fulgurite-shell/tests/shadow.rs` still printed "compared 5
 frames, first divergence None" and passed. The file's header says it
 checks that the oracle names the node when a mark is wrong. Its one test
 asserts only `compared > 0` and `first.is_none()`. The positive case
@@ -227,7 +227,7 @@ the same two things.
 ### 1.4 Gates whose setup can silently fail (R18-F6, R18-F8, R2-F5, R5-F6)
 
 - **`Boundaries::mark` can shrink an earlier ancestor** (R18-F6, S2).
-  Deleting `e = e.max(re);` (`crates/lumen-static/src/invalidate.rs:282`)
+  Deleting `e = e.max(re);` (`crates/fulgurite/src/invalidate.rs:282`)
   passes the whole dev-shape suite at 1717808, including
   `--features shadow-oracle --test shadow`. **The re-triage keeps S2
   over the verifier's S3**, because this line now guards every window. A
@@ -235,12 +235,12 @@ the same two things.
   test that does not call `clear()` passes under the mutant.
 - **The invalidation oracle's headline tests do not check that their
   clicks land** (R18-F8, S3). `drive()` calls `host.click` at
-  `crates/lumen-static-shell/tests/invalidation_oracle.rs:178` and
+  `crates/fulgurite-shell/tests/invalidation_oracle.rs:178` and
   asserts nothing. `the_shipped_boundaries_256_produces_the_same_frames_too`
   (`:264`), the test the flip cites for the shipped type, inherits the
   gap.
 - **`table_is_well_formed` accepts tables whose `subtree_range` is
-  wrong** (R2-F5, S2). `crates/lumen-static/src/widget.rs:408` allows a
+  wrong** (R2-F5, S2). `crates/fulgurite/src/widget.rs:408` allows a
   last child's next sibling to "point at a later node" (`:458-461`). The
   re-triage re-ran the review's four counterexamples at 1717808, and all
   four are still accepted. **The reach grew**: `subtree_range` now
@@ -373,7 +373,7 @@ frame also change.
 `pump_with` for the chunk pumps and the final one. `paste` stays, as
 that sibling called with `BlockMetrics`, for headless callers.
 `Session::paste` for `Local` passes the session's own `FontMetrics`, and
-the reload crate's hot session (`crates/lumen-static-reload/src/lib.rs:754`)
+the reload crate's hot session (`crates/fulgurite-reload/src/lib.rs:754`)
 forwards in the same way. **Dropping the final pump**, which would leave
 the last chunk for the caller's next frame, was considered and rejected.
 Every headless caller reads the field straight after `paste` returns.
@@ -395,16 +395,16 @@ gates plus a rustdoc contract, and close here.
 
 | gate | finding | at 1717808 |
 |---|---|---|
-| `crates/lumen-static-shell/tests/compose_marks.rs`, in `tick_marks.rs`'s shape: a content-sized `TextInput` followed by a label, focused by a click with focus asserted, under the default `Host` and under `Host<_, Incremental, Everything>`. It commits a string wider than the field, then runs a preedit and a cancel, and repeats for a composite (`SearchField`). Per frame, for 3 frames, it prints both list hashes and the field's text x. It asserts `compose` returned `true`, and that `Everything`'s x is below the field's padding, so the case can fail. A short commit that does not scroll is a control. A routing test types Tab, a preedit, a commit and `as_str` through `Host::compose`, not through the widget's inherent method | R1-F2, R10-F9 | **red** |
+| `crates/fulgurite-shell/tests/compose_marks.rs`, in `tick_marks.rs`'s shape: a content-sized `TextInput` followed by a label, focused by a click with focus asserted, under the default `Host` and under `Host<_, Incremental, Everything>`. It commits a string wider than the field, then runs a preedit and a cancel, and repeats for a composite (`SearchField`). Per frame, for 3 frames, it prints both list hashes and the field's text x. It asserts `compose` returned `true`, and that `Everything`'s x is below the field's padding, so the case can fail. A short commit that does not scroll is a control. A routing test types Tab, a preedit, a commit and `as_str` through `Host::compose`, not through the widget's inherent method | R1-F2, R10-F9 | **red** |
 | `tests/shadow.rs`, `the_oracle_names_a_widget_internal_divergence`: a test-only leaf whose layout reads a `Cell` into an internal offset that paint uses, and whose `NodeState` does not change. The `Cell` is changed between pumps with no mark. It asserts `compared > 0`, then that `first` names that leaf | R1-F6 | **red** (`first: None`) |
-| `crates/lumen-static-shell/tests/repeat_data.rs`, three cases: (1) a global changed between pumps, with the change reported and with nothing reported; (2) the f4b case, a split application whose click in a sibling container changes the data; (3) rows of differing height after a data change. It prints marks, row text rects and hashes, and asserts `handled`, that the click counter moved, and that `Everything`'s row text changed | R1-F4 | **red** on (2) and (3) |
-| `crates/lumen-static-agent/tests/audit_is_inert.rs`, a `Boundaries<256>` case: a content-sized `TextInput` and a fill-width `TextArea` holding scrolled text, driven in the window's order (pump, `frame_done`, an unrelated hover, pump) for 3 frames against the same session without `frame_done`. It prints the text x in both arms, and asserts that `Everything`'s x is scrolled and that the hover landed. Built without `shadow-oracle` (rule 2) | R1-F5 | **red** (x = 8 against −148) |
-| `crates/lumen-static-shell/tests/paste_measurer.rs`, which promotes the review's `r2_paste.rs`: paste and type the same text, then `pump_with` a proportional measurer, under both strategies. It asserts equal width and cluster count and prints `paste w=.. typed w=..` beside `bound: equal`. It repeats with a 100-char paste, which crosses the 64-char chunk pump, and with R10-F4's click at x = 84.5, comparing caret bytes | R2-F1, R10-F4 | **red** |
-| `crates/lumen-static/tests/table_invariants.rs`: the review's four counterexamples as negative cases, checked against descendants computed from parent links. Per case it prints the verdict beside the oracle's mismatch list | R2-F5 | **red** (all four accepted) |
+| `crates/fulgurite-shell/tests/repeat_data.rs`, three cases: (1) a global changed between pumps, with the change reported and with nothing reported; (2) the f4b case, a split application whose click in a sibling container changes the data; (3) rows of differing height after a data change. It prints marks, row text rects and hashes, and asserts `handled`, that the click counter moved, and that `Everything`'s row text changed | R1-F4 | **red** on (2) and (3) |
+| `crates/fulgurite-agent/tests/audit_is_inert.rs`, a `Boundaries<256>` case: a content-sized `TextInput` and a fill-width `TextArea` holding scrolled text, driven in the window's order (pump, `frame_done`, an unrelated hover, pump) for 3 frames against the same session without `frame_done`. It prints the text x in both arms, and asserts that `Everything`'s x is scrolled and that the hover landed. Built without `shadow-oracle` (rule 2) | R1-F5 | **red** (x = 8 against −148) |
+| `crates/fulgurite-shell/tests/paste_measurer.rs`, which promotes the review's `r2_paste.rs`: paste and type the same text, then `pump_with` a proportional measurer, under both strategies. It asserts equal width and cluster count and prints `paste w=.. typed w=..` beside `bound: equal`. It repeats with a 100-char paste, which crosses the 64-char chunk pump, and with R10-F4's click at x = 84.5, comparing caret bytes | R2-F1, R10-F4 | **red** |
+| `crates/fulgurite/tests/table_invariants.rs`: the review's four counterexamples as negative cases, checked against descendants computed from parent links. Per case it prints the verdict beside the oracle's mismatch list | R2-F5 | **red** (all four accepted) |
 | `tests/tick_marks.rs`: in the loop, assert the tick ran (the counter equals k, and the label's length equals k) and that the hash changed from the previous tick. Print `tick k: label len k, hash changed: true`. **With it, `App::tick`'s rustdoc states the contract**: a tick that writes the tree returns `true`, and never writes on a zero `dt` | I-NEW-2, R1-F3 | green. Injection (B), where `Host::tick` never calls the application, turns it red with "setup: the tick did not run". Deleting `mark_all` in `Host::tick` still turns it red at the equality. **Closes both** |
-| `crates/lumen-static/tests/invalidate_model.rs`: `a_nested_mark_does_not_shrink_its_ancestor` starts from `clear()`, asserts clean as its setup, marks 2..10, then 3..4, then 20..21, and checks 5..6 and 9..10 dirty and 12..13 clean. `boundaries_matches_a_bitset_model` runs 1 000 seeded mark sequences against a reference bitset and prints `sequences 1000, disagreements 0` | R18-F6 | green. Deleting `invalidate.rs:282` fails both, and the model prints a count above 0. Omitting `clear()` fails the setup assertion instead of passing. **Closes R18-F6** |
+| `crates/fulgurite/tests/invalidate_model.rs`: `a_nested_mark_does_not_shrink_its_ancestor` starts from `clear()`, asserts clean as its setup, marks 2..10, then 3..4, then 20..21, and checks 5..6 and 9..10 dirty and 12..13 clean. `boundaries_matches_a_bitset_model` runs 1 000 seeded mark sequences against a reference bitset and prints `sequences 1000, disagreements 0` | R18-F6 | green. Deleting `invalidate.rs:282` fails both, and the model prints a count above 0. Omitting `clear()` fails the setup assertion instead of passing. **Closes R18-F6** |
 | `invalidation_oracle.rs` `drive()`: before each step-0 click, record the count, then assert it moved by 1 and that `pump` returned `handled`. After the session assert the final count, and print `clicks landed 3/3, final count 2` for both headline tests | R18-F8 | green. The review's I4a (`Length::Fixed(220.0)` on the card) turns both headline tests red with "click 0 did not land". **Closes R18-F8** |
-| `crates/lumen-static-shell/tests/reload_oracle.rs`: hover, press and open a popup, then `adopt` a second application whose sheet colour, label and handler differ. A persistent damage-driven canvas under `Boundaries<256>` is compared with a full render under `Everything`, and it prints `differing px: N / 0`. Two arms: a host with a sheet source, and a host built with `Host::new`, which has none. A `restore` arm is behind the `reload` feature | R5-F6 | expected green. Deleting `reasked`'s own mark must turn the sourceless arm red. For the sourced arm the injection is removing the mark `set_stylesheet` makes in `reasked`'s path. **If the sourceless arm is red at 1717808, that is a defect in `adopt`, and it gets its own task here before anything closes.** Otherwise **closes R5-F6** |
+| `crates/fulgurite-shell/tests/reload_oracle.rs`: hover, press and open a popup, then `adopt` a second application whose sheet colour, label and handler differ. A persistent damage-driven canvas under `Boundaries<256>` is compared with a full render under `Everything`, and it prints `differing px: N / 0`. Two arms: a host with a sheet source, and a host built with `Host::new`, which has none. A `restore` arm is behind the `reload` feature | R5-F6 | expected green. Deleting `reasked`'s own mark must turn the sourceless arm red. For the sourced arm the injection is removing the mark `set_stylesheet` makes in `reasked`'s path. **If the sourceless arm is red at 1717808, that is a defect in `adopt`, and it gets its own task here before anything closes.** Otherwise **closes R5-F6** |
 
 **Docs in the same commit:** the `App::tick` rustdoc (`event.rs:938-963`),
 the headers of `tick_marks.rs` and `invalidation_oracle.rs`, the
@@ -620,7 +620,7 @@ injection.
 
 **Docs in the same commit:** `Host::paste`'s rustdoc, whose claim of
 "no second edit path" is true again; `Session::paste` in
-`crates/lumen-static-shell/src/session.rs`; `docs/plan-desktop.md` T14.5.
+`crates/fulgurite-shell/src/session.rs`; `docs/plan-desktop.md` T14.5.
 
 **Effort:** S. **Depends on:** T41.0. **M45 depends on this task.**
 
@@ -648,7 +648,7 @@ positive cases in `table_invariants.rs` pass.
 
 **Docs in the same commit:** `table_is_well_formed`'s rustdoc; the
 macros crate's claim that "the spliced table is well-formed"
-(`crates/lumen-static-macros/src/lib.rs:29-31`);
+(`crates/fulgurite-macros/src/lib.rs:29-31`);
 `docs/verification-notes.md` Tier 0; the header of
 `table_invariants.rs`.
 
@@ -675,7 +675,7 @@ own commit with its own injection** and recorded in this plan, in the
 manner of M26's Phase A. If there are none, the commit says how many
 frames were compared across how many actions, so that "nothing" has a
 size. Headless, run `cargo test --workspace --features
-lumen-static-shell/shadow-oracle` once, and record the compared-frame
+fulgurite-shell/shadow-oracle` once, and record the compared-frame
 total.
 
 **Gate:** each oracle leg asserts `supported`, then `compared > 0`, then
@@ -705,9 +705,9 @@ if it records a frame time.
 show T34.1's injection; the widget and tasks drives' oracle legs use the
 same `scripts/live/shadow.py`, run whether the drive passed or not; and
 `tasks-demo` reaches the oracle as `--features
-lumen-static-winit/shadow-oracle` rather than through a feature of its
+fulgurite-winit/shadow-oracle` rather than through a feature of its
 own. The headless sweep's compared-frame total needed a counter across
-processes, so `Host::shadow_check` appends to `LUMEN_SHADOW_TALLY` when
+processes, so `Host::shadow_check` appends to `FULGURITE_SHADOW_TALLY` when
 it is set. No frame time is recorded here, so M53/T53.1 was not needed.
 
 ## 4. Boundaries of this plan
@@ -829,9 +829,9 @@ was re-checked as the re-triage left it and none had moved.
   sourced arm needs `set_stylesheet`'s mark deleted as well, and is then
   red at 11 520 px.
 - **A pre-existing seam, not this milestone's:** `cargo test -p
-  lumen-static-agent --test audit_is_inert` fails its three original tests
+  fulgurite-agent --test audit_is_inert` fails its three original tests
   at b213ae0 when run alone. `Label`'s `probe` override is behind
-  `lumen-static-widgets/observe`, which only a workspace build unifies on.
+  `fulgurite-widgets/observe`, which only a workspace build unifies on.
   `just test` runs the workspace shape, so the gate is honest there. This
   is the same kind of seam as M30's `counter-window --drive2` finding.
 
@@ -852,8 +852,8 @@ was re-checked as the re-triage left it and none had moved.
   node.
 - **The redesigned oracle found a divergence in a shipped example on its
   first headless sweep** (§2.1's tripwire condition). `cargo test
-  --workspace --features lumen-static-shell/shadow-oracle` with
-  `LUMEN_SHADOW_ABORT=1`: showcase's
+  --workspace --features fulgurite-shell/shadow-oracle` with
+  `FULGURITE_SHADOW_ABORT=1`: showcase's
   `a_wheel_over_the_grid_scrolls_it_on_the_stage` aborts with node 217
   (`grid-rows`, the DataGrid's `Repeat`), `field: "paint"`, on the wheel
   frame. The wheel is consumed, so the `Repeat`'s own range is marked

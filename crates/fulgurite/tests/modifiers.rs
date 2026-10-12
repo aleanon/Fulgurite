@@ -1,0 +1,199 @@
+//! T14.1: modifier state in the queue, and the budget that shape was
+//! chosen to protect.
+
+use fulgurite::event::InputState;
+use fulgurite_widgets::ops::{Button, Label};
+use fulgurite::{pass, Constraints, Event, EventCtx, Mods, NodeState, StaticTree, Widget};
+
+#[derive(StaticTree, Default)]
+#[widget(column, spacing = 0.0)]
+struct Ui {
+    #[widget_id("label")]
+    label: Label,
+    #[widget_id("btn")]
+    btn: Button<App>,
+}
+
+#[derive(fulgurite::App, Default)]
+struct App {
+    #[tree]
+    ui: Ui,
+    /// What the handler saw, so a test can assert on it.
+    seen: Mods,
+    seen_button: fulgurite::PointerButton,
+    seen_clicks: u8,
+    clicks: u32,
+}
+
+fn on_click(a: &mut App, cx: &EventCtx) {
+    a.seen = cx.mods;
+    a.seen_button = cx.button;
+    a.seen_clicks = cx.clicks;
+    a.clicks += 1;
+}
+
+const VIEW: Constraints = Constraints { min_w: 0.0, max_w: 200.0, min_h: 0.0, max_h: 200.0 };
+
+struct F {
+    app: App,
+    styles: Vec<fulgurite::Style>,
+    st: [NodeState; Ui::NODE_COUNT],
+    input: InputState,
+}
+
+impl F {
+    fn new() -> Self {
+        let mut app = App::default();
+        app.ui.btn.label = "go";
+        app.ui.btn.on_click = on_click;
+        let styles = pass::default_styles(&app.ui);
+        let mut f = F { app, styles, st: [NodeState::default(); Ui::NODE_COUNT], input: InputState::default() };
+        pass::layout(&mut f.app.ui, &f.styles, &mut f.st, VIEW);
+        f
+    }
+
+    fn send(&mut self, ev: Event) -> bool {
+        pass::dispatch(&mut self.app, &self.styles, &mut self.st, &mut self.input, &ev)
+    }
+
+    /// A click on the button, which is node 2.
+    fn click(&mut self) {
+        let s = self.st[2];
+        let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+        self.send(Event::down(x, y));
+        self.send(Event::up(x, y));
+    }
+}
+
+/// **The budget this design exists to protect.**
+///
+/// `InputQueue` is `CAP * size_of::<Event>()`, so a vocabulary change is
+/// a memory change. Adding a modifier *field* to every variant would
+/// have grown the enum and the queue with it; a `Modifiers` variant
+/// does not. Measured before the design was written, and asserted here
+/// so it stays true (`docs/plan-desktop.md` T14.1).
+/// **The budget is the queue, not the event.**
+///
+/// Until 2026-09-07 this asserted `Event == 16` as if 16 were a law.
+/// It is not: 16 is what `Scroll { x, y, dy }` happened to need, and
+/// treating it as a wall meant every vocabulary decision — the touch id
+/// in T15.5, the click count in T14.3 — was negotiated against a number
+/// nobody had chosen.
+///
+/// What is actually budgeted is resident bytes on a 128 KB device, and
+/// that is `CAP * size_of::<Event>()`. So `CAP` is a type parameter now
+/// and this asserts the *product*, which is the thing
+/// `docs/results-embedded.md` cares about. `Event`'s size is still
+/// worth watching — it is multiplied by `CAP` — so it is reported, but
+/// as a cost to weigh rather than a bound to defend.
+#[test]
+fn the_queue_stays_within_its_memory_budget() {
+    // The default host queue: 1 048 B, 0.8% of the M13 device's RAM.
+    assert_eq!(core::mem::size_of::<fulgurite::InputQueue>(), 1048);
+
+    // And the point of making it generic: a host that wants less can
+    // have less, without the event vocabulary being frozen for it.
+    assert_eq!(core::mem::size_of::<fulgurite::InputQueue<16>>(), 280);
+    assert_eq!(core::mem::size_of::<fulgurite::InputQueue<256>>(), 4120);
+
+    // Reported, not defended: an event that grew would show up here as
+    // a bigger queue, which is the consequence that matters.
+    assert_eq!(core::mem::size_of::<Event>(), 16, "if this changes, re-check the queue sizes");
+    assert_eq!(core::mem::size_of::<Mods>(), 1, "Mods is a bitflag, not four bools");
+}
+
+#[test]
+fn a_handler_sees_the_modifiers_that_were_held() {
+    let mut f = F::new();
+    f.send(Event::Modifiers(Mods::CTRL.with(Mods::SHIFT)));
+    f.click();
+    assert_eq!(f.app.clicks, 1);
+    assert!(f.app.seen.has(Mods::CTRL), "ctrl reached the handler");
+    assert!(f.app.seen.has(Mods::SHIFT));
+    assert!(!f.app.seen.has(Mods::ALT));
+}
+
+#[test]
+fn modifiers_persist_until_changed_and_then_clear() {
+    let mut f = F::new();
+    f.send(Event::Modifiers(Mods::ALT));
+    f.click();
+    assert!(f.app.seen.has(Mods::ALT));
+
+    // Released: the next click sees nothing. State, not an edge.
+    f.send(Event::Modifiers(Mods::NONE));
+    f.click();
+    assert!(f.app.seen.is_empty(), "a released modifier stops being reported");
+}
+
+#[test]
+fn the_modifiers_event_is_consumed_and_never_reaches_a_handler() {
+    let mut f = F::new();
+    assert!(f.send(Event::Modifiers(Mods::CTRL)), "handled, so nothing chains on it");
+    assert_eq!(f.app.clicks, 0, "it is state, not an activation");
+}
+
+/// The rule T14.2's text suppression is built on.
+#[test]
+fn is_shortcut_excludes_shift_alone() {
+    assert!(!Mods::NONE.is_shortcut());
+    assert!(!Mods::SHIFT.is_shortcut(), "Shift+A is how a capital arrives");
+    assert!(Mods::CTRL.is_shortcut());
+    assert!(Mods::ALT.is_shortcut());
+    assert!(Mods::META.is_shortcut());
+    assert!(Mods::CTRL.with(Mods::SHIFT).is_shortcut(), "Ctrl+Shift+A is still a shortcut");
+}
+
+#[test]
+fn has_none_is_always_true() {
+    // A shortcut table asks "does this need no modifiers"; the answer
+    // for the empty set must be yes, not "only when nothing is held".
+    assert!(Mods::CTRL.has(Mods::NONE));
+    assert!(Mods::NONE.has(Mods::NONE));
+    assert!(!Mods::NONE.has(Mods::CTRL));
+}
+
+// ---- T14.3: buttons and click counts ---------------------------------
+
+/// A handler reads the button from `ctx.button`, not from a separate
+/// event — and since M90/T90.2 a right press and release reaches **no**
+/// handler: dispatch stops it before pass 1 and makes it a context
+/// request (`docs/plan-desktop-integration.md`). T14.3's gate said the
+/// right button activated; that is what M90 reversed.
+#[test]
+fn a_handler_can_tell_the_buttons_apart() {
+    use fulgurite::PointerButton;
+    let mut f = F::new();
+    let s = f.st[2];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+
+    f.send(Event::PointerDown { x, y, button: PointerButton::Right, clicks: 1 });
+    f.send(Event::PointerUp { x, y, button: PointerButton::Right });
+    assert_eq!(f.app.clicks, 0, "the right button activated (M90/T90.2: it presses nothing)");
+
+    f.click();
+    assert_eq!(f.app.clicks, 1, "setup: a left click at the same point activates");
+    assert_eq!(f.app.seen_button, PointerButton::Left);
+}
+
+#[test]
+fn the_click_count_reaches_the_handler() {
+    let mut f = F::new();
+    let s = f.st[2];
+    let (x, y) = (s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
+    f.send(Event::PointerDown { x, y, button: fulgurite::PointerButton::Left, clicks: 2 });
+    f.send(Event::up(x, y));
+    assert_eq!(f.app.seen_clicks, 2, "a double click says so");
+}
+
+/// The constructors exist because T14.3 added two fields almost no call
+/// site cares about.
+#[test]
+fn the_convenience_constructors_mean_a_plain_left_click() {
+    use fulgurite::PointerButton;
+    assert_eq!(
+        Event::down(1.0, 2.0),
+        Event::PointerDown { x: 1.0, y: 2.0, button: PointerButton::Left, clicks: 1 }
+    );
+    assert_eq!(Event::up(1.0, 2.0), Event::PointerUp { x: 1.0, y: 2.0, button: PointerButton::Left });
+}

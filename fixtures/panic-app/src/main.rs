@@ -1,22 +1,22 @@
 //! `panic-app <site>`: arm one site and drive the frames that reach it,
 //! headless. Exits 0 if nothing panicked. M36/T36.0.
-use lumen_static::spawn::Immediate;
-use lumen_static_shell::Host;
+use fulgurite::spawn::Immediate;
+use fulgurite_shell::Host;
 use panic_app::build;
 
 fn main() {
     // `--window`: the guarded window, driven over the agent (M36/T36.3).
     #[cfg(feature = "window")]
     if std::env::args().nth(1).as_deref() == Some("--window") {
-        use lumen_static_winit::{application, Run};
-        // The endpoint is `LUMEN_AGENT_ADDR`, read by the window (M48/T48.11).
+        use fulgurite_winit::{application, Run};
+        // The endpoint is `FULGURITE_AGENT_ADDR`, read by the window (M48/T48.11).
         // M90/T90.6: a tray, so the window asks its `enabled` after every
         // frame (site 12); 540 px wide since then, so the twelfth arm button
         // is laid out inside the window (site 11's was not at 420 px).
         let program = application(panic_app::build_window).title("panic-app").size(540, 220).tray(panic_app::TRAY);
         // M55/T55.4: the strategy is this application's choice.
         #[cfg(feature = "everything")]
-        let program = program.invalidation::<lumen_static::Everything>();
+        let program = program.invalidation::<fulgurite::Everything>();
         return program.run();
     }
     let site: u8 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -26,7 +26,7 @@ fn main() {
     h.pump();
     h.pump();
     h.app.armed = site;
-    let i = lumen_static::style::index_of_wid(<panic_app::Ui as lumen_static::Widget>::SUB_TABLE, panic_app::target(site))
+    let i = fulgurite::style::index_of_wid(<panic_app::Ui as fulgurite::Widget>::SUB_TABLE, panic_app::target(site))
         .unwrap();
     let s = h.states[i];
     h.click(s.pos.x + s.size.w / 2.0, s.pos.y + s.size.h / 2.0);
@@ -38,11 +38,11 @@ fn main() {
         // reads (M84/T84.6): site 10.
         let _ = h.caret_rect();
         let _ = h.next_deadline_ms();
-        let _ = lumen_static::event::App::images(&h.app).is_some();
+        let _ = fulgurite::event::App::images(&h.app).is_some();
         // And the requests a window answers after a frame (M88/T88.3):
         // site 11.
         for o in h.take_requests() {
-            h.answer(o.request.tag().expect("every request here carries a tag"), lumen_static::request::Answer::Refused(lumen_static::request::Refusal::Unsupported));
+            h.answer(o.request.tag().expect("every request here carries a tag"), fulgurite::request::Answer::Refused(fulgurite::request::Refusal::Unsupported));
         }
         // And the tray's enabled entries (M90/T90.6): site 12.
         let _ = h.tray_enabled();

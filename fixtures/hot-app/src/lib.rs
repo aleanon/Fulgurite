@@ -17,13 +17,13 @@
 // The FFI safety contract is documented once at the extern-surface section.
 #![allow(clippy::missing_safety_doc)]
 
-use lumen_static::display::{Cmd, Color};
-use lumen_static_widgets::ops::{Fixed, Label, Spacer};
-use lumen_static_widgets::TextInput;
-use lumen_static::reload;
-use lumen_static::repeat::Repeat;
-use lumen_static::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
-use lumen_static_widgets::{CheckBox};
+use fulgurite::display::{Cmd, Color};
+use fulgurite_widgets::ops::{Fixed, Label, Spacer};
+use fulgurite_widgets::TextInput;
+use fulgurite::reload;
+use fulgurite::repeat::Repeat;
+use fulgurite::{pass, App as DeriveApp, Constraints, NodeState, Reloadable as DeriveReloadable, StaticTree, Widget};
+use fulgurite_widgets::{CheckBox};
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(feature = "v2"))]
@@ -47,9 +47,9 @@ const SHEET_ID: &str = "panel-v2";
 /// of the two forms a program's `.style(..)` accepts (M32,
 /// `docs/plan-program.md` §2.1). This fixture has no `Host`, so nothing
 /// installs it; `hot_sheet_selector` reads its address.
-const SHEET: &[lumen_static::style::Rule] = &[lumen_static::style::Rule::new(
-    lumen_static::style::Selector::Id(SHEET_ID),
-    lumen_static::style::Patch::new(),
+const SHEET: &[fulgurite::style::Rule] = &[fulgurite::style::Rule::new(
+    fulgurite::style::Selector::Id(SHEET_ID),
+    fulgurite::style::Patch::new(),
 )];
 
 #[cfg(not(feature = "v2"))]
@@ -166,7 +166,7 @@ use std::ffi::c_void;
 // protocol in them had drifted from the loader's
 // (`docs/plan-review-fixes.md` F6.7). The app-specific verbs below stay
 // hand-written: there is nothing to share about `hot_bump`.
-lumen_static_reload::export_reloadable_app!(Session, Session::build);
+fulgurite_reload::export_reloadable_app!(Session, Session::build);
 
 thread_local! {
     /// Fallback lines taken from the core but not yet delivered to the
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn hot_bump(p: *mut c_void) {
 pub unsafe extern "C" fn hot_set_title(p: *mut c_void, ptr: *const u8, len: usize) {
     // Through `raw::bytes`: a null `ptr` reads as empty rather than being
     // handed to `slice::from_raw_parts` (M49/T49.2, R4-F6).
-    let bytes = unsafe { lumen_static_reload::raw::bytes(ptr, len) };
+    let bytes = unsafe { fulgurite_reload::raw::bytes(ptr, len) };
     if let Ok(s) = core::str::from_utf8(bytes) {
         unsafe { session(p) }.ui.title.set_str(s);
     }
@@ -254,9 +254,9 @@ pub unsafe extern "C" fn hot_check_mark(p: *mut c_void) -> u32 {
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
     pass::layout(&mut s.ui, &sty, &mut st, c);
-    let mut out = lumen_static::DisplayList::new();
+    let mut out = fulgurite::DisplayList::new();
     pass::paint(&s.ui, &st, &mut out);
-    let Some(i) = lumen_static::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "check") else {
+    let Some(i) = fulgurite::style::index_of_wid(<Ui as Widget>::SUB_TABLE, "check") else {
         return 0;
     };
     let b = st[i];
@@ -283,7 +283,7 @@ pub unsafe extern "C" fn hot_frame(p: *mut c_void) -> u64 {
     // M36/T36.4: caught *here*, inside this library, by its own hook — a
     // panic unwinding out of an `extern "C"` fn aborts the loader. On a
     // panic the frame answers 0 and the report waits in `hot_take_panic`.
-    lumen_static_reload::panic::guard(0, || frame(s))
+    fulgurite_reload::panic::guard(0, || frame(s))
 }
 
 fn frame(s: &mut Session) -> u64 {
@@ -298,14 +298,14 @@ fn frame(s: &mut Session) -> u64 {
     // generated from the `#[bind]` on `Session.counter` — a real frame
     // loop calls this from `pump`; this fixture drives frames by hand
     // across an FFI boundary, so it calls it here.
-    lumen_static::event::App::update(s);
+    fulgurite::event::App::update(s);
     // The list's count is bound from data here, as a `#[bind]` would.
     s.ui.list.count = s.rows;
     let mut st = [NodeState::default(); Ui::NODE_COUNT];
     let sty = pass::default_styles(&s.ui);
     let c = Constraints { min_w: 0.0, max_w: 800.0, min_h: 0.0, max_h: 600.0 };
     pass::layout(&mut s.ui, &sty, &mut st, c);
-    let mut out = lumen_static::DisplayList::new();
+    let mut out = fulgurite::DisplayList::new();
     pass::paint(&s.ui, &st, &mut out);
     // The host asserts on a stable digest of the frame rather than on
     // the command list itself, which does not cross the FFI boundary.
@@ -354,7 +354,7 @@ pub unsafe extern "C" fn hot_report(p: *mut c_void, buf: *mut u8, cap: usize) ->
 /// `buf`/`cap` must describe a writable buffer.
 #[no_mangle]
 pub unsafe extern "C" fn hot_sheet_selector(buf: *mut u8, cap: usize) -> usize {
-    let lumen_static::style::Selector::Id(s) = SHEET[0].selector else {
+    let fulgurite::style::Selector::Id(s) = SHEET[0].selector else {
         return 0;
     };
     let n = s.len().min(cap);
@@ -405,10 +405,10 @@ pub unsafe extern "C" fn hot_take_log(buf: *mut u8, cap: usize) -> usize {
 // `docs/plan-tasks.md` §2.1 means by "crosses as primitives".
 //
 // **This shows the principle, not a framework property** (R4-F3,
-// corrected 2026-09-27): no `lumen_static::spawn` or `inbox` code is on
+// corrected 2026-09-27): no `fulgurite::spawn` or `inbox` code is on
 // this path, so it says nothing about what the framework carries. A
 // window swap carries the host's work in flight since M49/T49.10
-// (`lumen_static_reload::hot::save` and `hot::boot`), gated by
+// (`fulgurite_reload::hot::save` and `hot::boot`), gated by
 // `just window-reload-demo` with `fixtures/chain-app`.
 
 /// Interpret one step of a chain, and return what it produced.

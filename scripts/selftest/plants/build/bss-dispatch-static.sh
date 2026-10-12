@@ -3,9 +3,9 @@
 # `6697ad2` -- left check_bss.sh green. The interactive firmware links
 # dispatch now, and must name the static by its full path.
 CHECK='./scripts/check_bss.sh'
-EXPECT='lumen_static::pass::PLANTED_DISPATCH  \(4 bytes\)'
+EXPECT='fulgurite::pass::PLANTED_DISPATCH  \(4 bytes\)'
 plant() {
-    replace crates/lumen-static/src/pass.rs \
+    replace crates/fulgurite/src/pass.rs \
         'pub fn dispatch<S: crate::event::App>(
     state: &mut S,
     style: &[Style],

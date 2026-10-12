@@ -5,10 +5,10 @@ and why. Companion measurement record: `docs/results-step2-crossover.md`.*
 
 ## Crate layout
 
-- `crates/lumen-static` — `NodeDesc`/`WidgetOps`/state types, const splice
+- `crates/fulgurite` — `NodeDesc`/`WidgetOps`/state types, const splice
   helpers, the iterative passes, built-in leaves (`Label`, `Fixed`,
   `Spacer`), row/column math, runtime assembly (`Assembled<C>`).
-- `crates/lumen-static-macros` — `#[derive(StaticTree)]`.
+- `crates/fulgurite-macros` — `#[derive(StaticTree)]`.
 - `benches` — dyn baseline, shapes, the `crossover` harness binary.
 
 ## Decisions and deviations from the §5 sketch

@@ -1,0 +1,54 @@
+# The GPU backend — docs/plan-capabilities.md T15.12.
+#
+# **The crate is the gate.** wgpu is by a wide margin the most expensive
+# dependency this workspace could take (measured: docs/results-gpu.md),
+# and the M15 gating policy ranks "a separate crate" first precisely
+# because nothing enters the dependency graph unless a manifest names
+# it. The software canvas stays the desktop default; the embedded
+# profile has no GPU and never sees this.
+#
+# It is also excluded from `just test`'s workspace build for the same
+# reason — see the justfile.
+[package]
+name = "fulgurite-wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fulgurite = { path = "../fulgurite" }
+# `truetype`, because the glyph atlas is rasterised through the *same*
+# FontStack the software canvas uses. Sharing the shaping path is what
+# makes "the two backends are pixel-comparable" a checkable claim rather
+# than a hope.
+fulgurite-shell = { path = "../fulgurite-shell", features = ["truetype"] }
+wgpu = "30"
+# Blocking on adapter and device requests, and on a readback. wgpu's API
+# is async and this crate's callers are not; pollster is the smallest
+# thing that bridges the two (it has no dependencies of its own).
+pollster = "0.4"
+# `#[repr(C)]` structs to bytes, without `unsafe` at this call site —
+# which matters, because scripts/check_no_unsafe.sh covers this crate.
+bytemuck = { version = "1", features = ["derive"] }
+
+[features]
+# M81/T81.1: the shell's default-off shaper, forwarded for this crate's
+# tests (T81.3's shaped parity region). The backend itself shapes through
+# `FontStack::place_run_into` either way.
+shaping = ["fulgurite-shell/shaping"]
+# M83/T83.5 (docs/plan-gpu-extension.md, owner decision D3): custom
+# shaders -- `Gpu::set_shaders` compiles a program's `ShaderTable` into
+# pipelines under a validation error scope, and a `Cmd::Shader` bracket
+# splits the frame into a scissored pass instead of drawing its fallback.
+# Turns the shell's `shader` on, hence the core's, hence `cfg(fulgurite_shader)`
+# here (`build.rs`). Default-off, and adds no crate.
+shader = ["fulgurite-shell/shader"]
+
+[dev-dependencies]
+fulgurite-shell = { path = "../fulgurite-shell", features = ["truetype"] }
+
+# M83/T83.5: K83a's measurement names `Gpu::set_shaders`, which exists only
+# under `shader`.
+[[example]]
+name = "shader_cost"
+required-features = ["shader"]

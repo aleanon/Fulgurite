@@ -1,6 +1,6 @@
 //! `hot-window` — with `--features hot`, the window rebuilds this
 //! crate's library on every save and swaps to it (M37). Built with
-//! `agent`, it serves the endpoint at `LUMEN_AGENT_ADDR`, which the
+//! `agent`, it serves the endpoint at `FULGURITE_AGENT_ADDR`, which the
 //! window reads (M48/T48.11).
 //!
 //! `hot-window --hash basic|complex X0 Y0 X1 Y1` (with `agent`) renders
@@ -9,7 +9,7 @@
 //! prints the agent's `ui.resolve` of `#hebrew` and `ui.regionHash` of
 //! the rect, one JSON reply per line.
 // ANCHOR: main
-use lumen_static_winit::Run;
+use fulgurite_winit::Run;
 
 fn main() {
     #[cfg(feature = "agent")]
@@ -23,8 +23,8 @@ fn main() {
 /// The headless half of the drive's comparison (M81/T81.4).
 #[cfg(feature = "agent")]
 fn hash() {
-    use lumen_static_shell::session::{Crashing, Local, Offscreen, Screen, Session};
-    use lumen_static_shell::text::Shaping;
+    use fulgurite_shell::session::{Crashing, Local, Offscreen, Screen, Session};
+    use fulgurite_shell::text::Shaping;
     let args: Vec<String> = std::env::args().skip(2).collect();
     let shaping = match args.first().map(String::as_str) {
         Some("basic") => Shaping::Basic,

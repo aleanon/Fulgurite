@@ -11,20 +11,20 @@ until T45.k"]`. The quantity it prints, beside its bound:
 
 | item | gate | finding | at `826c7c3` | bound |
 |---|---|---|---|---|
-| 1 | `lumen-static-shell/tests/text_containment.rs` | R10-F1 | **600 / 1200** runs re-wrapped, worst overhang 93 px (y) | 0 wrapped, 1.0 px |
-| 2 | `lumen-static-text/tests/paint_shaped.rs` | R10-F2 | painted `[1390, 1366, 1375, 1365, 1371]` against shaped `[5256, 5260, 5277, 5288, 5341]`; unwrapped paint **equals the isolated cmap forms** | painted = shaped, ink in box |
-| 3 | `lumen-static-text/tests/shaping.rs` | R10-F11 | green: RTL x falls 24.07 → 0.0; joined width 37 against 47.47 summed | x falls; width < summed |
-| 4 | `lumen-static-widgets/tests/measure_scale_widgets.rs` | R2-F6 | `TextInput` served 129 (width and caret) against fresh 130; `TextArea` caret 129 against 130 | served = fresh |
-| 5 | `lumen-static/tests/measure_key.rs` | R2-F10 | **5** measurer calls for five NaN layouts | 1 |
-| 6 | `lumen-static-shell/tests/font_fallback.rs` | R10-F12 | `你好` and `שלום` laid out as glyph 34 (`?`) at every character, pixels identical to `??`/`????` | 0 substituted |
-| 7 | `lumen-static-shell/tests/paste.rs`, `clipboard.rs` | R8-F4, R8-F5, R10-F5, R10-F6 | 6 mismatches (newlines lost, count 8 for 6 kept); a 256 KB paste **4,096 pumps** | 0; 1 pump |
-| 8 | `lumen-static-shell/tests/graphemes.rs` | R10-F7 | **0 / 40** whole graphemes, five widgets | 40 / 40 |
-| 9 | `lumen-static-shell/tests/text_motion.rs` | R10-F14 | **12** motions wrong of 12 (0 since T45.6) | 0 |
-| 10 | `lumen-static-winit/tests/key_text.rs` | R10-F8 | **0 / 4** multi-character key texts whole (`"^a"` → `"^"`) | 4 / 4 |
-| 11 | `lumen-static-winit/tests/clipboard_shortcut.rs`, `clipboard.rs` | R10-F13 | **6 / 12** decisions wrong; `NumberInput` copy `None` | 0; its text |
-| 12 | `lumen-static-shell/tests/compose_marks.rs` | R10-F15 | `NumberInput` refused `"12"` and `"ab"` alike | accept `"12"`, refuse `"ab"` |
-| 13 | `lumen-static-shell/tests/textarea_scale.rs` | R16-F7 | plain 20→200 KB ratio **59.5**; substituted 2→20 KB ratio **93.2**; self-ratio 1.00 | 25 |
-| 14 | `lumen-static-shell/tests/textarea_visible.rs` | R8-F3 | **53,595** glyphs rasterised for one Left in 64 KB | 330 (6 lines × 55 × 1 region) |
+| 1 | `fulgurite-shell/tests/text_containment.rs` | R10-F1 | **600 / 1200** runs re-wrapped, worst overhang 93 px (y) | 0 wrapped, 1.0 px |
+| 2 | `fulgurite-text/tests/paint_shaped.rs` | R10-F2 | painted `[1390, 1366, 1375, 1365, 1371]` against shaped `[5256, 5260, 5277, 5288, 5341]`; unwrapped paint **equals the isolated cmap forms** | painted = shaped, ink in box |
+| 3 | `fulgurite-text/tests/shaping.rs` | R10-F11 | green: RTL x falls 24.07 → 0.0; joined width 37 against 47.47 summed | x falls; width < summed |
+| 4 | `fulgurite-widgets/tests/measure_scale_widgets.rs` | R2-F6 | `TextInput` served 129 (width and caret) against fresh 130; `TextArea` caret 129 against 130 | served = fresh |
+| 5 | `fulgurite/tests/measure_key.rs` | R2-F10 | **5** measurer calls for five NaN layouts | 1 |
+| 6 | `fulgurite-shell/tests/font_fallback.rs` | R10-F12 | `你好` and `שלום` laid out as glyph 34 (`?`) at every character, pixels identical to `??`/`????` | 0 substituted |
+| 7 | `fulgurite-shell/tests/paste.rs`, `clipboard.rs` | R8-F4, R8-F5, R10-F5, R10-F6 | 6 mismatches (newlines lost, count 8 for 6 kept); a 256 KB paste **4,096 pumps** | 0; 1 pump |
+| 8 | `fulgurite-shell/tests/graphemes.rs` | R10-F7 | **0 / 40** whole graphemes, five widgets | 40 / 40 |
+| 9 | `fulgurite-shell/tests/text_motion.rs` | R10-F14 | **12** motions wrong of 12 (0 since T45.6) | 0 |
+| 10 | `fulgurite-winit/tests/key_text.rs` | R10-F8 | **0 / 4** multi-character key texts whole (`"^a"` → `"^"`) | 4 / 4 |
+| 11 | `fulgurite-winit/tests/clipboard_shortcut.rs`, `clipboard.rs` | R10-F13 | **6 / 12** decisions wrong; `NumberInput` copy `None` | 0; its text |
+| 12 | `fulgurite-shell/tests/compose_marks.rs` | R10-F15 | `NumberInput` refused `"12"` and `"ab"` alike | accept `"12"`, refuse `"ab"` |
+| 13 | `fulgurite-shell/tests/textarea_scale.rs` | R16-F7 | plain 20→200 KB ratio **59.5**; substituted 2→20 KB ratio **93.2**; self-ratio 1.00 | 25 |
+| 14 | `fulgurite-shell/tests/textarea_visible.rs` | R8-F3 | **53,595** glyphs rasterised for one Left in 64 KB | 330 (6 lines × 55 × 1 region) |
 | 15 | `fixtures/embedded/tests/wrap.rs` | R10-F10 | closed early by T45.12 (plan header) | — |
 
 Item 13's timings were taken under load (load average 10 on the build
@@ -164,7 +164,7 @@ build's own spread on both arms.
 
 ## T45.4 — complex text says what it does (R10-F2, R10-F11)
 
-Documentation, and two pins in `lumen-static-text/tests/paint_shaped.rs`:
+Documentation, and two pins in `fulgurite-text/tests/paint_shaped.rs`:
 the claim T15.8 made, `#[should_panic]` on "the painter drew other glyphs
 than the shaper produced", and the limitation as it stands — painted
 `[1390, 1375, 1371, 1366, 1365]`, the isolated letters in logical order.
@@ -176,7 +176,7 @@ T45.0 item 3's assertions stay green: RTL x falls, the Arabic word joins.
 
 ## T45.5 — edit by grapheme (R10-F7)
 
-`crate::edit::{prev_boundary, next_boundary}` in `lumen-static-widgets`,
+`crate::edit::{prev_boundary, next_boundary}` in `fulgurite-widgets`,
 `GraphemeCursor` over the whole buffer, behind `alloc`; both editors and
 so all five text widgets step through them.
 
@@ -193,7 +193,7 @@ Leaf `.text` unchanged at 27,964 B; the alloc tier's host cost is in
 ## T45.6 — words, clicks and line ends (R10-F14)
 
 `crate::edit::{next_word, prev_word, word_at, line_at}` in
-`lumen-static-widgets`, over `unicode-segmentation`'s word bounds behind
+`fulgurite-widgets`, over `unicode-segmentation`'s word bounds behind
 `alloc` (runs of letters, digits and `_` without it); both editors move
 and select through them. Built on M44/T44.1's `owns_arrows`.
 
@@ -247,7 +247,7 @@ frames differ under `Boundaries`, and `handled_narrowing.rs` fires).
 `translate::key_text` sorts a key press's text into none, one character
 (an `Event::Text`, unchanged) or `Whole`, which `keys::deliver_key`
 commits to the focused node through `Session::compose`.
-`lumen-static-winit/tests/key_text.rs`, a `Local` session under its
+`fulgurite-winit/tests/key_text.rs`, a `Local` session under its
 default `Boundaries`:
 
 | key text | before | after (width 16 → ) |
@@ -363,7 +363,7 @@ lines `"Ågjy\nÅgjy"`, whose ceiled new-line size `nls` is **19 px**
 | ink at 1.0× (half-leading −1.5) | ink rows above / below the rect | 0 / 0 (35 rows inked, 35 tall) | 0 / 0 | `max(0, nls − pitch)` dropped: **1** above |
 | | changed pixels outside `Recording`'s damage, text change | 0 of 611 | 0 | `max(0, nls − pitch)` dropped: **5** of 611 |
 | canvas paints the byte | line 2 − line 1 ink rows at 24 / 32 | 24 / 32 | pitch ± 1 | re-placement skipped: one ink band, setup refuses |
-| GPU passes the byte, `lumen-static-wgpu/tests/parity.rs` (RTX 4070) | px over 8, a pitched run at 24 | 0 (28 rows each side) | 2 (the text region's) | GPU passes 0: **366** |
+| GPU passes the byte, `fulgurite-wgpu/tests/parity.rs` (RTX 4070) | px over 8, a pitched run at 24 | 0 (28 rows each side) | 2 (the text region's) | GPU passes 0: **366** |
 | retention, `tests/retain_align.rs` | damage, only the byte changed | 9,600 px² | the rect's 9,600 | `Recording` skips the byte: **0** |
 | wire, `wire.rs` | line_height after a round trip | 24 (`VERSION` 2) | 24 | decode skips the byte: **0** |
 | forwarding, `tests/overlay.rs` | `Deferring` commands in / out | 6 / 6 | equal | empty body: **6 in, 5 out**; via `inner.text_weighted`: differs at command 5, `line_height` 24 → 0 |
@@ -399,11 +399,11 @@ the pinned face at 16 px unless a row says otherwise (`nls` 19 px):
 | | at 0, content height | 57 | `measure_weighted`'s 57 | — (accept) |
 | `TextArea` at 32, caret on line 3 | caret top − content top | 64 px | `2 × pitch` = 64 ± 1 | `line_h` stays the face's: **37** |
 | | line 3's ink rows / the caret's rows | 80..92 / 70..102 | inside ± 1 | (same) caret 43..62 against ink 53..65 |
-| memo, `lumen-static/tests/measure_key.rs` | warm at 0, cold at 24; height | warm / cold; 32 → 48 | cold, heights differ | `flow` dropped: still warm, **32** served |
-| lint, `lumen-static/tests/sheet_lint.rs` | findings: `line_height` on `#go` (Button), on `#title` (Label) | 1 (`Unread(LINE_HEIGHT)` on the button) | the button only | `Label`'s seed omits the bit: **2** |
+| memo, `fulgurite/tests/measure_key.rs` | warm at 0, cold at 24; height | warm / cold; 32 → 48 | cold, heights differ | `flow` dropped: still warm, **32** served |
+| lint, `fulgurite/tests/sheet_lint.rs` | findings: `line_height` on `#go` (Button), on `#title` (Label) | 1 (`Unread(LINE_HEIGHT)` on the button) | the button only | `Label`'s seed omits the bit: **2** |
 | masks, `widgets/tests/style_reads.rs` | kinds measured reading `line_height` | `label`, `textarea`, `richtext` (33 kinds) | exactly those | `TextArea`'s seed omits the bit: "textarea: omits read [line_height]" |
 | runtime applier, `shell/tests/lss_parity.rs` | `pass_accept.lss` rules, both lowerings | 6 / 6 (loud 7 / 7), equal | equal | `set` arm deleted: panics "no setter `line_height` taking F32(1.5)"; `check_lss_setters.sh` stays green (23 setters, 23 declared) |
-| sizes, `lumen-static/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a, unmoved) |
+| sizes, `fulgurite/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a, unmoved) |
 | live, `just widget-drive Label`, four legs | label height after the switch, scale 1 / 2 | 88 → **96** (4 × 24) / 66 → **72** (3 × 24), Noto Sans `nls` 22 | `lines × pitch` ± 0.5, grown by `lines × (pitch − before)` | `measure_weighted`: **88 → 88** on every leg |
 
 The live drive's other checks on the same action: the label's pixels
@@ -457,9 +457,9 @@ says otherwise:
 | the carried defect, same file: `Fixed(90)`, padding 8, offered 480 | lines measured; ink overhang | 4 lines; 0 px | > 1; 0 | measured against the offer: **1 line, 54 px** |
 | `Clip` damage, same file (the host's retained damage) | damage / the label's box | 1,520 / 1,520 px² = **1.00×** | 1.00× | whole text in a 10,000 px rect under a clip: **6.00×** (window-clipped) |
 | S2, `agent/tests/damage_shape.rs`, two cut labels in a column | the journal's changed ids after the first cut moves (`"a first"` → `"abcdef"`) | `["first"]` | second absent | `Cmd::hash_into` folds `text.0`: `["first", "second"]` |
-| memo, `lumen-static/tests/measure_key.rs`, `"one\ntwo"` | warm under `Wrap`, cold under `Ellipsis`; height | warm / cold; 32 → 16, shown `"one"` | cold, heights differ | overflow dropped from `flow`: still warm, **32** served |
+| memo, `fulgurite/tests/measure_key.rs`, `"one\ntwo"` | warm under `Wrap`, cold under `Ellipsis`; height | warm / cold; 32 → 16, shown `"one"` | cold, heights differ | overflow dropped from `flow`: still warm, **32** served |
 | cost (K80d), `shell/tests/fit_cost.rs`, 1,568 cuts over 7 titles | runs measured per cut, worst, by title length | 8 (49–64 B), 11 (352–408 B), 6 (13 B) | `⌈log2 len⌉ + 3` = 9 / 12 / 7 | linear search: **50–65, 135–147, 14** |
-| sizes, `lumen-static/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a holds) |
+| sizes, `fulgurite/tests/cursor.rs` | `Style`, `NodeState`, per node, per 100 nodes | 80, 84, 164 B, 16.0 KB | 80, 84 | — (K80a holds) |
 
 `size_of` on the host (alloc tier): `Label<&str>` 72 → **80 B**,
 `Label<String>` 80 → 88 B (the `fit` pair); `AppBar` 72 → **104 B**, its
@@ -511,7 +511,7 @@ firmware-delta 845de0c firmware=1024 firmware_interactive=1536`: **910 of
 
 ## M80/T80.4 — `Selectable<S>` and `app.copy` (2026-10-04)
 
-`Selectable<S: TextStorage>` (`lumen-static-widgets`, `selectable.rs`,
+`Selectable<S: TextStorage>` (`fulgurite-widgets`, `selectable.rs`,
 behind `alloc`): one `FOCUSABLE` table entry that owns a `Label<S>`, lays
 it out and paints it at the same index, shapes the shown text into a
 cluster list keyed exactly as the label's memo is, and answers
@@ -634,13 +634,13 @@ today's behaviour.
 
 | what | gate or command | at `d4859b4` | bound / later use |
 |---|---|---|---|
-| Hebrew paint order | `lumen-static-text/tests/paint_shaped.rs` `hebrew_paints_right_to_left` (`should_panic`; moved to the shell's tests by T81.3) | `שלום` painted as glyphs `[1344, 1331, 1324, 1332]` at x **1, 24, 44, 53** (logical order, rising); every letter has a cmap glyph (setup) | x strictly falling; T81.3 drops the `should_panic` |
+| Hebrew paint order | `fulgurite-text/tests/paint_shaped.rs` `hebrew_paints_right_to_left` (`should_panic`; moved to the shell's tests by T81.3) | `שלום` painted as glyphs `[1344, 1331, 1324, 1332]` at x **1, 24, 44, 53** (logical order, rising); every letter has a cmap glyph (setup) | x strictly falling; T81.3 drops the `should_panic` |
 | — accept direction | the same assertion fed `ComplexText::shaped_glyphs`' x per glyph | x **48.14, 29.95, 21.23, 0** — falling; the harness reports "did not panic" | — |
-| every `Basic` placement | `lumen-static-shell/tests/basic_placements.rs` | `BASIC_CHECKSUM` **0x866444d1064ccda8**; 6,600 glyphs (2,200 per scale at 1, 1.25, 2), 240 narrowed runs wrapped per scale, **0** glyphs at a fractional x or y | equal, with `shaping` compiled in (T81.3) and phases built (T81.8) |
+| every `Basic` placement | `fulgurite-shell/tests/basic_placements.rs` | `BASIC_CHECKSUM` **0x866444d1064ccda8**; 6,600 glyphs (2,200 per scale at 1, 1.25, 2), 240 narrowed runs wrapped per scale, **0** glyphs at a fractional x or y | equal, with `shaping` compiled in (T81.3) and phases built (T81.8) |
 | — injection | `cap_shift` floors instead of rounding | checksum 0x550bf3328192bd02; scale 1 named first (0xe46a0473ae03abd5 against 0x5ed8be5616d27ffd) | — |
 | firmware, paint-only | `just firmware-size` | `.text` **29,586 B**, `.rodata` 13,276 B, `.bss` 4 B | K4: 81,920 B |
 | the four firmwares | `just firmware` | `.text` / `.rodata`: `firmware` **29,586** / 13,276; `firmware_interactive` **63,188** / 21,806; `firmware_bind` **33,046** / 13,880; `firmware_cascade` **31,726** / 14,052 | T81.1 Δ 0 on all four; T81.2 ≤ 64 B each |
-| face heap, pinned face (759,720 B file) | `lumen-static-shell/tests/font_heap.rs` | one parsed face **19,011,952 B**; a stack with a bold face built 19,771,672 B; peak through a regular frame 22,045,057 B; one bold run grew the heap 18,251,760 B | K81c (T81.3): a `Complex` stack ≤ `Basic` + file size + 64 KiB |
+| face heap, pinned face (759,720 B file) | `fulgurite-shell/tests/font_heap.rs` | one parsed face **19,011,952 B**; a stack with a bold face built 19,771,672 B; peak through a regular frame 22,045,057 B; one bold run grew the heap 18,251,760 B | K81c (T81.3): a `Complex` stack ≤ `Basic` + file size + 64 KiB |
 
 **Every `Basic` glyph sits on whole pixels** (the fractional count above):
 fontdue lays glyphs out at whole pixels and `cap_shift` rounds its shift, so the
@@ -652,10 +652,10 @@ rounding, and the checksum moves at every scale
 
 ## M81/T81.1 — the dependency turned, and `GlyphKey` (2026-10-04)
 
-`lumen-static-text` depends on the core alone; the shell is its
+`fulgurite-text` depends on the core alone; the shell is its
 dev-dependency (for `tests/paint_shaped.rs`), and the shell reaches the
 text crate behind its default-off `shaping` feature, forwarded by
-`lumen-static-winit`, `lumen-static-wgpu`, `benches` and the frame arm.
+`fulgurite-winit`, `fulgurite-wgpu`, `benches` and the frame arm.
 `shaping` joins `abi_fields` and `process_features`. The core gains
 `text::GlyphKey`; the shell's `GlyphId` is a newtype over it. No
 behaviour changes: `BASIC_CHECKSUM` is unchanged (0x866444d1064ccda8).
@@ -665,14 +665,14 @@ behaviour changes: `BASIC_CHECKSUM` is unchanged (0x866444d1064ccda8).
 | `shell/tests/basic_placements.rs` sizes | `size_of` `GlyphKey`, `GlyphId` | **8**, **8** | 8, 8 | — (accept direction at HEAD) |
 | `shell/tests/basic_placements.rs` round trip | corpus ids read back as a `GlyphKey` field for field; distinct ids / keys | **3,300** ids (1,650 regular, 1,650 bold); 1,300 / 1,300 | all fields equal; equal counts | the conversion drops `face`: `GlyphKey.face is 0, expected 1`, first id `index: 55, face: 1` (`Taj`, 10 px, 700) |
 | `just release-window-shape` | `rustybuzz::`/`unicode_bidi::` symbols, default release `examples/minimal` | **0** | 0 | — (the symbol positive control is T81.3's; the pattern finds 1,082 in `paint_shaped`'s test binary) |
-| — graph | `cargo tree -p lumen-static-shell -e normal`, unique packages, `truetype` → `shaping` | 16 → **27** (+11) | > 0 | `shaping` without `dep:lumen-static-text`: 16 → 16, **0**, the script fails |
-| `just abi-stamp` | a `shaping` library under a loader without / both with | refused, naming `lumen-static-shell features` (`reload,truetype` against `reload,truetype,shaping`) / accepted, 20 fields | refuse / accept | `shaping` left out of `abi_fields`: the mismatched pair is **accepted** and the host panics "accepted a library that should have been refused" |
-| `just fonts`' new lines | `clippy -p lumen-static-shell --features shaping --all-targets`, `cargo doc` with it | clean | clean | an unused binding under `cfg(feature = "shaping")`: the shaping clippy line fails, the `truetype` line stays clean |
+| — graph | `cargo tree -p fulgurite-shell -e normal`, unique packages, `truetype` → `shaping` | 16 → **27** (+11) | > 0 | `shaping` without `dep:fulgurite-text`: 16 → 16, **0**, the script fails |
+| `just abi-stamp` | a `shaping` library under a loader without / both with | refused, naming `fulgurite-shell features` (`reload,truetype` against `reload,truetype,shaping`) / accepted, 20 fields | refuse / accept | `shaping` left out of `abi_fields`: the mismatched pair is **accepted** and the host panics "accepted a library that should have been refused" |
+| `just fonts`' new lines | `clippy -p fulgurite-shell --features shaping --all-targets`, `cargo doc` with it | clean | clean | an unused binding under `cfg(feature = "shaping")`: the shaping clippy line fails, the `truetype` line stays clean |
 | `just firmware-delta faeffe7`, all four bounded at 0 | `.text`/`.rodata` Δ | **+0 / +0** on all four | 0 | — |
 
 Crate counts by K2's method (`cargo tree -e normal --prefix none`, `(*)`
 stripped, deduplicated): the shell 8 default, 16 `truetype`, 27
-`shaping`; `lumen-static-winit` **96 → 103** with `shaping` (the text
+`shaping`; `fulgurite-winit` **96 → 103** with `shaping` (the text
 crate, rustybuzz and five unicode tables; ttf-parser is already there);
 the text crate 21 (27 while the shell was a normal dependency). The
 stripped showcase delta is K81e's, measured in T81.3 when the feature
@@ -680,7 +680,7 @@ has code.
 
 ## M81/T81.2 — `Shaper`, `FaceSource`, and clusters in source order (2026-10-04)
 
-`lumen-static-text` gains `Shaper` over a `FaceSource` (bidi levels only
+`fulgurite-text` gains `Shaper` over a `FaceSource` (bidi levels only
 when a character can be right to left, runs by direction and face,
 rustybuzz per run in logical order, greedy UAX #14 breaking, each line
 reordered visually) and its output `ShapedRun` (`ShapedGlyph`s keyed by
@@ -688,7 +688,7 @@ the core's `GlyphKey`, `Cluster`s, `ShapedLine`s). `ComplexText` is a
 single-face `FaceSource` over it: it now wraps to `max_w` and reports
 clusters in source order with leading-edge `x`. The core's `Cluster`
 gains `rtl`, set by every constructor. Nothing paints from the shaper
-yet (T81.3). Gates in `crates/lumen-static-text/tests/shaper.rs`, pinned
+yet (T81.3). Gates in `crates/fulgurite-text/tests/shaper.rs`, pinned
 face, 16 px:
 
 | gate | quantity | measured | bound | injection → measured |
@@ -703,14 +703,14 @@ face, 16 px:
 
 Crate counts by K2's method after `unicode-linebreak` (one crate, no
 dependencies): the text crate **22**, the shell with `shaping` **28**,
-`lumen-static-winit` with `shaping` **104** (96 default, unchanged).
+`fulgurite-winit` with `shaping` **104** (96 default, unchanged).
 
 ## M81/T81.3 — `Shaping` on the stack: both backends paint shaped (2026-10-04)
 
 `FontStack` gains a mode, `Shaping { Basic, Complex }` (`Complex` with the
 shell's `shaping` feature), set by `with_shaping`. Under `Complex`,
 `place_run_into` (both backends), `measure_run` and `shape_into` lay a run
-out with `lumen-static-text`'s `Shaper` over the stack's own `FaceSource`,
+out with `fulgurite-text`'s `Shaper` over the stack's own `FaceSource`,
 and put each glyph on fontdue's baseline, the `Basic` cap shift and M80's
 pitch. Face bytes come back from where the stack read them (`from_files`,
 `system`) or the caller's `'static` bytes (`from_static`), interned once
@@ -759,35 +759,35 @@ shaping is reopened (`docs/plan-shaped-paint.md`).
 | `line_height.rs`, `line_height` 12 `Label` on `Complex` | measured content height; painted line-start y | 43 (want 3 × 12 + (19 − 12)); 3, 15, 27 (scale 1) and 7, 31, 55 (scale 2) | ±1; pitch × scale ± 1 | the `Complex` branch ignores `line_height`: line starts 3, 22, 41, "line 2 painted 19 px below line 1, want 12" |
 | `font_heap.rs` K81c | resident heap after one frame, kept stack + canvas | `Complex` **803,992 B** above `Basic`; a second `Complex` stack 44,112 B; `Basic` from the file = from bytes (+0) | file 759,720 + 64 KiB = 825,256; `Basic` ≤ from bytes + 64 KiB | the bytes kept under `Basic` too: `Basic` from the file 759,366 B over from bytes, the `Basic` bound fires; the older peak bound did not (22,045,185 under 23,966,104) |
 | `alloc_gate.rs` `mod complex` | allocations per frame, after warm-up | combining-mark label **0** (2 shaped runs a frame, 0 bidi); plain Latin **0** (0 shaped); still RTL screen **0**; changing RTL label **960** = 80 bidi runs × 12 | 0 / 0 / 0 / bidi runs × `unicode_bidi`'s own count | a shape plan per call: the combining-mark arm prints 650 allocations in 50 frames |
-| `lumen-static-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8 | **0** (worst 1), ink 355 both, 2 bidi runs (RTX 4070) | 2 (the text region's) | the GPU shapes with a `Basic` clone: **885** px, "the backends disagree on a shaped run" |
-| `just release-window-shape` | `rustybuzz::`/`unicode_bidi::` symbols, release `minimal` | default **0**; with `lumen-static-winit/shaping` **310** | 0; > 0 | `shaping` a default shell feature: default 310, "a default release window links 310 shaper symbols" |
+| `fulgurite-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8 | **0** (worst 1), ink 355 both, 2 bidi runs (RTX 4070) | 2 (the text region's) | the GPU shapes with a `Basic` clone: **885** px, "the backends disagree on a shaped run" |
+| `just release-window-shape` | `rustybuzz::`/`unicode_bidi::` symbols, release `minimal` | default **0**; with `fulgurite-winit/shaping` **310** | 0; > 0 | `shaping` a default shell feature: default 310, "a default release window links 310 shaper symbols" |
 | `--bin grid --shaping basic\|complex` | the truetype pass's glyph cache, runs painted / through the shaper | identical under both: 28 misses, 0 resets, 909 runs painted, **0** through the shaper | — (K81b is T81.8's) | — |
 
 ### K2 and K81e
 
 By K2's method: the shell 8 default, 16 `truetype`, **28** `shaping`;
-`lumen-static-winit` 96 default, **104** with `shaping` — unchanged from
+`fulgurite-winit` 96 default, **104** with `shaping` — unchanged from
 T81.2, since T81.3 adds no crate (`unicode-bidi` joins the shell as a
 dev-dependency, the version the text crate already pulls). Stripped
 release `examples/showcase`: 9,679,336 B → 10,428,296 B with
-`lumen-static-winit/shaping`, **+748,960 B** (0.71 MiB) against K81e's
+`fulgurite-winit/shaping`, **+748,960 B** (0.71 MiB) against K81e's
 3 MB — holds.
 
 ## M81/T81.5 — caret, selection and hit test over bidi runs (2026-10-04)
 
 `TextInput`, `TextArea` and `Selectable` place their caret, answer
 `caret_rect`, hit-test a press and tint a selection through one module,
-`lumen-static-widgets`' `caret`: an offset is the **last** cluster with
+`fulgurite-widgets`' `caret`: an offset is the **last** cluster with
 its byte (`caret::at`, which `TextInput::x_of` and `TextArea::cluster_at`
 read), a press the nearest leading edge, a selection one rect per visually
-contiguous span (`caret::spans`). `lumen-static-text`'s `Shaper` reports
+contiguous span (`caret::spans`). `fulgurite-text`'s `Shaper` reports
 a direction change as **two insertion points with one byte** — the ending
 run's trailing edge, then the next leading edge — because no leading edge
 is that boundary (`docs/plan-shaped-paint.md`, "What building found").
 The tint colours are unchanged: `Selectable` keeps M80/T80.4's alpha 40,
 the fields their 64, which is still unmeasured under text.
 
-Gates in `crates/lumen-static-shell/tests/bidi_caret.rs` (`just fonts`):
+Gates in `crates/fulgurite-shell/tests/bidi_caret.rs` (`just fonts`):
 pinned face, 16 px, a `Complex` stack from `from_static`, each on an
 `Everything` and a `Boundaries<256>` host with identical output, every
 input asserted handled:
@@ -801,7 +801,7 @@ input asserted handled:
 | — either, the shaper's pair removed | the same | — | — | `place_line` pushes no closing point: 23/23 but **10** stray in both (the space's span ends at the word's right end), 2 rects in the field and 1 in the `Selectable` |
 | a press at the visual left end of `שלום` (line 1 of a two-line right-to-left `TextArea`) | the caret's offset | **8**, the `\n` (accept: its right end → 0) | 8; 0 | `offset_at` measures each cluster at its trailing edge: **6** |
 | `caret_rect` at scale 2 against the painted caret column | \|centre − column\|, physical px: `TextInput` at byte 4 of `abc שלום` (a direction change), at the end of `שלום`, `TextArea` at line 1's end | **0.50**, 0.00, 0.00 (columns 37 px of a 37.2 px line) | ≤ 1 | `TextInput::caret_rect` with `find(byte >= at)` while paint looks up exactly: **70.31** at byte 4 (the Hebrew word's width), 0 elsewhere |
-| `crates/lumen-static-text/tests/shaper.rs` mixed line | pairs (byte, trailing edge, leading edge) in `abc שלום def` | (4, **33.84**, 69.25), (12, **33.84**, 33.84) | bytes 4 and 12; both trailing edges equal, between the space's leading edge (28.76) and the word's (69.25) | no closing point pushed: **[]** |
+| `crates/fulgurite-text/tests/shaper.rs` mixed line | pairs (byte, trailing edge, leading edge) in `abc שלום def` | (4, **33.84**, 69.25), (12, **33.84**, 33.84) | bytes 4 and 12; both trailing edges equal, between the space's leading edge (28.76) and the word's (69.25) | no closing point pushed: **[]** |
 | firmware | `.text` Δ against `3f5c7e3`, four binaries | **+860 / +844 / +860 / +860 B** | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.5 |
 
 
@@ -865,7 +865,7 @@ in T81.8.
 
 ## M81/T81.7 — the phase probe: thirds from fontdue's public API (2026-10-04)
 
-`crates/lumen-static-shell/tests/subpixel_phase.rs` (`just fonts`), on the
+`crates/fulgurite-shell/tests/subpixel_phase.rs` (`just fonts`), on the
 pinned face. The derivation (test-local until T81.8 moves it into
 `FontStack::rasterize`) shifts `rasterize_indexed_subpixel`'s 3× raster by
 `round(2·offset_x) + k` sub-columns and sums each pixel's three. The
@@ -915,7 +915,7 @@ both backends draw every glyph through one shell function, `text::pen_of`,
 which rounds a phase-0 placement as before and gives a phaseable one its
 column `floor(x)` and third `round(3·fract(x))`. The bearing fraction is
 counted once (T81.7's pin, flipped). Gates in
-`crates/lumen-static-shell/tests/subpixel_phase.rs` (`just fonts`) unless
+`crates/fulgurite-shell/tests/subpixel_phase.rs` (`just fonts`) unless
 named:
 
 | gate | quantity | measured | bound | injection → measured |
@@ -928,7 +928,7 @@ named:
 | `basic_placements.rs` | `BASIC_CHECKSUM`; glyphs `pen_of` phases, `Basic` stack and `Complex` stack | **0x866444d1064ccda8**; **0 of 6,600** each | equal; 0 | `pen_of` phases a phase-0 placement: **6,600** phased, both arms fail |
 | `alloc_gate.rs` `mod complex` | allocations per frame after warm-up | **0 / 0 / 0 / 960** — T81.3's values | unchanged | — |
 | `scale_memo.rs`, a `Complex` session dragged to 2× (T81.4's gate, re-bounded) | `שלום עולם` at 14 px: 1× box against the 2× measure over 2; the box after the drag | **65** against **64.5** (66 before: the doubled bearing fraction widened the ink); **64.5x19.5** = the measure | part by > 0.25; within 0.01 px (was 0.5, which 0.5 px of staleness passed) | `set_scale` stops reaching the measurer: **65x20**, "kept a stale box" |
-| `lumen-static-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8; glyphs per phase 0/1/2/3 | **0** (worst 1), ink 362 both; **[0, 5, 3, 4]**, 3 thirds (RTX 4070) | 2; ≥ 2 thirds | the wgpu site rounds instead of `pen_of`: **568** px over, GPU ink 292 |
+| `fulgurite-wgpu/tests/parity.rs`, `just gpu` | `שלום world 123` on a `Complex` stack, px over 8; glyphs per phase 0/1/2/3 | **0** (worst 1), ink 362 both; **[0, 5, 3, 4]**, 3 thirds (RTX 4070) | 2; ≥ 2 thirds | the wgpu site rounds instead of `pen_of`: **568** px over, GPU ink 292 |
 | live: `scripts/widget_drive.sh "TextInput,TextInput RTL"`, six legs | actions; M57's D5 parity in the two `+shaping` legs | 8 of 8 each leg; **0** bytes of 20,440 per entry, `--demo` Complex = leg Complex | 0 failed; 0 | — (a phase is not separately observable live; D5 covers phased glyphs) |
 | firmware | `.text` Δ against `3b3760d`, four binaries | **+0 / +0 / +0 / +0 B**, `.rodata` +0 | K4: 1,000 B on `firmware_interactive` | `docs/results-embedded.md` M81/T81.8 |
 

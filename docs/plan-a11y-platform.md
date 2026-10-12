@@ -84,18 +84,18 @@ and prints the measured quantity beside its bound.*
 
 ### 1.1 No turnkey application reaches a screen reader (R15-F1)
 
-`accesskit` is optional in `crates/lumen-static/Cargo.toml` and is
+`accesskit` is optional in `crates/fulgurite/Cargo.toml` and is
 enabled only by `observe` (`:35`), the dev surface that also stamps
 `NodeDesc.src` and so grows `NodeDesc` from 48 B to 72 B
-(`crates/lumen-static/src/desc.rs:27`). A release application therefore
+(`crates/fulgurite/src/desc.rs:27`). A release application therefore
 cannot have a screen-reader tree without paying for the agent's
 feature. `accesskit_winit` appears only in
-`examples/counter-window/Cargo.toml:24`. `crates/lumen-static-winit`
+`examples/counter-window/Cargo.toml:24`. `crates/fulgurite-winit`
 has no `a11y` feature, yet its manifest comment at `:35` says
 "Clipboard is default-ON, unlike the a11y feature", about a feature it
-does not have. `Win::resumed_impl` (`crates/lumen-static-winit/src/lib.rs:669`)
+does not have. `Win::resumed_impl` (`crates/fulgurite-winit/src/lib.rs:669`)
 creates the window visible, with no adapter. M32's `Program`
-(`crates/lumen-static-shell/src/program.rs:152`) has no accessibility
+(`crates/fulgurite-shell/src/program.rs:152`) has no accessibility
 setting, so the gap now covers the recommended path as well. The
 crate's module doc still points a11y users at counter-window's
 hand-rolled loop (`lib.rs:14-15`). The live evidence is the review's
@@ -104,7 +104,7 @@ AT-SPI walk (R15-F1; `docs/results-deep-review.md`).
 ### 1.2 The tree names one control, and nothing is actionable (R15-F2, R15-F3)
 
 At 1717808, `set_label` has two real call sites
-(`crates/lumen-static-widgets/src/ops.rs:473` for `Button`, `split.rs:576`
+(`crates/fulgurite-widgets/src/ops.rs:473` for `Button`, `split.rs:576`
 for `Collapsible`) and `add_action` has two (`ops.rs:474`,
 `toggle.rs:275`). `set_selected`, `set_disabled`, `set_description` and
 `labelled_by` have none. `Toggle` publishes a role and `toggled` but no
@@ -113,14 +113,14 @@ name (`toggle.rs:267-275`). `Slider` and `TextInput` publish no name
 progress indicator, toast, card, tooltip, popup, glass and scroll have
 no `observe` at all, so they report `GenericContainer`. The agent's
 `input.invokeAction` is literally `input.click`
-(`crates/lumen-static-agent/src/lib.rs:478`), and counter-window's
+(`crates/fulgurite-agent/src/lib.rs:478`), and counter-window's
 adapter turns every `ActionRequested` into a click at the node's centre
 (`examples/counter-window/src/window.rs:171-181`).
 
 **Nothing would notice any of it getting worse** (R15-F3). The review's
 injection deleted `Toggle::observe`'s `set_role` and the whole suite
 stayed green. The one test added since, T35.1's
-`crates/lumen-static-widgets/tests/observe_walk.rs`, compares two walks
+`crates/fulgurite-widgets/tests/observe_walk.rs`, compares two walks
 that both call the same `observe`, so it proves the walks agree and
 says nothing about what either reports.
 
@@ -132,9 +132,9 @@ guard test checks `type_defaults`, not the painted command. The review
 made the label the pill's own colour and nothing went red, unit or live
 (R16-F8). The paint-level contrast checks that exist are
 `scripts/ui_check.py` (counter-window's buttons and labels only), one
-pagination geometry check in `crates/lumen-static-widgets/tests/data.rs`,
+pagination geometry check in `crates/fulgurite-widgets/tests/data.rs`,
 and, new since the review, T36.2's `contrast` helper in
-`crates/lumen-static-shell/tests/failure_screen.rs:59-70`, which covers
+`crates/fulgurite-shell/tests/failure_screen.rs:59-70`, which covers
 the panic screen and nothing else.
 
 The showcase's accent `0x2f6bff` (`examples/showcase/src/main.rs:67`)
@@ -145,7 +145,7 @@ Ghost button's ground (`GHOST`, `main.rs:96`), still under 4.5, and
 found `#265ce6` to be the first value that passes all three grounds.
 **The framework's own palette has the same defect** (re-triage, new at
 1717808): `Palette::LIGHT`'s accent (53, 99, 239) is 4.07:1 on its own
-`surface` (226, 232, 240) (`crates/lumen-static/src/style.rs:505-514`).
+`surface` (226, 232, 240) (`crates/fulgurite/src/style.rs:505-514`).
 This plan's own computation over `Palette::LIGHT` and `Palette::DARK`
 found two more role pairs under 4.5 — LIGHT `muted` on `surface` and
 DARK `accent` on `surface` — but whether any widget *paints* those pairs
@@ -157,8 +157,8 @@ is unknown, which is rule 5's point. T54.0's harness decides it.
 (multi-window) and T15.11 (platform dialogs) DONE 2026-09-07. At
 1717808, `translate::dropped` and `Dropped` have no caller outside
 `translate.rs`. `Panes` and `Dialogs` are only re-exported
-(`crates/lumen-static-winit/src/lib.rs:124`, `:127`), with no user in
-any crate, example or fixture. `crates/lumen-static-winit/tests` holds
+(`crates/fulgurite-winit/src/lib.rs:124`, `:127`), with no user in
+any crate, example or fixture. `crates/fulgurite-winit/tests` holds
 `gpu_regions.rs` and `translate.rs` and nothing that opens two windows,
 drops a file or shows a dialog. `window_event_impl` sends every event
 through `translate::window_event` (`lib.rs:764`), which has no arm for
@@ -170,16 +170,16 @@ dialogs as available.
 
 ### 1.5 Stated sizes and features that do not exist (R15-F8, R15-F9, R12-F6)
 
-- `crates/lumen-static/src/drag.rs:18-20` and `:44-45` say `Drag<()>`
+- `crates/fulgurite/src/drag.rs:18-20` and `:44-45` say `Drag<()>`
   "is one byte". It is 24 B (R15-F8; `docs/results-deep-review.md`).
   The test named for the claim,
   `a_tree_that_drags_nothing_carries_one_byte`
-  (`crates/lumen-static/tests/drag.rs:88`), asserts
+  (`crates/fulgurite/tests/drag.rs:88`), asserts
   `size_of::<Option<()>>() == 1`, a language fact. Its relative
   assertion does guard the mechanism its comment describes (no
   `Box<dyn Any>` payload), which is why the re-triage lowered it to S3:
   the number is wrong, the mechanism is guarded.
-- `crates/lumen-static-widgets/src/image.rs:10-12` says decoding "lives
+- `crates/fulgurite-widgets/src/image.rs:10-12` says decoding "lives
   behind" the shell's default-off `image` feature. The shell has no such
   feature (R15-F9).
 - `docs/mobile-decision.md:27-31` says a bare `cargo check` of the core
@@ -201,26 +201,26 @@ dialogs as available.
 - **(b) Correct the handoff to "agent tree only".** Cheap and honest. It
   leaves the stated goal false and every `Program` application
   invisible to assistive technology.
-- **(c) Split `a11y` out of `observe`. Recommended.** In `lumen-static`,
+- **(c) Split `a11y` out of `observe`. Recommended.** In `fulgurite`,
   `a11y = ["std", "dep:accesskit"]` gates `Node::observe`,
   `Node::observe_walk`, `observe::emit_root`, `observe::snapshot` and
   `observe::index_of_node`. `observe = ["a11y", "dep:serde",
   "dep:serde_json"]` keeps the JSON dump, `probe`, `stats` and the
-  `NodeDesc.src` stamp. The same split in `lumen-static-widgets`
-  (`a11y = ["dep:accesskit", "lumen-static/a11y"]`), and
+  `NodeDesc.src` stamp. The same split in `fulgurite-widgets`
+  (`a11y = ["dep:accesskit", "fulgurite/a11y"]`), and
   `__observe_items!` becomes two macros so the derive's generated walk
   follows `a11y` and its `src` stamp follows `observe`.
 
 **What (c) breaks.** About fifty `cfg(feature = "observe")` sites move
 to `a11y`, and each one is a place M30's feature-seam defect can come
-back: a build that turns on `lumen-static/a11y` but forgets
-`lumen-static-widgets/a11y` reports every widget as `GenericContainer`,
+back: a build that turns on `fulgurite/a11y` but forgets
+`fulgurite-widgets/a11y` reports every widget as `GenericContainer`,
 and no unit test in the core would notice. T54.1's gate builds the
 widgets crate with `a11y` alone and reads a role back. The
 `just observe-inlining` symbol gate (M35) must also run under `a11y`
 alone, because `observe_walk` moves with it.
 
-### 2.2 The adapter: `accesskit_winit` in `lumen-static-winit`, reached through `Program`
+### 2.2 The adapter: `accesskit_winit` in `fulgurite-winit`, reached through `Program`
 
 `accesskit_winit` already covers AT-SPI, UI Automation and
 NSAccessibility, and counter-window proves the pattern with 0.34. A
@@ -246,12 +246,12 @@ copy and paste is not a working text field". The same argument is
 stronger here: an application its user cannot perceive is not a working
 application, and a screen-reader user cannot turn a Cargo feature on.
 The cost the manifest records is 62 crates, against `clipboard`'s 11,
-measured 2026-09-05 (`crates/lumen-static-winit/Cargo.toml:35-40`). The
+measured 2026-09-05 (`crates/fulgurite-winit/Cargo.toml:35-40`). The
 runtime cost should be nothing until an assistive technology connects,
 because the adapter asks for the first tree only then.
 
 **Kill rule, written before T54.2 is built.** `a11y` ships default-on in
-`lumen-static-winit` unless T54.2 measures **either** of these:
+`fulgurite-winit` unless T54.2 measures **either** of these:
 
 1. the showcase's idle frame with no assistive technology attached moves
    outside the eight-run spread of the same build without the feature, or
@@ -273,9 +273,9 @@ right for a leaf and wrong for a wrapper. The question is whether a
 wrapper is ever on this path. **At 1717808 it is not.** Dispatch
 resolves the target by table index through `node_mut`, and a wrapper's
 `node_mut` hands out its content for every index but its own
-(`crates/lumen-static-widgets/src/glass.rs:296-301`). `on_event`,
+(`crates/fulgurite-widgets/src/glass.rs:296-301`). `on_event`,
 `compose` and `dismissal_consumes_press` are delivered this way
-(`crates/lumen-static/src/pass.rs:739`, `crates/lumen-static-shell/src/lib.rs:1362`),
+(`crates/fulgurite/src/pass.rs:739`, `crates/fulgurite-shell/src/lib.rs:1362`),
 which is why `dismissal_consumes_press`'s rustdoc calls itself "a leaf's
 answer and never a wrapper's to forward". An action addressed to a
 slider inside a `Glass` reaches the slider without `Glass` being asked.
@@ -301,7 +301,7 @@ So the choice is between a new method and no new method:
   action enum lives in core, `no_std`, with no `accesskit` type in it:
   `Default`, `Increment`, `Decrement`, `SetValue(f32)`, `Expand`,
   `Collapse`, `Focus`. The value is `f32`, not accesskit's `f64`, for
-  two reasons: `Event` is 16 B and `crates/lumen-static/tests/modifiers.rs`
+  two reasons: `Event` is 16 B and `crates/fulgurite/tests/modifiers.rs`
   asserts it (M44 §2.4 keeps it there), and M52/T52.2 bounds soft-`f64`
   symbols in the interactive firmware at 0, which an `f64` in an `Event`
   arm would break. The adapter maps `accesskit::Action` onto it and
@@ -316,7 +316,7 @@ node that *publishes* an action it does not handle — and rule 3's gate
 exists for it.
 
 **Arena rows.** A `Repeat` row is not in the table, and `Repeat`'s
-`on_event` handles only `Scroll` (`crates/lumen-static/src/repeat.rs:583`).
+`on_event` handles only `Scroll` (`crates/fulgurite/src/repeat.rs:583`).
 An action on a row's node resolves to the repeater's index plus the row,
 exactly as a click does, and only `Default` means anything there: it
 reaches the application's row handler. Row widgets hold no per-row state
@@ -378,7 +378,7 @@ Each finding becomes a check that is red at 1717808, committed with its
 red state in the commit body, and marked expected-to-fail until its task
 lands (the T35.0 and T36.0 precedent).
 
-1. **The role table**, `crates/lumen-static-widgets/tests/a11y_roles.rs`,
+1. **The role table**, `crates/fulgurite-widgets/tests/a11y_roles.rs`,
    under `observe` until T54.1 creates `a11y`. One row per `Node` impl
    in the widgets crate, built in a `Host`, snapshotted, and checked for
    role, name presence, state fields and published actions. It prints
@@ -398,7 +398,7 @@ lands (the T35.0 and T36.0 precedent).
    printed. **Red today** ("showcase not in AT-SPI app list"). *Good
    input:* counter-window built with `--features a11y` passes the same
    walk today, which proves the walker sees what is there.
-3. **The contrast harness**, `crates/lumen-static-widgets/tests/text_contrast.rs`
+3. **The contrast harness**, `crates/fulgurite-widgets/tests/text_contrast.rs`
    (§2.6, T54.5). **Green at 1717808 against 3:1**, because the defect
    R16-F8 describes is a missing gate, not a painted defect. It goes red
    under the review's injection `fd31a02` (the selected rail label drawn
@@ -428,28 +428,28 @@ column only; the unit table does not need it.
 
 **Closes:** none by itself; it is R15-F1's prerequisite (§2.1).
 
-**Change.** `crates/lumen-static/Cargo.toml` and
-`crates/lumen-static-widgets/Cargo.toml` gain `a11y`; `observe` implies
+**Change.** `crates/fulgurite/Cargo.toml` and
+`crates/fulgurite-widgets/Cargo.toml` gain `a11y`; `observe` implies
 it. The `cfg` sites in `widget.rs`, `observe.rs`, `ops.rs`, `hatch.rs`,
 `repeat.rs` and the widgets move per §2.1, with `NodeDesc.src` staying
 behind `observe`. `__observe_items!` is split so the derive's walk
-follows `a11y`. `crates/lumen-static-agent/Cargo.toml` keeps enabling
+follows `a11y`. `crates/fulgurite-agent/Cargo.toml` keeps enabling
 `observe`, which now implies `a11y`. M48/T48.9's compile-time seam
 assertion (the widgets crate refuses to build when the core has
 `observe` and it does not) is extended to `a11y` in the same commit, so
 this split does not reopen the seam M48 closed.
 
 **Gate.**
-- A size test in `crates/lumen-static/tests/desc_size.rs`: under `a11y`
+- A size test in `crates/fulgurite/tests/desc_size.rs`: under `a11y`
   without `observe`, `size_of::<NodeDesc>()` is 48; under `observe`, 72.
   It prints `NodeDesc = n B under <features> (bound 48)`. No test
   asserts either number today; `desc.rs:27` states them.
-- The role table from T54.0, run under `lumen-static-widgets/a11y`
+- The role table from T54.0, run under `fulgurite-widgets/a11y`
   alone, reads `CheckBox` back from a toggle.
 - `just observe-inlining` runs under `a11y` alone as well as `observe`.
 
 **Injection.** Move the `src` stamp under `a11y`: the size gate fails at
-72 against 48. Drop `lumen-static/a11y` from the widgets crate's `a11y`
+72 against 48. Drop `fulgurite/a11y` from the widgets crate's `a11y`
 feature list: the table reads `GenericContainer` for the toggle, and the
 build does not fail — which is the M30 seam this gate exists for.
 *Good input:* the `observe` build still reports 72 and passes, so the
@@ -457,7 +457,7 @@ test measures the feature set it names.
 
 **Docs in the same commit.** `desc.rs:27` (the size under each feature,
 citing the test); both manifests' feature comments;
-`crates/lumen-static-agent/Cargo.toml:10-25` (the observe unification
+`crates/fulgurite-agent/Cargo.toml:10-25` (the observe unification
 comment); `docs/step5-observability.md` (the gating paragraph).
 
 **Effort:** M. **Depends on:** T54.0.
@@ -466,9 +466,9 @@ comment); `docs/step5-observability.md` (the gating paragraph).
 
 **Closes:** R15-F1.
 
-**Change.** §2.2 and §2.3. `crates/lumen-static-winit/Cargo.toml` gains
+**Change.** §2.2 and §2.3. `crates/fulgurite-winit/Cargo.toml` gains
 `a11y = ["dep:accesskit_winit", "dep:accesskit",
-"lumen-static-shell/a11y"]`; the shell's `Session` gains the tree and
+"fulgurite-shell/a11y"]`; the shell's `Session` gains the tree and
 action calls under it; `Win::resumed_impl` builds the adapter before
 showing the window; `UserEvent` gains the variant; `Program` gains
 `.accessible`. Counter-window drops its own adapter. Measure §2.3's kill
@@ -479,7 +479,7 @@ rule and decide the default in this commit.
   application: application present, push-button count equal to the
   agent's (both printed), and the button named `Primary` has the push
   button role.
-- `crates/lumen-static-winit/tests/a11y_tree.rs`: the `TreeUpdate` the
+- `crates/fulgurite-winit/tests/a11y_tree.rs`: the `TreeUpdate` the
   session would send for a small `Program` has as many nodes as the
   table has visible nodes (both printed), and at scale 2.0 a button's
   bounds are twice its logical bounds (printed). The second assertion is
@@ -499,7 +499,7 @@ counter-window, now on the shared adapter, still passes the AT-SPI walk.
 paragraphs: which feature gives the screen-reader tree, and the adapter
 flipped from implied to DECIDED with a pointer to this task.
 `docs/step5-observability.md:95` ("Platform adapter wiring") moves to
-done. The `lumen-static-winit` manifest comment at `:35` becomes true;
+done. The `fulgurite-winit` manifest comment at `:35` becomes true;
 `lib.rs:14-15` stops pointing at counter-window. `docs/plan-desktop.md`
 T14.0. The book: `component-boundary.md:29` already names screen
 readers; `agent.md` or `backends.md` gains `.accessible`, included by
@@ -565,7 +565,7 @@ adapter maps `ActionRequested` onto `Host::action`. The agent's
 - The role table invokes every published action on every row and
   asserts `handled`. It prints `published: p, handled: h` per row, with
   the bound `h == p`.
-- `crates/lumen-static-agent/tests/actions.rs`: `invokeAction`
+- `crates/fulgurite-agent/tests/actions.rs`: `invokeAction`
   `increment` on a slider moves its value by exactly one step (before
   and after printed) and answers `handled: true`. The same on a slider
   inside a `Glass`, which proves index delivery reaches past a wrapper.
@@ -597,7 +597,7 @@ transport, which `invokeAction` travels on).
 
 **Closes:** R16-F8.
 
-**Change.** A shared `text_contrast` function in `lumen-static-shell`
+**Change.** A shared `text_contrast` function in `fulgurite-shell`
 (headless and `std`, so widget, example and agent tests can all reach
 it): for each text command in a `DisplayList`, find the topmost opaque
 fill preceding it whose rectangle contains the run's centre, respecting
@@ -670,7 +670,7 @@ this plan. `Dropped::Files` becomes one path per event. The rustdoc of
 turnkey path calls them. The `dnd` feature's manifest comment says
 `run` and `Program` do not route drops.
 
-**Gate.** `crates/lumen-static-winit/tests/translate.rs` gains a case:
+**Gate.** `crates/fulgurite-winit/tests/translate.rs` gains a case:
 a `DroppedFile` event yields exactly one `Dropped::File` carrying its
 path (printed), and a `CursorMoved` yields none. The un-marking itself
 has no behavioural gate; the honest record is the doc, and §4 names
@@ -824,7 +824,7 @@ still stand where the plan put them, with line numbers moved.
   T54.2. That is what lets the script sit in `scripts/live.sh`'s list
   from the first commit.
 - **The measuring function is built here, not in T54.5.** A gate needs
-  a measurement, so `lumen_static_shell::contrast` lands with T54.0;
+  a measurement, so `fulgurite_shell::contrast` lands with T54.0;
   T54.5 moves T36.2's helper onto it and wires it into the drive.
 - **The widgets' own defaults are a third accent.** The painted accent
   is `#2f6bff` — the showcase's value — not `Palette::LIGHT`'s
@@ -847,7 +847,7 @@ feature (`dev-shape`); without that line it would never run.
   relative assertion then fires (32 B against 32 B). The relative
   assertion now runs before the absolute one, so each injection is
   reported by the assertion named for it.
-- **The feature rule needs a negation.** `lumen-static`'s manifest and
+- **The feature rule needs a negation.** `fulgurite`'s manifest and
   `lib.rs` both say there is deliberately *no* `no_std` feature; "no
   `x` feature", with the "no" on the same or the previous comment line,
   is skipped. The rule lives in `scripts/check_doc_identifiers.sh`, as
@@ -858,12 +858,12 @@ feature (`dev-shape`); without that line it would never run.
 - **The size test cannot live in core.** Core cannot be *tested* with
   `a11y` alone: its dev-dependency on the widgets builds them without
   `a11y`, which the seam assertion refuses. So
-  `crates/lumen-static-widgets/tests/desc_size.rs` asserts `NodeDesc`
+  `crates/fulgurite-widgets/tests/desc_size.rs` asserts `NodeDesc`
   under the features it finds, and `just test` runs it three ways
   (default 48, `--features a11y` 48, the workspace's `observe` 72).
-- **"Drop `lumen-static/a11y` from the widgets' `a11y`: the build does
+- **"Drop `fulgurite/a11y` from the widgets' `a11y`: the build does
   not fail" is false.** It fails, with 89 errors: without the core's
-  `a11y` the trait has no `observe` method and `lumen_static::observe`
+  `a11y` the trait has no `observe` method and `fulgurite::observe`
   does not exist. The seam that *can* be silent is the other direction —
   the core's `a11y` on, the widgets' off — and the seam assertion
   refuses it; `scripts/check_feature_seam.sh` now shows it for both
@@ -884,7 +884,7 @@ feature (`dev-shape`); without that line it would never run.
 - **`Session`'s new methods are unconditional**, returning an opaque
   `A11yTree` that holds a `TreeUpdate` only with `a11y`: a `cfg`-gated
   trait method would have made the hot session's forwarding wrapper
-  (`lumen_static_reload`) fail to compile in any graph where the shell's
+  (`fulgurite_reload`) fail to compile in any graph where the shell's
   `a11y` was on and the reload crate did not know. The stamp's feature
   list carries `a11y`.
 - **The window crate turns the widgets' `a11y` on**, through an optional
@@ -919,7 +919,7 @@ feature (`dev-shape`); without that line it would never run.
   longer 1176 B on the target"): three controls there, 8 B each, for a
   name no screen reader on the device could read.
 - **`Divider` stays `GenericContainer`**: M48/T48.6 decided a divider is
-  decoration, and `lumen-static-agent/tests/tree_fields.rs` allows it by
+  decoration, and `fulgurite-agent/tests/tree_fields.rs` allows it by
   name. The explicit list is eight kinds, not the plan's three: `Fixed`,
   `Spacer`, `Pad`, and also `Popup` and `Glass` (paint, no meaning),
   `Skeleton` (a placeholder), `PullToRefresh` (a gesture wrapper around
@@ -954,7 +954,7 @@ feature (`dev-shape`); without that line it would never run.
   gain; the plan's line for it describes nothing that exists.
 - **There is no label inside a button** — `Button` draws its own — so
   the good-input case is a `Default` on the button itself, which runs
-  its handler once (`lumen-static-agent/tests/input.rs`).
+  its handler once (`fulgurite-agent/tests/input.rs`).
 - **A `Pad` could not be placed in an application's tree**: exported,
   with no `Handlers` impl. Found when the catalogue became an
   application to dispatch into; fixed.

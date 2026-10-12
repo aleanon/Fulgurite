@@ -16,17 +16,17 @@
 
 use std::time::Instant;
 
-use lumen_static::display::{Color, DisplayList, Stops};
-use lumen_static::Point;
-use lumen_static_shell::software::Canvas;
-use lumen_static_shell::text::FontStack;
-use lumen_static::display::Painter as _;
+use fulgurite::display::{Color, DisplayList, Stops};
+use fulgurite::Point;
+use fulgurite_shell::software::Canvas;
+use fulgurite_shell::text::FontStack;
+use fulgurite::display::Painter as _;
 
 /// A frame with the mix a real application paints: cards with shadows,
 /// text, rules, and a gradient header.
 fn scene(w: u32, h: u32, list: &mut DisplayList) {
     let (fw, fh) = (w as f32, h as f32);
-    list.gradient([0.0, 0.0, fw, 64.0], Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)), lumen_static::display::GradShape::Linear { angle: 1.57 }, 0.0);
+    list.gradient([0.0, 0.0, fw, 64.0], Stops::two(Color(30, 40, 80, 255), Color(20, 24, 40, 255)), fulgurite::display::GradShape::Linear { angle: 1.57 }, 0.0);
     let cols = (fw / 220.0).max(1.0) as u32;
     let rows = (fh / 90.0).max(1.0) as u32;
     for r in 0..rows {
@@ -77,11 +77,11 @@ fn main() {
         let area = [0.0, 0.0, w as f32, h as f32];
 
         best_of(5, || {
-            canvas.clear(lumen_static_shell::CLEAR);
+            canvas.clear(fulgurite_shell::CLEAR);
             canvas.render_within(&list, area);
         });
         let cpu = best_of(30, || {
-            canvas.clear(lumen_static_shell::CLEAR);
+            canvas.clear(fulgurite_shell::CLEAR);
             canvas.render_within(&list, area);
         });
 
@@ -89,11 +89,11 @@ fn main() {
         // every frame: `draw` only *queues* the work, and timing a
         // queue submission and calling it a render would flatter this
         // arm by an order of magnitude.
-        let gpu = match lumen_static_wgpu::Gpu::headless(w, h) {
+        let gpu = match fulgurite_wgpu::Gpu::headless(w, h) {
             Some(mut g) => {
                 g.set_font(font.clone());
                 gpu_name = g.adapter().to_owned();
-                let page = lumen_static_shell::CLEAR;
+                let page = fulgurite_shell::CLEAR;
                 best_of(5, || {
                     g.draw(&list, None, Some((page, area)));
                     g.wait();
@@ -146,13 +146,13 @@ fn crossover(font: &FontStack) {
     const H: u32 = 1080;
     println!("\n\ncrossover: 1080p, damaged fraction x command count, min of 20\n");
 
-    let Some(mut gpu) = lumen_static_wgpu::Gpu::headless(W, H) else {
+    let Some(mut gpu) = fulgurite_wgpu::Gpu::headless(W, H) else {
         println!("   no adapter — skipped");
         return;
     };
     gpu.set_font(font.clone());
     let mut canvas = Canvas::with_font(W, H, font.clone());
-    let page = lumen_static_shell::CLEAR;
+    let page = fulgurite_shell::CLEAR;
 
     print!("{:<10}", "cmds");
     for f in [0.01f32, 0.02, 0.03, 0.05, 0.10] {

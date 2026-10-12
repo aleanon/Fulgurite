@@ -80,15 +80,15 @@ Measured before planning, so the estimates below are anchored:
 
 ---
 
-## T14.0 — `lumen-static-winit`: extract the window — **DONE 2026-09-05**
+## T14.0 — `fulgurite-winit`: extract the window — **DONE 2026-09-05**
 
 **The largest gap, and the least interesting work.** There is no
-windowing layer. `lumen-static-shell` has *no window dependency at all*
+windowing layer. `fulgurite-shell` has *no window dependency at all*
 — it is `Host` + `Canvas` + text — and the winit/softbuffer glue lives
 in an example, tangled with the agent endpoint, headless rendering and
 the profiler. A second application copy-pastes 480 lines of event loop.
 
-**Decided: a new crate `lumen-static-winit`**, not a feature on the
+**Decided: a new crate `fulgurite-winit`**, not a feature on the
 shell. The shell is the headless, portable half and every test depends
 on it staying that way; adding `winit` there would put a windowing
 system behind `cargo test`. The name states the dependency rather than
@@ -102,13 +102,13 @@ damage and buffer age, scale-factor changes, the `a11y` feature.
 > **The `a11y` feature did not move — until M54/T54.2 (2026-09-27).** It
 > stayed in `examples/counter-window` as a hand-written adapter, so no
 > application started through `run` could reach a screen reader
-> (R15-F1). It is `lumen-static-winit`'s `a11y` feature and
-> `lumen_static_winit::a11y` now, used by `run`, every `Program` and
+> (R15-F1). It is `fulgurite-winit`'s `a11y` feature and
+> `fulgurite_winit::a11y` now, used by `run`, every `Program` and
 > counter-window alike; default-off by a measured kill rule
 > (`docs/results-a11y-platform.md`).
 
 What stays behind: the agent endpoint (it belongs with
-`lumen-static-agent`), `--headless`, `--drive`, the profiler and the
+`fulgurite-agent`), `--headless`, `--drive`, the profiler and the
 `--form` fixture. Those are harness and example concerns, and mixing
 them into the window is what made this 1160 lines.
 
@@ -152,7 +152,7 @@ should have said that, and this entry is the correction.
 
 **And the split made the input path testable for the first time.**
 `translate.rs` is pure — `WindowEvent` in, `Event` out — so
-`crates/lumen-static-winit/tests/translate.rs` covers all twelve keys,
+`crates/fulgurite-winit/tests/translate.rs` covers all twelve keys,
 the cursor-position-on-click rule, wheel lines versus pixels, and the
 logical/physical conversion, with **no display**. None of that had a
 test before, because it lived inside an event loop that cannot run
@@ -198,7 +198,7 @@ first among the vocabulary tasks.
 
 `Mods` is a `u8` bitflag: `SHIFT | CTRL | ALT | META`. **`META`, not
 `CMD` or `SUPER`** — one name for the platform's own modifier, mapped
-per platform in `lumen-static-winit`, so an application writes one
+per platform in `fulgurite-winit`, so an application writes one
 shortcut table. Whether Ctrl or Meta is "the" shortcut modifier is the
 *application's* choice; the framework reports both truthfully.
 
@@ -219,7 +219,7 @@ the machinery).
 
 **Done, as designed.** `Event::Modifiers(Mods)` in the queue, `mods` on
 `EventCtx`, `InputState { focus, capture, mods }` bundled.
-`crates/lumen-static/tests/modifiers.rs` asserts `Event` is still 16 B,
+`crates/fulgurite/tests/modifiers.rs` asserts `Event` is still 16 B,
 `Mods` 1 B and `InputQueue` 1048 B — the budget is a gate now, not a
 memory.
 
@@ -332,7 +332,7 @@ them tests that mean "click here" and have no opinion about buttons or
 click counts. `Event::down`/`Event::up` are those tests' vocabulary;
 the literal form is for the host that actually knows.
 
-Counting lives in `lumen-static-winit`, not `dispatch`: it needs a
+Counting lives in `fulgurite-winit`, not `dispatch`: it needs a
 clock, and the core is `no_std`. `MULTI_CLICK_TIME` is 500 ms and
 `MULTI_CLICK_SLOP` is 5 **logical** px, both public constants, both the
 platform-conventional values.
@@ -378,7 +378,7 @@ budget decision, recorded rather than defaulted.** A selection colour
 >
 > **Both figures below are M14-era and have since moved**: M27/T27.1's
 > border fields took `Style` to **80 B** and `NodeState` to **84 B**,
-> asserted in `crates/lumen-static/tests/cursor.rs` and
+> asserted in `crates/fulgurite/tests/cursor.rs` and
 > `tests/focus.rs`. The tests are the live answer; these paragraphs
 > record what the decision was taken against.
 
@@ -456,7 +456,7 @@ and `dropped()` stays 0. Copy of an empty selection is `None`, not
   character into the one queue**, so it replays as ordinary typing and
   gets selection-replacement, caret movement and bindings by the paths
   typing already uses. No second edit path to get subtly different.
-- `Clipboard` in `lumen-static-winit`, because a clipboard *is* a
+- `Clipboard` in `fulgurite-winit`, because a clipboard *is* a
   platform and neither the core nor the shell has one.
 
 *Amended 2026-09-25, M41/T41.5:* "no second edit path" was false in
@@ -467,7 +467,7 @@ a typed one — and kept that box, since the shaped memo is not keyed on
 the measurer (R2-F1, R10-F4). `Host::paste_with` takes the caller's
 measurer, `Session::paste` passes the session's, and `paste` is
 `paste_with` with the stand-in, for headless callers.
-`crates/lumen-static-shell/tests/paste_measurer.rs` is the gate.
+`crates/fulgurite-shell/tests/paste_measurer.rs` is the gate.
 
 **Default-on, and the difference from `a11y` is measured.** `arboard`
 costs **11 crates** (207 → 218, 2026-09-05) against `a11y`'s 62
@@ -511,7 +511,7 @@ does not.
 
 **Done, and it was free as predicted**: `Style` was still 72 B and
 `NodeState` still 76 B at the time, both asserted in
-`crates/lumen-static/tests/cursor.rs`. The `Cursor` fits in the tail
+`crates/fulgurite/tests/cursor.rs`. The `Cursor` fits in the tail
 padding beside `align` and `visible`.
 
 **And `NodeState` needed nothing at all.** The plan assumed paint would
@@ -528,7 +528,7 @@ bits found the repeater and read its cursor: a `Button` in a list row
 read as `Default` (R15-F7). `Host::cursor` now reads the node the last
 move hit, and when that hit was on a row it asks the repeater for the
 row's resolved cursor (`Node::inner_cursor`).
-`crates/lumen-static-shell/tests/cursor_rows.rs` gates it: a table
+`crates/fulgurite-shell/tests/cursor_rows.rs` gates it: a table
 button, a button row and a label row read `Pointer`, `Pointer`,
 `Default`.
 
@@ -661,7 +661,7 @@ both `Node::compose` impls could be no-ops with every test green
 (R10-F9). And `Host::compose` marked nothing, so once `Boundaries<256>`
 became the default (M34/T34.2) a commit was painted over last frame's
 layout (R1-F2). It marks the focused subtree now, and
-`crates/lumen-static-shell/tests/compose_marks.rs` routes Tab, a preedit,
+`crates/fulgurite-shell/tests/compose_marks.rs` routes Tab, a preedit,
 a commit and a cancel through the host and compares every frame with
 `Everything` (`docs/plan-boundaries-repair.md` T41.0–T41.1).
 

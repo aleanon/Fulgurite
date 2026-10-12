@@ -93,8 +93,8 @@ Two of the three unseen regressions are in that growth:
 
 - **F-NEW-1: a `.data` static per binding.** For a non-generic
   application, the derive emits `static __ln_site: BindSite` once per
-  `#[bind]` (`crates/lumen-static-macros/src/lib.rs:1904`). `BindSite`
-  starts at `UNKNOWN = usize::MAX` (`crates/lumen-static/src/bind.rs:240-244`).
+  `#[bind]` (`crates/fulgurite-macros/src/lib.rs:1904`). `BindSite`
+  starts at `UNKNOWN = usize::MAX` (`crates/fulgurite/src/bind.rs:240-244`).
   That is non-zero, so the static lands in `.data`: it is stored in
   flash and copied to RAM before `main`. The re-triage's one-binding
   probe (`cap_bind`) has a 4 B `.data` section at 1717808 and none at
@@ -115,13 +115,13 @@ Two of the three unseen regressions are in that growth:
 **Found while writing this plan:** `check_bss.sh` reads a symbol's name
 as awk's `$4` (`scripts/check_bss.sh:29`). A demangled name with a
 space in it, which is exactly the shape of the F-NEW-1 static
-(`<… as lumen_static::event::App>::update_marked::__ln_site`), is cut at
+(`<… as fulgurite::event::App>::update_marked::__ln_site`), is cut at
 its first space. The script would still reject the static, but it
 would name only a prefix. No exemption pattern could match it.
 
 ### 1.2 The cascade links interaction code it cannot call (R12-F4)
 
-`cascade_deep_with` (`crates/lumen-static/src/style.rs:1407-1417`),
+`cascade_deep_with` (`crates/fulgurite/src/style.rs:1407-1417`),
 `cascade_arenas_deep` (`:1434-1442`) and `cascade_subtree`'s loop
 (`:1360-1362`) call `tree.node_mut(i)` for every table index, and pass
 the `&mut dyn Node` to `cascade_arenas`. Without `alloc`, the body of
@@ -149,7 +149,7 @@ byte, with every embedded gate green.
 
 ### 1.4 The stack row reports a model as a measurement (R11-F3, slightly worse)
 
-`stack_bytes` (`crates/lumen-static/src/desc.rs:167-168`) is depth ×
+`stack_bytes` (`crates/fulgurite/src/desc.rs:167-168`) is depth ×
 `STACK_BYTES_PER_LEVEL` (`desc.rs:150`). The fixture asserts
 `stack_bytes(DEPTH) <= 4096` at compile time
 (`fixtures/embedded/src/lib.rs:326-330`), and `docs/results-embedded.md`
@@ -172,18 +172,18 @@ because it is only `Host`'s default, and `Host` is `std`.
 M36's plan rule 3 (`docs/plan-panic-recovery.md:47-52`) says recovery
 is "compiled in" in debug builds and in release builds with `reload`,
 and that a release build without `reload` keeps the default behaviour.
-`lumen-static-winit` picks `RECOVER` as a `const` under exactly that
-`cfg` (`crates/lumen-static-winit/src/lib.rs:248-251`). But it hands the
+`fulgurite-winit` picks `RECOVER` as a `const` under exactly that
+`cfg` (`crates/fulgurite-winit/src/lib.rs:248-251`). But it hands the
 constant to `Local::from_host`, which stores it in a runtime field
-(`crates/lumen-static-shell/src/session.rs:176`, `:196-208`). Every
+(`crates/fulgurite-shell/src/session.rs:176`, `:196-208`). Every
 guarded arm then tests the field: `run_guarded` (`session.rs:150-160`),
 and `:243`, `:353`, `:360`, `:502`, `:518`. So every `recover::`
 function is compiled and linked. The recover module itself is gated
-only on `panic = "unwind"` (`crates/lumen-static-shell/src/lib.rs:26-27`).
+only on `panic = "unwind"` (`crates/fulgurite-shell/src/lib.rs:26-27`).
 
 The re-triage built `examples/minimal` in release with the window's
 default features, no `reload` and no agent. `.text` grew **+14,992 B**
-between the review's base and 1717808. **14 `lumen_static_shell::recover`
+between the review's base and 1717808. **14 `fulgurite_shell::recover`
 symbols totalling 13,964 B** are linked, where there were none: the
 failure screen, the report, the wrap, the panic hook's closure, a static
 and a thread-local. Behaviour is correct. Recovery is off, so no hook is
@@ -230,11 +230,11 @@ The options for F-NEW-3:
 
 - **(a) A policy type.** `Local` becomes `Local<A, P>`, with
   `P: RecoverPolicy` carrying `const ON: bool`, and two marker types,
-  one recovering and one crashing. `lumen-static-winit` picks the
+  one recovering and one crashing. `fulgurite-winit` picks the
   marker type under the `cfg` it already uses for `RECOVER`. Every
   guarded arm tests `P::ON`, so in a crashing window the arms and every
   `recover::` symbol they reach are monomorphised away. The hot
-  library's session (`crates/lumen-static-reload/src/lib.rs:400`, which
+  library's session (`crates/fulgurite-reload/src/lib.rs:400`, which
   always recovers) names the recovering type.
 - **(b) A `const` generic `bool`** on `Local` and `Live`. It has the
   same effect with less text, but a `true` at a call site says less
@@ -260,7 +260,7 @@ header, which currently says "compiled in wherever panics unwind", is
 corrected in the same commit.
 
 **What (a) breaks:** `Local`'s type gains a parameter. Its constructors
-are called from `lumen-static-winit` and `lumen-static-reload` only. The
+are called from `fulgurite-winit` and `fulgurite-reload` only. The
 `Session` trait object is unchanged, so the dylib seam (M37) does not
 move. `Live` (`session.rs:456-461`) carries `recover` too, and takes the
 same parameter. `Host::guard` stays a plain method for headless
@@ -333,9 +333,9 @@ assert stays as a depth backstop, and its message says so.
    that section and does not restate it.
 2. **Commit the release-window gate, red:** a `just
    release-window-shape` step in `check-extra`. It builds `-p minimal`
-   in release, counts `lumen_static_shell::recover::` symbols with a
+   in release, counts `fulgurite_shell::recover::` symbols with a
    bound of 0, and prints the count beside the binary's `.text`. It
-   also builds `-p minimal --features lumen-static-winit/reload` and
+   also builds `-p minimal --features fulgurite-winit/reload` and
    asserts the count is **above** 0, so the `cfg` is shown switching
    both ways. The window crate already has the `reload` feature.
    **Red today** at the re-triage's 14 symbols (F-NEW-3), and marked
@@ -494,7 +494,7 @@ derived walk exists.
 
 **Gate:** (1) the bind-only firmware asserts 0 `Node>::hit` symbols and
 prints `.text N (bind-only; paint-only M, delta D; bound 1024)`. (2) A
-unit test in `crates/lumen-static/src/bind.rs` (or its test file) keeps
+unit test in `crates/fulgurite/src/bind.rs` (or its test file) keeps
 `node_of`'s answers identical to the current implementation over the
 existing T29.2 fixtures. It covers an enum's inactive variant and a
 `None`, which resolve to their parent, and prints the first
@@ -556,14 +556,14 @@ never as a pass.
 
 **Change:** §2.2 (a). `RecoverPolicy`, the two marker types, and
 `Local<A, P>` and `Live<'a, A, P>` in
-`crates/lumen-static-shell/src/session.rs`. `lumen-static-winit` picks
-the marker under its existing `cfg`. `lumen-static-reload` names the
+`crates/fulgurite-shell/src/session.rs`. `fulgurite-winit` picks
+the marker under its existing `cfg`. `fulgurite-reload` names the
 recovering one. `RECOVER` and the `Recover` enum are removed in the
 same commit, since nothing else reads them.
 
 **Gate:** T52.0's `just release-window-shape` loses its expected-fail
 marker. Without `reload` it counts 0 `recover::` symbols (bound 0). With
-`lumen-static-winit/reload` it counts more than 0. Both counts are
+`fulgurite-winit/reload` it counts more than 0. Both counts are
 printed beside `.text`. `just panic-drive` and the `fixtures/panic-app`
 tests stay green, which shows recovery still works where it is on.
 M39/T39.5's session test stays green too: its `Recover::Off` case,
@@ -578,8 +578,8 @@ fixtures green.
 
 **Docs in the same commit:** `docs/plan-panic-recovery.md` rule 3 (the
 dated amendment in §2.2); `recover.rs`'s header (lines 1-12);
-`lumen-static-winit`'s rustdoc where `RECOVER` was (lines 240-251); the
-`reload` feature's comment in `crates/lumen-static-winit/Cargo.toml`;
+`fulgurite-winit`'s rustdoc where `RECOVER` was (lines 240-251); the
+`reload` feature's comment in `crates/fulgurite-winit/Cargo.toml`;
 M39/T39.5's rustdoc on `Session::agent`, which names `Recover::Off`.
 M55/T55.4 later adds a strategy parameter to `Local` after this one.
 

@@ -44,7 +44,7 @@ Chooser<MENU>` with its take-once `take_chosen` (M57/B23);
 widget cannot tick; `Host`'s own clocks for `Event::Linger` and
 `Event::ScrollEnd`; `Program::on_key`, installed by `Program::host()`
 and called from `Host::key_hook` inside `pump_with`. What does not:
-any button check in dispatch or in `lumen-static-widgets` (21
+any button check in dispatch or in `fulgurite-widgets` (21
 `Event::PointerDown { .. }` arms ignore it), a `Key` for the Menu key,
 a core `Action` for AccessKit's `ShowContextMenu` (only
 `observe.rs`'s action-name table has it), and any way for the agent to
@@ -92,7 +92,7 @@ press a button other than Left (`input.click` hard-codes it,
     field: their sizes and the RAM per 100 nodes are unchanged from
     their values at landing (`docs/plan-iced-roadmap.md` §2.1; D4,
     printed).
-  - **Crate:** core `lumen-static`. The filter is unconditional; the
+  - **Crate:** core `fulgurite`. The filter is unconditional; the
     `ContextRequest` delivery and the keyboard/AT synthesis below are
     `#[cfg(feature = "std")]`, so `firmware_interactive` links only the
     filter. A `no_std` host feeds only `Left` (the primary touch is
@@ -102,7 +102,7 @@ press a button other than Left (`input.click` hard-codes it,
     `Key::Menu` (`translate::key_of` maps `NamedKey::ContextMenu`; the
     agent's key-name table gains `"Menu"` and `"F1"`–`"F12"`, since
     today it knows Enter..PageDown plus one character and answers
-    `"F10"` as an unknown key, `lumen-static-agent/src/lib.rs`
+    `"F10"` as an unknown key, `fulgurite-agent/src/lib.rs`
     :2172–2215). Dispatch synthesises
     `ContextRequest` at the focused node's top-left plus its height
     (the point under the node), bubbling from it. If nothing consumes
@@ -120,7 +120,7 @@ press a button other than Left (`input.click` hard-codes it,
     node: one `LongPress` (about 28 B) per `Host`.
     - **A press-acting control has already acted** (second review
       P16). `promote_touch` turns `Begin` into `PointerMove` plus
-      `Event::down` at once (`lumen-static-shell/src/lib.rs`
+      `Event::down` at once (`fulgurite-shell/src/lib.rs`
       :2529–2531), so 500 ms before the hold fires a `Collapsible` has
       toggled, a `Tabs` item selected and a `Slider` captured, as the
       pass-1 list above says a press does. Cancelling `End` cannot undo
@@ -137,7 +137,7 @@ press a button other than Left (`input.click` hard-codes it,
     row's synthesised node still understands only `Default`
     (`Session::a11y_action`'s rustdoc); recorded.
 - **A menu is data, and every activation is one hook** (A23, A14, M22).
-  - Core `lumen_static::menu` (no code, so no firmware cost): `MenuEntry
+  - Core `fulgurite::menu` (no code, so no firmware cost): `MenuEntry
     { label: &'static str, id: u32, accel: Option<Accel> }`, `Accel {
     key: Key, mods: Mods }`, `MenuSection { title: &'static str,
     entries: &'static [MenuEntry] }`, `MenuMask(u64)` (bit *n* = the
@@ -187,7 +187,7 @@ press a button other than Left (`input.click` hard-codes it,
     ever reaches the loader-side `Win`, which is type-erased over
     `Box<dyn Session>` and could not call one (A23).
 - **The menu bar is drawn by the framework, on every platform** (D2,
-  P26). `MenuBar` in `lumen-static-widgets`, built from the same
+  P26). `MenuBar` in `fulgurite-widgets`, built from the same
   `&'static [MenuSection]` the program declares: a row of titles, each
   opening a `Popup<CommandList>`. The application places it (a static
   tree has no slot the framework could insert it into). Titles are
@@ -224,7 +224,7 @@ press a button other than Left (`input.click` hard-codes it,
     that nothing consumes.
   - So the order is: a focused node that takes the clipboard key, then
     a widget, then an accelerator, then `on_key`.
-- **`ContextMenu<W>` and `CommandList`** in `lumen-static-widgets`.
+- **`ContextMenu<W>` and `CommandList`** in `fulgurite-widgets`.
   `CommandList` is the row leaf (drawn like `OptionList`, rows from
   `&'static [MenuEntry]`, disabled rows from a `MenuMask`, answering
   `take_menu`). `ContextMenu<W>` wraps a subtree, consumes the
@@ -234,7 +234,7 @@ press a button other than Left (`input.click` hard-codes it,
   keep `Anchor`'s `Eq` derive (M23); a context menu does not need
   sub-pixel placement. No in-tree code compares `Anchor` with `==`.
 - **The Linux tray is D-Bus, not GTK** (D2, P27). `tray` feature on
-  `lumen-static-winit`, default-off, target-gated to `target_os =
+  `fulgurite-winit`, default-off, target-gated to `target_os =
   "linux"` (Android is `target_os = "android"`, so `just mobile-check`
   is unaffected). It uses `ksni` (a StatusNotifierItem with a
   `com.canonical.dbusmenu` menu, blocking API over `zbus`), pinned
@@ -317,7 +317,7 @@ T90.0; everything else cites it.
 **Tasks — M90a.**
 
 - **T90.0 — pins over what exists today, and the baselines.**
-  - `crates/lumen-static-shell/tests/secondary_button.rs`: built with
+  - `crates/fulgurite-shell/tests/secondary_button.rs`: built with
     `Program::host()`, driven by `Host::post` and `pump`, under
     `Everything` and `Boundaries<256>`. A right press and release
     (constructed as `Event::PointerDown { button: PointerButton::Right,
@@ -347,7 +347,7 @@ T90.0; everything else cites it.
     `pump_with, one consumed click` (a `Host` over it, no hook). They
     compile today, so the parent of every later task has them.
   - **Crate counts by K2's method** (second review B8): `cargo tree -p
-    lumen-static-winit -e normal --prefix none | sed 's/ (\*)$//' |
+    fulgurite-winit -e normal --prefix none | sed 's/ (\*)$//' |
     sort -u | wc -l` for the default build, `+dialogs` and `+a11y`,
     printed beside the manifest's figures. The manifest's 79 for
     `dialogs` (218 → 297, `Cargo.toml`:90, :115) is another method: the
@@ -382,7 +382,7 @@ T90.0; everything else cites it.
   - **Doc/static:** the parameter in `.claude/skills/verifying-apps/
     SKILL.md` and `book/src/agent.md`; rustdoc on the three arms.
   - **Gates:**
-    - an agent test (in `lumen-static-agent`) whose probe widget
+    - an agent test (in `fulgurite-agent`) whose probe widget
       records the button of the `PointerDown`/`PointerUp` in
       `ctx.event` (`EventCtx` has no `button` field, `event.rs`
       :403–426) sees `Right` for `button: "right"`, `Middle`
@@ -487,13 +487,13 @@ T90.0; everything else cites it.
   `Event::Menu`, `Node::take_menu`; shell: `Host::menu_hook`,
   `Program::on_menu`; widgets: the two widgets and the anchor.
   - **Doc/static, in this commit** (S4): `ContextMenu` and `CommandList`
-    exported from `lumen-static-widgets/src/lib.rs`, each with an
+    exported from `fulgurite-widgets/src/lib.rs`, each with an
     `observe` impl — `CommandList` as `Role::Menu` with its labels as
     value (as `OptionList`), `ContextMenu` as `GenericContainer` with
     `showContextMenu` in its actions (a claim, like `PullToRefresh`'s) —
     so neither needs a `check_observe.sh` ALLOW line; `ROWS` entries
     and catalogue fields in
-    `crates/lumen-static-widgets/tests/a11y_roles.rs` for both
+    `crates/fulgurite-widgets/tests/a11y_roles.rs` for both
     (`every_node_impl_has_a_row`), and a
     `scripts/drive/roles.py` row for `ContextMenu` only; a showcase
     catalog entry; a drive inventory `scripts/drive/widgets/menus.py`
@@ -642,12 +642,12 @@ T90.0; everything else cites it.
     process: `KeyOutcome::Quit` from key 0 closes nothing (A21,
     Decisions).
   - `Cargo.toml` takes the `ksni` line from Decisions verbatim, and the
-    `justfile` gains `cargo clippy -p lumen-static-winit --features
+    `justfile` gains `cargo clippy -p fulgurite-winit --features
     tray --all-targets -- -D warnings` beside the `gpu` line, and
-    `RUSTDOCFLAGS="-D warnings" cargo doc -p lumen-static-winit
+    `RUSTDOCFLAGS="-D warnings" cargo doc -p fulgurite-winit
     --no-deps --features tray` so the feature's rustdoc links resolve
     (`docs/plan-iced-roadmap.md` §3.1; second review X7).
-  - **Doc/static:** `lumen-static-winit/Cargo.toml` states the feature's
+  - **Doc/static:** `fulgurite-winit/Cargo.toml` states the feature's
     crate count, by K2's method and naming it, and stripped-showcase
     size delta, citing `docs/results-desktop-integration.md` (K2, B8);
     `book/src/platform.md` gains "## The tray" with its
@@ -723,7 +723,7 @@ T90.0; everything else cites it.
   per-event work that fired it (the filter's branch, or a `take_menu`
   asked without a hook) is gated on the hook's presence, and remeasured.
 - **K90c — the tray's cost** (T90.7). The crate count, by T90.0's
-  K2 command, added to `lumen-static-winit` by `tray`, and the stripped
+  K2 command, added to `fulgurite-winit` by `tray`, and the stripped
   release-showcase delta, measured **without** `a11y` (which already
   links the D-Bus stack) and printed with it too. Bound: more than
   `a11y`'s +71 crates (95 → 166, `docs/results-a11y-platform.md`, by
@@ -903,7 +903,7 @@ T90.0; everything else cites it.
   (the app's `enabled` fn) through `self.caught(None, ..)`, adds a
   panic-app site (next free, printed) and the call-outside-`caught`
   injection.
-- consistency-3 item 12 → T90.7 adds `cargo doc -p lumen-static-winit
+- consistency-3 item 12 → T90.7 adds `cargo doc -p fulgurite-winit
   --features tray` beside its clippy line.
 
 ## What building found (M90)
@@ -969,7 +969,7 @@ T90.0; everything else cites it.
   "click-action count" is two lists, compared by name for the entries a
   run drives: 85 checked and 19 not sent, 104 clicking actions of 166.
   The dismissal itself is gated headlessly
-  (`crates/lumen-static/tests/context_request.rs`).
+  (`crates/fulgurite/tests/context_request.rs`).
 - **T90.2, a disabled node takes no context request**, as it takes no
   press (M57/A16), and after a right press has dismissed an overlay the
   request goes to what is under the point without it, since the closed
@@ -982,7 +982,7 @@ T90.0; everything else cites it.
 - **T90.2 cost the interactive firmware −4 B.** The filter's hover update
   is the move's, shared as one function (`track_hover`), so the bytes the
   filter adds are paid back by the dedup.
-- **T90.2 reversed T14.3's own gate.** `crates/lumen-static/tests/
+- **T90.2 reversed T14.3's own gate.** `crates/fulgurite/tests/
   modifiers.rs`'s `a_handler_can_tell_the_buttons_apart` asserted that the
   right button activates (`docs/plan-desktop.md` T14.3's gate) and went
   red under the filter, which is this task's point; it now asserts a right
@@ -1136,7 +1136,7 @@ T90.0; everything else cites it.
   once, and dispatch counts a `Modifiers` event as handled (it records it),
   so the hot drive's "Ctrl+J is not handled" read `true` before any edit.
   The agent now pumps the modifiers on their own and answers the key's
-  pump; `crates/lumen-static-shell/tests/agent_hooks.rs` gates it (Ctrl+K
+  pump; `crates/fulgurite-shell/tests/agent_hooks.rs` gates it (Ctrl+K
   through the accelerator `true`, Ctrl+J `false`; red under the single
   pump, "the modifier event's answer leaked into the key's").
 - **T90.6, `Host::reload` cannot exhibit a spec that differs.** It rebuilds
@@ -1148,7 +1148,7 @@ T90.0; everything else cites it.
   `hot::boot` with v1's saved state (what `export_program!`'s entry does)
   and reads the new labels and a different hash; the same build through
   `hot::boot` and `Host::reload` both read an equal hash, the accept leg
-  (`crates/lumen-static-shell/tests/tray_seam.rs`).
+  (`crates/fulgurite-shell/tests/tray_seam.rs`).
 - **T90.6, `menu_state` is guarded, not caught.** `caught` hands its closure
   `&Host`, and `App` reaches the state only through `state_mut`, so the
   `enabled` fn cannot be called through it; and a catch answers its

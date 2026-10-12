@@ -6,7 +6,7 @@ the manifests, rustdoc and the book cite this file.
 ## T54.2 — does `a11y` default on for desktop? (§2.3's kill rule)
 
 The rule, written before the adapter was built: `a11y` ships default-on
-in `lumen-static-winit` **unless** either
+in `fulgurite-winit` **unless** either
 
 1. the showcase's idle frame moves outside the eight-run spread of the
    same build without the feature, or
@@ -27,11 +27,11 @@ strip 2.42, 2026-09-27:
 | **delta** | **+4,323,720 B (4.12 MiB)** | +5,594,336 B |
 
 Bound: 3 MB. **Fired.** The cost is `accesskit_unix` and the D-Bus stack
-under it: `lumen-static-winit` resolves **95** crates without the
+under it: `fulgurite-winit` resolves **95** crates without the
 feature and **166** with it (`cargo tree -e normal`, deduplicated).
 
 **Re-measured 2026-10-04 at `553fa5e`** (M80/T80.0) with K2's exact
-command (`cargo tree -p lumen-static-winit -e normal --prefix none
+command (`cargo tree -p fulgurite-winit -e normal --prefix none
 [--features F] | sed 's/ (\*)$//' | sort -u | wc -l`,
 `docs/plan-iced-roadmap.md` K2): default build **96**, `a11y` **167**
 (**+71**); `--no-default-features` 91, so `clipboard` is **+5**; and
@@ -72,7 +72,7 @@ without its async runtime — would be the thing to measure.
 
 ## T54.5–T54.6 — contrast as painted (R16-F8, R16-F9)
 
-Measured by `lumen_static_shell::contrast::text_contrast`: every text
+Measured by `fulgurite_shell::contrast::text_contrast`: every text
 run in the display list against the topmost opaque fill under its centre
 (clips respected; translucent, gradient, image and glass grounds counted
 as unmeasured). WCAG 2.x relative luminance; bounds 4.5:1 for text and

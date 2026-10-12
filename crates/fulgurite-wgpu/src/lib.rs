@@ -1,0 +1,2629 @@
+//! A GPU renderer — `docs/plan-capabilities.md` T15.12.
+//!
+//! # Why a separate crate
+//!
+//! Because that is the gate. The M15 gating policy ranks a separate
+//! crate above a type parameter above a cargo feature, and wgpu is the
+//! most expensive dependency this workspace could acquire: nothing
+//! enters the graph unless a manifest names it. The software canvas
+//! stays the default on the desktop, and the embedded profile — which
+//! has no GPU — never sees this code at all.
+//!
+//! # Why it exists at all
+//!
+//! It was deferred once, on the ground that the software rasteriser
+//! renders a tally frame in 0.54 ms of a 16 ms budget. That number came
+//! from a **0.23 megapixel** window. A CPU rasteriser's cost is per
+//! *pixel*, and the sweep that was never run says ~2.7 ms per megapixel,
+//! flat: 9.75 ms at 1440p and **22.88 ms at 4K, which is over budget**
+//! (`docs/results-raster-scaling.md`). Damage tracking is what holds the
+//! desktop together, and damage tracking is exactly what a chart
+//! animating or a list scrolling does not give you.
+//!
+//! So this is architectural, not opportunistic — and still a choice.
+//!
+//! # The shape
+//!
+//! Two seams, not one. [`Renderer`] was the seam M10a built and the SVG
+//! backend proved; the second is the *surface*, which
+//! `fulgurite-winit` had wired to softbuffer. This crate owns its own
+//! — [`Gpu::for_window`] takes a window handle and holds the swapchain —
+//! so a windowing layer has something to plug in rather than something
+//! to work around. Wiring it to a window is that crate's job and knows
+//! nothing about shaders; this one knows nothing about winit.
+//!
+//! Everything is one pipeline and one draw call: the whole `Cmd`
+//! vocabulary is signed-distance quads (`src/shader.wgsl`), which keeps
+//! paint order — instances rasterise in submission order — and keeps the
+//! coverage arithmetic literally the same functions the software canvas
+//! uses. Text is a glyph atlas ([`atlas`]), shaped every frame through
+//! the same `FontStack::place_run` the software path shapes with, and
+//! rasterised only on a miss.
+//!
+//! Two things split that one pass, both in paint order: a glass panel's
+//! backdrop passes (M22/T22.6), and, under this crate's `shader` feature,
+//! a custom shader's scissored pass (M83/T83.5, `Gpu::set_shaders`).
+//!
+//! # No `unsafe`
+//!
+//! Like the rest of `crates/*/src`, checked by `scripts/check_no_unsafe.sh`.
+//! That is why [`Gpu::for_window`] wants a `Send + Sync` window handle
+//! rather than reaching for `create_surface_unsafe`.
+#![forbid(unsafe_code)]
+
+pub mod atlas;
+#[cfg(feature = "shader")]
+mod custom;
+#[cfg(feature = "shader")]
+pub use custom::ShaderStats;
+
+/// Re-exported so a caller of [`accept_adapter`] can name a device type
+/// without a second, possibly different, `wgpu` in its manifest.
+pub use wgpu;
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use fulgurite::display::{Cmd, Color, DisplayList, ImageId, ImageSource, Renderer, Stops};
+use fulgurite_shell::image::{ImageChain, ImageOrigin};
+use fulgurite_shell::text::{FontStack, GlyphId};
+
+use atlas::Atlas;
+
+/// `[x0, y0, x1, y1]`, absolute — the core's [`fulgurite::display::Rect`].
+type Rect = [f32; 4];
+
+const KIND_ROUNDED: u32 = 0;
+const KIND_SHADOW: u32 = 1;
+const KIND_LINE: u32 = 2;
+const KIND_GRADIENT: u32 = 3;
+const KIND_GLYPH: u32 = 4;
+const KIND_IMAGE: u32 = 5;
+const KIND_BLUR: u32 = 6;
+const KIND_GLASS: u32 = 7;
+const KIND_STROKE: u32 = 8;
+/// The edge of one path-mask tile, in texels — M82/T82.6.
+///
+/// A path's mask is uploaded in tiles of at most this square, each its
+/// own atlas entry, so a path as wide as the window never needs one
+/// oversized slot: a 2,000 px path is eight 256 px entries in the 1024²
+/// atlas the frame already has, not a 2,000 px entry that forces the
+/// atlas to grow (`tests/parity.rs`, `a_wide_path_is_drawn_in_tiles_without_a_reset`).
+pub const PATH_TILE: u32 = 256;
+
+/// What one entry of the glyph atlas holds — M82/T82.6
+/// (`docs/plan-paint-vocabulary.md`, Decisions, "The GPU draws path
+/// masks, not a stencil").
+///
+/// **A path is an R8 coverage mask in the glyph atlas**, drawn by the
+/// `KIND_GLYPH` quads text already uses: there is no stencil attachment
+/// on this backend and no new pipeline, binding or texture. The coverage
+/// is rasterised on a miss by the software canvas's own
+/// `fulgurite_shell::software::rasterize_path`, from the same
+/// device-space elements and at the same mask origin, so the two
+/// backends differ only in how a coverage byte is blended
+/// (`tests/parity.rs`, `paths_agree_across_backends`).
+///
+/// - `hash` is a content hash of the path's elements **moved to its ink
+///   box's integer-floor origin**, so a path scrolled by whole pixels
+///   hashes the same and is an atlas hit. A path translated by a
+///   fraction is a different mask, which `frac` says too: the
+///   fractional part of the ink origin, in 1/256 px.
+/// - `paint` is which coverage the mask is. A `KIND_GLYPH` quad draws one
+///   texel times one colour, so a filled and stroked path is **two
+///   masks under two keys**, never one key for both.
+/// - `tile` is the mask's [`PATH_TILE`] column and row.
+///
+/// Masks reset with the atlas, as glyphs do; [`Gpu::atlas_stats`] counts
+/// what was rasterised ([`AtlasStats::path_masks`]) and what is resident
+/// ([`AtlasStats::path_texels`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaskKey {
+    /// One glyph bitmap, as since T15.12.
+    Glyph(GlyphId),
+    /// One tile of one paint of one path.
+    Path { hash: u64, paint: MaskPaint, frac: [u8; 2], tile: [u16; 2] },
+}
+
+/// Which of a path's two coverages a [`MaskKey::Path`] holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaskPaint {
+    /// The non-zero fill.
+    Fill,
+    /// The stroke, at this width in device px (its `f32` bits).
+    Stroke(u32),
+}
+
+/// `software::LIGHT_Z` / `LIGHT_XY`.
+const LIGHT_Z: f32 = 0.62;
+const LIGHT_XY: f32 = 0.784_599_3;
+
+/// The glyph atlas's **starting** edge, in texels: 1 MB of R8, a few
+/// thousand glyphs at UI sizes.
+///
+/// It said "far more than a screen has", and a 4K HiDPI screen of type
+/// specimens was more (R9-F1): its glyphs did not fit an empty 1024²
+/// atlas, and the frame was drawn with a twentieth of its text missing.
+/// Since M51/T51.1 the atlas doubles when that happens, up to the
+/// device's limit, and [`Gpu::atlas_stats`] counts what it did
+/// (`docs/results-gpu.md` §4).
+pub const GLYPH_ATLAS: u32 = 1024;
+/// Image atlas edge. **Allocated on the first image command**, so an
+/// application with no images pays nothing for the capability. The blur
+/// scratch follows the same rule since M51/T51.5 ([`Gpu::scratch_bytes`]).
+const IMAGE_ATLAS: u32 = 1024;
+
+/// The target texture's format, and the readback's.
+///
+/// **Deliberately not sRGB.** An `*Srgb` surface blends in linear space,
+/// which is the more correct thing to do and is *not* what
+/// `software::Canvas` does — it blends 8-bit straight sRGB, like every
+/// other UI rasteriser. Matching the software arm is worth more here
+/// than being right in isolation: the two backends have to be
+/// comparable, and `tests/parity.rs` is the reason.
+const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+/// One instanced quad. Mirrors `Instance` in `shader.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Quad {
+    rect: [f32; 4],
+    clip: [f32; 4],
+    color: [f32; 4],
+    /// (corner radius, spread or half-width, unused, gradient index);
+    /// a gradient's corner since M82/T82.2.
+    params: [f32; 4],
+    uv: [f32; 4],
+    kind: u32,
+    _pad: [u32; 3],
+}
+
+/// Four colour stops, out of line. Mirrors `Grad` in `shader.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Grad {
+    color: [[f32; 4]; 4],
+    at: [f32; 4],
+    len: u32,
+    _pad: [u32; 3],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Globals {
+    viewport: [f32; 2],
+    _pad: [f32; 2],
+}
+
+/// Straight (non-premultiplied) source over, and an alpha channel that
+/// converges to opaque — what `Canvas::blend` does when it writes 255 into
+/// the alpha byte unconditionally. The shapes pipeline's, and since
+/// M83/T83.5 every custom shader's too.
+const SHAPES_BLEND: wgpu::BlendState = wgpu::BlendState {
+    color: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::SrcAlpha,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+    alpha: wgpu::BlendComponent {
+        src_factor: wgpu::BlendFactor::One,
+        dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+        operation: wgpu::BlendOperation::Add,
+    },
+};
+
+fn linear(c: Color) -> [f32; 4] {
+    [c.0 as f32 / 255.0, c.1 as f32 / 255.0, c.2 as f32 / 255.0, c.3 as f32 / 255.0]
+}
+
+/// Intersect a rect with every clip on the stack; `None` if nothing
+/// survives.
+///
+/// The same function as `software::clipped`, including the NaN rejection
+/// on entry — `f32::max`/`min` return the non-NaN operand, so without it
+/// a NaN coordinate is silently *replaced by the clip bound* and a NaN
+/// rect inside a clip scope fills the whole scope solid. A second
+/// renderer inherits the bug unless it inherits the guard.
+fn clipped(rect: Rect, stack: &[Rect]) -> Option<Rect> {
+    if !rect.iter().all(|v| v.is_finite()) || rect[0] >= rect[2] || rect[1] >= rect[3] {
+        return None;
+    }
+    let mut r = rect;
+    for c in stack {
+        r = [r[0].max(c[0]), r[1].max(c[1]), r[2].min(c[2]), r[3].min(c[3])];
+        if r[0] >= r[2] || r[1] >= r[3] {
+            return None;
+        }
+    }
+    Some(r)
+}
+
+/// Round a region outward to whole pixels.
+///
+/// Both backends follow one convention: a region covers
+/// `floor(x0)..ceil(x1)`. The software canvas does so in every command
+/// and in its clear (its module docs; the glyph blit was the one
+/// exception, fixed in M40/T40.2), so its partial redraw is exact too.
+/// Snapping here is what makes a partial redraw on this backend
+/// **exactly** equal to a full one rather than approximately: a boundary
+/// pixel is wholly inside the damage or wholly outside it, never partly
+/// covered by an antialiased clear. Regions arrive in physical pixels
+/// (M40/T40.1), so at a fractional scale their edges are fractional as a
+/// rule, not an exception.
+fn snap_out(r: Rect) -> Rect {
+    [r[0].floor(), r[1].floor(), r[2].ceil(), r[3].ceil()]
+}
+
+/// A GPU device, a target texture, and everything needed to draw a
+/// display list into it.
+///
+/// **One surface on a [`GpuContext`]** since M89b/T89.10: the device is
+/// the context's, shared by `Rc` with every other window's `Gpu`
+/// ([`Gpu::for_window_in`]); the surface, its configuration, the target,
+/// the scratch targets, the bind groups, the instance buffers, the glyph
+/// atlas and the image atlas with its `ImageSource` are this one's. A
+/// headless renderer and [`Gpu::for_window`] open a context of their own.
+pub struct Gpu {
+    /// **The device this surface draws with, shared** — M89b/T89.10. Every
+    /// handle below that names a device object (`device`, `queue`, the
+    /// shapes and blit pipelines, the layouts, the samplers) is a clone of
+    /// the context's — wgpu's handles are reference-counted — kept here so
+    /// a frame does not reach through the `Rc` for each; this field is what
+    /// keeps the context alive while the surface is.
+    ctx: Rc<GpuContext>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    adapter_name: String,
+
+    /// The window's swapchain, when there is a window. Headless
+    /// rendering leaves this `None` and reads the target back instead.
+    surface: Option<wgpu::Surface<'static>>,
+    config: wgpu::SurfaceConfiguration,
+
+    /// The frame this crate owns. Never handed to a presentation
+    /// engine, so it always holds exactly the previous frame — see
+    /// `src/blit.wgsl` for why that matters.
+    target: wgpu::Texture,
+    target_view: wgpu::TextureView,
+    size: (u32, u32),
+
+    pipeline: wgpu::RenderPipeline,
+    blit_pipeline: wgpu::RenderPipeline,
+    bind_layout: wgpu::BindGroupLayout,
+    blit_layout: wgpu::BindGroupLayout,
+    bind: wgpu::BindGroup,
+    blit_bind: wgpu::BindGroup,
+    sampler: wgpu::Sampler,
+
+    globals: wgpu::Buffer,
+    quads: wgpu::Buffer,
+    quad_cap: usize,
+    grads: wgpu::Buffer,
+    grad_cap: usize,
+    /// Glass materials, out of line like the gradients — M22/T22.6.
+    mats: wgpu::Buffer,
+    mat_cap: usize,
+
+    /// The two ping-ponged scratch targets a backdrop filter needs. A
+    /// texture copy cannot happen inside a render pass, so every glass
+    /// command splits the frame: the target is blurred into these and
+    /// read back out.
+    ///
+    /// **Made on the first frame with a `Cmd::Glass` in it** (M51/T51.5,
+    /// R9-F9), and resized only once it exists — the image atlas's rule,
+    /// for the same reason: an application with no glass pays nothing
+    /// for the capability. Until M51 `build` and every `resize` made two
+    /// surface-sized targets whether or not a backdrop filter was ever
+    /// drawn, which is 8 bytes a pixel of committed VRAM on a discrete
+    /// GPU (`docs/results-gpu.md` §5).
+    scratch: Option<([wgpu::Texture; 2], [wgpu::TextureView; 2])>,
+    /// A 1×1 texture group 1 names where no scratch exists yet: every
+    /// pass binds group 1, and a pass that reads nothing still needs a
+    /// texture there that is not the target it writes.
+    placeholder: wgpu::TextureView,
+    /// Group 1 for each of the three things a pass can read: the
+    /// target, and the two scratch textures.
+    src_binds: [wgpu::BindGroup; 3],
+    src_layout: wgpu::BindGroupLayout,
+    /// **Linear**, where `sampler` is `Nearest`. A refracted read lands
+    /// at a fractional coordinate by definition.
+    linear: wgpu::Sampler,
+
+    glyph_tex: wgpu::Texture,
+    /// Glyphs and, since M82/T82.6, path masks ([`MaskKey`]).
+    glyph_atlas: Atlas<MaskKey>,
+    image_tex: wgpu::Texture,
+    /// Images by [`ImageSlot`]: an id's own slot, and side slots for a
+    /// second frame of one id within one draw.
+    image_atlas: Atlas<ImageSlot>,
+    /// **The frame each id's own slot holds** — M84/T84.2. A command at
+    /// another frame of the same size is written into that slot in place
+    /// rather than inserted again, so an animating image costs one upload
+    /// per change and never fills the atlas (K84d); a size change inserts
+    /// again, and the orphaned space goes with the next reset.
+    image_frames: HashMap<ImageKey, u32>,
+    /// The frame each id's own slot was **written or confirmed at during
+    /// this draw** (P1). Every `write_texture` lands before the frame's
+    /// one `submit`, so rewriting a slot a quad of this draw already
+    /// samples would leave both quads showing the last upload; a second
+    /// command at another frame takes [`ImageSlot::Alt`] instead. Cleared
+    /// at the head of every build of the frame.
+    image_drawn: HashMap<ImageKey, u32>,
+    /// Rebuild [`Gpu::bind`] before the next draw — a texture or the
+    /// gradient buffer was reallocated and the old group names a
+    /// resource that no longer exists.
+    bind_dirty: bool,
+
+    /// The face runs are shaped and rasterised with. Must be the same
+    /// one layout measured with, or boxes are sized for one face and
+    /// filled with another — the bug that made the first window wrap
+    /// "TALLY" to "TAL / LY".
+    font: Option<FontStack>,
+    /// Where `Cmd::Image` is resolved to pixels: **the window's store**,
+    /// consulted after the frame's own since M84/T84.6
+    /// ([`Gpu::draw_regions_from`]).
+    images: Option<Box<dyn ImageSource>>,
+    /// **A fault switch, debug builds only** — M47/T47.0 (R7-F7).
+    /// `FULGURITE_GPU_DROP_FIRST=n` makes the first `n` presents answer as if
+    /// the surface were Outdated, so a live gate can see what an idle
+    /// window does with a dropped present.
+    #[cfg(debug_assertions)]
+    drop_first: u32,
+    /// What the atlases have had to do since this renderer was made — M51
+    /// (R9-F1). See [`AtlasStats`].
+    atlas_stats: AtlasStats,
+    /// The largest glyph atlas this device can hold:
+    /// `max_texture_dimension_2d` of its limits.
+    max_atlas: u32,
+    /// The frame's instance lists and shaping scratch, kept across
+    /// frames — M51/T51.4, R9-F8. `draw_regions` built all five per call
+    /// and shaped through the allocating `FontStack::place_run`, so a
+    /// steady-state caret frame allocated in this crate on top of wgpu's
+    /// own floor. Cleared per frame, so their capacity is reused.
+    frame: FrameScratch,
+    /// The program's compiled custom shaders — M83/T83.5 (`custom.rs`).
+    /// No pipeline and no buffer until a table compiles one.
+    #[cfg(feature = "shader")]
+    shaders: custom::Shaders,
+}
+
+/// [`Gpu`]'s per-frame buffers — M51/T51.4.
+#[derive(Default)]
+struct FrameScratch {
+    quads: Vec<Quad>,
+    grads: Vec<Grad>,
+    mats: Vec<Mat>,
+    splits: Vec<Split>,
+    clip: Vec<Rect>,
+    shape: fulgurite_shell::text::ShapeScratch,
+    /// `rasterize_path`'s buffers, for a path-mask miss (M82/T82.6).
+    path: fulgurite_shell::software::PathScratch,
+    /// The custom shaders' frame and uniform slots, 256-byte aligned
+    /// (M83/T83.5): staged here and written to the GPU once per frame.
+    #[cfg(feature = "shader")]
+    slots: Vec<u8>,
+}
+
+/// How often the atlases ran out of room, and what was done about it —
+/// M51 (R9-F1), read with [`Gpu::atlas_stats`].
+///
+/// A **reset** empties both atlases so the frame can be built again. A
+/// **growth** doubles the glyph atlas when a frame's glyphs do not fit an
+/// empty one, and builds the frame again. A **give-up** is a frame that
+/// did not fit even so — the glyph atlas at the device's texture limit,
+/// or an image set larger than the image atlas — and was submitted with
+/// what fitted: glyphs or images missing. Before M51 the give-up branch
+/// counted nothing and logged nothing, and three documents said it never
+/// happened. It now logs once per renderer, and this counts every one.
+///
+/// The agent's `app.perf` reports `give_ups` as `atlas_give_ups`, through
+/// the window's `Frame` (`docs/results-gpu.md` §4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AtlasStats {
+    pub resets: u64,
+    pub growths: u64,
+    pub give_ups: u64,
+    /// The glyph atlas's edge, in texels, now. It never shrinks within a
+    /// renderer's life.
+    pub glyph_size: u32,
+    /// Path-mask tiles rasterised since this renderer was made — one per
+    /// miss, so an idle frame adds 0 and a changed path adds one per tile
+    /// per paint (M82/T82.6).
+    pub path_masks: u64,
+    /// Texels path masks hold in the glyph atlas now: what K82d measures
+    /// as a share of the atlas's starting edge, [`GLYPH_ATLAS`] squared
+    /// (`docs/plan-paint-vocabulary.md`).
+    pub path_texels: u64,
+    /// Image uploads since this renderer was made — M84/T84.2. One per
+    /// `write_texture` into the image atlas: a first sight of an id, a
+    /// new frame of it (written **in place** when the size is unchanged),
+    /// or a re-insert after a reset. An idle frame adds 0, and an image
+    /// animating through N frame changes adds N, not N plus a reset's
+    /// worth (`docs/results-images.md` T84.2, K84d).
+    pub image_uploads: u64,
+    /// Bytes those uploads carried, `w × h × 4` each.
+    pub image_upload_bytes: u64,
+}
+
+/// **Whose id** — the store that answered it and the id — M84/T84.6
+/// (second review A14).
+///
+/// The application's store and the window's may both hold one id. While
+/// a session shows M36's panic screen its store is not handed over, so
+/// that id falls through to the window's: keyed on the id alone, the
+/// atlas would hit and draw the application's pixels for it. With the
+/// origin in the key it misses and asks the window's store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ImageKey {
+    origin: ImageOrigin,
+    id: ImageId,
+}
+
+/// Where an image sits in the image atlas — M84/T84.2.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum ImageSlot {
+    /// The key's own slot, holding the frame `image_frames` records and
+    /// rewritten in place when a command asks for another of that size.
+    Current(ImageKey),
+    /// A side slot for frame `.1` of a key this draw has already sampled
+    /// at another frame (P1): one list may paint one id twice.
+    Alt(ImageKey, u32),
+}
+
+/// Which texture group 1 names for a pass — M22/T22.6.
+const SRC_TARGET: usize = 0;
+const SRC_SCRATCH_A: usize = 1;
+const SRC_SCRATCH_B: usize = 2;
+
+/// Where the frame leaves the shapes pipeline, **in paint order**: a
+/// glass command, or (M83/T83.5) a custom shader's bracket. `submit` runs
+/// the shapes pipeline up to each split, the split's own passes, and
+/// resumes, so a panel over a shader blurs the shader and a shader over a
+/// panel covers it.
+enum Split {
+    /// A backdrop filter.
+    Glass {
+        /// Instance index of the glass quad itself.
+        glass: u32,
+        /// Instance indices of its blur passes, in order. Six of them:
+        /// three box passes each way, at the widths SVG specifies and
+        /// `software::box_windows` computes.
+        blur: [u32; 6],
+    },
+    /// A custom shader's pass (`custom.rs`), drawn after the instances
+    /// before `at` and before the instances from `at` on.
+    #[cfg(feature = "shader")]
+    Shader {
+        at: u32,
+        /// Index of the compiled pipeline.
+        pipe: u32,
+        /// Byte offsets of the bracket's `FulguriteFrame` and uniform slots.
+        frame: u32,
+        uniforms: u32,
+        /// `[x, y, w, h]`, whole pixels inside the target.
+        scissor: [u32; 4],
+    },
+}
+
+/// Whether a renderer should open on an adapter of type `device` —
+/// M51/T51.2 (R9-F6). `accept_cpu` is whether a CPU rasteriser (Mesa's
+/// llvmpipe, WARP) is acceptable.
+///
+/// **Under `Prefer::Auto` it is not.** On a machine with no working
+/// driver and Mesa installed, the only adapter wgpu finds is llvmpipe,
+/// and taking it cost several times the software canvas's frame time
+/// with a GPU context's memory and threads (`docs/results-deep-review.md`
+/// R9-F6, measured in `docs/results-gpu.md` §6). The window keeps the
+/// software canvas instead. Under `Prefer::Gpu`, or `FULGURITE_BACKEND=gpu`,
+/// the person asked for it, and [`Gpu::headless`] accepts any adapter,
+/// because that is what makes parity executable on such a machine.
+///
+/// Every other device type is accepted, `Other` and `VirtualGpu`
+/// included: a virtualised GPU that reports an odd type is a GPU, and
+/// the once-per-session backend line says which one was taken.
+pub fn accept_adapter(device: wgpu::DeviceType, accept_cpu: bool) -> Result<(), &'static str> {
+    match device {
+        wgpu::DeviceType::Cpu if !accept_cpu => Err(
+            "a CPU rasteriser, not a GPU: under Prefer::Auto the software canvas is faster \
+             (FULGURITE_BACKEND=gpu takes it anyway)",
+        ),
+        _ => Ok(()),
+    }
+}
+
+/// Every adapter this process can see, as `(name, device type)` — for a
+/// test that must know whether a machine is CPU-only before it asserts
+/// what `Prefer::Auto` does there.
+#[doc(hidden)]
+pub fn adapters() -> Vec<(String, wgpu::DeviceType)> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()))
+        .into_iter()
+        .map(|a| {
+            let i = a.get_info();
+            (format!("{} ({:?})", i.name, i.backend), i.device_type)
+        })
+        .collect()
+}
+
+/// An atlas ran out of room mid-frame, and which one.
+///
+/// Answered by resetting both atlases and building the frame again; if a
+/// frame's glyphs do not fit an *empty* glyph atlas either, by growing it
+/// and building again, up to the device's texture limit (M51/T51.1).
+/// Only past that limit is anything dropped, and then it is counted
+/// ([`AtlasStats::give_ups`]) and logged once.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Overflow {
+    Glyph,
+    Image,
+}
+
+/// **One wgpu device, shared by every window's surface** — M89b/T89.10
+/// (`docs/plan-windows.md`, "M89b: one wgpu device, a surface per window").
+///
+/// The instance, the adapter, the device and its queue, the adapter's
+/// name, the pipeline and layouts that do not depend on a surface's format,
+/// and the samplers. A [`Gpu`] holds it by `Rc` and adds a surface; the
+/// window layer keeps a `Weak` and makes a new context when none is alive,
+/// so a second window costs a surface rather than a second device:
+/// +1.0 MB resident over the software canvas instead of +17.5
+/// (`docs/results-windows.md` T89.10; `docs/results-gpu.md` §5).
+///
+/// **A pipeline built against a surface's format is not shared blindly**
+/// (second review P11): each surface picks its format from its own
+/// capabilities, and the blit pipeline that writes it is cached here keyed
+/// by that format, so a second surface with another format builds its own.
+/// The shapes pipeline writes the target, whose format is fixed
+/// (`TARGET_FORMAT`), and is shared.
+///
+/// Not `Send`: it is shared by `Rc`, on the one thread a window loop runs.
+pub struct GpuContext {
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    device_type: wgpu::DeviceType,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    adapter_name: String,
+    pipeline: wgpu::RenderPipeline,
+    blit_shader: wgpu::ShaderModule,
+    /// The blit pipelines made so far, by the surface format each targets.
+    blits: RefCell<Vec<(wgpu::TextureFormat, wgpu::RenderPipeline)>>,
+    bind_layout: wgpu::BindGroupLayout,
+    blit_layout: wgpu::BindGroupLayout,
+    src_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    linear: wgpu::Sampler,
+    /// The largest glyph atlas this device can hold.
+    max_atlas: u32,
+}
+
+impl GpuContext {
+    /// The adapter, the device and the shared objects, on `instance` —
+    /// compatible with `surface` when there is one.
+    fn open(instance: wgpu::Instance, surface: Option<&wgpu::Surface<'static>>, accept_cpu: bool) -> Option<GpuContext> {
+        // `None` here is the whole CPU-fallback story: no adapter, no
+        // GPU renderer, and the caller keeps its software canvas. A
+        // machine with no driver, a container with no `/dev/dri`, a
+        // remote session — all of them arrive here, and none of them is
+        // an error worth taking a window down for.
+        //
+        // **"No adapter" includes a CPU one, unless asked** (M51/T51.2,
+        // R9-F6). Where Mesa is installed and no driver works, the one
+        // adapter wgpu finds is llvmpipe; `request_adapter` does not say
+        // so, so its device type is checked below by `accept_adapter`.
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            force_fallback_adapter: false,
+            compatible_surface: surface,
+            apply_limit_buckets: false,
+        }))
+        .ok()?;
+        let info = adapter.get_info();
+        if let Err(why) = accept_adapter(info.device_type, accept_cpu) {
+            // Before a device is made, so a refused adapter costs no
+            // context. Once per construction, which is once per window
+            // (and per resume): the caller's fallback line says what it
+            // chose, and this says why.
+            eprintln!("fulgurite: not using {} ({:?}): {why}", info.name, info.backend);
+            return None;
+        }
+
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("fulgurite"),
+            // The adapter's own limits, so the request cannot fail for
+            // asking too much. Nothing here needs more than a texture
+            // and a vertex buffer.
+            required_limits: adapter.limits(),
+            ..Default::default()
+        }))
+        .ok()?;
+
+        // Name, backend **and device type** (M51 §0 rule 1): llvmpipe is
+        // an adapter for parity and not evidence about a discrete GPU, so
+        // every gate's first line must say which kind it ran on.
+        let adapter_name = format!("{} ({:?}, {:?})", info.name, info.backend, info.device_type);
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("fulgurite shapes"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+        let blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("fulgurite blit"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("blit.wgsl").into()),
+        });
+
+        let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("fulgurite binds"),
+            entries: &[
+                uniform_entry(0),
+                texture_entry(1),
+                texture_entry(2),
+                sampler_entry(3),
+                storage_entry(4),
+                storage_entry(5),
+            ],
+        });
+        let src_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("fulgurite glass source"),
+            entries: &[texture_entry(0), sampler_entry(1)],
+        });
+        let blit_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("fulgurite blit binds"),
+            entries: &[texture_entry(0), sampler_entry(1)],
+        });
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("fulgurite sampler"),
+            // Nearest, not linear. A glyph quad is placed at integer
+            // pixels and its uv rect covers whole texels, so nearest is
+            // an exact lookup — the same bytes `draw_run` blits. Linear
+            // would soften every glyph by a quarter pixel against the
+            // software arm for nothing.
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let linear = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("fulgurite linear sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("fulgurite shapes"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&bind_layout), Some(&src_layout)],
+                immediate_size: 0,
+            })),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: core::mem::size_of::<Quad>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x4, 1 => Float32x4, 2 => Float32x4,
+                        3 => Float32x4, 4 => Float32x4, 5 => Uint32
+                    ],
+                })],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: TARGET_FORMAT,
+                    blend: Some(SHAPES_BLEND),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        #[allow(unused_mut)]
+        let mut max_atlas = device.limits().max_texture_dimension_2d;
+        // **A fault switch, debug builds only** — M51/T51.1, like
+        // `FULGURITE_GPU_DROP_FIRST`. `FULGURITE_GPU_ATLAS_MAX=n` caps the glyph
+        // atlas at `n` texels, so a live gate can make an ordinary window
+        // give up and see the count reach `app.perf`. With growth to the
+        // device limit, nothing on a real screen gets there.
+        #[cfg(debug_assertions)]
+        if let Some(n) = std::env::var("FULGURITE_GPU_ATLAS_MAX").ok().and_then(|v| v.parse::<u32>().ok()) {
+            max_atlas = max_atlas.min(n.max(1));
+        }
+
+        Some(GpuContext {
+            instance,
+            adapter,
+            device_type: info.device_type,
+            device,
+            queue,
+            adapter_name,
+            pipeline,
+            blit_shader,
+            blits: RefCell::new(Vec::new()),
+            bind_layout,
+            blit_layout,
+            src_layout,
+            sampler,
+            linear,
+            max_atlas,
+        })
+    }
+
+    /// Which device this is — the name every surface on it reports.
+    pub fn adapter(&self) -> &str {
+        &self.adapter_name
+    }
+
+    /// The surface formats blit pipelines have been built for, in the order
+    /// they were first asked for — one per distinct format, however many
+    /// surfaces share it (second review P11).
+    pub fn blit_formats(&self) -> Vec<wgpu::TextureFormat> {
+        self.blits.borrow().iter().map(|(f, _)| *f).collect()
+    }
+
+    /// The blit pipeline writing `format`, built on first use.
+    fn blit_for(&self, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
+        if let Some((_, p)) = self.blits.borrow().iter().find(|(f, _)| *f == format) {
+            return p.clone();
+        }
+        let device = &self.device;
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("fulgurite blit"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&self.blit_layout)],
+                immediate_size: 0,
+            })),
+            vertex: wgpu::VertexState {
+                module: &self.blit_shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &self.blit_shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(format.into())],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.blits.borrow_mut().push((format, pipeline.clone()));
+        pipeline
+    }
+}
+
+impl Gpu {
+    /// A renderer with no window: draws into a texture, read back with
+    /// [`Gpu::read_rgba`].
+    ///
+    /// This is what the tests use, and it is why the GPU path can be
+    /// held to the software path's pixels without a display.
+    ///
+    /// **Any adapter, a CPU rasteriser included** (M51/T51.2): parity on
+    /// a machine whose only adapter is llvmpipe is still parity, because
+    /// the atlas, the quads and the damage logic are CPU-side code.
+    pub fn headless(width: u32, height: u32) -> Option<Gpu> {
+        Self::build(width, height, None, true)
+    }
+
+    /// [`Gpu::headless`], refusing a CPU adapter unless `accept_cpu` —
+    /// the window's rule without a window, for the test that proves it.
+    #[doc(hidden)]
+    pub fn headless_accepting(width: u32, height: u32, accept_cpu: bool) -> Option<Gpu> {
+        Self::build(width, height, None, accept_cpu)
+    }
+
+    /// A renderer that owns a swapchain on `window`.
+    ///
+    /// `window` must be `Send + Sync` and outlive the renderer, which is
+    /// what wgpu's safe surface constructor asks for; `fulgurite-winit`
+    /// holds its window in an `Arc` for exactly this.
+    ///
+    /// `accept_cpu`: whether a CPU rasteriser counts as an adapter
+    /// ([`accept_adapter`]). `fulgurite-winit` passes it for
+    /// `Prefer::Gpu` only, so `Prefer::Auto` on a Mesa-only machine gets
+    /// `None` and keeps the software canvas.
+    pub fn for_window<W>(window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
+    where
+        W: wgpu::DisplayAndWindowHandle + 'static,
+    {
+        Self::build(width, height, Some(Box::new(window)), accept_cpu)
+    }
+
+    /// [`Gpu::for_window`] and [`Gpu::headless`]: a new context, then one
+    /// surface on it (or none).
+    fn build(
+        width: u32,
+        height: u32,
+        window: Option<Box<dyn wgpu::DisplayAndWindowHandle>>,
+        accept_cpu: bool,
+    ) -> Option<Gpu> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let surface = match window {
+            Some(w) => Some(instance.create_surface(wgpu::SurfaceTarget::DisplayAndWindow(w)).ok()?),
+            None => None,
+        };
+        let ctx = Rc::new(GpuContext::open(instance, surface.as_ref(), accept_cpu)?);
+        Some(Self::on(ctx, surface, width, height))
+    }
+
+    /// **A surface on a context that already exists** — M89b/T89.10. What a
+    /// second window does: the device, the queue, the shapes pipeline, the
+    /// layouts and the samplers are `ctx`'s; the surface, its configuration,
+    /// the target, the scratch, the bind groups, the instance buffers and
+    /// both atlases are this window's own. The image atlas especially:
+    /// two programs' `ImageId(0)` are different images (P25), and the atlas
+    /// keys by id.
+    ///
+    /// **A surface `ctx`'s adapter cannot present to gets a context of its
+    /// own**, with one line on stderr, which is [`Gpu::for_window`]: `window`
+    /// is cloned for that, because the first surface made from it is
+    /// dropped. `None` when the context's adapter is a CPU rasteriser and
+    /// `accept_cpu` is false ([`accept_adapter`]), as for a new context.
+    pub fn for_window_in<W>(ctx: &Rc<GpuContext>, window: W, width: u32, height: u32, accept_cpu: bool) -> Option<Gpu>
+    where
+        W: wgpu::DisplayAndWindowHandle + Clone + 'static,
+    {
+        if let Err(why) = accept_adapter(ctx.device_type, accept_cpu) {
+            eprintln!("fulgurite: not using {}: {why}", ctx.adapter_name);
+            return None;
+        }
+        let surface = ctx
+            .instance
+            .create_surface(wgpu::SurfaceTarget::DisplayAndWindow(Box::new(window.clone())))
+            .ok()?;
+        if !ctx.adapter.is_surface_supported(&surface) {
+            eprintln!(
+                "fulgurite: {} cannot present to this window; it gets a GPU context of its own",
+                ctx.adapter_name
+            );
+            drop(surface);
+            return Self::for_window(window, width, height, accept_cpu);
+        }
+        Some(Self::on(ctx.clone(), Some(surface), width, height))
+    }
+
+    /// The context this surface draws with — for a window layer that
+    /// shares it with the next window (`Rc::downgrade`).
+    pub fn context(&self) -> &Rc<GpuContext> {
+        &self.ctx
+    }
+
+    /// The format the surface was configured with, which the blit pipeline
+    /// targets — `TARGET_FORMAT`'s `Rgba8Unorm` for a headless renderer.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.config.format
+    }
+
+    /// One surface's state on `ctx`: its configuration (from **its own**
+    /// capabilities), the blit pipeline for its format (the context's cache),
+    /// and everything per window.
+    fn on(ctx: Rc<GpuContext>, surface: Option<wgpu::Surface<'static>>, width: u32, height: u32) -> Gpu {
+        let (width, height) = (width.max(1), height.max(1));
+        let device = ctx.device.clone();
+        // `get_default_config` and then override the format: a
+        // configuration built by hand goes stale every time wgpu adds a
+        // field, and this one has to be rebuilt on every resize.
+        let default = surface.as_ref().and_then(|s| s.get_default_config(&ctx.adapter, width, height));
+        let mut config = match (&surface, default) {
+            (Some(s), Some(mut c)) => {
+                let caps = s.get_capabilities(&ctx.adapter);
+                // Prefer a **non-sRGB** format, matching the target: the
+                // blit is a copy, and an sRGB surface would re-encode
+                // colours the software arm leaves alone.
+                if let Some(f) = caps.formats.iter().copied().find(|f| !f.is_srgb()) {
+                    c.format = f;
+                }
+                // Vsync. A UI that renders faster than the display
+                // refreshes is spending power on frames nobody sees, and
+                // the frame loop is already "redraw when something
+                // changed".
+                c.present_mode = wgpu::PresentMode::AutoVsync;
+                s.configure(&device, &c);
+                c
+            }
+            _ => {
+                let mut c = default_config(width, height);
+                c.format = TARGET_FORMAT;
+                c
+            }
+        };
+        config.width = width;
+        config.height = height;
+        // The blit pipeline is built against whatever the surface
+        // accepted, which is why the configuration is settled first —
+        // and **taken from the context's cache by that format** (second
+        // review P11): a second surface with another format gets its own.
+        let blit_pipeline = ctx.blit_for(config.format);
+        let max_atlas = ctx.max_atlas;
+        let glyph_start = GLYPH_ATLAS.min(max_atlas);
+        let (target, target_view) = make_target(&device, width, height);
+        let globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("fulgurite globals"),
+            size: core::mem::size_of::<Globals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let quads = make_quad_buffer(&device, 256);
+        let grads = make_grad_buffer(&device, 4);
+        let mats = make_mat_buffer(&device, 2);
+        let placeholder = make_atlas_texture(&device, 1, TARGET_FORMAT)
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let glyph_tex = make_atlas_texture(&device, glyph_start, wgpu::TextureFormat::R8Unorm);
+        // A 1x1 placeholder until an image command asks for a real one.
+        let image_tex = make_atlas_texture(&device, 1, wgpu::TextureFormat::Rgba8Unorm);
+
+        let bind = make_bind(
+            &device, &ctx.bind_layout, &globals, &glyph_tex, &image_tex, &ctx.sampler, &grads, &mats,
+        );
+        let blit_bind = make_blit_bind(&device, &ctx.blit_layout, &target_view, &ctx.sampler);
+        let src_binds =
+            make_src_binds(&device, &ctx.src_layout, &target_view, [&placeholder, &placeholder], &ctx.linear);
+
+        Gpu {
+            device,
+            queue: ctx.queue.clone(),
+            adapter_name: ctx.adapter_name.clone(),
+            surface,
+            config,
+            target,
+            target_view,
+            size: (width, height),
+            pipeline: ctx.pipeline.clone(),
+            blit_pipeline,
+            bind_layout: ctx.bind_layout.clone(),
+            blit_layout: ctx.blit_layout.clone(),
+            bind,
+            blit_bind,
+            sampler: ctx.sampler.clone(),
+            globals,
+            quads,
+            quad_cap: 256,
+            grads,
+            grad_cap: 4,
+            mats,
+            mat_cap: 2,
+            scratch: None,
+            placeholder,
+            src_binds,
+            src_layout: ctx.src_layout.clone(),
+            linear: ctx.linear.clone(),
+            glyph_tex,
+            glyph_atlas: Atlas::new(glyph_start),
+            image_tex,
+            image_atlas: Atlas::new(1),
+            image_frames: HashMap::new(),
+            image_drawn: HashMap::new(),
+            bind_dirty: false,
+            font: None,
+            images: None,
+            #[cfg(debug_assertions)]
+            drop_first: std::env::var("FULGURITE_GPU_DROP_FIRST").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            atlas_stats: AtlasStats { glyph_size: glyph_start, ..AtlasStats::default() },
+            max_atlas,
+            frame: FrameScratch::default(),
+            #[cfg(feature = "shader")]
+            shaders: custom::Shaders::default(),
+            ctx,
+        }
+    }
+
+    /// Which device this ended up on — for a startup line, and for a
+    /// benchmark that must say what it measured.
+    pub fn adapter(&self) -> &str {
+        &self.adapter_name
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        self.size
+    }
+
+    /// The atlases' resets, growths and give-ups so far, and the glyph
+    /// atlas's edge — M51/T51.1 (R9-F1). A non-zero `give_ups` means a
+    /// frame was drawn with glyphs or images missing.
+    pub fn atlas_stats(&self) -> AtlasStats {
+        let path_texels = self.glyph_atlas.texels_where(|k| matches!(k, MaskKey::Path { .. }));
+        AtlasStats { path_texels, ..self.atlas_stats }
+    }
+
+    /// Bytes held by the backdrop filter's two scratch targets —
+    /// M51/T51.0's probe (R9-F9). Arithmetic on their descriptors, four
+    /// bytes a texel, not a driver query.
+    #[doc(hidden)]
+    pub fn scratch_bytes(&self) -> u64 {
+        self.scratch
+            .iter()
+            .flat_map(|(t, _)| t.iter())
+            .map(|t| t.width() as u64 * t.height() as u64 * 4)
+            .sum()
+    }
+
+    /// Draw text with `font`. Without one, runs fall back to a filled
+    /// block per character at the advance `BlockMetrics` assumes — the
+    /// same stand-in the software canvas uses, so what is drawn still
+    /// matches what was measured.
+    pub fn set_font(&mut self, font: FontStack) {
+        self.font = Some(font);
+        // Glyph identities are per face, and nothing in the atlas is
+        // valid for a face it was not rasterised from.
+        self.glyph_atlas.reset();
+    }
+
+    /// Where `Cmd::Image` is resolved to pixels.
+    pub fn set_images(&mut self, images: Box<dyn ImageSource>) {
+        self.images = Some(images);
+        self.reset_images();
+    }
+
+    /// Give the image source back, so a window that drops this renderer
+    /// on suspend can hand it to the next one (M47/T47.7).
+    pub fn take_images(&mut self) -> Option<Box<dyn ImageSource>> {
+        self.reset_images();
+        self.images.take()
+    }
+
+    /// **Forget every cached image pixel** — M84/T84.6 (second review
+    /// A14): the image atlas is emptied and no slot is known to hold any
+    /// frame, so the next draw asks the stores again.
+    ///
+    /// The window calls it (through `Backend::invalidate_images`) on a
+    /// successful hot swap and on an M36 retry. This renderer lives on the
+    /// loader's side across a swap, and the swapped-in build boots a fresh
+    /// application store that can answer an unchanged `(id, frame)` with
+    /// new pixels; the atlas would hit and keep the old build's, since it
+    /// asks a store only when a command's frame moves
+    /// (`fulgurite::ImageSource::image`'s contract).
+    pub fn invalidate_images(&mut self) {
+        self.reset_images();
+    }
+
+    /// Empty the image atlas and forget which frame any slot held: a slot
+    /// that no longer exists cannot be rewritten in place.
+    fn reset_images(&mut self) {
+        self.image_atlas.reset();
+        self.image_frames.clear();
+        self.image_drawn.clear();
+    }
+
+    /// Match the target and the swapchain to a new window size.
+    ///
+    /// The target's contents do not survive, which is correct: every
+    /// laid-out position changed, so `Host::resize` has already reset
+    /// retention and the next frame is a full redraw anyway.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        let (width, height) = (width.max(1), height.max(1));
+        if self.size == (width, height) {
+            return;
+        }
+        self.size = (width, height);
+        let (t, v) = make_target(&self.device, width, height);
+        self.target = t;
+        self.target_view = v;
+        self.blit_bind =
+            make_blit_bind(&self.device, &self.blit_layout, &self.target_view, &self.sampler);
+        // The scratch targets are the target's size, and group 1 names
+        // all three views — a resize that rebuilt one and not the others
+        // would blur last frame's dimensions into this one's. **Only if
+        // they exist**: a window with no glass resizes no scratch
+        // (M51/T51.5), but group 1 still names the new target.
+        if self.scratch.is_some() {
+            self.scratch = Some(make_scratch(&self.device, width, height));
+        }
+        self.rebuild_src_binds();
+        if let Some(s) = &self.surface {
+            self.config.width = width;
+            self.config.height = height;
+            s.configure(&self.device, &self.config);
+        }
+    }
+
+    /// Fill the whole target with `c` — [`software::Canvas::clear`]'s
+    /// counterpart, for a caller that wants a known ground before
+    /// rendering.
+    ///
+    /// [`software::Canvas::clear`]: fulgurite_shell::software::Canvas::clear
+    pub fn clear(&mut self, c: Color) {
+        let (w, h) = self.size;
+        self.draw(&DisplayList::new(), None, Some((c, [0.0, 0.0, w as f32, h as f32])));
+    }
+
+    /// Draw `list` into the target.
+    ///
+    /// `damage` limits every command to a region, exactly as
+    /// `Canvas::render_within` does; `page` clears that region first.
+    /// Both in one call because both are one render pass — the clear is
+    /// an opaque quad at the head of the instance stream, not a separate
+    /// submission.
+    pub fn draw(&mut self, list: &DisplayList, damage: Option<Rect>, page: Option<(Color, Rect)>) {
+        // The single-rect form, kept for callers that have one: a
+        // `None` damage is the whole surface, which is a clip that
+        // clips nothing.
+        let (w, h) = self.size();
+        let one = [damage.or(page.map(|(_, r)| r)).unwrap_or([0.0, 0.0, w as f32, h as f32])];
+        self.draw_regions(list, &one, page.map(|(c, _)| c));
+    }
+
+    /// Draw, clipped to **each** damage region (M26/T26.12).
+    ///
+    /// `Prefer::Auto` picks the GPU first and this used to take one
+    /// rect: the shell handed over `Damage::clip_to`, the **bounding
+    /// box** of M18's region set. Two small changes at opposite corners
+    /// of a window bound to the whole window, which is the merging cost
+    /// M18 removed on the software path and re-introduced here.
+    ///
+    /// **No scissor is needed**, and that is a property of this
+    /// backend: a quad carries its own `clip` in its vertex data, so a
+    /// region is expressed by building the frame's quads once per
+    /// region with that region's clip — **except a user shader's pass,
+    /// which draws a full-target triangle and is bounded by its scissor
+    /// alone** (M83/T83.5, `custom.rs`): rect ∩ open clips ∩ this region,
+    /// in whole pixels, one pass per bracket per region. Regions are **disjoint by
+    /// construction** — `retain::Regions` merges overlapping ones as
+    /// they are added — so nothing is drawn twice and a translucent
+    /// command cannot be blended into the same pixel from two regions.
+    ///
+    /// The page clear follows the same rule: one opaque quad per
+    /// region, at the head of that region's instances, exactly as the
+    /// single-rect form put one at the head of the frame.
+    ///
+    /// **Allocation-free in this crate once warm** (M51/T51.4): the
+    /// instance lists and the shaping scratch are [`Gpu`]'s, taken for the
+    /// frame and put back, and runs are shaped with
+    /// `FontStack::place_run_into` (M50/T50.2). What is left is wgpu's own
+    /// encoding, which `tests/alloc.rs` subtracts as the empty frame's
+    /// floor.
+    pub fn draw_regions(&mut self, list: &DisplayList, regions: &[Rect], page: Option<Color>) {
+        self.draw_regions_from(list, regions, page, None);
+    }
+
+    /// [`Gpu::draw_regions`], resolving each image through `app` — the
+    /// frame's store (`FrameSource::images`, the application's) — before
+    /// the window's ([`Gpu::set_images`]) — M84/T84.6
+    /// (`fulgurite_shell::image::ImageChain`). What the window's GPU
+    /// backend calls with the session's store on every present. A slot is
+    /// keyed on which store answered as well as the id, so one id in both
+    /// stores holds two slots and a fall-through never hits the other's.
+    pub fn draw_regions_from(
+        &mut self,
+        list: &DisplayList,
+        regions: &[Rect],
+        page: Option<Color>,
+        app: Option<&dyn ImageSource>,
+    ) {
+        if regions.is_empty() {
+            return;
+        }
+        let mut fr = std::mem::take(&mut self.frame);
+        self.draw_regions_into(&mut fr, list, regions, page, app);
+        self.frame = fr;
+    }
+
+    /// **wgpu's own floor, alone** — for `tests/alloc.rs` (M51/T51.4).
+    ///
+    /// One page quad over `rect`, submitted straight from the retained
+    /// frame scratch: what an empty-list [`Gpu::draw_regions`] does minus
+    /// everything this crate adds around the submission. The gate needs it
+    /// because an allocation this crate makes on *every* frame lands in
+    /// the empty frame too, so "caret minus empty" cannot see it; "empty
+    /// minus this" can. Not for applications.
+    #[doc(hidden)]
+    pub fn submit_floor(&mut self, rect: Rect, page: Color) {
+        let mut fr = std::mem::take(&mut self.frame);
+        fr.quads.clear();
+        fr.grads.clear();
+        fr.mats.clear();
+        fr.splits.clear();
+        #[cfg(feature = "shader")]
+        fr.slots.clear();
+        let r = snap_out(rect);
+        fr.quads.push(Quad {
+            rect: r,
+            clip: r,
+            color: linear(Color(page.0, page.1, page.2, 255)),
+            params: [0.0; 4],
+            uv: [0.0; 4],
+            kind: KIND_ROUNDED,
+            _pad: [0; 3],
+        });
+        self.submit(&fr);
+        self.frame = fr;
+    }
+
+    /// **wgpu's own cost of the last frame, alone** — for `tests/alloc.rs`
+    /// (M83/T83.5).
+    ///
+    /// Submits the retained frame scratch again, exactly as the last
+    /// [`Gpu::draw_regions`] left it: the same instances, splits and slots,
+    /// the same passes, nothing rebuilt. A frame with custom shaders runs a
+    /// render pass per bracket and wgpu allocates per pass, so it cannot sit
+    /// at the one-pass floor [`Gpu::submit_floor`] measures; what
+    /// `draw_regions` adds around wgpu's submission of the same frame is
+    /// "the frame minus this", and must be 0. Not for applications.
+    #[doc(hidden)]
+    pub fn resubmit(&mut self) {
+        let fr = std::mem::take(&mut self.frame);
+        self.submit(&fr);
+        self.frame = fr;
+    }
+
+    /// [`Gpu::draw_regions`], into the frame scratch it lends.
+    fn draw_regions_into(
+        &mut self,
+        fr: &mut FrameScratch,
+        list: &DisplayList,
+        regions: &[Rect],
+        page: Option<Color>,
+        app: Option<&dyn ImageSource>,
+    ) {
+        // An atlas that fills is reset and the frame is built again from
+        // an empty one; a glyph set that does not fit an empty glyph
+        // atlas grows it and is built again, once per doubling, up to the
+        // device's limit (M51/T51.1). Rebuilding is what keeps the frame
+        // correct — the alternative is a frame with glyphs missing, which
+        // is a rendering bug rather than a slow frame.
+        let mut attempt = 0u32;
+        loop {
+            fr.quads.clear();
+            fr.grads.clear();
+            // **Cleared with the quads, not declared outside the loop.**
+            // A retry rebuilds the frame from an empty atlas, and a
+            // split names an *instance index*: carrying the first
+            // attempt's splits into the second would blur at whatever
+            // the rebuilt list happens to have at that position, which
+            // on an atlas reset is a different command every time.
+            fr.mats.clear();
+            fr.splits.clear();
+            #[cfg(feature = "shader")]
+            fr.slots.clear();
+            // Nothing of this build samples an image slot yet (P1).
+            self.image_drawn.clear();
+            // **Once per region.** A quad carries its own clip, so a
+            // region is expressed by building the frame's quads again
+            // with that region's clip — no scissor, and no second pass.
+            // The regions are disjoint (`retain::Regions` merges
+            // overlapping ones as they are added), so no pixel is
+            // written twice and a translucent command cannot blend into
+            // the same pixel from two of them.
+            let mut outcome = Ok(());
+            for region in regions {
+                let r = snap_out(*region);
+                if let Some(c) = page {
+                    // One clear per region, at the head of that
+                    // region's instances — opaque, like
+                    // `Canvas::clear_within`: a page colour with alpha
+                    // is a page colour that lets the last frame through.
+                    fr.quads.push(Quad {
+                        rect: r,
+                        clip: r,
+                        color: linear(Color(c.0, c.1, c.2, 255)),
+                        params: [0.0; 4],
+                        uv: [0.0; 4],
+                        kind: KIND_ROUNDED,
+                        _pad: [0; 3],
+                    });
+                }
+                outcome = self.collect(list, Some(r), fr, app);
+                if outcome.is_err() {
+                    break;
+                }
+            }
+            let overflow = match outcome {
+                Ok(()) => {
+                    self.submit(fr);
+                    return;
+                }
+                Err(o) => o,
+            };
+            attempt += 1;
+            if attempt == 1 {
+                // The atlas may only be full of glyphs earlier frames
+                // needed: empty it before concluding anything.
+                self.atlas_stats.resets += 1;
+                self.glyph_atlas.reset();
+                self.reset_images();
+                continue;
+            }
+            if overflow == Overflow::Glyph && self.grow_glyph_atlas() {
+                continue;
+            }
+            // Past the device's limit, or an image set larger than the
+            // image atlas. Draw what fits rather than nothing — a frame
+            // missing its last glyphs is worse than one that is whole,
+            // and far better than a black window — and say so.
+            self.atlas_stats.give_ups += 1;
+            if self.atlas_stats.give_ups == 1 {
+                eprintln!(
+                    "fulgurite: a frame did not fit the {} atlas at {}² texels (the device's \
+                     limit is {}); drawn with what fitted. Counted in Gpu::atlas_stats.",
+                    if overflow == Overflow::Glyph { "glyph" } else { "image" },
+                    if overflow == Overflow::Glyph { self.glyph_atlas.size() } else { self.image_atlas.size() },
+                    self.max_atlas,
+                );
+            }
+            self.submit(fr);
+            return;
+        }
+    }
+
+    /// Double the glyph atlas, empty, and say whether it could be: `false`
+    /// at the device's `max_texture_dimension_2d`. The texture is
+    /// replaced, so the bind group is rebuilt before the next draw.
+    fn grow_glyph_atlas(&mut self) -> bool {
+        let next = self.glyph_atlas.size().saturating_mul(2);
+        if next > self.max_atlas {
+            return false;
+        }
+        self.glyph_tex = make_atlas_texture(&self.device, next, wgpu::TextureFormat::R8Unorm);
+        self.glyph_atlas = Atlas::new(next);
+        self.bind_dirty = true;
+        self.atlas_stats.growths += 1;
+        self.atlas_stats.glyph_size = next;
+        true
+    }
+
+    /// Walk the list into instances, in paint order.
+    ///
+    /// The structure is `software::Canvas::render_impl`'s, arm for arm,
+    /// including the clip-stack rule that the damage scope is never
+    /// popped. Where they differ is only that this one emits a quad
+    /// where that one writes pixels.
+    fn collect(
+        &mut self,
+        list: &DisplayList,
+        damage: Option<Rect>,
+        fr: &mut FrameScratch,
+        app: Option<&dyn ImageSource>,
+    ) -> Result<(), Overflow> {
+        let FrameScratch {
+            quads: out,
+            grads,
+            mats,
+            splits,
+            clip,
+            shape: shaping,
+            path,
+            #[cfg(feature = "shader")]
+            slots,
+        } = fr;
+        // Taken for the pass and put back at the end, like the software
+        // canvas does: the source is a field and the atlas needs
+        // `&mut self`.
+        let images = self.images.take();
+        let font = self.font.clone();
+        clip.clear();
+        if let Some(d) = damage {
+            clip.push(d);
+        }
+        let mut result = Ok(());
+        // Depth inside a bracket a custom shader drew (M83/T83.5): its
+        // fallback, and any bracket nested in it, is skipped to the
+        // matching end.
+        #[cfg(feature = "shader")]
+        let mut skip = 0u32;
+
+        for c in &list.cmds {
+            #[cfg(feature = "shader")]
+            if skip > 0 {
+                match c {
+                    Cmd::Shader { .. } => skip += 1,
+                    Cmd::ShaderEnd => skip -= 1,
+                    _ => {}
+                }
+                continue;
+            }
+            match c {
+                Cmd::Rect { rect, color } => {
+                    if let Some(r) = clipped(*rect, clip) {
+                        out.push(shape(*rect, r, *color, 0.0, KIND_ROUNDED));
+                    }
+                }
+                Cmd::RoundedRect { rect, color, radius } => {
+                    if let Some(r) = clipped(*rect, clip) {
+                        // The radius is clamped the way the software
+                        // canvas clamps it, so a radius larger than the
+                        // box gives a stadium on both backends rather
+                        // than a different artefact on each.
+                        let rad = radius.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0);
+                        out.push(shape(*rect, r, *color, rad, KIND_ROUNDED));
+                    }
+                }
+                Cmd::StrokedRect { rect, color, radius, width } => {
+                    if let Some(r) = clipped(*rect, clip) {
+                        let half_w = (rect[2] - rect[0]) / 2.0;
+                        let half_h = (rect[3] - rect[1]) / 2.0;
+                        // Clamped exactly as the software canvas clamps
+                        // it, so an over-wide border is a filled box on
+                        // both backends rather than a different artefact
+                        // on each (`just gpu-parity`).
+                        let bw = width.min(half_w).min(half_h);
+                        let rad = radius.min(half_w).min(half_h).max(0.0);
+                        let mut q = shape(*rect, r, *color, rad, KIND_STROKE);
+                        q.params[1] = bw;
+                        out.push(q);
+                    }
+                }
+                Cmd::Glass { rect, radius, material } => {
+                    // **The real filter, since M22/T22.6.** Until then
+                    // this drew a flat rounded rect, because a texture
+                    // copy cannot happen inside a render pass
+                    // (`docs/plan-glass.md` §1.3). It still cannot: the
+                    // frame is split instead, and the six blur
+                    // instances below run in their own passes between
+                    // the backdrop and the panel.
+                    let Some(r) = clipped(*rect, clip) else { continue };
+                    let m = *material;
+                    let prim = fulgurite::display::glass_primary(*rect, &m);
+                    let rad = radius
+                        .min((prim[2] - prim[0]) / 2.0)
+                        .min((prim[3] - prim[1]) / 2.0);
+                    // The capture, from the **shared** expression the
+                    // damage recorder and the software canvas both use.
+                    let src = fulgurite::display::glass_source(*rect, &m);
+                    let (sw, sh) = (self.size.0 as f32, self.size.1 as f32);
+                    let src = [
+                        src[0].floor().max(0.0),
+                        src[1].floor().max(0.0),
+                        src[2].ceil().min(sw),
+                        src[3].ceil().min(sh),
+                    ];
+                    if src[2] <= src[0] || src[3] <= src[1] {
+                        continue;
+                    }
+
+                    // The blur, at the widths `software::box_windows`
+                    // computes for the same sigma. The CPU also
+                    // downsamples by `k` and blurs the small image; this
+                    // blurs at full resolution with the windows scaled
+                    // by `k`, which delivers the same sigma and is
+                    // identical when `k` is 1 — which it is at the
+                    // liquid preset, and so at the parity scene.
+                    let mut blur = [0u32; 6];
+                    if m.blur > 0.0 {
+                        let (k, d, _) = fulgurite_shell::software::blur_plan(m.blur);
+                        let win = fulgurite_shell::software::box_windows(d);
+                        for (i, slot) in blur.iter_mut().enumerate() {
+                            let (l, rgt) = win[i / 2];
+                            let dir = if i % 2 == 0 { [1.0, 0.0] } else { [0.0, 1.0] };
+                            *slot = out.len() as u32;
+                            out.push(Quad {
+                                rect: src,
+                                clip: src,
+                                color: [0.0; 4],
+                                params: [
+                                    dir[0],
+                                    dir[1],
+                                    (l * k) as f32,
+                                    (rgt * k) as f32,
+                                ],
+                                uv: src,
+                                kind: KIND_BLUR,
+                                _pad: [0; 3],
+                            });
+                        }
+                    } else {
+                        // No blur: one zero-width pass still has to run,
+                        // or the panel would sample a scratch nothing
+                        // wrote this frame.
+                        for (i, slot) in blur.iter_mut().enumerate() {
+                            *slot = out.len() as u32;
+                            out.push(Quad {
+                                rect: src,
+                                clip: src,
+                                color: [0.0; 4],
+                                params: [
+                                    if i % 2 == 0 { 1.0 } else { 0.0 },
+                                    if i % 2 == 0 { 0.0 } else { 1.0 },
+                                    0.0,
+                                    0.0,
+                                ],
+                                uv: src,
+                                kind: KIND_BLUR,
+                                _pad: [0; 3],
+                            });
+                        }
+                    }
+
+                    let (odx, ody) = fulgurite::display::morph_offset(&m);
+                    let morphing = fulgurite::display::morphing(&m);
+                    let t = m.tint;
+                    let t2 = m.tint_over_light;
+                    let rim = m.rim.max(0.0);
+                    mats.push(Mat {
+                        tint: linear(t),
+                        tint2: linear(t2),
+                        prim,
+                        p0: [rim, m.refraction, m.specular, m.shadow as f32 / 255.0],
+                        p1: [
+                            m.light.cos() * LIGHT_XY,
+                            m.light.sin() * LIGHT_XY,
+                            LIGHT_Z,
+                            m.saturation as f32
+                                / fulgurite::display::Material::NEUTRAL_SATURATION as f32,
+                        ],
+                        p2: [m.dispersion as f32 / 255.0, m.adapt as f32 / 255.0, odx, ody],
+                        p3: [(rim * 3.0).max(4.0), morphing as u32 as f32, rad, 0.0],
+                    });
+                    let glass = out.len() as u32;
+                    out.push(Quad {
+                        rect: *rect,
+                        clip: r,
+                        color: [0.0; 4],
+                        params: [rad, 0.0, 0.0, (mats.len() - 1) as f32],
+                        uv: src,
+                        kind: KIND_GLASS,
+                        _pad: [0; 3],
+                    });
+                    splits.push(Split::Glass { glass, blur });
+                }
+                Cmd::Shadow { rect, color, radius, spread } => {
+                    let reach =
+                        [rect[0] - spread, rect[1] - spread, rect[2] + spread, rect[3] + spread];
+                    if let Some(r) = clipped(reach, clip) {
+                        let rad = radius
+                            .clamp(0.0, (rect[2] - rect[0]).min(rect[3] - rect[1]) / 2.0);
+                        out.push(Quad {
+                            rect: reach,
+                            clip: r,
+                            color: linear(*color),
+                            params: [rad, *spread, 0.0, 0.0],
+                            uv: *rect,
+                            kind: KIND_SHADOW,
+                            _pad: [0; 3],
+                        });
+                    }
+                }
+                Cmd::Line { a, b, width, color } => {
+                    let hw = (width / 2.0).max(0.5);
+                    let bounds = [
+                        a.x.min(b.x) - hw,
+                        a.y.min(b.y) - hw,
+                        a.x.max(b.x) + hw,
+                        a.y.max(b.y) + hw,
+                    ];
+                    if let Some(r) = clipped(bounds, clip) {
+                        out.push(Quad {
+                            rect: bounds,
+                            clip: r,
+                            color: linear(*color),
+                            params: [0.0, hw, 0.0, 0.0],
+                            uv: [a.x, a.y, b.x, b.y],
+                            kind: KIND_LINE,
+                            _pad: [0; 3],
+                        });
+                    }
+                }
+                Cmd::Gradient { rect, stops, kind, geom, corner } => {
+                    let Some(r) = clipped(*rect, clip) else { continue };
+                    // The axis comes from `GradAxis`, the software
+                    // canvas's own formula, resolved once here -- the
+                    // shader gets the answer rather than the
+                    // trigonometry: `(ux, uy, span, 0)` for linear,
+                    // `(cx, cy, radius, 1)` for radial (M82/T82.2).
+                    let uv = fulgurite::display::GradAxis::new(*rect, *kind, *geom).uv();
+                    // The corner in `params.x`, which this kind left
+                    // unused, clamped as `fill_gradient` clamps it.
+                    let rad = corner.min((rect[2] - rect[0]) / 2.0).min((rect[3] - rect[1]) / 2.0).max(0.0);
+                    let idx = grads.len() as f32;
+                    grads.push(grad_of(*stops));
+                    out.push(Quad {
+                        rect: *rect,
+                        clip: r,
+                        color: [0.0; 4],
+                        params: [rad, 0.0, 0.0, idx],
+                        uv,
+                        kind: KIND_GRADIENT,
+                        _pad: [0; 3],
+                    });
+                }
+                Cmd::Text { rect, text, size, weight, line_height, color } => {
+                    // Cull the run before shaping it — the check that
+                    // took a 3000-row frame from 7.3 ms to 0.16 ms on
+                    // the software path (`docs/results-competitive.md`).
+                    // Padded by one em, because a glyph may overhang its
+                    // run's box.
+                    let pad = *size;
+                    let reach = [rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad];
+                    if clipped(reach, clip).is_none() {
+                        continue;
+                    }
+                    let s = list.str_of(*text);
+                    match &font {
+                        Some(f) => {
+                            if self
+                                .glyphs(f, rect, s, *size, *weight, *line_height, *color, clip, shaping, out)
+                                .is_err()
+                            {
+                                result = Err(Overflow::Glyph);
+                            }
+                        }
+                        None => blocks(rect, s, *size, *color, clip, out),
+                    }
+                }
+                Cmd::Image { rect, id, tint, frame } => {
+                    let Some(r) = clipped(*rect, clip) else { continue };
+                    // The frame's store first, then the window's
+                    // (M84/T84.6); the slot is keyed on which answered.
+                    let chain = ImageChain { app, window: images.as_deref() };
+                    let Some((origin, px)) = chain.resolve(*id, *frame) else { continue };
+                    match self.image_slot(ImageKey { origin, id: *id }, *frame, px) {
+                        Ok(Some(uv)) => out.push(Quad {
+                            rect: *rect,
+                            clip: r,
+                            color: linear(*tint),
+                            params: [0.0; 4],
+                            uv,
+                            kind: KIND_IMAGE,
+                            _pad: [0; 3],
+                        }),
+                        // A missing asset draws nothing rather than
+                        // taking the frame down.
+                        Ok(None) => {}
+                        // A glyph overflow outranks an image one: only
+                        // the glyph atlas can grow.
+                        Err(o) => {
+                            if result != Err(Overflow::Glyph) {
+                                result = Err(o);
+                            }
+                        }
+                    }
+                }
+                // **Masks in the glyph atlas** (M82/T82.6): each
+                // non-transparent paint is its own mask, rasterised on a
+                // miss by the software canvas's `rasterize_path` and drawn
+                // as `KIND_GLYPH` tiles ([`MaskKey`]). The paints are
+                // skipped exactly as `Canvas::path_within` skips them.
+                Cmd::Path { rect, els, fill, stroke, width } => {
+                    let Some(area) = clipped(*rect, clip) else { continue };
+                    // A range outside the store draws nothing, as on the
+                    // software canvas.
+                    let (at, n) = (els.0 as usize, els.1 as usize);
+                    let Some(els) = list.paths.get(at..at + n) else { continue };
+                    use fulgurite_shell::software::PathCoverage;
+                    for (paint, cover) in [(*fill, PathCoverage::Fill), (*stroke, PathCoverage::Stroke(*width))] {
+                        if paint.3 == 0 || matches!(cover, PathCoverage::Stroke(v) if v.is_nan() || v <= 0.0) {
+                            continue;
+                        }
+                        if self.path_mask(els, *rect, area, paint, cover, path, out).is_err() {
+                            result = Err(Overflow::Glyph);
+                        }
+                    }
+                }
+                Cmd::PushClip { rect } => clip.push(*rect),
+                Cmd::PopClip => {
+                    // Never pop the damage scope; an unbalanced list
+                    // must not let a later command escape the region.
+                    if clip.len() > damage.is_some() as usize {
+                        clip.pop();
+                    }
+                }
+                // **A shader bracket** (M83/T83.3, T83.5): with this crate's
+                // `shader`, a shader the table compiled, handed uniforms of
+                // its own size, is a pass split (`custom.rs`) and its
+                // fallback is skipped to the matching end. Anything else --
+                // no `shader` feature, an unknown id, a refused shader, a
+                // uniform-length mismatch -- draws the fallback clipped to
+                // the rect, as the software canvas does.
+                #[cfg(fulgurite_shader)]
+                Cmd::Shader { rect, id, uniforms } => {
+                    #[cfg(feature = "shader")]
+                    if self.shader_split(list, *rect, *id, *uniforms, clip, out.len() as u32, splits, slots) {
+                        skip = 1;
+                        continue;
+                    }
+                    #[cfg(not(feature = "shader"))]
+                    let _ = (id, uniforms);
+                    clip.push(*rect)
+                }
+                #[cfg(fulgurite_shader)]
+                Cmd::ShaderEnd => {
+                    if clip.len() > damage.is_some() as usize {
+                        clip.pop();
+                    }
+                }
+            }
+        }
+
+        self.images = images;
+        result
+    }
+
+    /// One text run's glyphs, atlased and placed.
+    #[allow(clippy::too_many_arguments)]
+    fn glyphs(
+        &mut self,
+        font: &FontStack,
+        rect: &Rect,
+        text: &str,
+        size: f32,
+        weight: f32,
+        line_height: u8,
+        color: Color,
+        clip: &[Rect],
+        shape: &mut fulgurite_shell::text::ShapeScratch,
+        out: &mut Vec<Quad>,
+    ) -> Result<(), Overflow> {
+        // The command's line pitch, so the lines land where the software
+        // canvas puts them (M80/T80.1; `tests/parity.rs` sees a drop).
+        font.place_run_into(shape, text, size, weight, line_height, rect[2] - rect[0]);
+        let col = linear(color);
+        for &g in shape.placed() {
+            // On whole pixels, like `draw_run`, and through the same shell
+            // function (`text::pen_of`, M81/T81.8): a shaped glyph's
+            // fraction becomes a phase in its id, a bitmap of its own,
+            // rather than a resample of the one the rasteriser decided.
+            let pen = fulgurite_shell::text::pen_of(rect[0] + g.x, &g);
+            let (gx, gy) = (pen.x, (rect[1] + g.y).round());
+            let dst = [gx, gy, gx + pen.w as f32, gy + g.h as f32];
+            let Some(r) = clipped(dst, clip) else { continue };
+            let uv = match self.glyph_atlas.get(&MaskKey::Glyph(pen.id)) {
+                Some(slot) => slot.uv(self.glyph_atlas.size()),
+                None => {
+                    let Some((w, h, cov)) = font.rasterize(pen.id) else { continue };
+                    let Some(slot) = self.glyph_atlas.insert(MaskKey::Glyph(pen.id), w, h) else {
+                        return Err(Overflow::Glyph);
+                    };
+                    write_texture(&self.queue, &self.glyph_tex, slot, &cov, 1);
+                    slot.uv(self.glyph_atlas.size())
+                }
+            };
+            out.push(Quad {
+                rect: dst,
+                clip: r,
+                color: col,
+                params: [0.0; 4],
+                uv,
+                kind: KIND_GLYPH,
+                _pad: [0; 3],
+            });
+        }
+        Ok(())
+    }
+
+    /// One paint of one path, as [`PATH_TILE`] tiles of R8 coverage in
+    /// the glyph atlas — M82/T82.6 ([`MaskKey`]).
+    ///
+    /// **The mask is the software canvas's.** Its pixel `(0, 0)` is the
+    /// device pixel at the ink box's integer floor, the origin
+    /// `Canvas::path_within` gives `rasterize_path` (x from the ink's
+    /// left edge, y absolute), and it is rasterised from the same
+    /// device-space elements, so a tile's bytes are the bytes the
+    /// software canvas blends there. `area` is the ink box already
+    /// clipped; only tiles that meet it are looked up, and only a miss
+    /// rasterises.
+    #[allow(clippy::too_many_arguments)]
+    fn path_mask(
+        &mut self,
+        els: &[fulgurite::display::PathEl],
+        ink: Rect,
+        area: Rect,
+        color: Color,
+        cover: fulgurite_shell::software::PathCoverage,
+        scratch: &mut fulgurite_shell::software::PathScratch,
+        out: &mut Vec<Quad>,
+    ) -> Result<(), Overflow> {
+        use fulgurite_shell::software::{rasterize_path, PathCoverage};
+        let (ix, iy) = (ink[0].floor(), ink[1].floor());
+        let w = (ink[2].ceil() - ix).max(0.0) as u32;
+        let h = (ink[3].ceil() - iy).max(0.0) as u32;
+        if w == 0 || h == 0 || !(ix.is_finite() && iy.is_finite()) {
+            return Ok(());
+        }
+        let hash = mask_hash(els, ix, iy);
+        let paint = match cover {
+            PathCoverage::Fill => MaskPaint::Fill,
+            PathCoverage::Stroke(v) => MaskPaint::Stroke(v.to_bits()),
+        };
+        let frac = [((ink[0] - ix) * 256.0) as u8, ((ink[1] - iy) * 256.0) as u8];
+        let col = linear(color);
+        let cell = snap_out(area);
+        for ty in 0..h.div_ceil(PATH_TILE) {
+            for tx in 0..w.div_ceil(PATH_TILE) {
+                let (x0, y0) = (tx * PATH_TILE, ty * PATH_TILE);
+                let (tw, th) = (PATH_TILE.min(w - x0), PATH_TILE.min(h - y0));
+                let dst = [ix + x0 as f32, iy + y0 as f32, ix + (x0 + tw) as f32, iy + (y0 + th) as f32];
+                // The software canvas writes whole pixels from the floor to
+                // the ceiling of the clipped ink, so the quad's hard clip is
+                // that box, not the fractional one: a pixel the ink's edge
+                // only grazes still has coverage to blend.
+                let r = [dst[0].max(cell[0]), dst[1].max(cell[1]), dst[2].min(cell[2]), dst[3].min(cell[3])];
+                if r[2] <= r[0] || r[3] <= r[1] {
+                    continue;
+                }
+                let key = MaskKey::Path { hash, paint, frac, tile: [tx as u16, ty as u16] };
+                let uv = match self.glyph_atlas.get(&key) {
+                    Some(slot) => slot.uv(self.glyph_atlas.size()),
+                    None => {
+                        let Some(slot) = self.glyph_atlas.insert(key, tw, th) else {
+                            return Err(Overflow::Glyph);
+                        };
+                        let origin = [ix as i32 + x0 as i32, iy as i32 + y0 as i32];
+                        let mask = rasterize_path(els, cover, origin, tw as usize, th as usize, scratch);
+                        self.atlas_stats.path_masks += 1;
+                        write_texture(&self.queue, &self.glyph_tex, slot, mask, 1);
+                        slot.uv(self.glyph_atlas.size())
+                    }
+                };
+                out.push(Quad { rect: dst, clip: r, color: col, params: [0.0; 4], uv, kind: KIND_GLYPH, _pad: [0; 3] });
+            }
+        }
+        Ok(())
+    }
+
+    /// The atlas uv for frame `frame` of an image, uploading it on a miss
+    /// — M84/T84.2. The pixels are the store's answer, resolved by the
+    /// caller through the frame's [`ImageChain`] (M84/T84.6), which says
+    /// which store answered: that is the key's origin. Resolving borrows a
+    /// slice and copies nothing, so asking on a hit costs a map lookup.
+    ///
+    /// An id's own slot ([`ImageSlot::Current`]) holds one frame
+    /// (`image_frames`). A command at that frame samples it; at another
+    /// frame of the same size the new pixels are written **into the same
+    /// slot**, and at another size the image is inserted again. A second
+    /// frame of an id this draw has already sampled at a different frame
+    /// takes a side slot ([`ImageSlot::Alt`]) instead, so both quads show
+    /// their own frame (P1). Side slots, and the space a size change
+    /// orphans, go with the next `Overflow::Image` reset; the atlas has no
+    /// per-key eviction.
+    fn image_slot(
+        &mut self,
+        id: ImageKey,
+        frame: u32,
+        (iw, ih, px): (u32, u32, &[u8]),
+    ) -> Result<Option<[f32; 4]>, Overflow> {
+        let key = match self.image_drawn.get(&id) {
+            Some(&f) if f != frame => ImageSlot::Alt(id, frame),
+            _ => ImageSlot::Current(id),
+        };
+        let held = self.image_atlas.get(&key);
+        // A side slot is keyed on its frame, so holding it is holding that
+        // frame; an own slot holds whichever frame was last written to it.
+        let current = matches!(key, ImageSlot::Alt(..)) || self.image_frames.get(&id) == Some(&frame);
+        if let (Some(slot), true) = (held, current) {
+            if key == ImageSlot::Current(id) {
+                self.image_drawn.insert(id, frame);
+            }
+            return Ok(Some(slot.uv(self.image_atlas.size())));
+        }
+        if iw == 0 || ih == 0 || px.len() < iw as usize * ih as usize * 4 {
+            return Ok(None);
+        }
+        if self.image_atlas.size() == 1 {
+            // First image: allocate the atlas now rather than at
+            // startup, so an application with none pays nothing.
+            self.image_tex =
+                make_atlas_texture(&self.device, IMAGE_ATLAS, wgpu::TextureFormat::Rgba8Unorm);
+            self.image_atlas = Atlas::new(IMAGE_ATLAS);
+            self.bind_dirty = true;
+        }
+        let slot = match held {
+            // A new frame of the same size: in place (K84d).
+            Some(s) if s.w == iw && s.h == ih => s,
+            _ => match self.image_atlas.insert(key, iw, ih) {
+                Some(s) => s,
+                // An image too large for the atlas is refused, not scaled:
+                // silently resampling someone's asset is a worse surprise
+                // than a missing one, and `ImageSource` already says a
+                // missing image draws nothing.
+                None => {
+                    return if iw > self.image_atlas.size() || ih > self.image_atlas.size() {
+                        Ok(None)
+                    } else {
+                        Err(Overflow::Image)
+                    };
+                }
+            },
+        };
+        write_texture(&self.queue, &self.image_tex, slot, px, 4);
+        self.atlas_stats.image_uploads += 1;
+        self.atlas_stats.image_upload_bytes += iw as u64 * ih as u64 * 4;
+        if key == ImageSlot::Current(id) {
+            self.image_frames.insert(id, frame);
+            self.image_drawn.insert(id, frame);
+        }
+        Ok(Some(slot.uv(self.image_atlas.size())))
+    }
+
+    /// Upload the instances and run the passes.
+    ///
+    /// **Passes, plural, since M22/T22.6.** One pass is enough while
+    /// nothing reads what has already been drawn; a backdrop filter
+    /// does, and a texture cannot be sampled by the same pass that is
+    /// writing it. So `splits` names the instance index of each glass
+    /// command, and the frame becomes: everything before the panel,
+    /// then six blur passes ping-ponging between the two scratch
+    /// targets, then the panel itself — repeated per panel, then the
+    /// remainder. `G + 1` main passes and `6G` blur passes.
+    ///
+    /// **And one pass per custom shader split** (M83/T83.5): the shapes
+    /// pipeline runs up to the split's instance, one `LoadOp::Load` pass
+    /// draws the user pipeline's full-target triangle under the split's
+    /// scissor, and the shapes pipeline resumes. Glass and shader splits
+    /// are one list in paint order.
+    fn submit(&mut self, fr: &FrameScratch) {
+        let (quads, grads, mats, splits) = (&fr.quads[..], &fr.grads[..], &fr.mats[..], &fr.splits[..]);
+        #[cfg(feature = "shader")]
+        let shading = splits.iter().any(|s| matches!(s, Split::Shader { .. }));
+        #[cfg(not(feature = "shader"))]
+        let shading = false;
+        if quads.is_empty() && !shading {
+            return;
+        }
+        let glassy = splits.iter().any(|s| matches!(s, Split::Glass { .. }));
+        if glassy && self.scratch.is_none() {
+            // The first backdrop filter this renderer has drawn.
+            self.scratch = Some(make_scratch(&self.device, self.size.0, self.size.1));
+            self.rebuild_src_binds();
+        }
+        if quads.len() > self.quad_cap {
+            self.quad_cap = quads.len().next_power_of_two();
+            self.quads = make_quad_buffer(&self.device, self.quad_cap);
+        }
+        if grads.len() > self.grad_cap {
+            self.grad_cap = grads.len().next_power_of_two();
+            self.grads = make_grad_buffer(&self.device, self.grad_cap);
+            self.bind_dirty = true;
+        }
+        if mats.len() > self.mat_cap {
+            self.mat_cap = mats.len().next_power_of_two();
+            self.mats = make_mat_buffer(&self.device, self.mat_cap);
+            self.bind_dirty = true;
+        }
+        if self.bind_dirty {
+            self.bind = make_bind(
+                &self.device,
+                &self.bind_layout,
+                &self.globals,
+                &self.glyph_tex,
+                &self.image_tex,
+                &self.sampler,
+                &self.grads,
+                &self.mats,
+            );
+            self.bind_dirty = false;
+        }
+
+        self.queue.write_buffer(
+            &self.globals,
+            0,
+            bytemuck::bytes_of(&Globals {
+                viewport: [self.size.0 as f32, self.size.1 as f32],
+                _pad: [0.0; 2],
+            }),
+        );
+        if !quads.is_empty() {
+            self.queue.write_buffer(&self.quads, 0, bytemuck::cast_slice(quads));
+        }
+        #[cfg(feature = "shader")]
+        if shading {
+            self.upload_shader_slots(&fr.slots);
+            let n = splits.iter().filter(|s| matches!(s, Split::Shader { .. })).count();
+            self.count_shader_passes(n as u64);
+        }
+        if !grads.is_empty() {
+            self.queue.write_buffer(&self.grads, 0, bytemuck::cast_slice(grads));
+        }
+        if !mats.is_empty() {
+            self.queue.write_buffer(&self.mats, 0, bytemuck::cast_slice(mats));
+        }
+
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
+
+        // One pass over `range`, reading `src` and writing `dst`.
+        //
+        // **Load, never clear.** The target holds the previous frame,
+        // and a partial redraw is exactly the statement that most of it
+        // is still correct; clearing would make damage a lie. The
+        // scratch targets are fully overwritten by their blur pass, so
+        // loading them costs nothing and needs no special case.
+        let run = |enc: &mut wgpu::CommandEncoder,
+                       dst: &wgpu::TextureView,
+                       src: usize,
+                       range: core::ops::Range<u32>| {
+            if range.is_empty() {
+                return;
+            }
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("shapes"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: dst,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &self.bind, &[]);
+            pass.set_bind_group(1, &self.src_binds[src], &[]);
+            pass.set_vertex_buffer(0, self.quads.slice(..));
+            pass.draw(0..4, range);
+        };
+
+        let mut at = 0u32;
+        for sp in splits {
+            match sp {
+                Split::Glass { glass, blur } => {
+                    let Some((_, scratch_view)) = &self.scratch else { break };
+                    // Everything under the panel, into the target. **Up to
+                    // the first blur instance, not up to the glass**: the
+                    // six blur quads are pushed immediately before the
+                    // panel and belong to their own passes, so a range
+                    // that ran to `glass` would draw them into the target
+                    // and paint the frame with the backdrop filter's
+                    // intermediates.
+                    run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..blur[0]);
+                    // Capture and blur. The first pass reads the target
+                    // itself, so no copy is needed: a render pass may
+                    // sample a texture it is not writing.
+                    let mut src = SRC_TARGET;
+                    for (i, b) in blur.iter().enumerate() {
+                        let dst = if i % 2 == 0 { 1usize } else { 0usize };
+                        run(&mut enc, &scratch_view[dst], src, *b..*b + 1);
+                        src = if dst == 1 { SRC_SCRATCH_B } else { SRC_SCRATCH_A };
+                    }
+                    // The panel, reading whichever scratch the last pass
+                    // wrote.
+                    run(&mut enc, &self.target_view, src, *glass..*glass + 1);
+                    at = *glass + 1;
+                }
+                #[cfg(feature = "shader")]
+                Split::Shader { at: here, pipe, frame, uniforms, scissor } => {
+                    // Everything painted before the bracket, then the
+                    // shader over it; what follows the bracket's end
+                    // resumes from the same instance.
+                    run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..*here);
+                    self.shader_pass(&mut enc, *pipe, *frame, *uniforms, *scissor);
+                    at = *here;
+                }
+            }
+        }
+        run(&mut enc, &self.target_view, SRC_SCRATCH_A, at..quads.len() as u32);
+        self.queue.submit([enc.finish()]);
+    }
+
+    /// Group 1 again, from the target and whichever scratch exists.
+    fn rebuild_src_binds(&mut self) {
+        let views = match &self.scratch {
+            Some((_, v)) => [&v[0], &v[1]],
+            None => [&self.placeholder, &self.placeholder],
+        };
+        self.src_binds =
+            make_src_binds(&self.device, &self.src_layout, &self.target_view, views, &self.linear);
+    }
+
+    /// Block until the device has finished everything submitted.
+    ///
+    /// **For benchmarks and readbacks, not for frames.** A frame loop
+    /// that waits here has thrown away the one thing a GPU is for:
+    /// `draw` returns as soon as the work is *queued*, and the CPU is
+    /// meant to go and do the next frame's layout while the device
+    /// draws. A benchmark that did not wait would be timing the queue
+    /// submission and reporting it as a render.
+    pub fn wait(&self) {
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
+    /// Put the target on screen, and say whether it got there. A no-op
+    /// answering `true` when there is no window (nothing was asked of a
+    /// display).
+    ///
+    /// **`false` is a dropped frame the caller must ask for again**
+    /// (M47/T47.4, R7-F7). The surface was Outdated or Lost — the window
+    /// changed under it — or timed out. It is reconfigured here, and the
+    /// target still holds the whole frame (it is never handed to the
+    /// presentation engine), so the next present of an unchanged frame
+    /// shows it. Until T47.4 this returned `()` and said dropping a frame
+    /// "is what every other backend does here too", which was false —
+    /// softbuffer panics — and an idle window, which asks for no further
+    /// frame, stayed unpainted until input arrived.
+    pub fn present(&mut self) -> bool {
+        let Some(surface) = &self.surface else { return true };
+        #[cfg(debug_assertions)]
+        if self.drop_first > 0 {
+            // The Outdated arm below, taken on purpose (FULGURITE_GPU_DROP_FIRST).
+            // One line per drop, so a live gate can count how many
+            // presents the window attempted.
+            self.drop_first -= 1;
+            eprintln!("fulgurite: FULGURITE_GPU_DROP_FIRST: present dropped ({} left)", self.drop_first);
+            surface.configure(&self.device, &self.config);
+            return false;
+        }
+        use wgpu::CurrentSurfaceTexture as Cst;
+        let frame = match surface.get_current_texture() {
+            // Suboptimal is still a frame, and refusing to draw it is
+            // how a window goes black after a monitor change.
+            Cst::Success(f) | Cst::Suboptimal(f) => f,
+            Cst::Outdated | Cst::Lost => {
+                // The window changed under us. Reconfigure, and tell the
+                // caller the frame did not reach the screen.
+                surface.configure(&self.device, &self.config);
+                return false;
+            }
+            _ => return false,
+        };
+        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("present") });
+        {
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("blit"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.blit_pipeline);
+            pass.set_bind_group(0, &self.blit_bind, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([enc.finish()]);
+        self.queue.present(frame);
+        true
+    }
+
+    /// The target, as RGBA8 — the same layout as
+    /// [`software::Canvas::pixels`], so a test can subtract one from the
+    /// other.
+    ///
+    /// [`software::Canvas::pixels`]: fulgurite_shell::software::Canvas::pixels
+    pub fn read_rgba(&mut self) -> Vec<u8> {
+        let (w, h) = self.size;
+        // Copies out of a texture are row-aligned to 256 bytes, so the
+        // staging buffer is padded and unpadded here rather than at
+        // every call site.
+        let unpadded = w as usize * 4;
+        let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize;
+        let padded = unpadded.div_ceil(align) * align;
+
+        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size: (padded * h as usize) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("readback") });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.target,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &staging,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded as u32),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([enc.finish()]);
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        // Blocking is the point: a readback is a test and a screenshot,
+        // never a frame.
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        let mut out = Vec::with_capacity(unpadded * h as usize);
+        if let Ok(data) = slice.get_mapped_range() {
+            for row in 0..h as usize {
+                out.extend_from_slice(&data[row * padded..row * padded + unpadded]);
+            }
+        }
+        staging.unmap();
+        out
+    }
+}
+
+/// A full redraw of `list` into the target, leaving whatever was there
+/// underneath — the same contract [`software::Canvas`] gives, so the two
+/// are interchangeable at a `&mut dyn Renderer`.
+///
+/// [`software::Canvas`]: fulgurite_shell::software::Canvas
+impl Renderer for Gpu {
+    fn render(&mut self, list: &DisplayList, width: u32, height: u32) {
+        self.resize(width, height);
+        self.draw(list, None, None);
+    }
+}
+
+/// A plain shape instance.
+fn shape(rect: Rect, clip: Rect, color: Color, radius: f32, kind: u32) -> Quad {
+    Quad {
+        rect,
+        clip,
+        color: linear(color),
+        params: [radius, 0.0, 0.0, 0.0],
+        uv: [0.0; 4],
+        kind,
+        _pad: [0; 3],
+    }
+}
+
+/// The fontless stand-in: one filled block per glyph at the advance
+/// `BlockMetrics` assumes, so what is drawn matches what was measured.
+/// Transcribed from the software canvas so a fontless comparison of the
+/// two backends is still a comparison.
+fn blocks(rect: &Rect, s: &str, size: f32, color: Color, clip: &[Rect], out: &mut Vec<Quad>) {
+    let advance = size * 0.5;
+    for (k, ch) in s.chars().enumerate() {
+        if ch == ' ' {
+            continue;
+        }
+        let x = rect[0] + k as f32 * advance;
+        if x + advance > rect[2] {
+            break; // clipped by the node's own box
+        }
+        let g = [x + 0.5, rect[1] + 2.0, x + advance - 0.5, rect[1] + size - 2.0];
+        if let Some(r) = clipped(g, clip) {
+            out.push(shape(g, r, color, 0.0, KIND_ROUNDED));
+        }
+    }
+}
+
+/// [`MaskKey::Path`]'s `hash`: FNV-1a over the element count and, per
+/// element, its tag and its points **less the integer origin
+/// `(ix, iy)`** — so the same path scrolled by whole pixels hashes the
+/// same (M82/T82.6). Subtracting a whole number below the point is exact
+/// in `f32` wherever the point's magnitude leaves room for its fraction,
+/// which is every UI coordinate; a path whose points round differently
+/// after a translate is a miss, never a wrong hit.
+fn mask_hash(els: &[fulgurite::display::PathEl], ix: f32, iy: f32) -> u64 {
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut word = |v: u32| {
+        for b in v.to_le_bytes() {
+            h = (h ^ b as u64).wrapping_mul(PRIME);
+        }
+    };
+    word(els.len() as u32);
+    for e in els {
+        word(e.tag() as u32);
+        let (n, ps) = e.points();
+        for p in &ps[..n] {
+            word((p.x - ix).to_bits());
+            word((p.y - iy).to_bits());
+        }
+    }
+    h
+}
+
+fn grad_of(s: Stops) -> Grad {
+    let mut color = [[0.0f32; 4]; 4];
+    for (k, c) in s.color.iter().enumerate() {
+        color[k] = linear(*c);
+    }
+    // The shader reads fractions; `Stops` holds 1/255 steps (M82/T82.1).
+    let at = [s.offset(0), s.offset(1), s.offset(2), s.offset(3)];
+    Grad { color, at, len: s.len as u32, _pad: [0; 3] }
+}
+
+/// One glass material, out of line. Mirrors `Mat` in `shader.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Mat {
+    tint: [f32; 4],
+    tint2: [f32; 4],
+    prim: [f32; 4],
+    p0: [f32; 4],
+    p1: [f32; 4],
+    p2: [f32; 4],
+    p3: [f32; 4],
+}
+
+fn make_mat_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("fulgurite materials"),
+        size: (cap * core::mem::size_of::<Mat>()) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// The two ping-ponged scratch targets the blur passes write.
+fn make_scratch(
+    device: &wgpu::Device,
+    w: u32,
+    h: u32,
+) -> ([wgpu::Texture; 2], [wgpu::TextureView; 2]) {
+    let mk = |n: &'static str| {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(n),
+            size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TARGET_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+    };
+    let a = mk("fulgurite scratch a");
+    let b = mk("fulgurite scratch b");
+    let av = a.create_view(&wgpu::TextureViewDescriptor::default());
+    let bv = b.create_view(&wgpu::TextureViewDescriptor::default());
+    ([a, b], [av, bv])
+}
+
+/// Group 1, for each thing a pass can read: the target, then the two
+/// scratch textures.
+fn make_src_binds(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    target: &wgpu::TextureView,
+    scratch: [&wgpu::TextureView; 2],
+    samp: &wgpu::Sampler,
+) -> [wgpu::BindGroup; 3] {
+    let one = |v: &wgpu::TextureView| {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("fulgurite glass source"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(v) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(samp) },
+            ],
+        })
+    };
+    [one(target), one(scratch[0]), one(scratch[1])]
+}
+
+fn make_target(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {
+    let t = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("fulgurite target"),
+        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: TARGET_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let v = t.create_view(&wgpu::TextureViewDescriptor::default());
+    (t, v)
+}
+
+fn make_atlas_texture(
+    device: &wgpu::Device,
+    size: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("fulgurite atlas"),
+        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+fn write_texture(
+    queue: &wgpu::Queue,
+    tex: &wgpu::Texture,
+    slot: atlas::Slot,
+    data: &[u8],
+    bpp: u32,
+) {
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d { x: slot.x, y: slot.y, z: 0 },
+            aspect: wgpu::TextureAspect::All,
+        },
+        &data[..(slot.w * slot.h * bpp) as usize],
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(slot.w * bpp),
+            rows_per_image: Some(slot.h),
+        },
+        wgpu::Extent3d { width: slot.w, height: slot.h, depth_or_array_layers: 1 },
+    );
+}
+
+fn make_quad_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("fulgurite quads"),
+        size: (cap * core::mem::size_of::<Quad>()) as u64,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn make_grad_buffer(device: &wgpu::Device, cap: usize) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("fulgurite gradients"),
+        size: (cap.max(1) * core::mem::size_of::<Grad>()) as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+/// A configuration for the headless case, where there is no surface to
+/// ask. Only its `format` is ever read (by the blit pipeline), but the
+/// field exists so `present` has nothing to special-case.
+fn default_config(width: u32, height: u32) -> wgpu::SurfaceConfiguration {
+    wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: TARGET_FORMAT,
+        color_space: wgpu::SurfaceColorSpace::Auto,
+        width,
+        height,
+        present_mode: wgpu::PresentMode::AutoVsync,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    }
+}
+
+fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn storage_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only: true },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
+fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+        count: None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_bind(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    globals: &wgpu::Buffer,
+    glyph: &wgpu::Texture,
+    image: &wgpu::Texture,
+    sampler: &wgpu::Sampler,
+    grads: &wgpu::Buffer,
+    mats: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    let gv = glyph.create_view(&wgpu::TextureViewDescriptor::default());
+    let iv = image.create_view(&wgpu::TextureViewDescriptor::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("fulgurite binds"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: globals.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&gv) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&iv) },
+            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::Sampler(sampler) },
+            wgpu::BindGroupEntry { binding: 4, resource: grads.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: mats.as_entire_binding() },
+        ],
+    })
+}
+
+fn make_blit_bind(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    view: &wgpu::TextureView,
+    sampler: &wgpu::Sampler,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("fulgurite blit binds"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+        ],
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accept_adapter;
+    use wgpu::DeviceType as D;
+
+    /// M51 (R9-F6): every device type wgpu defines, under `Auto` (a CPU
+    /// adapter not acceptable) and under `Gpu` (acceptable), with the
+    /// expected answer written down.
+    #[test]
+    fn a_cpu_adapter_is_not_a_gpu_under_auto() {
+        let table = [
+            (D::DiscreteGpu, false, true),
+            (D::IntegratedGpu, false, true),
+            (D::VirtualGpu, false, true),
+            (D::Other, false, true),
+            (D::Cpu, false, false),
+            (D::DiscreteGpu, true, true),
+            (D::IntegratedGpu, true, true),
+            (D::VirtualGpu, true, true),
+            (D::Other, true, true),
+            (D::Cpu, true, true),
+        ];
+        let mut wrong = Vec::new();
+        for (device, accept_cpu, want) in table {
+            let got = accept_adapter(device, accept_cpu);
+            println!("{device:?}, accept_cpu {accept_cpu}: {got:?} (want accepted: {want})");
+            if got.is_ok() != want {
+                wrong.push((device, accept_cpu));
+            }
+        }
+        assert!(wrong.is_empty(), "wrong answers: {wrong:?}");
+    }
+}

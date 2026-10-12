@@ -318,7 +318,7 @@ derive gained `#[app(tick = path)]`, mirroring the existing
 
 ### The loop asked the wrong question at the wrong time
 
-`lumen-static-winit` ticked, then pumped, and used the *tick's* answer
+`fulgurite-winit` ticked, then pumped, and used the *tick's* answer
 to decide whether to request another frame. A press dispatched during
 the pump starts an animation that tick could not have seen, so the loop
 was told nothing was moving: no redraw, and the rim jumped to its next
@@ -491,7 +491,7 @@ slightly when it changed (139 → 153 ms software), because one `Cmd::Image`
 replaced twenty-eight rects and the image is sampled per pixel.
 
 **The wallpaper is 470 × 1018 and that bound is the GPU's, not the
-design's.** `lumen-static-wgpu` atlases images into a 1024 px texture
+design's.** `fulgurite-wgpu` atlases images into a 1024 px texture
 and refuses anything larger — drawing nothing, which is `ImageSource`'s
 stated answer for a missing asset — while the software canvas has no
 atlas and draws any size. A 540 × 1170 wallpaper therefore rendered
@@ -511,7 +511,7 @@ path is being credited here.
 redraw is `dilate`'s `Damage::All` escape, and until T51.3 no test
 fired it: `retain.rs` said "no cap and no fallback" directly above it,
 and with it deleted every suite stayed green (R9-F3,
-`docs/results-deep-review.md`). `crates/lumen-static-shell/tests/glass_deps.rs`
+`docs/results-deep-review.md`). `crates/fulgurite-shell/tests/glass_deps.rs`
 now renders `MAX_DEPS` = 4 and 5 frosted panels with a bar moving under
 the last, partial over the reported damage against full, five frames
 each:
@@ -760,7 +760,7 @@ does nothing for the sheet.
 
 **Measured 2026-09-11.** M21 added `refraction` and `specular` over a
 bevel of width `rim`, which is what separates
-[`Material::LIQUID`](../crates/lumen-static/src/display.rs) from
+[`Material::LIQUID`](../crates/fulgurite/src/display.rs) from
 `FROSTED`.
 
 **Re-measured 2026-09-27 (M55/T55.8, R9-F11)** — frosted at σ = 3 against

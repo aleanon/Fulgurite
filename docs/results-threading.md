@@ -81,7 +81,7 @@ GPU at all.** `docs/results-raster-scaling.md` measured the unthreaded
 
 ## 3. Built (M17/T17.4, corrected by T17.5)
 
-`feature = "threads"` on `lumen-static-shell`: `std::thread::scope`, no
+`feature = "threads"` on `fulgurite-shell`: `std::thread::scope`, no
 dependency, and no `unsafe` — disjoint row bands are a safe split of the
 pixel buffer.
 
@@ -153,7 +153,7 @@ Swept at 4K — workers across, strip height down:
 
 The default is `available_parallelism()` workers and four strips each,
 floored at 16 rows, which lands on 2.60 — within noise of the best cell.
-`LUMEN_WORKERS` and `LUMEN_STRIP_ROWS` override both.
+`FULGURITE_WORKERS` and `FULGURITE_STRIP_ROWS` override both.
 
 ### Where it ends up
 
@@ -230,7 +230,7 @@ output must stay byte-identical or `damage_oracle.rs` and the agent's
 journal both break — which disjoint bands give for free, since they
 touch disjoint pixels. And it needs no `unsafe`: disjoint horizontal
 bands are safe slices of the pixel buffer, which matters because every
-crate but `lumen-static-reload` carries `#![forbid(unsafe_code)]` (since
+crate but `fulgurite-reload` carries `#![forbid(unsafe_code)]` (since
 M43/T43.1; `scripts/check_no_unsafe.sh` checks that it does).
 
 ## What is not measured here
