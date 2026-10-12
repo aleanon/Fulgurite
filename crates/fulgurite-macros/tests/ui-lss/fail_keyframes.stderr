@@ -1,5 +1,5 @@
 error: fail_keyframes.lss:1:1: `@keyframes` is not in v1: it needs cascade machinery this framework does not have (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_keyframes.rs:13:55
+  --> tests/ui-lss/fail_keyframes.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_keyframes.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^
+   |                                                    ^^^^^^^^^^^^^^^^^^^^

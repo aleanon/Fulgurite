@@ -10,6 +10,6 @@ warning: unused import: `fulgurite::event::EventCtx`
  --> tests/ui/fail_state_on_tree.rs:3:5
   |
 3 | use fulgurite::event::EventCtx;
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

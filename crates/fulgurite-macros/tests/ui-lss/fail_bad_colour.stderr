@@ -1,5 +1,5 @@
 error: fail_bad_colour.lss:1:17: `color` takes a colour: `#rrggbb`, `#rrggbbaa`, or a palette role like `$accent`, not `12px`
-  --> tests/ui-lss/fail_bad_colour.rs:13:55
+  --> tests/ui-lss/fail_bad_colour.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_bad_colour.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^^
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^

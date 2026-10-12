@@ -1,5 +1,5 @@
 error: fail_descendant.lss:1:1: descendant combinator in `#title label`: v1 matches a node by its own id, class or kind, not by its ancestors (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_descendant.rs:13:55
+  --> tests/ui-lss/fail_descendant.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_descendant.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^^
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^

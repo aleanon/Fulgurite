@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: tree_fail_class.lss:2:1: `.headline` names no node -- there is no `#[widget_class("headline")]` in `Ui` (docs/plan-lss.md §2.3)
-  --> tests/ui-lss/tree_fail_class.rs:13:55
+  --> tests/ui-lss/tree_fail_class.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "tree_fail_class.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^^ evaluation of `SHEET::_` failed here
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^ evaluation of `SHEET::_` failed here

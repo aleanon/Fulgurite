@@ -1,5 +1,5 @@
 error: fail_compound.lss:1:1: compound selector `.value.pos`: v1 takes one simple selector per rule -- `#id`, `.class`, a kind or `*` (docs/plan-lss.md §4)
-  --> tests/ui-lss/fail_compound.rs:13:55
+  --> tests/ui-lss/fail_compound.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_compound.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^
+   |                                                    ^^^^^^^^^^^^^^^^^^^

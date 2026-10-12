@@ -1,5 +1,5 @@
 error: fail_unknown_token.lss:3:17: unknown token `$inkk`; did you mean `$ink`?
-  --> tests/ui-lss/fail_unknown_token.rs:13:55
+  --> tests/ui-lss/fail_unknown_token.rs:13:52
    |
 13 | const SHEET: &[fulgurite::Rule] = include_lss!(Ui, "fail_unknown_token.lss");
-   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^
