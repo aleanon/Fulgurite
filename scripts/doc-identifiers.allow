@@ -154,3 +154,5 @@ LateMinBufferBindingSizeMismatch  # wgpu's validation error name, cited by M83's
 LUMEN_TEXT_CEILING   # env override read by scripts/check_text.sh (a script, not workspace code)
 Panes                          # removed by M89/T89.1 (docs/plan-windows.md); older plans cite it
 DeviceEvents                   # winit's device-event filter, cited by K89d's shared-desktop note (winit#4755); not used by the workspace
+StateSet             # promised by docs/plan-lss-selectors.md T62.7; comes off when it exists
+HIGH_CONTRAST        # promised by docs/plan-lss-selectors.md T62.3 (Palette::HIGH_CONTRAST); comes off when it exists
