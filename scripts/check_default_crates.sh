@@ -55,16 +55,21 @@ fi
 SHA=$(git rev-parse --verify -q "$BASE^{commit}") || {
     echo "check_default_crates: '$BASE' is not a commit" >&2; exit 2; }
 
-# count DIR -- K2's count for fulgurite-winit's default build in DIR.
+# count DIR -- K2's count for the winit crate's default build in DIR.
 # Only cargo's STDOUT is counted: stderr carries cargo's progress lines,
 # and "Blocking waiting for file lock on package cache" appears there
 # whenever another cargo process holds the lock (a CI run beside this
 # one) -- counted, it made 96 crates read 97 with nothing changed. stderr
 # is kept for the error message when cargo fails.
+# The package is named from DIR's own manifest, not spelled here: the
+# project was renamed (lumen-static -> fulgurite, 2026-10-12), and a BASE
+# from before it has no `fulgurite-winit` to ask for.
 count() {
-    local out err
+    local out err pkg
+    pkg=$(sed -n 's/^name = "\(.*-winit\)"$/\1/p' "$1"/crates/*-winit/Cargo.toml | head -1)
+    [ -n "$pkg" ] || { echo "check_default_crates: no crates/*-winit package in $2 -- not a pass" >&2; return 1; }
     err=$(mktemp) || return 1
-    if ! out=$(cd "$1" && cargo tree -p fulgurite-winit -e normal --prefix none --locked --offline 2>"$err"); then
+    if ! out=$(cd "$1" && cargo tree -p "$pkg" -e normal --prefix none --locked --offline 2>"$err"); then
         echo "check_default_crates: cargo tree failed in $2 -- not a pass:" >&2
         tail -5 "$err" >&2
         rm -f "$err"
